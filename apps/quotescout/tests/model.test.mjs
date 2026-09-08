@@ -1,9 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { rankQuotes, money, isFresh, VERTICALS, STATUSES } from '../js/model.js';
+import { rankQuotes, money, isFresh, freshness, VERTICALS, STATUSES, MODE_LABELS, STATUS_LABELS } from '../js/model.js';
 const now = Date.now();
 const q = (id, amount, extra={}) => ({ id, amount, annual: amount*12, currency:'USD', status:'ESTIMATE', expiresAt:new Date(now+60000).toISOString(), comparisonKey:'same', comparisonLabel:'Same product', vertical:'package-shipping', deliveryDays:3, ...extra });
-test('all eight verticals declare comparison dimensions and ranking', () => { assert.equal(VERTICALS.length,8); for (const v of VERTICALS) { assert.ok(v.dimensions.length); assert.ok(v.modes.includes('cheapest')); assert.ok(v.modes.includes('best-value')); } assert.ok(STATUSES.includes('ERROR')); });
+test('every vertical declares comparison dimensions and a ranking it can defend', () => { assert.equal(VERTICALS.length,9); for (const v of VERTICALS) { assert.ok(v.dimensions.length,v.id); assert.ok(v.modes.includes('cheapest'),v.id); assert.ok(v.modes.every(m=>Object.hasOwn(MODE_LABELS,m)),v.id); } assert.ok(STATUSES.includes('ERROR')); assert.ok(STATUSES.includes('AUTHORITATIVE PUBLIC RATE')); });
 test('cheapest uses cents and stable ties', () => { assert.deepEqual(rankQuotes([q('c',200),q('b',100),q('a',100)])[0].quotes.map(q=>q.id),['a','b','c']); });
 test('a verified quote breaks an exact tie, estimates never become verified', () => { const items=rankQuotes([q('a',100),q('b',100,{status:'VERIFIED QUOTE'})])[0].quotes; assert.equal(items[0].id,'b');assert.equal(items[1].status,'ESTIMATE'); });
 test('different currencies and coverage stay separate', () => { assert.equal(rankQuotes([q('a',100),q('b',90,{currency:'EUR'}),q('c',80,{comparisonKey:'other'})]).length,3); });

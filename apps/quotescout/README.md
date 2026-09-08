@@ -6,8 +6,10 @@ Compare prices without the spam. A static Shevato frontend with a server-side co
 
 | Vertical | Implemented capability | Public availability |
 | --- | --- | --- |
+| **Health insurance** | **Published CMS Marketplace premiums, deductibles and out-of-pocket maximums for every on-exchange individual medical plan, priced by ZIP, county, age and tobacco status** | **Live, no credential required.** 30 HealthCare.gov states, ages 18–64, one adult, full premium before tax credits; no enrollment |
+| **Dental insurance** | **Published CMS Marketplace premiums for on-exchange individual dental plans** | **Live, no credential required.** Same coverage and limits as health |
 | Package shipping | EasyPost rate-only API adapter; domestic US ZIPs, ounces/inches, production-mode rates only | Beta only with a platform-approved agreement, production key and explicit carrier accounts; estimates, no label checkout |
-| Health insurance | CMS Marketplace county enrichment, progressive county choice, individual adult premiums and plan details | Beta only with a CMS key; ages 18–64, one adult, before subsidies; no enrollment |
+| Health insurance (keyed API) | CMS Marketplace API county enrichment and live plan search; supersedes the bundled dataset when a key is present | Beta only with a CMS key; adds quality ratings and mid-year currency |
 | Vehicle data | NHTSA vPIC VIN validation and decoding | Data-only tool when the server quota store is available; no key |
 | Auto insurance | Strict VIN/ZIP/coverage input contract, comparison dimensions and capability state | Requires licensed provider integration; no carrier quotes advertised |
 | Vehicle shipping | VIN, route, date and transport schema; comparison dimensions | Requires provider integration |
@@ -16,9 +18,31 @@ Compare prices without the spam. A static Shevato frontend with a server-side co
 | Internet | Location input contract and comparison dimensions | Requires address-level pricing and availability source |
 | Electricity | Location input contract and comparison dimensions | Requires utility-level eligibility and retail plan source; never infers retail choice from state alone |
 
-The API returns capability states. Only connected tools appear in the form. Disabled categories appear in a disclosure with the reason and collect no personal information. Unsupported vertical schemas are platform extension points, not implemented quote integrations. Insurance coverage presets are not translated into legally sufficient state limits without a licensed partner’s versioned rules; no fabricated state-minimum table is included.
+The API returns capability states. Only connected tools appear in the form, comparisons first and the vehicle decoder last, so the page opens on something that returns a price. Disabled categories appear in a disclosure with the reason and collect no personal information. Unsupported vertical schemas are platform extension points, not implemented quote integrations. Insurance coverage presets are not translated into legally sufficient state limits without a licensed partner’s versioned rules; no fabricated state-minimum table is included.
 
-Without provider credentials, this release offers authoritative vehicle decoding, not live price comparisons. Production activation and commercial/legal approval remain external prerequisites. Research is in [PROVIDERS.md](PROVIDERS.md).
+Eligibility is enforced where the rule is unambiguous and public: catastrophic plans are the cheapest medical plans in the file and are only sold to people under 30 or holding a hardship exemption, so they are withheld from anyone 30 or over and the omission is stated in the results rather than silently applied.
+
+Health and dental comparisons work with no credentials, no partner and no outbound request: the premiums come from a dataset built from the CMS Exchange Public Use Files and shipped inside the function. The remaining verticals still need commercial or licensed integrations; research and the full capability matrix are in [PROVIDERS.md](PROVIDERS.md).
+
+## The marketplace dataset
+
+`scripts/build-quotescout-data.mjs` builds `netlify/functions/lib/quotescout/data/` from five public, key-free government sources:
+
+| Source | Supplies |
+| --- | --- |
+| [CMS Exchange Rate PUF](https://www.cms.gov/marketplace/resources/data/public-use-files) | The premium each insurer filed per plan, rating area, age and tobacco status |
+| CMS Exchange Plan Attributes PUF | Issuer, plan name, metal level, plan type, deductible, MOOP, HSA eligibility, network tiers |
+| CMS Exchange Service Area PUF | Which counties, and which ZIPs of a partial county, each plan is sold in |
+| [CCIIO geographic rating areas](https://www.cms.gov/cciio/programs-and-initiatives/health-insurance-market-reforms/state-gra) | County (or 3-digit ZIP) to rating area, per state |
+| [Census 2020 ZCTA/county relationship file](https://www2.census.gov/geo/docs/maps-data/data/rel2020/zcta520/tab20_zcta520_county20_natl.txt) | ZIP to county, so a shopper types only a ZIP |
+
+Output is one gzipped shard per state plus `zips`, `zip-states`, `counties` and a plain `meta.json`, about 3.8 MB in total and committed. Committing the derived data rather than downloading 300 MB of CSV during every deploy keeps builds fast and deterministic, and means a CMS outage cannot break a deploy or a comparison. `netlify.toml` ships the directory with the function through `included_files`; shards are gunzipped lazily, at most four states held at once. The runtime looks for the dataset in several places and keeps the one holding `meta.json`, because esbuild inlines `marketplace.mjs` into the function root and `import.meta.url` then points somewhere the data is not.
+
+Premiums are stored as integer cents, delta-encoded in base 36 across ages 18-64, and decode back to the exact filed cent. `quotescout-marketplace.test.mjs` asserts the round trip, and the build itself was verified against the raw Rate PUF across all 30 states, six ages and both tobacco settings with no mismatches.
+
+Regenerate for a new plan year with `npm run build:quotescout:data -- --year 2027`. Downloads are cached in `.quotescout-build-cache/` (gitignored). The build fails rather than emitting a partial dataset if a county cannot be resolved to a rating area, if the Rate PUF columns change, or if a CCIIO table stops parsing. The CCIIO tables contain long-standing transcription errors (`Kosclusko`, `Dubols`, `Chautaugua`, `Vermillion`, `Trail`, `Deleware`); the builder folds confusable characters and then allows a single-letter edit, requiring a unique match either way.
+
+**Coverage is exactly what the PUF covers.** The Exchange PUFs carry the states whose marketplace runs on HealthCare.gov, currently 30. States with their own exchange (California, New York and others) are absent, and the app says so by name rather than returning an empty result. `meta.json` is the single source of truth for the state list, plan year and publication date, and the landing copy is generated from it.
 
 ## Architecture
 
@@ -31,6 +55,7 @@ Without provider credentials, this release offers authoritative vehicle decoding
 - `adapters.mjs`: fixed HTTPS endpoints and minimal provider payloads. CMS county responses are validated again when a county is submitted.
 - `http.mjs`: bounded JSON reads, no redirects, normalized errors, cancellation and deadlines. Only safe GETs retry once after a 5xx; every attempt reserves quota. POSTs and 429s do not automatically retry.
 - `engine.mjs`: at most three concurrent adapters per comparison, a 12-second provider budget including enrichment, in-process deduplication, circuit breaker after three transient failures (60 seconds), bounded caches and event metrics.
+- `marketplace.mjs`: lazy, LRU-bounded access to the committed CMS dataset. Resolves a ZIP to its counties, a county to its rating area, and a rating area to every plan sold there at the shopper's exact age; also computes the second-lowest-cost silver benchmark from the same rates. Decodes premiums only; it never adjusts one.
 - `store.mjs`: server configuration and strong-consistency Netlify Blob compare-and-swap call budgets. Store failure or unsupported conditional writes fail closed.
 
 NDJSON events are `start`, `provider`, `done` and, for an unexpected stream failure, `error`. Finished providers appear independently. No invented progress percentage or carrier count is displayed. A data-source count means API adapters, not the number of insurers behind one API. Carrier-level partial errors and excluded malformed rows stay visible.
@@ -39,7 +64,9 @@ NDJSON events are `start`, `provider`, `done` and, for an unexpected stream fail
 
 A normalized quote has an adapter ID, source ID, display provider, vertical, currency, integer-cent price, interval, retrieval/expiry timestamps, comparison group, relevant details and provenance. Provenance retains the validated request parameters, product configuration, source, transformations, checkout expectation and reasons the checkout price may differ. Request contents exist only in the current response and private memory cache.
 
-States: `VERIFIED QUOTE`, `ESTIMATE`, `UNAVAILABLE`, `ERROR`, `EXPIRED`. Current adapters produce **ESTIMATE only**. The platform accepts `VERIFIED QUOTE` only from an adapter with `live-quote` provenance and a source reference; a future adapter must prove what its source guarantees. NHTSA output is vehicle data, never a quote. Missing prices do not become zero; unsupported currencies and test-mode shipping rates are excluded. An unavailable provider is a separate outcome, never an item in the price ranking. Provider errors have safe codes including `AUTH`, `RATE_LIMIT`, `TIMEOUT`, `MALFORMED`, `UNSUPPORTED`, `INVALID_INPUT`, `UNAVAILABLE`, `ADDITIONAL`.
+States: `VERIFIED QUOTE`, `AUTHORITATIVE PUBLIC RATE`, `ESTIMATE`, `UNAVAILABLE`, `ERROR`, `EXPIRED`.
+
+`AUTHORITATIVE PUBLIC RATE` (shown as **Published rate**) means the number is the premium the insurer filed with the government for this plan year and CMS published, decoded unchanged. It is not an estimate, because nothing was modelled; it is not a personal quote, because it excludes any premium tax credit. The engine only accepts it from an adapter whose provenance is `published-rate` and which names a source ID, an integer plan year and an ISO publication date, and it rejects a `published-rate` provenance carrying any other status. EasyPost and the keyed CMS API produce **ESTIMATE**. The platform accepts `VERIFIED QUOTE` only from an adapter with `live-quote` provenance and a source reference; a future adapter must prove what its source guarantees. NHTSA output is vehicle data, never a quote. Missing prices do not become zero; unsupported currencies and test-mode shipping rates are excluded. An unavailable provider is a separate outcome, never an item in the price ranking. Provider errors have safe codes including `AUTH`, `RATE_LIMIT`, `TIMEOUT`, `MALFORMED`, `UNSUPPORTED`, `INVALID_INPUT`, `UNAVAILABLE`, `ADDITIONAL`.
 
 Shipping uses EasyPost’s actual `rate`, not its retail/list rate. It is labeled an estimate because a ZIP-only, API-account-specific rate is not a purchasable offer to a Quote Scout visitor. There is no misleading carrier checkout link.
 
@@ -47,7 +74,7 @@ CMS uses the unsubsidized monthly premium. Annual premium is monthly × 12, **no
 
 ## Comparison and ranking
 
-Currencies never mix. Shipping is grouped by delivery guarantee and insurance-information status. Health is grouped by metal/type with a visible warning that networks and benefits differ. Users select a group before viewing its Top 3; groups themselves are alphabetically ordered, not scored against each other. Every ranking mode explains its reasoning:
+Currencies never mix. Shipping is grouped by delivery guarantee and insurance-information status. Health is grouped by metal/type with a visible warning that networks and benefits differ. Users select a group before viewing its Top 3. Groups are ordered so the group holding the best option under the current ranking mode comes first, with the group key as a stable tie-break; the ordering picks the group to show first and is not a score comparing one product group with another. Every ranking mode explains its reasoning:
 
 - Cheapest: price within the selected group.
 - Shipping best value: cents + 100 × reported transit days. This explicit $1/day preference is not a carrier quality rating. Unknown delivery times sort last.
@@ -73,9 +100,10 @@ Same-deploy Netlify preview origins can use the free vehicle tool without enabli
 ## Caching and API cost protection
 
 - Private quote cache: in process, maximum 250 entries. Key includes a SHA-256 of the random 256-bit per-tab capability, provider configuration, validated full input and adapter ID. No shared personalized quote cache. Capability lives in JS memory only and goes in a request header, never URL/storage/logs.
-- EasyPost prices: 5 minutes; CMS: 15 minutes; private vehicle response: 15 minutes. Retrieval timestamps survive cache hits. UI excludes expired prices and allows refresh.
+- EasyPost prices: 5 minutes; keyed CMS API: 15 minutes; bundled marketplace rates: 6 hours, because a filed rate does not change during the plan year; private vehicle response: 15 minutes. Retrieval timestamps survive cache hits. UI excludes expired prices and allows refresh.
 - Enrichment: maximum 500 in-process entries; vPIC 30 days, CMS county/ZIP 24 hours. Hashed lookup keys, no durable VIN database. Expiry timers remove entries while a process is running; cold starts/eviction remove earlier. Only validated vehicle specifications are cached; the raw VIN-bearing response is discarded.
 - Refresh bypasses quote caches, but concurrent identical in-flight requests share one operation. Safe VIN/geographic enrichment remains reusable.
+- Metering applies to work that leaves the building. A comparison served entirely from the bundled dataset makes no upstream call and therefore keeps working when Netlify Blobs is unavailable; it is still counted against the ceiling whenever the store can record it, and is still bounded by the platform rate limit. A request that could reach a paid API is refused outright without an identity to meter.
 - Quota store: one CAS-protected `usage` blob. 30 reservations per IP/hour; 1,000 total/day; 10,000/month; 200 EasyPost requests/day. The incoming comparison itself and each upstream attempt reserve separately. Reservations are conservatively not refunded on failure. No arbitrary request data goes into this blob.
 - Daily-hashed IP identities are kept only within hourly counters, bounded at 1,000 identities. This is abuse protection, not anonymous user analytics. Aggregate monthly counters bound calls, **not a contractual dollar cap**; enforce account billing limits too.
 - Netlify function edge rate limit: 40 requests/minute/IP, where supported by the hosting plan. Blob quotas remain authoritative across instances. Circuit breakers/deduplication/concurrency are process-local; distributed budgets remain effective across cold starts.
@@ -96,6 +124,7 @@ No app build tool or new runtime dependency. Node 20+ and the root dev tools mat
 npm run lint
 npm run test:quotescout
 npm test
+npm run build:quotescout:data
 npm run test:browser -- --only=quotescout
 npm run test:browser:parallel
 npm run test:cross-browser
@@ -105,7 +134,8 @@ npm run build:site
 
 Use `netlify dev` for real function routing, with local configuration and explicitly enabled provider calls. Use an isolated checkout/copy for `build:site` because it generates pages and inlines shared HTML. No separate TypeScript checker exists; source parsing, ESLint and runtime contract tests are the applicable checks.
 
-Tests use `node:test` and CDP. Deterministic upstream responses live exclusively under `tests/` and `e2e/`; no production switch can expose them. Forced 404 routes also block direct HTTP access to the Quote Scout test/E2E directories and function test sources under the root publish directory. The E2E suite covers minimal input, validation, vehicle decoding, Top 3/all results, sorting, refresh, additional county questions, errors, mobile overflow, contrast and axe checks. Browser screenshots live in ignored `.reports/`. Regenerate the committed empty-form preview deliberately with `QUOTESCOUT_UPDATE_PREVIEW=1 npm run test:browser -- --only=quotescout`; ordinary tests never rewrite that asset.
+Tests use `node:test` and CDP. Deterministic upstream responses live exclusively under `tests/` and `e2e/`; no production switch can expose them. Forced 404 routes also block direct HTTP access to the Quote Scout test/E2E directories and function test sources under the root publish directory. The E2E suite covers minimal input, validation, vehicle decoding, Top 3/all results, sorting, refresh, additional county questions, errors, mobile overflow, contrast and axe checks. Browser screenshots live in ignored `.reports/`. Regenerate the committed empty-form preview deliberately with `QUOTESCOUT_UPDATE_PREVIEW=1 npm run build:quotescout:data
+npm run test:browser -- --only=quotescout`; ordinary tests never rewrite that asset.
 
 To check a real public source separately: `QUOTESCOUT_PUBLIC_API_TEST=1 node --test apps/quotescout/tests/sandbox.test.mjs`. It uses the documented sample VIN, never a user VIN. CMS/paid provider smoke tests require explicitly supplied local credentials and are not ordinary CI dependencies. Test-mode EasyPost prices must remain rejected in production even when a sandbox succeeds. See PROVIDERS.md for vendor access limitations.
 

@@ -23,7 +23,7 @@ const choice = (v, field, options) => options.includes(v) ? v : fail('INVALID_IN
 export function validateRequest(raw, now = new Date()) {
   strict(raw, ['vertical', 'input', 'refresh', 'provider']);
   if (raw.refresh !== undefined && typeof raw.refresh !== 'boolean') fail('INVALID_INPUT');
-  if (raw.provider !== undefined) choice(raw.provider, 'provider', ['cms', 'easypost', 'vpic']);
+  if (raw.provider !== undefined) choice(raw.provider, 'provider', ['cms', 'cms-puf', 'cms-puf-dental', 'easypost', 'vpic']);
   const id = raw.vertical;
   if (!VERTICALS.some(v => v.id === id) && id !== 'vehicle-data') fail('INVALID_INPUT', 'vertical');
   const i = raw.input;
@@ -34,7 +34,7 @@ export function validateRequest(raw, now = new Date()) {
     input = { originZip: zip(i.originZip, 'originZip'), destinationZip: zip(i.destinationZip, 'destinationZip') };
     for (const k of ['weight', 'length', 'width', 'height']) input[k] = number(i[k], k, 0.01, k === 'weight' ? 1120 : 108);
     if (input.length + 2 * (input.width + input.height) > 165) fail('UNSUPPORTED', 'length');
-  } else if (id === 'health-insurance') {
+  } else if (id === 'health-insurance' || id === 'dental-insurance') {
     strict(i, ['zip', 'age', 'tobacco', 'year', 'county']);
     input = { zip: zip(i.zip), age: number(i.age, 'age', 18, 64, true), tobacco: choice(i.tobacco, 'tobacco', [true, false]), year: number(i.year, 'year', now.getUTCFullYear(), now.getUTCFullYear() + 1, true) };
     if (i.county !== undefined) input.county = string(i.county, 'county', /^\d{5}$/);

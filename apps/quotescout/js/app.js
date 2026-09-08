@@ -1,9 +1,12 @@
-import { VERTICALS, MODE_LABELS, rankQuotes, money, isFresh } from './model.js';
+import { VERTICALS, MODE_LABELS, STATUS_LABELS, STATUS_MEANING, rankQuotes, money, isFresh, freshness } from './model.js';
 const $ = id => document.getElementById(id);
 const root = $('quotescout');
 const endpoint = '/.netlify/functions/quotescout';
 const session = [...crypto.getRandomValues(new Uint8Array(32))].map(v => v.toString(16).padStart(2,'0')).join('');
 let capabilities = [], current = 'vehicle-data', providers = [], quotes = [], inputSnapshot, controller, generation = 0, showingAll = false, selectedGroup = '', loading = false;
+let service = {};
+const MARKETPLACE = ['health-insurance', 'dental-insurance'];
+const count = (n, noun) => `${n} ${noun}${n === 1 ? '' : 's'}`;
 const el = (tag, text, className) => { const n = document.createElement(tag); if (text !== undefined) n.textContent = text; if (className) n.className = className; return n; };
 function field(name, label, options = {}) {
   const wrap = el('div', undefined, 'qs-field'); const lab = el('label', label); lab.htmlFor = `qs-${name}`;
@@ -19,8 +22,9 @@ function choose(id) {
   $('qs-results').removeAttribute('aria-busy'); $('qs-results').replaceChildren(); $('qs-progress').textContent = ''; $('qs-error').textContent = ''; $('qs-fields').replaceChildren(); $('qs-submit').disabled = false;
   const v = VERTICALS.find(v => v.id === id); $('qs-form-title').textContent = v?.name || 'Decode your vehicle';
   $('qs-submit').textContent = id === 'vehicle-data' ? 'Decode VIN' : 'Compare options';
-  $('qs-form-note').textContent = id === 'vehicle-data' ? 'Manufacturer-reported vehicle details from NHTSA. No quote or vehicle-history claims.' : id === 'package-shipping' ? 'US domestic packages. Account-specific estimates, not labels for purchase. Carriers may require a full address before providing a rate.' : 'One adult, ages 18–64. Premiums before tax credits. Household subsidies and enrollment are available on HealthCare.gov.';
-  $('qs-transmission').textContent = id === 'vehicle-data' ? 'On submit: your VIN goes to the Shevato backend and NHTSA vPIC.' : id === 'package-shipping' ? 'On submit: ZIPs and package measurements go to the Shevato backend, EasyPost and the configured carriers needed to rate your shipment.' : 'On submit: your ZIP, age, tobacco status, coverage year and county (if needed) go to the Shevato backend and CMS.';
+  const marketplaceNote = `One adult, ages 18-64, for plan year ${service.planYear || ''}. These are the full premiums insurers filed with the government, before any premium tax credit. Available in the ${(service.states || []).length} states whose marketplace runs on HealthCare.gov.`;
+  $('qs-form-note').textContent = id === 'vehicle-data' ? 'Manufacturer-reported vehicle details from NHTSA. No quote or vehicle-history claims.' : id === 'package-shipping' ? 'US domestic packages. Account-specific estimates, not labels for purchase. Carriers may require a full address before providing a rate.' : MARKETPLACE.includes(id) ? marketplaceNote : '';
+  $('qs-transmission').textContent = id === 'vehicle-data' ? 'On submit: your VIN goes to the Shevato backend and NHTSA vPIC.' : id === 'package-shipping' ? 'On submit: ZIPs and package measurements go to the Shevato backend, EasyPost and the configured carriers needed to rate your shipment.' : MARKETPLACE.includes(id) ? 'On submit: your ZIP, age, tobacco status and coverage year go to the Shevato backend only. The published rates are held on our server, so nothing about your search is sent to an insurer or any other company.' : '';
   $('qs-mode').replaceChildren(); for (const mode of v?.modes || ['cheapest']) { const o = el('option', MODE_LABELS[mode]); o.value = mode; $('qs-mode').append(o); }
   $('qs-mode').value = 'cheapest';
   if (id === 'vehicle-data') field('vin', 'VIN', { maxLength: 17, pattern: '[A-HJ-NPR-Za-hj-npr-z0-9]{17}', help: '17 characters, usually on the dashboard or vehicle registration.' });
@@ -30,20 +34,32 @@ function choose(id) {
     field('weight', 'Weight (ounces)', { type: 'number', min: .01, max: 1120, step: .01, help: 'Include packaging. 16 ounces = 1 pound.' });
     for (const k of ['length','width','height']) field(k, `${k[0].toUpperCase()+k.slice(1)} (inches)`, { type: 'number', min: .01, max: 108, step: .01 });
   }
-  if (id === 'health-insurance') {
-    field('zip', 'ZIP code', { inputMode: 'numeric', pattern: '[0-9]{5}', maxLength: 5, autocomplete: 'postal-code' });
+  if (MARKETPLACE.includes(id)) {
+    field('zip', 'ZIP code', { inputMode: 'numeric', pattern: '[0-9]{5}', maxLength: 5, autocomplete: 'postal-code', help: 'Premiums are set by county, so we may ask which county if your ZIP covers more than one.' });
     field('age', 'Age during coverage year', { type: 'number', min: 18, max: 64, step: 1 });
-    field('tobacco', 'Do you use tobacco?', { choices: [['','Choose'],['false','No'],['true','Yes']] });
-    const year = new Date().getUTCFullYear(); field('year', 'Coverage year', { choices: [[year,String(year)],[year+1,String(year+1)]] });
+    field('tobacco', 'Do you use tobacco?', { choices: [['','Choose'],['false','No'],['true','Yes']], help: 'Some insurers file one rate either way; the result says which applied.' });
+    // The coverage year is not a question: we hold exactly one plan year, the
+    // note above says which, and every result repeats it. Asking would be a
+    // field with a single answer.
   }
   $('qs-form').hidden = false; $('qs-controls').hidden = true;
 }
+const AVAILABLE = ['Public data', 'Beta'];
 function showCapabilities(data) {
-  capabilities = data.verticals || []; const select = $('qs-category'); select.replaceChildren();
+  capabilities = data.verticals || []; service = data; const select = $('qs-category'); select.replaceChildren();
+  // Comparisons lead, and the vehicle decoder follows. The first option is the
+  // one the page opens on, and opening a price-comparison app on the one tool
+  // that returns no price buried the whole point behind a dropdown.
+  for (const v of capabilities.filter(v => AVAILABLE.includes(v.capability))) { const o = el('option', `${v.name} · ${v.capability}`); o.value = v.id; select.append(o); }
   if (data.vehicleData) { const o = el('option', 'Vehicle details · NHTSA data'); o.value = 'vehicle-data'; select.append(o); }
-  for (const v of capabilities.filter(v => v.capability === 'Beta')) { const o = el('option', `${v.name} · ${v.capability}`); o.value = v.id; select.append(o); }
   const unavailable = $('qs-unavailable'); unavailable.replaceChildren();
-  for (const v of capabilities.filter(v => v.capability !== 'Beta')) { const row = el('p'); row.append(el('strong', `${v.name}: `), document.createTextNode(v.reason)); unavailable.append(row); }
+  for (const v of capabilities.filter(v => !AVAILABLE.includes(v.capability))) { const row = el('p'); row.append(el('strong', `${v.name}: `), document.createTextNode(v.reason)); unavailable.append(row); }
+  // State the coverage limit up front rather than after someone types a ZIP we
+  // cannot answer for.
+  const states = data.states || [];
+  $('qs-coverage').textContent = states.length
+    ? `Health and dental plan prices are the rates insurers filed for plan year ${data.planYear}, published by CMS on ${new Date(`${data.dataPublishedAt}T00:00:00Z`).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric', timeZone: 'UTC' })}. They cover the ${states.length} states that use HealthCare.gov: ${states.join(', ')}. States running their own marketplace are not included.`
+    : '';
   if (select.options.length) { choose(select.value); $('qs-service-error').hidden = true; }
   else { $('qs-form').hidden = true; $('qs-service-error').hidden = false; }
   select.disabled = !select.options.length;
@@ -56,6 +72,8 @@ function readInput() {
   return raw;
 }
 async function compare({ refresh = false, provider, input = readInput() } = {}) {
+  // Supplied rather than asked for; see choose().
+  if (MARKETPLACE.includes(current) && input.year === undefined) input.year = service.planYear || new Date().getUTCFullYear();
   controller?.abort(); const run = ++generation; controller = new AbortController(); const activeController = controller; loading = true;
   inputSnapshot = structuredClone(input); showingAll = false;
   if (provider) { providers = providers.filter(p => p.provider !== provider); quotes = quotes.filter(q => q.provider !== provider); }
@@ -81,12 +99,22 @@ async function compare({ refresh = false, provider, input = readInput() } = {}) 
       let newline;
       while ((newline = buffer.indexOf('\n')) >= 0) {
         const event = JSON.parse(buffer.slice(0,newline)); buffer = buffer.slice(newline+1);
-        if (event.type === 'start') $('qs-progress').textContent = `Checking ${event.providers.filter(p => p.enabled).length} connected data source(s)…`;
+        if (event.type === 'start') { const n = event.providers.filter(p => p.enabled).length; $('qs-progress').textContent = `Checking ${n} data source${n === 1 ? '' : 's'}…`; }
         if (event.type === 'provider') {
           providers.push(event); quotes.push(...event.quotes); renderResults();
-          $('qs-progress').textContent = `${providers.length} data source(s) finished. ${quotes.length} option(s) returned.`;
+          const finished = providers.filter(p => p.enabled !== false).length;
+          $('qs-progress').textContent = `${count(finished, 'data source')} finished. ${count(quotes.length, 'option')} returned.`;
         }
-        if (event.type === 'done') { doneEvent = true; $('qs-progress').textContent = `${event.checked} data source(s) checked · ${quotes.length} option(s) returned · ${providers.filter(p => !['OK','ADDITIONAL'].includes(p.status)).length} unavailable · ${providers.filter(p => p.status === 'ADDITIONAL').length} need a detail`; }
+        // The server's own tally, so the summary can never drift from what the
+        // engine actually did. Clauses worth nothing are left out rather than
+        // padded with zeroes.
+        if (event.type === 'done') {
+          doneEvent = true;
+          const parts = [`${count(event.checked, 'data source')} checked`, `${count(quotes.length, 'option')} returned`];
+          if (event.unavailable) parts.push(`${event.unavailable} unavailable`);
+          if (event.additional) parts.push(`${event.additional} need a detail`);
+          $('qs-progress').textContent = parts.join(' \u00b7 ');
+        }
         if (event.type === 'error') throw new Error(event.message);
       }
     }
@@ -120,7 +148,9 @@ function renderResults() {
       const submit = el('button',`Continue with ${p.name}`); submit.type = 'submit'; submit.disabled = loading; form.append(submit);
       form.addEventListener('submit',e => { e.preventDefault(); compare({ provider: p.provider, input: { ...inputSnapshot, ...Object.fromEntries(new FormData(form)) } }); }); container.append(form);
     }
-    if (!['OK','ADDITIONAL'].includes(p.status)) container.append(el('p', `${p.name}: ${p.message || 'No usable options returned for this request.'}`, 'qs-notice'));
+    // A source that is not connected at all is listed under "Other comparison
+    // categories"; repeating it as a failure on every search is just noise.
+    if (!['OK','ADDITIONAL'].includes(p.status) && p.enabled !== false) container.append(el('p', `${p.name}: ${p.message || 'No usable options returned for this request.'}`, 'qs-notice'));
     if (p.warning || p.rejected) container.append(el('p', `${p.warning || ''} ${p.rejected ? `${p.rejected} unverified response(s) excluded.` : ''}`, 'qs-notice'));
   }
   if (quotes.length) {
@@ -142,15 +172,22 @@ function renderResults() {
 }
 function resultCard(q) {
   const card = el('article', undefined, 'qs-result');
-  card.append(el('span', isFresh(q) ? q.status : 'EXPIRED', 'qs-badge'),el('h4',q.providerName),el('p',q.name),el('p',`${money(q.amount,q.currency)} / ${q.interval}`, 'qs-price'));
-  if (q.annual !== undefined) card.append(el('p',`${money(q.annual,q.currency)} annual premium`));
-  if (q.deliveryDays != null) card.append(el('p',`${q.deliveryDays} estimated transit day(s)`));
-  if (q.vertical === 'health-insurance') card.append(el('p',`Deductible: ${money(q.deductible)} · Max out-of-pocket: ${money(q.outOfPocket)}`));
-  card.append(el('p',`Retrieved ${new Date(q.retrievedAt).toLocaleString()}${providers.find(p => p.provider === q.provider)?.cached ? ' · Cached' : ''}. Refresh after ${new Date(q.expiresAt).toLocaleTimeString()}.`, 'qs-muted'));
-  const details = el('details'), summary = el('summary','Details and price source'), dl = el('dl');
-  for (const [key,value] of Object.entries(q.details || {})) dl.append(el('dt',key),el('dd',value));
-  details.append(summary,dl,el('p',q.provenance.source),el('p',q.provenance.warning),el('p',`Normalization: ${q.provenance.transformations.join('; ')}.`)); card.append(details);
-  if (q.continueUrl === 'https://www.healthcare.gov/see-plans/') { const a = el('a',q.continueLabel); a.href = q.continueUrl; a.rel = 'noopener noreferrer'; a.referrerPolicy = 'no-referrer'; card.append(a); }
+  const status = isFresh(q) ? q.status : 'EXPIRED';
+  // The badge carries a word, not just a colour, and the meaning sits beside it
+  // so nobody has to guess what "published rate" is promising.
+  const badge = el('span', STATUS_LABELS[status] || status, 'qs-badge');
+  badge.dataset.status = status;
+  card.append(badge, el('h4', q.providerName), el('p', q.name), el('p', `${money(q.amount, q.currency)} / ${q.interval}`, 'qs-price'));
+  if (q.annual !== undefined) card.append(el('p', `${money(q.annual, q.currency)} a year at this rate`));
+  if (q.deliveryDays != null) card.append(el('p', `${q.deliveryDays} estimated transit day(s)`));
+  if (q.deductible !== undefined || q.outOfPocket !== undefined) card.append(el('p', `Deductible: ${money(q.deductible)} · Max out-of-pocket: ${money(q.outOfPocket)}`));
+  const cached = providers.find(p => p.provider === q.provider)?.cached;
+  card.append(el('p', `${freshness(q)}${cached ? ' Served from this session\u2019s cache.' : ''}`, 'qs-muted'));
+  const details = el('details'), summary = el('summary', 'Details and price source'), dl = el('dl');
+  for (const [key, value] of Object.entries(q.details || {})) dl.append(el('dt', key), el('dd', value));
+  details.append(summary, el('p', STATUS_MEANING[status] || ''), dl, el('p', q.provenance.source), el('p', q.provenance.warning), el('p', `Normalization: ${q.provenance.transformations.join('; ')}.`));
+  card.append(details);
+  if (q.continueUrl === 'https://www.healthcare.gov/see-plans/') { const a = el('a', q.continueLabel); a.href = q.continueUrl; a.rel = 'noopener noreferrer'; a.referrerPolicy = 'no-referrer'; card.append(a); }
   return card;
 }
 $('qs-category').addEventListener('change', e => choose(e.target.value));
