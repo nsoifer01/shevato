@@ -101,11 +101,12 @@ test('a ZIP resolves to its counties, and a ZIP outside the data is named honest
   assert.equal(counties[0].state, 'TX');
   assert.match(counties[0].name, /Travis/);
   assert.equal(stateOfFips(counties[0].fips), 'TX');
-  // California runs its own exchange, so it is absent from the PUF but still a
-  // real ZIP: the two cases must not collapse into one message.
-  assert.equal(resolveZip('90210'), null);
+  // The ZIP index is nationwide because Medicare is, so a California ZIP does
+  // resolve; what it must not do is yield marketplace plans.
+  assert.ok(resolveZip('90210'), 'a California ZIP still resolves to a county');
   assert.equal(stateOfZip('90210'), 'CA');
-  assert.ok(!meta.states.includes('CA'));
+  assert.ok(!meta.states.includes('CA'), 'California runs its own exchange and is absent from the PUF');
+  assert.throws(() => ask({ zip: '90210' }), e => e.code === 'UNSUPPORTED');
   assert.equal(stateOfZip('00000'), '');
 });
 
@@ -338,23 +339,6 @@ test('results are cached per session and refreshed on demand, never served as ne
   assert.equal(stale.providers[0].quotes[0].status, 'EXPIRED');
 });
 
-test('a configured CMS API supersedes the bundled dataset instead of duplicating every plan', async () => {
-  const store = { async get() { return { cmsKey: 'secret-test-key' }; }, async getWithMetadata() { return null; }, async setJSON() { return { modified: true }; } };
-  const handler = createHandler({ storeFactory: async () => store, fetcher: async () => new Response('{}', { headers: { 'Content-Type': 'application/json' } }), env: { CONTEXT: 'production' }, log: () => {} });
-  const capabilities = await (await handler(new Request('https://shevato.com/.netlify/functions/quotescout'), { deploy: { context: 'production' } })).json();
-  const sources = capabilities.verticals.find(v => v.id === 'health-insurance').sources.map(s => s.id);
-  assert.ok(sources.includes('cms'));
-  assert.ok(!sources.includes('cms-puf'), 'the bundled dataset steps aside for the live API');
-  // Dental has no keyed equivalent, so it keeps the dataset either way.
-  assert.deepEqual(capabilities.verticals.find(v => v.id === 'dental-insurance').sources.map(s => s.id), ['cms-puf-dental']);
-
-  // With the store unreachable the keyed API cannot run, so the dataset must
-  // come back rather than leaving the vertical empty.
-  const degraded = createHandler({ storeFactory: async () => { throw new Error('blobs down'); }, fetcher: async () => { throw new Error('no'); }, env: { CONTEXT: 'production', QUOTESCOUT_CMS_KEY: 'secret-test-key' }, log: () => {} });
-  const fallback = await (await degraded(new Request('https://shevato.com/.netlify/functions/quotescout'), { deploy: { context: 'production' } })).json();
-  assert.deepEqual(fallback.verticals.find(v => v.id === 'health-insurance').sources.map(s => s.id), ['cms-puf']);
-});
-
 test('the whole comparison works with no blob store, no credentials and no network', async () => {
   const logs = [];
   const handler = createHandler({
@@ -376,13 +360,8 @@ test('the whole comparison works with no blob store, no credentials and no netwo
   assert.equal(provider.status, 'OK');
   assert.ok(provider.quotes.length > 20);
   assert.ok(provider.quotes.every(q => q.status === 'AUTHORITATIVE PUBLIC RATE'));
-  // The keyed CMS API shares this vertical and has no credential here. It must
-  // say so rather than disappear, and it must not reduce what did work.
-  const keyed = events.find(e => e.type === 'provider' && e.provider === 'cms');
-  assert.equal(keyed.status, 'UNAVAILABLE');
-  assert.equal(keyed.quotes.length, 0);
   const done = events.find(e => e.type === 'done');
-  assert.equal(done.checked, 1, 'an unconfigured provider is not counted as checked');
+  assert.equal(done.checked, 1);
   assert.equal(done.returned, provider.quotes.length);
   assert.equal(done.unavailable, 0, 'a provider with no credential was never tried, so it is not a failure');
 

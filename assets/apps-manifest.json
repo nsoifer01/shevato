@@ -7,7 +7,7 @@
     { "slug": "gym-tracker", "name": "Gym Tracker", "blurb": "workouts and strength progress" },
     { "slug": "maptap-rivals", "name": "MapTap Rivals", "blurb": "daily MapTap.gg tracker" },
     { "slug": "mario-kart", "name": "Mario Kart Tracker", "blurb": "race tracker and stats" },
-    { "slug": "quotescout", "name": "Quote Scout", "blurb": "real marketplace health and dental plan prices, with clear sources and no contact gate" },
+    { "slug": "quotescout", "name": "Quote Scout", "blurb": "real health, dental and Medicare plan prices from official CMS data, with no contact gate" },
     { "slug": "rising-shows", "name": "Rising Shows", "blurb": "TV shows by the shape of their rating trend" },
     { "slug": "trip-planner", "name": "Trip Planner", "blurb": "itineraries with maps, costs and warnings" }
   ]

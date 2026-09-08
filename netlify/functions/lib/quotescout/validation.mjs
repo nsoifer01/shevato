@@ -23,30 +23,22 @@ const choice = (v, field, options) => options.includes(v) ? v : fail('INVALID_IN
 export function validateRequest(raw, now = new Date()) {
   strict(raw, ['vertical', 'input', 'refresh', 'provider']);
   if (raw.refresh !== undefined && typeof raw.refresh !== 'boolean') fail('INVALID_INPUT');
-  if (raw.provider !== undefined) choice(raw.provider, 'provider', ['cms', 'cms-puf', 'cms-puf-dental', 'easypost', 'vpic']);
+  if (raw.provider !== undefined) choice(raw.provider, 'provider', ['cms-puf', 'cms-puf-dental', 'medicare-advantage', 'medicare-drug', 'vpic']);
   const id = raw.vertical;
   if (!VERTICALS.some(v => v.id === id) && id !== 'vehicle-data') fail('INVALID_INPUT', 'vertical');
   const i = raw.input;
   let input;
   if (id === 'vehicle-data') { strict(i, ['vin']); input = { vin: vin(i.vin) }; }
-  else if (id === 'package-shipping') {
-    strict(i, ['originZip', 'destinationZip', 'weight', 'length', 'width', 'height']);
-    input = { originZip: zip(i.originZip, 'originZip'), destinationZip: zip(i.destinationZip, 'destinationZip') };
-    for (const k of ['weight', 'length', 'width', 'height']) input[k] = number(i[k], k, 0.01, k === 'weight' ? 1120 : 108);
-    if (input.length + 2 * (input.width + input.height) > 165) fail('UNSUPPORTED', 'length');
-  } else if (id === 'health-insurance' || id === 'dental-insurance') {
+  else if (id === 'health-insurance' || id === 'dental-insurance') {
     strict(i, ['zip', 'age', 'tobacco', 'year', 'county']);
     input = { zip: zip(i.zip), age: number(i.age, 'age', 18, 64, true), tobacco: choice(i.tobacco, 'tobacco', [true, false]), year: number(i.year, 'year', now.getUTCFullYear(), now.getUTCFullYear() + 1, true) };
     if (i.county !== undefined) input.county = string(i.county, 'county', /^\d{5}$/);
-  } else if (['auto-insurance', 'vehicle-warranty', 'vehicle-shipping'].includes(id)) {
-    const keys = id === 'auto-insurance' ? ['vin', 'zip', 'coverage'] : id === 'vehicle-warranty' ? ['vin', 'mileage', 'state'] : ['vin', 'originZip', 'destinationZip', 'date', 'transport'];
-    strict(i, keys); input = { vin: vin(i.vin) };
-    if (id === 'auto-insurance') Object.assign(input, { zip: zip(i.zip), coverage: choice(i.coverage, 'coverage', ['state-minimum', 'basic', 'full', 'custom']) });
-    if (id === 'vehicle-warranty') Object.assign(input, { mileage: number(i.mileage, 'mileage', 0, 1000000, true), state: string(i.state, 'state', /^[A-Z]{2}$/) });
-    if (id === 'vehicle-shipping') {
-      Object.assign(input, { originZip: zip(i.originZip), destinationZip: zip(i.destinationZip), date: string(i.date, 'date', /^\d{4}-\d{2}-\d{2}$/), transport: choice(i.transport, 'transport', ['open', 'enclosed']) });
-      if (!Number.isFinite(Date.parse(input.date)) || new Date(input.date).toISOString().slice(0,10) !== input.date || input.date < now.toISOString().slice(0,10)) fail('INVALID_INPUT', 'date');
-    }
-  } else { strict(i, ['zip']); input = { zip: zip(i.zip) }; }
+  } else {
+    // Medicare premiums do not vary with age, sex or tobacco, so a ZIP is the
+    // whole of the required input; county only appears when a ZIP straddles two.
+    strict(i, ['zip', 'county']);
+    input = { zip: zip(i.zip) };
+    if (i.county !== undefined) input.county = string(i.county, 'county', /^\d{5}$/);
+  }
   return { vertical: id, input, refresh: raw.refresh === true, provider: raw.provider };
 }

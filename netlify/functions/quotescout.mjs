@@ -36,15 +36,6 @@ export function createHandler({ storeFactory = getStore, fetcher = fetch, env = 
     // "unavailable" line in the results. The marketplace dataset ships inside
     // this function and calls nothing, so it stays available without Blobs.
     const runtime = adapters.map(a => (a.external && !store ? { ...a, enabled: false } : { ...a }));
-    // The keyed CMS API and the bundled CMS dataset describe the very same
-    // plans. Running both would list every plan twice under two different
-    // provenance labels, so when a key is present and usable the live API wins
-    // and the bundled data steps aside. Deciding it here, on what is actually
-    // usable, means a store outage falls back to the dataset rather than
-    // leaving the vertical with nothing.
-    if (runtime.some(a => a.id === 'cms' && a.enabled)) {
-      for (const a of runtime) if (a.id === 'cms-puf') a.enabled = false;
-    }
     const usable = a => a.enabled;
     if (req.method === 'GET') {
       const verticals = VERTICALS.map(v => {
@@ -57,7 +48,17 @@ export function createHandler({ storeFactory = getStore, fetcher = fetch, env = 
           sources: live.map(a => ({ id: a.id, name: a.name, capability: a.capability })),
         };
       });
-      return json({ verticals, vehicleData: runtime.some(a => a.vertical === 'vehicle-data' && usable(a)), planYear: marketplaceMeta().planYear, states: marketplaceMeta().states, dataPublishedAt: marketplaceMeta().pufImportDate });
+      const meta = marketplaceMeta();
+      return json({
+        verticals,
+        vehicleData: runtime.some(a => a.vertical === 'vehicle-data' && usable(a)),
+        planYear: meta.planYear,
+        states: meta.states,
+        dataPublishedAt: meta.pufImportDate,
+        // Medicare covers every state and territory, and a different plan year
+        // stamp, so the page cannot infer its coverage from the marketplace's.
+        medicare: meta.medicare ? { year: meta.planYear, states: meta.medicare.states, publishedAt: meta.medicare.publishedAt } : null,
+      });
     }
     const requestId = randomUUID(); let request;
     try {

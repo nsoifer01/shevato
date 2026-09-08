@@ -1,12 +1,11 @@
 import { updateUsage } from '../blob-cas.mjs';
 import { hash } from './engine.mjs';
-export function validateConfig(raw = {}, env = {}) {
-  const key = (v, max = 300) => typeof v === 'string' && v.length >= 10 && v.length <= max && !/\s/.test(v) ? v : undefined;
-  const config = { cmsKey: key(env.QUOTESCOUT_CMS_KEY || raw.cmsKey), easypostKey: key(env.QUOTESCOUT_EASYPOST_KEY || raw.easypostKey), carrierAccounts: raw.carrierAccounts };
-  if (raw.easypostPlatformApproved !== true) config.easypostKey = undefined;
-  if (!Array.isArray(config.carrierAccounts) || !config.carrierAccounts.length || config.carrierAccounts.length > 10 || config.carrierAccounts.some(v => typeof v !== 'string' || !/^ca_[a-zA-Z0-9]+$/.test(v))) { config.easypostKey = undefined; config.carrierAccounts = undefined; }
-  if (env.CONTEXT !== 'production' && env.QUOTESCOUT_ALLOW_LOCAL_PROVIDERS !== '1') { config.cmsKey = undefined; config.easypostKey = undefined; }
-  return config;
+// Every priced source Quote Scout serves is a public dataset that travels with
+// the function, so there is no provider credential left to validate. This stays
+// as the single place a future credential would be admitted, and as the shape
+// the engine cache key is computed from.
+export function validateConfig() {
+  return {};
 }
 export async function getStore() {
   const { getStore: open } = await import('@netlify/blobs');
