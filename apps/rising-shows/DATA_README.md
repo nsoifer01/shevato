@@ -45,7 +45,9 @@ The workflow `.github/workflows/refresh-rising-shows.yml` runs daily at
    auto-merge, and watches. The four required checks (`lint`, `test`,
    `browser`, `rules`) gate the merge exactly as they do for a human pull
    request; a red one leaves the pull request OPEN and nothing deploys.
-   GitHub deletes the branch on merge. That merge is what triggers the
+   The branch is deleted after the merge by the same script, because
+   GitHub's "automatically delete head branches" does not fire for a
+   merge attributed to `github-actions[bot]`. That merge is what triggers the
    Netlify deploy, whose build resolves the pin and downloads the exact
    assets this pull request approved.
 

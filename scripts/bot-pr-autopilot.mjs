@@ -198,6 +198,38 @@ export async function updateBranch(api, number) {
   return api.request('PUT', `/repos/${api.repo}/pulls/${number}/update-branch`, {});
 }
 
+// Delete the merged branch, because GitHub does not.
+//
+// The repository has "Automatically delete head branches" ON, and it works for
+// a human: #517's branch was gone the moment auto-merge merged it. It did NOT
+// fire for #518, whose auto-merge was armed by github-actions[bot], and the
+// branch was still on the remote minutes later. Measured, both on 2026-09-08.
+//
+// So the refresh would leave one bot/refresh-rising-shows-* branch behind
+// every single day, which is exactly the accumulation the timestamped branch
+// names make expensive. Deleting it here is safe by construction: it only runs
+// after GitHub reports the pull request MERGED, and it only ever names that
+// pull request's own head ref.
+//
+// Never fatal. A branch that is already gone (a slow delete_branch_on_merge
+// that did fire, someone deleting it by hand) is the outcome we wanted.
+export async function deleteHeadBranch(api, pr, { log = () => {} } = {}) {
+  const ref = pr?.head?.ref;
+  if (!ref) return 'unknown';
+  try {
+    await api.request('DELETE', `/repos/${api.repo}/git/refs/heads/${ref}`);
+    log(`  deleted ${ref}`);
+    return 'deleted';
+  } catch (err) {
+    if (err.status === 404 || err.status === 422) {
+      log(`  ${ref} was already gone`);
+      return 'absent';
+    }
+    log(`  could not delete ${ref}: ${err.message}`);
+    return 'failed';
+  }
+}
+
 // Release the hold, arm auto-merge, and then watch until GitHub either merges
 // it or a required check goes red.
 //
@@ -222,6 +254,7 @@ export async function drivePullRequest(api, number, {
 
     if (pr.merged) {
       log(`#${number} merged as ${pr.merge_commit_sha}`);
+      await deleteHeadBranch(api, pr, { log });
       return { outcome: 'merged', pr };
     }
     if (pr.state === 'closed') {
@@ -242,6 +275,7 @@ export async function drivePullRequest(api, number, {
       const result = await armAutoMerge(api, pr, { log });
       armed = true;
       if (result === 'merged') {
+        await deleteHeadBranch(api, pr, { log });
         return { outcome: 'merged', pr };
       }
     }
