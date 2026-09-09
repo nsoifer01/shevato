@@ -2463,16 +2463,54 @@ that were worth nothing while reshuffling half of all gameweeks.
 
 **What was NOT changed, and why.** `subOnRate` still has no shrinkage, so one
 substitute appearance in one non-start still returns exactly 1.0 and pins
-`pAppear`. That is a real defect and it is why Foden reads 1.000. It has been
-attacked twice on the deciding instrument and rejected both times (entries 23 and
-24, the second including a bound and an empirical-Bayes prior measured over
-76,475 non-start player-matches: t 0.10, sign test p 1.00, while changing the
-recommendation in 52% to 87% of gameweeks). Entry 24 closes by asking that any
-future attempt be a DATA change accumulating real appearance counts from
-`event/<gw>/live` rather than a third estimator. It also had no part in the
-complaint: `pAppear` is not a term in the captaincy `value`. Where it does reach
-the armband is the captain's fallback term, `(1 - pAppear) * viceValue`, which a
-pinned captain collects nothing from. Recorded as registry entry 27.
+`pAppear`. That is a real defect and it is why Foden reads 1.000. It had no part
+in the complaint above: `pAppear` is not a term in the captaincy `value`. Where
+it does reach the armband is the captain's fallback term,
+`(1 - pAppear) * viceValue`, which a pinned captain collects nothing from.
+
+## The subOnRate pin is closed as a points question (2026-09-09)
+
+Three fixes for it have now been measured on the deciding instrument and all
+three are worth nothing:
+
+| attempt | what it was | per window | t |
+| --- | --- | ---: | ---: |
+| registry 23 | positional shrinkage on the inferred rate | +7.9 | 0.93 |
+| registry 24 | bounded empirical-Bayes estimator | +0.8 | 0.10 |
+| **registry 28** | **the appearance record itself** | **+0.0** | **0.00** |
+
+Entry 28 is the one that settles it, because it is not a rival model. It is
+`playedMatches - starts`, counted from the same per-fixture record the replay
+already holds, with no prior and no shrinkage in it. It does everything it was
+supposed to do: the `pAppear` pin falls from 16.0% of players with minutes to
+3.9% at 2025-26 gameweek 30, 31 players with 15+ starts and zero real substitute
+appearances stop being modelled as certain to appear, and Brier improves in all
+four seasons (0.1835 to 0.1750, 0.1898 to 0.1818, 0.1840 to 0.1728, 0.1861 to
+0.1748). It is worth **one point across 60 trajectories**, +376 in one season
+and -404 in another, 9 windows won to 11 lost, with a per-window standard
+deviation of 39.7 against 10.5 for the captaincy repair on the same instrument.
+
+So the correct reading is not "the fix does not work". It is that **`pAppear`
+accuracy is not what limits this planner's points**, and four experiments have
+now said so (12, 13, 23, 24 and 28 all improved a prediction metric and returned
+nothing). Do not attempt a fourth fix for the pin as a points change.
+
+The harms that remain are real and are NOT point-scoring harms, so each should
+be fixed at its own site against its own evidence rather than routed through
+`pAppear` again:
+
+- `autosubValue`, `gkValue` and the `minutesRiskWeight * (1 - pAppear)` term all
+  go identically zero for an eleven of pinned players, which is how the
+  bench-order tie-break came to decide a recommendation by ascending player id.
+- `chips.js`'s `BENCH_WEAK_P_APPEAR` gate (0.5) cannot fire for 41% of the pool
+  owned by 5% of managers or more.
+- The headline-xP semantics described elsewhere in this document.
+
+The production half of entry 28 was never built. Accumulating real appearance
+counts in the browser needs one `event/<gw>/live` fetch per finished gameweek
+(654 players, ~460 KB each), cached as derived per-player counts; that is a
+sound design and it is written down here so nobody re-derives it, but there is
+no reason to build it for a change worth zero points.
 
 ## Open questions / next highest-value work
 

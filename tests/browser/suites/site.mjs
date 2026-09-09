@@ -417,7 +417,14 @@ export async function run({ base, cdpPort }) {
     await clickSel(s, '#auth-signin-form button[type="submit"]', { settle: 250 });
     const busy = await evaluate(s, `(()=>{ const b=document.querySelector('#auth-signin-form button[type="submit"]');
       return { disabled: b.disabled, busy: b.getAttribute('aria-busy') }; })()`);
-    await sleep(1500);
+    // WAIT FOR THE RE-ENABLE, do not sleep past it and hope. The stub rejects
+    // at 1200ms and this used to sleep a flat 1500ms, which is 300ms of margin
+    // for a timer, a rejection, a re-render and a repaint on a shared CI
+    // runner. It failed shard 3 on 2026-09-09 with `after=true`, and took the
+    // sign-up assertion down with it: the form was still busy, so the next
+    // submit never fired and its message assertion read "".
+    await waitForExpr(s, `document.querySelector('#auth-signin-form button[type="submit"]').disabled === false`,
+      { timeout: 8000 });
     const idle = await evaluate(s, `document.querySelector('#auth-signin-form button[type="submit"]').disabled`);
     await evaluate(s, `(()=>{ window.firebaseAuth.signIn = window.__realSignIn; return 1 })()`);
     t('auth modal: submit button is disabled while a sign-in is in flight and re-enabled after',
