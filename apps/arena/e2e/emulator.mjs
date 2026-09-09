@@ -89,13 +89,22 @@ const FLAG_SETUP = `(()=>{ try {
   localStorage.setItem('shevato:firebase-emulators','1');
 } catch(e){} return 1 })()`;
 
-async function emulatorReachable() {
-  try {
-    await fetch('http://127.0.0.1:8085/', { signal: AbortSignal.timeout(1500) });
-    await fetch('http://127.0.0.1:9099/', { signal: AbortSignal.timeout(1500) });
-    return true;
-  } catch {
-    return false;
+// The runner starts the emulators and waits for their PORTS; a JVM on a
+// loaded two-core box accepts the socket seconds before it answers HTTP, and
+// a one-shot probe here (1.5 s) turned that gap into a suite-level SKIP that
+// the runner then reported as 0/0 passed, exit 0 (2026-09-08). Poll for a
+// bounded time instead: the ports are already up, so an answer is coming.
+async function emulatorReachable({ timeoutMs = 30000 } = {}) {
+  const start = Date.now();
+  for (;;) {
+    try {
+      await fetch('http://127.0.0.1:8085/', { signal: AbortSignal.timeout(1500) });
+      await fetch('http://127.0.0.1:9099/', { signal: AbortSignal.timeout(1500) });
+      return true;
+    } catch {
+      if (Date.now() - start > timeoutMs) return false;
+      await new Promise((r) => setTimeout(r, 500));
+    }
   }
 }
 
@@ -127,12 +136,14 @@ export async function run({ base, cdpPort, base2 = null }) {
   const R = [];
   // ARENA_E2E_VERBOSE=1 streams each check as it resolves. The runner only
   // prints the tally at the end, so without this a suite that stalls gives
-  // no clue which check it stalled on.
+  // no clue which check it stalled on. The detail is printed on a PASS too:
+  // the timing checks carry their whole breakdown in it, and a pass with a
+  // thin margin is precisely what a local iteration needs to see.
   const t = (name, pass, detail = '') => {
     if (process.env.ARENA_E2E_VERBOSE) {
-      console.log(`    [${pass ? 'ok  ' : 'FAIL'}] ${name}${pass ? '' : '  [' + String(detail).slice(0, 160) + ']'}`);
+      console.log(`    [${pass ? 'ok  ' : 'FAIL'}] ${name}${detail ? '  [' + String(detail).slice(0, 600) + ']' : ''}`);
     }
-    R.push({ name, pass: !!pass, detail: detail ? String(detail).slice(0, 240) : '' });
+    R.push({ name, pass: !!pass, detail: detail ? String(detail).slice(0, 600) : '' });
   };
   const skip = (name, reason) => R.push({ name, pass: true, skipped: true, detail: reason });
 
@@ -1206,9 +1217,10 @@ export async function run({ base, cdpPort, base2 = null }) {
       const gUp = await waitForExpr(A, visible('room-panel'), { timeout: 20000 });
       t('emulator (globe): a Globe Drop room is created from the bundled capitals data', gUp);
       const code6 = await roomCodeOf(A);
-      // Shorten the asking window for the suite (owner bypass): 3 s asking +
-      // 10 s reveal per location instead of 60 s.
-      await ownerPatch(`triviaRooms/${code6}`, { questionTimeMs: 3000 });
+      // The asking window stays at the room's own 60 s for now. It is
+      // shortened, by the owner bypass, only once the harness is ready for
+      // the reveal (see the warm-up below), and again to the suite's 3 s for
+      // the hidden-host rounds after the Ready-skip.
       await setValue(B, '#join-code', code6);
       await clickSel(B, '#join-room-btn', { settle: 600 });
       await waitForExpr(B, visible('room-panel'), { timeout: 15000 });
@@ -1223,56 +1235,45 @@ export async function run({ base, cdpPort, base2 = null }) {
         await clickSel(A, '#start-game-btn', { settle: 800 });
         g0 = await waitRoom(code6, (st) => st.status === 'playing', 12000);
       }
-      t('emulator (globe): start enters the first location', g0.status === 'playing' && g0.idx === 0, JSON.stringify(g0));
-      // Warm B's globe BEFORE the reveal window opens.
+      // The stamp is a precondition, not a detail: the deadline every timing
+      // number below is measured against is computed from it.
+      t('emulator (globe): start enters the first location',
+        g0.status === 'playing' && g0.idx === 0 && !!g0.startedMs, JSON.stringify(g0));
+      // Warm B's globe BEFORE the reveal window opens, and make "before" true
+      // whatever the runner's speed.
       //
       // B has been a background tab since the room was created, so its FIRST
       // paint is a cold ensureGlobe(): build the globe.gl scene, decode and
-      // upload the Earth texture, run the 1.2 s camera fly-in. Doing all of
-      // that inside the 10 s reveal is what used to push the second Ready vote
-      // past the deadline - measured at +10,657 ms against a 10,000 ms window
-      // on two cores, which is what a CI runner has. The asking phase has no
-      // deadline, so the cold start happens here instead and the reveal window
-      // only has to pay for a click.
+      // upload the Earth texture, run the 1.2 s camera fly-in. Measured at up
+      // to 9 s on two cores, which is what a CI runner has. The reveal window
+      // this scenario measures is 10 s, so that cost has to be paid off the
+      // clock - and a fixed 3 s asking window could not guarantee that: on a
+      // slow runner the warm-up overran into the reveal, then 3.5 s of fixed
+      // sleeps overran further, and whether the two votes still fit inside
+      // the window came down to the runner's speed that day. That is the
+      // pass/fail/pass/fail this check showed on identical content (2026-09-08).
       //
-      // This changes WHEN the globe initialises, not what the checks below
-      // assert: both players still vote through the real Ready button, and the
-      // early advance is still measured against the server clock.
+      // So the asking window is left at the room's own 60 s while B warms up,
+      // and shortened only once B is warm, to what has elapsed plus a lead:
+      // the reveal opens when the harness is ready, not 3 s after Start.
+      // Every client recomputes its phase from questionStartedAt +
+      // questionTimeMs on the next snapshot (currentAskingDurationMs reads the
+      // room doc live), and the lead covers that propagation. This changes
+      // WHEN the reveal opens, not what the checks assert: both players still
+      // vote through the real Ready button, and "early" is still measured
+      // against the room's own deadline (questionStartedAt + asking + reveal,
+      // all on the server clock) - a harness wall-clock would measure CDP
+      // latency, not the product.
       await front(B);
       const bGlobeWarm = await waitForExpr(B,
         "(()=>{const el=document.getElementById('globe-drop-map');"
         + "return !!el && !!el.querySelector('canvas') && !el.classList.contains('is-loading')})()",
         { timeout: 20000 });
-      t('emulator (globe): the second player\'s globe initialises before the reveal', bGlobeWarm);
-      await front(A);
-      // Round 1: nobody pins; asking expires; both click Ready during the
-      // reveal -> the host advances early (well before the 10 s reveal ends).
-      //
-      // Warm B's renderer BEFORE the reveal clock starts. B is the
-      // mobile-emulated client and it has been in the background since the
-      // room was created, so the browser has paused its rAF loop - and the
-      // Ready button is painted, and enabled, by that loop. Its first frame
-      // after bringToFront therefore has to redraw a WebGL globe under
-      // software GL before the button can go live: measured at ~0.5 s warm
-      // and up to 9 s cold on CI, which is most of the 10 s reveal window.
-      // Spending the asking window on that warm-up pays the cost off the
-      // clock instead of out of the budget the assertion below measures.
-      await front(B);
-      await sleep(2200);
-      await front(A);
-      await sleep(1300);
-      const readyBtnLive = "(()=>{const b=document.getElementById('globe-drop-ready-btn');return !!b && !b.disabled && b.getBoundingClientRect().height>0})()";
-      // The Ready bar is painted by the rAF render loop, which the browser
-      // pauses in a BACKGROUND tab, so B's button only becomes clickable while
-      // B is the active target. Front B to vote, then hand the foreground back
-      // to A. Neither progression NOR the skip depends on the foreground any
-      // more - the hidden-host checks prove the first, and
-      // RoomState.readySkipAdvanceAllowed the second - but a UI affordance
-      // still does, so the votes still have to be cast from the front.
-      // "Early" means BEFORE the round's own deadline on the server clock
-      // (questionStartedAt + asking + reveal). Timing it from a harness
-      // wall-clock instead measures CDP latency, not the product.
-      const naturalEnd = (g0.startedMs || 0) + (g0.questionTimeMs || 3000) + 10000;
+      t('emulator (globe): the second player\'s globe initialises before the reveal opens', bGlobeWarm);
+      const REVEAL_LEAD_MS = 1500;
+      const askingMs = Math.max(1, Date.now() - (g0.startedMs || 0)) + REVEAL_LEAD_MS;
+      await ownerPatch(`triviaRooms/${code6}`, { questionTimeMs: askingMs });
+      const naturalEnd = (g0.startedMs || 0) + askingMs + 10000;
       // Every step reported as an offset from that deadline, because the whole
       // question is whether the two votes fit inside the window. The old
       // message quoted one number that spanned the votes AND the wait for the
@@ -1280,19 +1281,72 @@ export async function run({ base, cdpPort, base2 = null }) {
       // indistinguishable - which is how this stayed "flaky CI" instead of a
       // measurement. Negative is before the deadline, positive is after it.
       const at = () => Math.round((Date.now() - naturalEnd) / 100) / 10;
+      const readyBtnLive = "(()=>{const b=document.getElementById('globe-drop-ready-btn');return !!b && !b.disabled && b.getBoundingClientRect().height>0})()";
       // Both clients are labelled A/B in every flag report below. The list
       // comes back in ownerList order, which is not vote order, so the old
       // unlabelled "one of the two is missing" could not say WHICH client lost
       // its write - the single most useful fact when this goes red.
       const armClicks = (s) => evaluate(s, `(()=>{window.__rc=0;const b=document.getElementById('globe-drop-ready-btn');if(!b)return false;b.addEventListener('click',()=>{window.__rc++;});return true})()`);
       const clicksOn = (s) => evaluate(s, 'window.__rc');
+      // The app reports a failed advance with console.warn('advance failed:')
+      // and nothing else, so a client whose advance the rules or the
+      // emulator refused is invisible to the harness without this. Captured
+      // per page and reported as count + first message, timed against the
+      // deadline.
+      const armWarns = (s) => evaluate(s, `(()=>{window.__warns=[];const w=console.warn.bind(console);console.warn=(...a)=>{window.__warns.push([Date.now(),a.map((x)=>x&&x.message?x.message:String(x)).join(' ')]);w(...a);};return 1})()`);
+      const warnsOn = async (s) => {
+        const w = (await evaluate(s, 'window.__warns||[]')) || [];
+        return `${w.length}${w.length ? '@' + (Math.round((w[0][0] - naturalEnd) / 100) / 10) + ':' + String(w[0][1]).slice(0, 60) : ''}`;
+      };
+      // The host's clock runs from its rAF loop; a stall of the main thread
+      // (a texture re-upload under software GL, a long task) is a gap in
+      // that loop, and this records the longest one seen since arming.
+      const armFrames = (s) => evaluate(s, `(()=>{window.__fg={last:Date.now(),max:0,at:0};const f=()=>{const n=Date.now();const g=n-window.__fg.last;if(g>window.__fg.max){window.__fg.max=g;window.__fg.at=n;}window.__fg.last=n;requestAnimationFrame(f);};requestAnimationFrame(f);return 1})()`);
+      const frameGapOn = async (s) => {
+        const g = await evaluate(s, 'window.__fg||null');
+        return g ? `${g.max}ms@${Math.round((g.at - naturalEnd) / 100) / 10}` : 'n/a';
+      };
+      // A coordinate click on the Ready button, verified. The reveal panel
+      // animates in when the reveal opens, and a click dispatched while the
+      // button is still moving lands where it WAS: the 2026-09-08 full-suite
+      // run clicked 0.4 s after the reveal opened and counted zero clicks on
+      // the button while the harness reported the vote cast. So: wait until
+      // the button is hittable (enabled, inside the viewport, and the element
+      // at its centre) AND stationary across two reads, click, then read the
+      // counter armClicks installed. A click that did not count is retried,
+      // and every miss records what the hit-test found at the point, so a
+      // covered or moving button names itself.
+      const readyBox = (s) => evaluate(s, `(()=>{const b=document.getElementById('globe-drop-ready-btn');if(!b||b.disabled)return null;
+        b.scrollIntoView({block:'center',inline:'nearest'});const r=b.getBoundingClientRect();
+        if(r.width<=0||r.height<=0)return null;
+        const inView=r.top>=0&&r.left>=0&&r.bottom<=innerHeight&&r.right<=innerWidth;
+        const hit=document.elementFromPoint(r.x+r.width/2,r.y+r.height/2);
+        return {x:Math.round(r.x),y:Math.round(r.y),w:Math.round(r.width),h:Math.round(r.height),inView,
+          hits:!!hit&&(hit===b||b.contains(hit)),at:hit?(hit.id||hit.tagName.toLowerCase()+(hit.className?'.'+String(hit.className).split(' ')[0]:'')):'nothing'}})()`);
+      const clickReady = async (s, { budgetMs = 6000 } = {}) => {
+        const misses = [];
+        const t0 = Date.now();
+        while (Date.now() - t0 < budgetMs) {
+          const a = await readyBox(s);
+          await sleep(120);
+          const b = await readyBox(s);
+          const still = a && b && a.x === b.x && a.y === b.y && a.w === b.w && a.h === b.h;
+          if (!(b && b.inView && b.hits && still)) { await sleep(100); continue; }
+          const before = (await clicksOn(s)) || 0;
+          await clickSel(s, '#globe-drop-ready-btn', { settle: 200 });
+          const after = (await clicksOn(s)) || 0;
+          if (after > before) return { clicked: true, misses };
+          misses.push(`missed at ${b.x},${b.y} ${b.w}x${b.h} hit=${b.at}`);
+        }
+        return { clicked: false, misses };
+      };
       const uidA = await evaluate(A, 'window.firebaseAuth.getCurrentUser().uid');
-      let uidB = null;
+      const uidB = await evaluate(B, 'window.firebaseAuth.getCurrentUser().uid');
       const readyFlagsOf = async () => {
         const uids = await ownerList(`triviaRooms/${code6}/players`);
         return Promise.all(uids.map(async (u) => {
           const d = fieldsOf(await ownerGetDocRaw(`triviaRooms/${code6}/players/${u}`, PAGE_PROJECT));
-          const who = u === uidA ? 'A' : (uidB && u === uidB) ? 'B' : u.slice(0, 5);
+          const who = u === uidA ? 'A' : u === uidB ? 'B' : u.slice(0, 5);
           return `${who}:${d.readyAfterQId || '-'}`;
         }));
       };
@@ -1306,55 +1360,82 @@ export async function run({ base, cdpPort, base2 = null }) {
         return false;
       };
 
-      const readyA = await waitForExpr(A, readyBtnLive, { timeout: 9000 });
-      const tBtnA = at();
-      await armClicks(A);
-      if (readyA) await clickSel(A, '#globe-drop-ready-btn', { settle: 200 });
-      const tVoteA = at();
-      // Let A's write land while A is STILL the foreground tab. Fronting B is
-      // what backgrounds A, and a backgrounded renderer is the lowest-priority
-      // process on the box; on a loaded two-core runner an in-flight Firestore
-      // write from one can sit unacknowledged for seconds. The old order
-      // clicked A, backgrounded it on the next line, and only then polled for
-      // both markers - so a starved renderer was reported as "the player's
-      // vote was lost", which is a claim about the product that the run had no
-      // evidence for. What is under test is that a Ready vote registers, not
-      // that it registers from a starved background tab; the D3 hidden-host
-      // checks below cover the backgrounded case deliberately and separately.
-      const landedA = await waitFlag('A', 3000);
-      const tLandedA = at();
-
-      await front(B);
-      uidB = await evaluate(B, 'window.firebaseAuth.getCurrentUser().uid');
-      const tFrontB = at();
-      const readyB = await waitForExpr(B, readyBtnLive, { timeout: 9000 });
+      // Round 1: nobody pins; the asking window expires; both click Ready
+      // during the reveal; the room advances early (well before the 10 s
+      // reveal ends).
+      //
+      // The Ready bar is painted, and enabled, by the rAF render loop, which
+      // the browser pauses in a BACKGROUND tab, so a vote can only be cast
+      // from the front. Each vote is also CONFIRMED on its own player doc
+      // before the foreground moves on: a write issued from a tab that is
+      // backgrounded on the next line sat unacknowledged for seconds on a
+      // loaded two-core box, and was reported as a lost vote (2026-09-08).
+      //
+      // The order is B first, then A, and it is load-bearing. B is in front
+      // and warm from the paragraph above, so it pays no repaint. A is the
+      // HOST, and the host fires the skip the moment it sees the last vote -
+      // so the last vote is cast from the host's own foreground tab: the
+      // vote it is waiting for is its own, applied to its snapshot locally,
+      // and the advance leaves on its next frame. The other order put a tab
+      // switch, a repaint and the host's throttled background interval
+      // between the last vote and the advance, all inside the window this
+      // check measures.
+      await armWarns(A);
+      await armWarns(B);
+      const readyB = await waitForExpr(B, readyBtnLive, { timeout: REVEAL_LEAD_MS + 8000 });
       const tBtnB = at();
       await armClicks(B);
-      if (readyB) await clickSel(B, '#globe-drop-ready-btn', { settle: 200 });
+      const clickB = readyB ? await clickReady(B) : { clicked: false, misses: ['button never live'] };
       const tVoteB = at();
-      // Same for B, which is the foreground tab from here to the advance.
-      // `readyB` only ever said the button was CLICKABLE, never that the click
-      // counted, so the marker itself is what gets waited on.
       const landedB = await waitFlag('B', 3000);
       const tLandedB = at();
-      const votesLanded = landedA && landedB;
+
       await front(A);
-      const g1 = await waitRoom(code6, (st) => st.idx === 1, 14000);
-      const advancedAt = Date.now();
+      const tFrontA = at();
+      const readyA = await waitForExpr(A, readyBtnLive, { timeout: 8000 });
+      const tBtnA = at();
+      await armClicks(A);
+      await armFrames(A);
+      const clickA = readyA ? await clickReady(A) : { clicked: false, misses: ['button never live'] };
+      const tVoteA = at();
+      const landedA = await waitFlag('A', 3000);
+      const tLandedA = at();
+      const votesLanded = landedA && landedB;
+
+      // The advance is a transaction that stamps the NEXT location's
+      // questionStartedAt with serverTimestamp(), so the room doc carries the
+      // exact moment it happened, on the same clock as the deadline. That is
+      // what the check reads. The harness's own sighting of it comes one
+      // 400 ms poll and a REST read later and is reported only as context:
+      // comparing harness wall-clock after that poll to the deadline, as the
+      // old check did, counted the harness's latency against the product's
+      // margin.
+      const g1 = await waitRoom(code6, (st) => st.idx === 1, 12000);
+      const tSeenAdvance = at();
+      const advanceStamp = (g1.idx === 1 && g1.startedMs)
+        ? Math.round((g1.startedMs - naturalEnd) / 100) / 10 : null;
       const readyFlags = await readyFlagsOf();
+      const timeline = `s vs deadline: btnB ${tBtnB} voteB ${tVoteB} landedB ${tLandedB}`
+        + ` frontA ${tFrontA} btnA ${tBtnA} voteA ${tVoteA} landedA ${tLandedA}`
+        + ` | clicks A=${await clicksOn(A)} B=${await clicksOn(B)}`
+        + (clickA.misses.length || clickB.misses.length
+          ? ` | misses A=[${clickA.misses.join('; ')}] B=[${clickB.misses.join('; ')}]` : '')
+        + ` | flags=${readyFlags.join(',')}`
+        + ` | warns A=${await warnsOn(A)} B=${await warnsOn(B)} | hostFrameGap=${await frameGapOn(A)}`;
       // Split into two checks. "Both players registered Ready" and "that made
       // the round advance early" are different claims, and folding them into
-      // one told you neither when it went red.
+      // one told you neither when it went red. Both carry the whole timeline,
+      // because a red advance with a green vote check used to arrive with no
+      // timing at all.
       t('emulator (globe): both players\' Ready votes register during the reveal',
         readyA && readyB && votesLanded,
-        `readyA=${readyA} readyB=${readyB} landedA=${landedA} landedB=${landedB}`
-        + ` | s vs deadline: btnA ${tBtnA} voteA ${tVoteA} landedA ${tLandedA}`
-        + ` frontB ${tFrontB} btnB ${tBtnB} voteB ${tVoteB} landedB ${tLandedB}`
-        + ` | clicks A=${await clicksOn(A)} B=${await clicksOn(B)}`
-        + ` | flags=${readyFlags.join(',')}`);
+        `readyA=${readyA} readyB=${readyB} landedA=${landedA} landedB=${landedB} | ${timeline}`);
       t('emulator (globe): every live player Ready during the reveal advances the round early',
-        votesLanded && g1.idx === 1 && advancedAt < naturalEnd - 1500,
-        `idx=${g1.idx} advanced ${at()}s vs the deadline | flags=${readyFlags.join(',')}`);
+        votesLanded && g1.idx === 1 && advanceStamp !== null && g1.startedMs < naturalEnd - 1500,
+        `idx=${g1.idx} advance stamped ${advanceStamp}s vs the deadline (harness saw it at ${tSeenAdvance}s) | ${timeline}`);
+      // The hidden-host rounds below need no warm-up: back to the suite's
+      // short window, 3 s asking + 10 s reveal per location.
+      await ownerPatch(`triviaRooms/${code6}`, { questionTimeMs: 3000 });
       // Round 2 with the host tab hidden: the timed advance must still come
       // (3 s asking + 10 s reveal) from the interval clock / member fallback.
       await front(B);

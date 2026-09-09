@@ -97,6 +97,13 @@ try {
   const { run } = await import('./emulator.mjs');
   const results = await run({ base: BASE, cdpPort: CDP_PORT, base2: `http://127.0.0.1:${PORT2}` });
 
+  // A suite that skipped ITSELF (its emulator probe gave up) is not a pass.
+  // Under ARENA_RULES_REQUIRE that is the same hard failure a missing
+  // emulator is: CI must never report this check green having run nothing.
+  if (process.env.ARENA_RULES_REQUIRE && results.length > 0 && results.every((r) => r.skipped)) {
+    results.push({ name: 'arena-emulator: the suite ran', pass: false,
+      detail: `every check was skipped: ${results.map((r) => r.detail).filter(Boolean).join('; ').slice(0, 200)}` });
+  }
   const failed = results.filter((r) => !r.pass);
   const skipped = results.filter((r) => r.pass && r.skipped);
   for (const x of results) {

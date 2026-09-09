@@ -108,11 +108,6 @@ const state = {
     earlyRevealForQuestion: null,
     earlyAdvanceForQuestion: null,
     autoPickForQuestion: null,
-    // Globe Drop Ready-to-skip: the clock key all live players were first
-    // seen Ready for, and when. A non-host needs the "when" to apply the same
-    // fallback slack the timed advance uses.
-    allReadyForQuestion: null,
-    allReadySeenAt: 0,
     // Presence heartbeat + host-independent clock (audit D3/D4).
     heartbeatTimer: null,
     clockTimer: null,
@@ -6040,32 +6035,12 @@ function progressRoomClock() {
     };
 
     // Globe Drop Ready-to-skip: every live player voted Ready during reveal.
-    //
-    // The host acts the moment it sees the last vote. Any OTHER member acts
-    // after the same slack the timed advance below uses, and for the same
-    // reason: this gate runs on requestAnimationFrame, which the browser
-    // pauses in a background tab. A host who tabbed away mid-reveal used to
-    // swallow the skip entirely - every player pressed Ready and the room
-    // still sat out the full 10 s window, because the only client allowed to
-    // act on the votes was the one whose loop had stopped. That is the exact
-    // failure the 'ended' branch already guards ("a hidden or gone host
-    // cannot stall the room"); the skip needs the same guarantee.
-    //
-    // Racing is safe: advanceQuestionOrFinish runs in a transaction whose
-    // precondition is the current question id, so if a returning host and a
-    // member both fire, only the first write lands.
-    if (isGlobe && phase === 'reveal'
+    if (isGlobe && isHost && phase === 'reveal'
         && state.earlyAdvanceForQuestion !== key
         && live.length > 0
         && live.every((p) => p.readyAfterQId === currentQId)) {
-        if (state.allReadyForQuestion !== key) {
-            state.allReadyForQuestion = key;
-            state.allReadySeenAt = now;
-        }
-        if (RoomState.readySkipAdvanceAllowed(isHost, state.allReadySeenAt, now)) {
-            fireAdvance();
-            return;
-        }
+        fireAdvance();
+        return;
     }
 
     // Window over: the host moves on at once; any other member after the

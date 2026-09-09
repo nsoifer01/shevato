@@ -8,7 +8,6 @@ const {
     generateRoomCode,
     normalizeRoomCode,
     questionPhase,
-    readySkipAdvanceAllowed,
     timeLeftMs,
     pickNextHost,
     aggregateAnswerStats,
@@ -446,47 +445,4 @@ test('displayNamePrompt: missing profile suggests the neutral default', () => {
     const p = displayNamePrompt(null, 'john.doe@gmail.com', 'uid9');
     assert.equal(p.needed, true);
     assert.equal(p.suggested, defaultDisplayName('uid9'));
-});
-
-// --- Globe Drop Ready-to-skip: who may advance, and when -------------------
-//
-// REGRESSION: this gate used to be host-only. It runs on requestAnimationFrame
-// and browsers pause rAF in a background tab, so a host who tabbed away
-// mid-reveal swallowed the skip entirely: every player pressed Ready and the
-// room still sat out the full 10s reveal window, because the only client
-// allowed to act on the votes was the one whose loop had stopped. It surfaced
-// as the arena emulator e2e failing "every live player Ready during the reveal
-// advances the round early" on master.
-
-test('readySkipAdvanceAllowed: the host may advance the moment it sees the last vote', () => {
-    assert.equal(readySkipAdvanceAllowed(true, 1_000_000, 1_000_000), true);
-    // Even with no recorded "all ready since" stamp, the host acts on what it
-    // can see right now.
-    assert.equal(readySkipAdvanceAllowed(true, 0, 1_000_000), true);
-    assert.equal(readySkipAdvanceAllowed(true, null, 1_000_000), true);
-});
-
-test('readySkipAdvanceAllowed: a member waits out the fallback slack, then may advance', () => {
-    const since = 1_000_000;
-    const slack = Config.ADVANCE_FALLBACK_SLACK_MS;
-    assert.equal(readySkipAdvanceAllowed(false, since, since), false);
-    assert.equal(readySkipAdvanceAllowed(false, since, since + slack - 1), false);
-    assert.equal(readySkipAdvanceAllowed(false, since, since + slack), true);
-    assert.equal(readySkipAdvanceAllowed(false, since, since + slack + 5000), true);
-});
-
-test('readySkipAdvanceAllowed: a member with no all-ready stamp never advances', () => {
-    // No stamp means this client has not yet SEEN every player ready, so it
-    // has nothing to start the slack from and must not fire.
-    assert.equal(readySkipAdvanceAllowed(false, null, 9_999_999), false);
-    assert.equal(readySkipAdvanceAllowed(false, 0, 9_999_999), false);
-});
-
-test('readySkipAdvanceAllowed: a hidden host cannot swallow the skip', () => {
-    // The whole point of the member path: the host's loop is paused, so the
-    // host never fires. A member that has held all-ready for the slack must.
-    const since = 5_000;
-    const now = since + Config.ADVANCE_FALLBACK_SLACK_MS;
-    assert.equal(readySkipAdvanceAllowed(false, since, now), true,
-        'a member must be able to advance while the host tab is backgrounded');
 });

@@ -333,7 +333,9 @@ beside it, so a regression fails a suite rather than reappearing silently.
   Ready vote advanced the round early" from harness wall-clock measured CDP
   latency and failed on a loaded machine; comparing against
   `questionStartedAt + asking + reveal` from the room doc is what the product
-  actually promises.
+  actually promises. Both ends of the claim: the advance is read from the
+  next location's `questionStartedAt` stamp, not from when a harness poll
+  first noticed it.
 - **Back-to-back runs need the emulator ports to be RELEASED, not just the
   processes killed.** The firestore/database emulators hold 8085/9000/4400
   for several seconds after the runner exits, and the runner correctly
@@ -535,7 +537,10 @@ separate, measurable faults.
 **Fault 1: a cold globe, paid inside the deadline.** Fixed by fronting B during
 the 3 s asking phase and waiting for its canvas and for `is-loading` to clear
 before handing the foreground back. On two cores the two votes moved from
-landing 0.7 s AFTER the deadline to landing 7.5 s BEFORE it.
+landing 0.7 s AFTER the deadline to landing 7.5 s BEFORE it. Superseded the
+same day: a 3 s asking window cannot hold a warm-up measured at up to 9 s, so
+the scenario now keeps the room's own 60 s window until B is warm and opens
+the reveal itself (see "where six seconds went", below).
 
 **Fault 2: the test raced its own vote.** With the timing fixed the check still
 failed, and the breakdown said why: both buttons were clicked well inside the
@@ -826,66 +831,137 @@ a frozen podium.
 live; the read-only recap is for people who were not in it. The suite is
 95/95 with the fix.
 
-- **The Globe Drop Ready-to-skip was host-only, so a backgrounded host
-  swallowed it.** `progressRoomClock`'s all-ready branch read
-  `isGlobe && isHost && phase === 'reveal' && live.every(readyAfterQId ===
-  currentQId)`. That gate runs on requestAnimationFrame, and browsers PAUSE
-  rAF in a background tab, so a host who tabbed away mid-reveal stopped the
-  only client permitted to act on the votes: every player pressed Ready and
-  the room still sat out the full `GLOBE_DROP_REVEAL_TIME_MS` window. The
-  timed advance in the branch directly below already guarded against exactly
-  this ("a hidden or gone host cannot stall the room") by letting any member
-  fire after `ADVANCE_FALLBACK_SLACK_MS`; the skip now does the same, via the
-  pure `RoomState.readySkipAdvanceAllowed(isHost, allReadySinceMs, nowMs)`.
-  Racing is safe because `advanceQuestionOrFinish` is a transaction whose
-  precondition is the current question id, so only the first write lands.
-  Covered by four cases in `apps/arena/tests/room-state.test.js`, two of
-  which fail against the host-only rule.
-- **OPEN: `every live player Ready during the reveal advances the round early`
-  is marginal on CI, and two attempted cures both made it worse.** The
-  diagnosis behind them is sound and worth keeping. `clickSel` scrolls the
-  element into view and reads its rect in ONE evaluate, then dispatches the CDP
-  click at those coordinates a round-trip later; the Ready bar sits below the
-  globe in a scrolling column and on the mobile-emulated client it is routinely
-  hundreds of px outside the viewport, so the scroll is real and the rect can
-  be stale. The click then lands on the globe canvas and the vote is never
-  cast. Probing `elementsFromPoint` at the click coordinate before and after
-  each click is the only way to see it: every property a naive liveness gate
-  reads (exists, not disabled, has height) is correct at the time.
+## The Ready-skip check: where six seconds went (2026-09-08, PR #505)
 
-  **Both cures were measured on this assertion and both were reverted, on
-  2026-09-08, against PR #505:**
+`rules` went pass, fail, pass, fail, pass, fail on six consecutive runs of
+PR #505 whose content was identical (each "Merge branch 'master'" commit is
+byte-for-byte the merge ref the previous run had already tested), and master
+failed the same check itself (run 34266673565). Every failure had both
+`readyAfterQId` markers present and the advance landing within about two
+seconds of the deadline either way: +0.9 s, +1.2 s, +1.7 s, +2.0 s, -0.7 s.
+The check needs -1.5 s. Nothing about the vote was wrong, and the earlier
+diagnosis of a click that misses (below) never had evidence for it.
 
-  | Harness | `advanced … vs the deadline` (needs <= -1.5 s) |
-  | --- | --- |
-  | unchanged (master + the B warm-up) | PASS |
-  | liveness gated on viewport + hit-test, polled | +1.7 s |
-  | `clickReady`: click, check `clicksOn`, click again | -1.1 s, then +2.0 s |
+**Reproduced on two cores (`taskset -c 0,1`), with the timeline attached to
+the failing check**, which it had not been: the breakdown lived only in the
+vote-registration check's detail, and that check passed, so a red advance
+arrived with no timing at all. It says:
 
-  The gate is correct but a polled predicate that scrolls costs a poll interval
-  every time it runs, and the reveal window is the exact budget this assertion
-  measures. `clickReady` costs only one extra evaluate and it did make the
-  votes land - `both players' Ready votes register during the reveal` passed in
-  every run - but the timing still swung across 3.1 s between two runs of the
-  SAME commit. That spread is the real finding: this assertion is marginal on a
-  CI runner, the 1500 ms margin is close to the noise, and a fix aimed at the
-  click cannot be evaluated against it one run at a time. Do not re-try either
-  cure without first making the assertion's own measurement stable, and do not
-  widen the margin, which would delete the check rather than fix it.
-- **The emulator e2e's Ready-skip check was racing a cold WebGL repaint.**
-  `S6` backgrounds the host to let the second client press Ready, because the
-  Ready button is painted - and enabled - by the same rAF loop. The second
-  client is the mobile-emulated one drawing a globe under software GL, and it
-  had been backgrounded since the room was created, so its first frame after
-  `Page.bringToFront` was a cold repaint: ~0.5s warm, up to 9s cold on CI.
-  Nine seconds is most of a ten-second reveal window, so the votes landed
-  after the natural deadline and the round advanced on the timer instead -
-  reported as "advanced -0.9s before the natural deadline", which reads like a
-  timing bug in the product and is not one. The scenario now spends the asking
-  window warming that client instead of sleeping, and asserts separately that
-  both votes reached the player docs, so a lost vote reports itself as a lost
-  vote. Do not "fix" a recurrence by widening the 1500ms margin: the margin is
-  the assertion, and the cost belongs off the clock.
+```
+btnA -8.8 voteA -8.4 landedA -8.4 frontB -8.3 btnB -8.2 voteB -7.9 landedB -7.6
+advanced -0.7s vs the deadline
+```
+
+Both votes were on the server 7.6 s before the deadline. The advance came
+6.9 s later. The warm-up and the clicks, which every earlier round of this
+investigation blamed, were fine; the time went into the advance itself, after
+the host was fronted to fire it.
+
+**Where the six seconds are.** Three more two-core runs of the old order,
+with the probes attached, put the host's advance 0.5 s, 2.2 s and 5.1 s after
+the last vote landed (6.9 s in the run above). In the 5.1 s run the host's own Ready bar showed
+both pips 0.2 s after that vote landed (so its snapshot was current), its
+render loop's longest gap was 131 ms (so its clock was running), and neither
+page logged a refused write. The time is therefore inside
+`advanceQuestionOrFinish`'s transaction, or in the SDK's silent retries of it:
+`runTransaction` retries an aborted attempt with a backoff that starts at
+about a second and grows by half each time, and 1 + 1.5 + 2.25 s is the 5.1 s
+run. What the old order did every time was start that transaction in the
+same tick as the `visibilitychange` handler's heartbeat write: fronting the
+host is what let it act on the last vote, and `onVisibility` calls `beat()`
+and `progressRoomClock()` together. Whether the emulator's transaction
+locking is what turns a concurrent write into an abort is not pinned down
+here; what is measured is that a transaction started one frame after the
+host's own vote, in a quiet window, stamped 0.6 s and 0.3 s after that vote
+in the two runs of the rebuilt scenario (the filtered iteration and the full
+suite, 97/97). The scenario
+below no longer depends on the answer, and the probes stay in the check so a
+recurrence names its client, its write and its frame gap.
+
+**What the rules allow is the other half of it.** `firestore.rules` lets the
+host update the room at any time, and a MEMBER advance it only through
+`memberTimedAdvance()`, whose first condition is
+`request.time.toMillis() >= questionOverMs()`: the deadline, on the server
+clock, with no slack. This PR's 44720bf had extended the Ready-skip to members
+(`RoomState.readySkipAdvanceAllowed`), so that a hidden host could not swallow
+it; but a member's early advance is exactly what the rules refuse, so the
+change produced a `permission-denied` transaction from every non-host client
+once a second from `ADVANCE_FALLBACK_SLACK_MS` after the last vote until the
+deadline, and then succeeded at the deadline, which is the timed advance the
+room already had. It could not do what it was for, and the rules cannot be
+opened to it: "every live player is Ready" is a condition over the whole
+`players` subcollection, and rules can `get()` named documents, not enumerate
+a collection. The member path is reverted; the app, `room-state.js` and its
+tests are master's again. A hidden host is still bounded: its own clock runs
+from a 500 ms interval (throttled to once a second in a background tab, to
+once a minute only after five minutes hidden) and from `visibilitychange`, and
+past the deadline any member fires the timed advance, which the rules do allow.
+
+**The scenario was rebuilt around what it measures.** The reveal window is
+10 s, on the server clock, and it is the entire budget: two votes cast from
+two tabs that each need the foreground to paint the Ready bar, plus the
+advance. Four changes, in order of weight:
+
+1. *The reveal opens when the harness is ready.* The asking window used to be
+   patched to 3 s before Start, so the reveal opened 3 s after the round did,
+   whatever the runner was doing. B's cold globe was measured at up to 9 s on
+   two cores, and 3.5 s of fixed sleeps followed it: on a slow runner both ran
+   into the reveal, and whether the votes still fit came down to the runner's
+   speed that day. The room now keeps its own 60 s asking window while B warms
+   up, and the harness shortens it to what has elapsed plus 1.5 s once B is
+   warm; every client recomputes its phase from `questionStartedAt +
+   questionTimeMs` on the next snapshot. The hidden-host rounds after it are
+   put back to 3 s.
+2. *The host votes last, from the foreground.* B votes first, in front and
+   warm, then A: the host fires the skip the moment it sees the last vote, so
+   the last vote is the host's own, applied to its snapshot locally, and the
+   advance leaves on the next frame. Each vote is still confirmed on its
+   player doc before the foreground moves (the rule from the section above).
+3. *The advance is read from the room's own stamp.* The transaction writes the
+   next location's `questionStartedAt` with `serverTimestamp()`, so the room
+   doc records the exact moment on the same clock as the deadline. The old
+   check compared harness wall-clock after a 400 ms poll, which counted the
+   harness's latency against the product's margin. The harness's sighting is
+   still printed, as context.
+4. *Both checks carry the whole timeline*, plus each page's captured
+   `console.warn` (the app's only report of a refused advance), the host's
+   longest frame gap, and any click that did not count with what was under
+   it. `ARENA_E2E_VERBOSE=1` prints the detail on a pass too.
+
+Two cores, same box, before and after:
+
+| | votes on the server | advance | verdict |
+| --- | --- | --- | --- |
+| before | -7.6 s | seen at -0.7 s | FAIL |
+| after | -8.4 s | stamped at -7.9 s (seen -7.6 s) | PASS by 6.4 s |
+
+The 1500 ms margin is unchanged. It was never the problem: with the advance
+stamped 7.9 s early it is not close to it.
+
+**A click on the Ready button CAN miss, and the two reverted cures were
+aimed at the wrong reason.** They rested on `clickSel` reading a rect that a
+scroll then moved. There is no such mechanism: nothing on the site sets
+`scroll-behavior: smooth`, so the `scrollIntoView` in `clickSel`'s evaluate
+completes synchronously and the rect is read after it in the same evaluate.
+But the first full-suite run of the rebuilt scenario clicked B's button 0.4 s
+after the reveal opened and counted ZERO clicks on it, with the harness
+believing the vote cast. The reveal panel (`.globe-drop-reveal`) animates in
+over 200 ms (`gd-reveal-in`: a translate and a fade) and is an absolute
+overlay over the globe that is click-through (`pointer-events: none`) except
+on the Ready bar, so a coordinate click dispatched a round-trip after the
+rect was read can land on a target that has moved, or on the canvas under it.
+Both Ready clicks now go through `clickReady`: wait until the button is
+hittable (enabled, inside the viewport, and the element at its own centre)
+AND stationary across two reads 120 ms apart, click, read the counter that
+`armClicks` installed, and retry if it did not count, recording what the
+hit-test found at the point on every miss. That costs about 0.4 s per vote.
+It is affordable now because the window has 9 s to spare; it was not when
+the harness was spending the window on fixed sleeps, which is why the same
+idea measured worse before.
+
+The general rule, again: **when a timing check goes red, its own detail has to
+carry the timeline.** This one lost two rounds of work to a red check whose
+only number was the answer.
 
 ## A path-filtered workflow can never be a required check (2026-09-08)
 
