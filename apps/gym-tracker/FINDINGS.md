@@ -1275,3 +1275,15 @@ with a comment explaining why) unlocked normally.
 UTC midnight, so any month whose tally depended on a session dated the 1st was
 undercounted west of UTC. Both now use the local-date helpers. Pinned in
 `date-timezone.test.mjs`, which already ran child processes under a fixed TZ.
+
+- **"This Week" cannot be populated on a Monday, so it is the wrong thing to
+  screenshot.** The dashboard tiles are computed against the real clock, and
+  the week starts on `settings.firstDayOfWeek`. Seed a realistic month of
+  sessions and run the capture on a Monday and the tiles still report one
+  workout and `0m`, because the week is one day old; dating sessions forward
+  to fill it would put them in the future. The apps-hub preview
+  (`tests/app-previews/build-previews.mjs`) therefore clips the **Insights**
+  view instead: volume by muscle group is a bar chart over the whole seeded
+  year, so it reads the same on any day of the week. The seed is 144 sessions
+  across 48 weeks, which is also what makes the year heatmap underneath look
+  like a training history rather than four stray squares.

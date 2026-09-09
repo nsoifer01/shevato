@@ -1206,6 +1206,26 @@ the month's day to the first two digits of the year. MapTap's own share writes
 feeds arbitrary chat lines to the same function. The day group is now bounded
 on both sides with `(?!\d)`.
 
+- **A game whose scores are out of range is dropped silently.** The data model
+  is 0-100 raw per location with round weights [1, 1, 2, 3, 3], so a daily
+  total is 0-1000. Seeding `maptapRivalsGames` with plausible-looking
+  four-digit totals (8420 vs 7310) stored fine and read back fine, but every
+  summary reported "No games yet" and `0W - 0L - 0T across 3 rivals`: the
+  rivals had loaded, the games had not. There is no console warning and no
+  visible error, so the failure looks like a seeding bug rather than a
+  validation one. Anything writing games directly - a fixture, a preview seed,
+  an import - has to respect the 0-1000 scale, and is better off supplying the
+  `myScores`/`theirScores` arrays of five 0-100 values and letting the totals
+  follow.
+- **The apps-hub preview is generated, not art: do not hand-edit it.**
+  `images/app-previews/maptap-rivals.webp` comes from
+  `tests/app-previews/build-previews.mjs`, which seeds three rivals and
+  twelve games and clips the **Matrix** tab. The dashboard's rivalry cards are
+  the obvious subject and were tried first, but they cannot be framed: the
+  card grid is 3.8:1 at desktop width, and at the narrower width where it
+  wraps to 2 + 1 the only ways to reach 16:9 are to drag in the collapsed
+  "paste daily scores" bar above it or to slice the third card. The confusion
+  matrix is one self-contained titled panel that already fills the frame.
 ## A connection one person could grant themselves (2026-09-05 F03)
 
 "Only connected rivals can read your profile" was a condition the attacker

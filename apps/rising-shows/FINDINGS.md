@@ -991,6 +991,16 @@ pull requests merges: until `master` carries a pin, a build has nothing to
 resolve and still falls back.
 
 
+
+- **The apps-hub preview needs the gitignored data present to build.**
+  `images/app-previews/rising-shows.webp` comes from
+  `tests/app-previews/build-previews.mjs`, which clips the first row of
+  `.finder-card` results - posters, shape tags and the rating-trend
+  sparklines. Unlike the other seven it seeds nothing, because the shows come
+  from `data-index.json` and `data/`, which are gitignored and fetched
+  separately. In a fresh worktree they are absent, the results grid renders
+  empty and the capture fails with the anchor missing; copy them in from a
+  checkout that has them before rebuilding this one.
 ## The boot fold was doing the same work twice (2026-09-05 F08)
 
 `load()` ran `normalizeSearch` over every one of ~66,380 SEASON records to
