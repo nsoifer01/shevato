@@ -1,6 +1,280 @@
 {
   "updates": [
     {
+      "builtAt": "2026-09-09T10:45:51.082Z",
+      "totals": {
+        "seasons": 66679,
+        "delta": 18
+      },
+      "shapeCounts": {
+        "rebound": 10190,
+        "rising": 2612,
+        "slow-burn": 4414,
+        "big-finale": 12173,
+        "u-shaped": 3091,
+        "rollercoaster": 14154,
+        "mid-peak": 4634,
+        "saved-best-for-last": 1505,
+        "front-loaded": 3506,
+        "declining": 1884,
+        "bad-finale": 4651,
+        "consistent": 2634,
+        "shape-drift": 1578
+      },
+      "shapeDeltas": {
+        "rebound": 6,
+        "rising": 12,
+        "slow-burn": 1,
+        "big-finale": 19,
+        "u-shaped": -3,
+        "rollercoaster": 2,
+        "mid-peak": 6,
+        "saved-best-for-last": -1,
+        "front-loaded": 2,
+        "declining": -2,
+        "bad-finale": 3,
+        "consistent": 1,
+        "shape-drift": 2
+      },
+      "added": [
+        {
+          "seriesId": "tt45372918",
+          "title": "La red púrpura",
+          "season": 1,
+          "seasonYear": 2023
+        },
+        {
+          "seriesId": "tt45372916",
+          "title": "La nena",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt0041053",
+          "title": "The Silver Theatre",
+          "season": 1,
+          "seasonYear": 1949
+        },
+        {
+          "seriesId": "tt0103396",
+          "title": "Dateline NBC",
+          "season": 8,
+          "seasonYear": 1999
+        },
+        {
+          "seriesId": "tt0103396",
+          "title": "Dateline NBC",
+          "season": 9,
+          "seasonYear": 2000
+        },
+        {
+          "seriesId": "tt40266274",
+          "title": "Selling Sex",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt1043090",
+          "title": "Dispatches",
+          "season": 23,
+          "seasonYear": 2009
+        },
+        {
+          "seriesId": "tt1429752",
+          "title": "Mantracker",
+          "season": 4,
+          "seasonYear": 2009
+        },
+        {
+          "seriesId": "tt0112911",
+          "title": "Spiritual Voices",
+          "season": 1,
+          "seasonYear": 1995
+        },
+        {
+          "seriesId": "tt27564441",
+          "title": "Dunaj, k vasim sluzbám",
+          "season": 1,
+          "seasonYear": 2023
+        },
+        {
+          "seriesId": "tt28331583",
+          "title": "Truthseekers",
+          "season": 2,
+          "seasonYear": 2024
+        },
+        {
+          "seriesId": "tt33247029",
+          "title": "Les Armes",
+          "season": 1,
+          "seasonYear": 2024
+        },
+        {
+          "seriesId": "tt0465875",
+          "title": "Les tropiques de l'amour",
+          "season": 2,
+          "seasonYear": 2003
+        },
+        {
+          "seriesId": "tt6777360",
+          "title": "Reported Missing",
+          "season": 5,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt28075806",
+          "title": "The Great Barrier Reef: A Living Treasure",
+          "season": 1,
+          "seasonYear": 2021
+        },
+        {
+          "seriesId": "tt32544262",
+          "title": "Clive Myrie's Caribbean Adventure",
+          "season": 1,
+          "seasonYear": 2024
+        },
+        {
+          "seriesId": "tt34385046",
+          "title": "Abandoned Railways from Above",
+          "season": 1,
+          "seasonYear": 2024
+        },
+        {
+          "seriesId": "tt35049313",
+          "title": "Humoretaten",
+          "season": 3,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt36733655",
+          "title": "The Seasons",
+          "season": 7,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt42654265",
+          "title": "Earle Meets World",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt45051577",
+          "title": "The Last Oath",
+          "season": 1,
+          "seasonYear": 2026
+        }
+      ],
+      "removed": [
+        {
+          "seriesId": "tt13377972",
+          "title": "The Gypsy Bride",
+          "season": 2,
+          "seasonYear": 2023
+        },
+        {
+          "seriesId": "tt13377972",
+          "title": "The Gypsy Bride",
+          "season": 3,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt36733655",
+          "title": "The Seasons",
+          "season": 1,
+          "seasonYear": 2025
+        }
+      ],
+      "ratingSwings": [
+        {
+          "seriesId": "tt0211882",
+          "title": "Watership Down",
+          "season": 3,
+          "from": 6.18,
+          "to": 5.08,
+          "delta": -1.1
+        },
+        {
+          "seriesId": "tt0451460",
+          "title": "Handy Manny",
+          "season": 2,
+          "from": 5.39,
+          "to": 6.18,
+          "delta": 0.79
+        },
+        {
+          "seriesId": "tt37376067",
+          "title": "Reckless",
+          "season": 1,
+          "from": 7.08,
+          "to": 6.3,
+          "delta": -0.78
+        },
+        {
+          "seriesId": "tt15302054",
+          "title": "Young, Famous & African",
+          "season": 2,
+          "from": 6.62,
+          "to": 5.86,
+          "delta": -0.76
+        },
+        {
+          "seriesId": "tt36470536",
+          "title": "Next Gen NYC",
+          "season": 2,
+          "from": 6.7,
+          "to": 6,
+          "delta": -0.7
+        },
+        {
+          "seriesId": "tt21080118",
+          "title": "Al Daheeh",
+          "season": 1,
+          "from": 8.01,
+          "to": 8.64,
+          "delta": 0.63
+        },
+        {
+          "seriesId": "tt0451460",
+          "title": "Handy Manny",
+          "season": 3,
+          "from": 5.78,
+          "to": 6.4,
+          "delta": 0.62
+        },
+        {
+          "seriesId": "tt4460504",
+          "title": "Britannica's Tales Around the World",
+          "season": 1,
+          "from": 4.48,
+          "to": 3.86,
+          "delta": -0.62
+        },
+        {
+          "seriesId": "tt38711470",
+          "title": "High School! Kimengumi",
+          "season": 1,
+          "from": 7.23,
+          "to": 6.63,
+          "delta": -0.6
+        },
+        {
+          "seriesId": "tt0211882",
+          "title": "Watership Down",
+          "season": 2,
+          "from": 6.17,
+          "to": 5.62,
+          "delta": -0.55
+        }
+      ],
+      "modifiedCounts": {
+        "seriesVotes": 20672,
+        "avgRating": 1414,
+        "shapes": 243,
+        "seriesRating": 303,
+        "episodeCount": 94
+      }
+    },
+    {
       "builtAt": "2026-09-08T20:23:41.741Z",
       "totals": {
         "seasons": 66661,
@@ -7373,225 +7647,6 @@
         "poster": 6,
         "overview": 6,
         "providers": 1
-      }
-    },
-    {
-      "builtAt": "2026-08-06T08:49:30.061Z",
-      "totals": {
-        "seasons": 66161,
-        "delta": 13
-      },
-      "shapeCounts": {
-        "mid-peak": 4636,
-        "rebound": 10077,
-        "rising": 2892,
-        "slow-burn": 4380,
-        "big-finale": 12104,
-        "u-shaped": 3094,
-        "rollercoaster": 14055,
-        "saved-best-for-last": 1542,
-        "front-loaded": 3474,
-        "declining": 1875,
-        "bad-finale": 4657,
-        "consistent": 2622,
-        "shape-drift": 1637
-      },
-      "shapeDeltas": {
-        "mid-peak": -3,
-        "rebound": 1,
-        "rising": -1,
-        "slow-burn": 2,
-        "big-finale": -5,
-        "rollercoaster": -8,
-        "saved-best-for-last": 3,
-        "front-loaded": 2,
-        "declining": 1,
-        "bad-finale": 5
-      },
-      "added": [
-        {
-          "seriesId": "tt0105964",
-          "title": "The Building",
-          "season": 1,
-          "seasonYear": 1993
-        },
-        {
-          "seriesId": "tt0149431",
-          "title": "Der Clown",
-          "season": 5,
-          "seasonYear": 2001
-        },
-        {
-          "seriesId": "tt0149431",
-          "title": "Der Clown",
-          "season": 4,
-          "seasonYear": 2000
-        },
-        {
-          "seriesId": "tt18228732",
-          "title": "Colin from Accounts",
-          "season": 3,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt31867798",
-          "title": "Wizards Beyond Waverly Place",
-          "season": 3,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt0489613",
-          "title": "Movies That Shook the World",
-          "season": 1,
-          "seasonYear": 2005
-        },
-        {
-          "seriesId": "tt4538820",
-          "title": "Policie Modrava",
-          "season": 2,
-          "seasonYear": 2017
-        },
-        {
-          "seriesId": "tt0969664",
-          "title": "GameCenter CX",
-          "season": 4,
-          "seasonYear": 2004
-        },
-        {
-          "seriesId": "tt2131864",
-          "title": "Junior Bake Off",
-          "season": 11,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt15059482",
-          "title": "Burning Questions",
-          "season": 5,
-          "seasonYear": 2025
-        },
-        {
-          "seriesId": "tt32696894",
-          "title": "Murder at the Motel",
-          "season": 2,
-          "seasonYear": 2025
-        },
-        {
-          "seriesId": "tt35725528",
-          "title": "Leo Talks",
-          "season": 6,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt43592288",
-          "title": "Muthassi",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt43632572",
-          "title": "Gurthukosthunnayi",
-          "season": 1,
-          "seasonYear": 2026
-        }
-      ],
-      "removed": [
-        {
-          "seriesId": "tt2107314",
-          "title": "Rehab Addict",
-          "season": 5,
-          "seasonYear": 2014
-        }
-      ],
-      "ratingSwings": [
-        {
-          "seriesId": "tt38754770",
-          "title": "False Memory",
-          "season": 1,
-          "from": 8.13,
-          "to": 6.7,
-          "delta": -1.43
-        },
-        {
-          "seriesId": "tt0149431",
-          "title": "Der Clown",
-          "season": 6,
-          "from": 5.53,
-          "to": 6.57,
-          "delta": 1.04
-        },
-        {
-          "seriesId": "tt32544276",
-          "title": "Pulentos",
-          "season": 1,
-          "from": 6.33,
-          "to": 7.15,
-          "delta": 0.82
-        },
-        {
-          "seriesId": "tt27880328",
-          "title": "Ish Experiments",
-          "season": 1,
-          "from": 9.1,
-          "to": 8.38,
-          "delta": -0.72
-        },
-        {
-          "seriesId": "tt0112076",
-          "title": "Mission Top Secret",
-          "season": 1,
-          "from": 8.43,
-          "to": 7.75,
-          "delta": -0.68
-        },
-        {
-          "seriesId": "tt11871764",
-          "title": "The Proud Family: Louder and Prouder",
-          "season": 4,
-          "from": 7.37,
-          "to": 6.71,
-          "delta": -0.66
-        },
-        {
-          "seriesId": "tt0113726",
-          "title": "Super Dimensional Fortress Macross II: Lovers Again",
-          "season": 1,
-          "from": 7.07,
-          "to": 6.47,
-          "delta": -0.6
-        },
-        {
-          "seriesId": "tt1034368",
-          "title": "Daydreaming",
-          "season": 2,
-          "from": 5.59,
-          "to": 6.16,
-          "delta": 0.57
-        },
-        {
-          "seriesId": "tt3868860",
-          "title": "Married at First Sight",
-          "season": 20,
-          "from": 6.2,
-          "to": 6.76,
-          "delta": 0.56
-        },
-        {
-          "seriesId": "tt31501409",
-          "title": "Solo las más",
-          "season": 2,
-          "from": 6.71,
-          "to": 6.17,
-          "delta": -0.54
-        }
-      ],
-      "modifiedCounts": {
-        "seriesVotes": 21664,
-        "avgRating": 1199,
-        "seriesRating": 302,
-        "shapes": 225,
-        "overview": 4,
-        "episodeCount": 105,
-        "poster": 1
       }
     }
   ]
