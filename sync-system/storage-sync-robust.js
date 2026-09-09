@@ -34,9 +34,10 @@ import {
   estimatePayloadBytes,
   sameKeySet,
   decideRemoteChange,
+  remoteToken,
   pickConflictWinner,
-  recordIndex,
-  mergeRecordCollections,
+  valueIndex,
+  mergeValues,
   requeueFailedWrites,
   isPermanentWriteError,
   splitIntoChunks,
@@ -105,9 +106,24 @@ const SYNC_OWNER_KEY = 'shevato:sync-owner';
 const SYNC_BASE_KEY_PREFIX = 'shevato:sync-base:';
 const CONFLICT_KEY_PREFIX = 'shevato:sync-conflict:';
 const CONFLICT_INDEX_KEY = 'shevato:sync-conflicts';
+// Where the per-key revision map is parked between sessions. Same rules as
+// the three above: a plain key outside every namespace's key set, so it is
+// never itself synced and notifyLocalChange ignores it.
+//
+// It has to survive a reload or the Lamport counter restarts at zero on
+// every page load, and a genuinely fresh local edit then arrives as "rev 1"
+// against a cloud sitting at rev 40 and loses on revision alone. The stored
+// form is one small record per REGISTERED key (rev, hash, updatedAt, dirty),
+// so it is bounded by the app's key list and cannot grow with the data.
+const SYNC_REV_KEY_PREFIX = 'shevato:sync-revs:';
 // A device that conflicts repeatedly must not fill its own storage with
 // evidence of it.
 const MAX_CONFLICT_COPIES = 20;
+// How many of this client's own published snapshots to remember per key, so
+// their echoes off the watch stream are recognised as ours. A handful covers
+// the pipeline depth of a debounced flush; the agreed-base hash covers
+// everything older, including across a reload.
+const MAX_OWN_WRITE_TOKENS = 12;
 // Room for the `{ data: { ... }, meta: { lastUpdated } }` envelope each
 // commit carries around the entries planFlushBatches packs.
 const FLUSH_ENVELOPE_BYTES = 256;
@@ -181,12 +197,39 @@ class StorageSyncManager {
     // and never before.
     this.committedChunks = new Map();
     // ---- F05 conflict machinery -----------------------------------------
-    // The state the two sides last AGREED on, per key: an id -> content-hash
-    // index of the records in it (see recordIndex). It is what tells an
-    // addition apart from a deletion when both devices have moved, and it is
-    // an index rather than a copy of the value because a second copy of an
+    // The state the two sides last AGREED on, per key: a shape tag plus an
+    // entry -> content-hash index of what is in it (see valueIndex), plus
+    // the hash of the whole agreed value. The index is what tells an
+    // addition apart from a deletion when both devices have moved; the whole
+    // hash is what tells "the cloud has moved" apart from "the cloud is
+    // still exactly where we left it", which is the difference between a
+    // real conflict and this device arguing with its own echo. It is an
+    // index rather than a copy of the value because a second copy of an
     // 800 KB game log is a real cost on a 5 MB storage budget.
     this.syncBases = new Map();   // `${ns}\u0000${key}` -> id->hash index | null
+    // Every snapshot THIS client has published, per key, as `rev:hash`
+    // tokens. A device cannot conflict with its own write, and without this
+    // the ordinary sequence "write, commit, write again, first commit echoes
+    // back" was reported to the user as an edit made on another device.
+    // Bounded per key; the agreed-base hash covers anything older, including
+    // across a reload.
+    this.ownWrites = new Map();   // key -> string[]
+    // The last remote snapshot of each key this client has already decided
+    // about. Firestore re-emits the whole document on every listener
+    // re-attach, and without this a single unresolved disagreement re-fired
+    // a conflict (and wrote another recovery copy) on every one of them.
+    this.lastRemoteSeen = new Map(); // key -> `rev:hash`
+    // Per-key conflict policy, declared by the app at registration. Two
+    // values, and the engine knows nothing about any particular app:
+    //   'auto'    - index, merge, else deterministic winner + recovery copy.
+    //   'derived' - a regenerable cache (a re-fetchable profile snapshot, a
+    //               UI selection). Still resolved deterministically so both
+    //               ends converge, but never worth a recovery copy or a
+    //               message, because nothing the user typed can be lost.
+    this.keyPolicies = new Map(); // key -> 'auto' | 'derived'
+    // Namespaces with a revision-map write pending on the microtask queue,
+    // so one flush touching nine keys costs one localStorage write.
+    this.revisionWrites = new Set();
     // Conflict copies written this session, newest last, so a page can offer
     // recovery without re-reading storage.
     this.conflictRecords = [];
@@ -288,7 +331,14 @@ class StorageSyncManager {
       this.localRevisions.set(key, {
         rev: known?.rev || 0,
         updatedAt: known?.updatedAt || Date.now(),
-        hash: currentHash
+        hash: currentHash,
+        // DIRTY, always. We only reach this line because what is on disk is
+        // not what the cloud last acknowledged, which is the definition of
+        // unacknowledged local work. Omitting the flag here (it defaulted to
+        // undefined) meant a tab coming back to the foreground silently
+        // downgraded a pending edit to a clean revision, and the next remote
+        // delivery then replaced it without so much as a conflict.
+        dirty: true
       });
       // Source is 'remote' because every app's localStorageSync listener
       // gates on that label (they only re-render on remote-origin events,
@@ -300,6 +350,7 @@ class StorageSyncManager {
         detail: { key, value: parsed, source: 'remote' }
       }));
     }
+    this.schedulePersistRevisions(state.namespace);
   }
 
   /**
@@ -405,6 +456,26 @@ class StorageSyncManager {
   hashValue(value) { return hashValue(value); }
 
   /**
+   * Record the conflict policy an app declares for its own keys.
+   *
+   * The engine stays app-agnostic: it understands 'auto' and 'derived' and
+   * nothing else, and an app that declares nothing gets 'auto' for every
+   * key, which is what every app got before policies existed. Keys the
+   * caller does not mention are explicitly reset, so a policy cannot linger
+   * after an app stops declaring it.
+   *
+   * @param {string[]} keys the namespace's registered keys
+   * @param {Object<string,string>} [policies] key -> 'auto' | 'derived'
+   */
+  registerKeyPolicies(keys, policies) {
+    const declared = policies && typeof policies === 'object' ? policies : {};
+    for (const key of Array.isArray(keys) ? keys : []) {
+      if (declared[key] === 'derived') this.keyPolicies.set(key, 'derived');
+      else this.keyPolicies.delete(key);
+    }
+  }
+
+  /**
    * Start sync for a namespace.
    *
    * Single auth source — the modular SDK auth instance imported from
@@ -416,10 +487,10 @@ class StorageSyncManager {
    * `auth.currentUser` immediately, fall back to a one-shot
    * `onAuthStateChanged` if not yet available.
    */
-  startStorageSync({ namespace, keys, useFirestore = USE_FIRESTORE }) {
+  startStorageSync({ namespace, keys, useFirestore = USE_FIRESTORE, policies }) {
     const user = auth.currentUser;
     if (user) {
-      return this._startSyncForUser(user, { namespace, keys, useFirestore });
+      return this._startSyncForUser(user, { namespace, keys, useFirestore, policies });
     }
 
     console.warn('❌ No authenticated user — sync will start once auth is ready');
@@ -430,7 +501,7 @@ class StorageSyncManager {
 
     const unsubscribe = auth.onAuthStateChanged((authUser) => {
       if (authUser?.uid && !actualSync) {
-        actualSync = this._startSyncForUser(authUser, { namespace, keys, useFirestore });
+        actualSync = this._startSyncForUser(authUser, { namespace, keys, useFirestore, policies });
         unsubscribe();
       }
     });
@@ -452,7 +523,9 @@ class StorageSyncManager {
    * now skip the rebuild when the existing sync already matches the
    * incoming user+namespace+keys.
    */
-  _startSyncForUser(user, { namespace, keys, useFirestore = USE_FIRESTORE }) {
+  _startSyncForUser(user, { namespace, keys, useFirestore = USE_FIRESTORE, policies }) {
+    this.registerKeyPolicies(keys, policies);
+
     const existing = this.syncStates.get(namespace);
     if (existing && !existing.stopped
         && existing.userId === user.uid
@@ -488,6 +561,10 @@ class StorageSyncManager {
     if (!this.writeQueues.has(namespace)) {
       this.writeQueues.set(namespace, new Map());
     }
+
+    // Before the listener attaches, so the first snapshot is judged against
+    // the revisions this device actually reached, not against zero.
+    this.restoreRevisions(state);
 
     // Start Firebase listener — the listener's first snapshot doubles
     // as the initial merge, so we no longer need a separate `getDoc`
@@ -564,6 +641,15 @@ class StorageSyncManager {
 
           const data = snapshot.data();
           const remoteData = data?.data || {};
+          // Firestore's latency compensation delivers this client's own
+          // un-acknowledged writes straight back, with every
+          // serverTimestamp() still unresolved. Passing the flag down lets
+          // decideRemoteChange name that case instead of relying on the
+          // unresolved sentinel happening to read as timestamp zero. It is
+          // NOT on its own a fix for own-write echoes: the echo that caused
+          // the false conflicts is fully committed and server-confirmed, and
+          // carries hasPendingWrites false like anyone else's write.
+          const snapshotOptions = { pendingWrites: !!snapshot.metadata?.hasPendingWrites };
 
           for (const [key, info] of Object.entries(remoteData)) {
             if (!state.keys.has(key)) continue;
@@ -581,8 +667,8 @@ class StorageSyncManager {
               // A chunked entry is a manifest, not a value: its parts live in
               // the `chunks` subcollection and have to be fetched. Everything
               // after reassembly is the shared inline path.
-              if (info.chunked) this.applyChunkedRemoteChange(state, key, info);
-              else this.applyRemoteChange(key, info);
+              if (info.chunked) this.applyChunkedRemoteChange(state, key, info, snapshotOptions);
+              else this.applyRemoteChange(key, info, snapshotOptions);
             } catch (err) {
               // One unreadable key must not cost the user every other key.
               console.error(`Failed to apply remote change for ${key} in ${state.namespace}:`, err);
@@ -703,26 +789,22 @@ class StorageSyncManager {
   applyRemoteChange(key, remoteInfo, options = {}) {
     const localRev = this.localRevisions.get(key);
     const remoteTimestamp = getTimestamp(remoteInfo.updatedAt);
-    const lastRemoteUpdate = this.lastRemoteUpdates.get(key) || 0;
-    const verdict = decideRemoteChange(localRev, remoteInfo, lastRemoteUpdate);
+    const incomingToken = remoteToken(remoteInfo);
+    // The body the CLOUD is holding, kept aside because the conflict branch
+    // below replaces `remoteInfo` with whatever it resolved to.
+    const cloudValue = remoteInfo.deleted ? null : remoteInfo.value;
+    const verdict = this.verdictFor(key, remoteInfo, options);
 
-    if (verdict === 'skip-stale') return;
-    if (verdict === 'skip-older') {
-      // The cloud is BEHIND this device, which normally means a peer flushed
-      // an older logical version over ours. Ignoring it silently is how the
-      // two ends stay permanently different, so republish: our value carries
-      // a higher rev and the peer, being clean, will take it.
-      this.lastRemoteUpdates.set(key, remoteTimestamp);
-      this.republishLocalValue(key);
-      return;
-    }
-    if (verdict === 'skip-deduped') {
-      this.lastRemoteUpdates.set(key, remoteTimestamp);
-      // Our own write coming back: this is the moment the two sides agree.
-      this.rememberSyncBaseForKey(key, remoteInfo.value);
-      return;
-    }
+    if (this.noteRemoteSkip(key, verdict, remoteInfo, incomingToken)) return;
+
     if (verdict === 'conflict') {
+      // Recorded BEFORE resolving, and unconditionally, so a redelivery of
+      // this same body cannot be resolved a second time. The local-wins
+      // branch used to return without either, which is why an unresolved
+      // disagreement re-fired the banner (and wrote another recovery copy)
+      // on every listener re-attach, forever.
+      this.lastRemoteUpdates.set(key, remoteTimestamp);
+      this.markRemoteSeen(key, incomingToken);
       const resolved = this.resolveConflict(key, localRev, remoteInfo);
       if (!resolved) return;                 // local kept; a copy was preserved
       remoteInfo = resolved;                 // apply the merged/winning value
@@ -757,13 +839,21 @@ class StorageSyncManager {
         rev: Math.max((localRev && localRev.rev) || 0, remoteInfo.rev || 0),
         updatedAt: remoteTimestamp,
         hash: hashValue(remoteInfo.value),
-        // Applied straight from the cloud, or already re-queued by the
-        // conflict resolver, which sets this itself.
-        dirty: !!options.stillDirty
+        // Clean when it came straight from the cloud; still dirty when it is
+        // a merge this device produced and has only QUEUED for upload.
+        dirty: !!options.stillDirty || remoteInfo.queuedLocally === true
       });
-      this.rememberSyncBaseForKey(key, remoteInfo.value);
+      // THE CLOUD'S value, not ours. A merge is a state only this device
+      // holds until the upload lands, so recording it as "agreed" claimed an
+      // agreement that did not exist: a second remote delivery then merged
+      // against our own un-uploaded merge, and every record the first merge
+      // had contributed looked like something the peer had deleted. What the
+      // two sides genuinely last agreed on is the body the cloud sent.
+      this.rememberSyncBaseForKey(key, verdict === 'conflict' ? cloudValue : remoteInfo.value);
+      this.schedulePersistRevisions(this.namespaceOfKey(key));
 
       this.lastRemoteUpdates.set(key, remoteTimestamp);
+      this.markRemoteSeen(key, incomingToken);
 
       window.dispatchEvent(new CustomEvent('localStorageSync', {
         detail: { key, value: remoteInfo.value, source: 'remote' }
@@ -771,6 +861,141 @@ class StorageSyncManager {
     } finally {
       this.syncLocks.delete(key);
     }
+  }
+
+  /* ---------------------------------------------------------------------
+   * Own-write recognition: how this client tells its own Firestore traffic
+   * apart from somebody else's edit.
+   *
+   * Three mechanisms, each covering a window the others cannot:
+   *
+   *   1. `pendingWrites` (snapshot metadata) covers the latency-compensated
+   *      snapshot Firestore delivers the instant setDoc is called, before
+   *      the server has seen it. Its serverTimestamp() sentinels are still
+   *      unresolved, so there is nothing in it to compare against anyway.
+   *   2. `ownWrites` (rev:hash tokens, in memory) covers the committed echo
+   *      that arrives off the watch stream between issuing a write and
+   *      finishing the flush - the exact window a debounced burst lives in,
+   *      and the window the MapTap Rivals "Sync all rivals" run sat in.
+   *   3. The agreed BASE HASH (persisted) covers everything after that,
+   *      including after a reload, when the token list is gone: a cloud
+   *      value identical to the state the two sides last agreed on has not
+   *      moved, whoever wrote it.
+   *
+   * `metadata.hasPendingWrites` alone would have fixed none of this: the
+   * echo that caused the false conflicts is a fully committed, server-
+   * confirmed snapshot, indistinguishable by metadata from a peer's write.
+   * ------------------------------------------------------------------- */
+
+  /** The verdict for one remote entry, with everything we know about it. */
+  verdictFor(key, remoteInfo, options = {}) {
+    return decideRemoteChange(
+      this.localRevisions.get(key),
+      remoteInfo,
+      this.lastRemoteUpdates.get(key) || 0,
+      {
+        ownEcho: this.isOwnEcho(key, remoteToken(remoteInfo)),
+        baseHash: this.syncBaseHashFor(key),
+        seenToken: this.lastRemoteSeen.get(key) || null,
+        pendingWrites: !!options.pendingWrites
+      }
+    );
+  }
+
+  /**
+   * Bookkeeping for every verdict that is not 'apply' or 'conflict'.
+   *
+   * @returns {boolean} true when the caller should stop here.
+   */
+  noteRemoteSkip(key, verdict, remoteInfo, token) {
+    const remoteTimestamp = getTimestamp(remoteInfo.updatedAt);
+
+    // Nothing to record: a pending-write view carries no server state, a
+    // stale entry is one we already accounted for, and a seen token was
+    // accounted for the first time round.
+    if (verdict === 'skip-pending' || verdict === 'skip-stale' || verdict === 'skip-seen') return true;
+
+    if (verdict === 'skip-older') {
+      // The cloud is BEHIND this device, which normally means a peer flushed
+      // an older logical version over ours. Ignoring it silently is how the
+      // two ends stay permanently different, so republish: our value carries
+      // a higher rev and the peer, being clean, will take it.
+      this.lastRemoteUpdates.set(key, remoteTimestamp);
+      this.markRemoteSeen(key, token);
+      this.republishLocalValue(key);
+      return true;
+    }
+
+    if (verdict === 'skip-deduped' || verdict === 'skip-own') {
+      this.lastRemoteUpdates.set(key, remoteTimestamp);
+      this.markRemoteSeen(key, token);
+      // Our own value, confirmed by the server: this is the moment the two
+      // sides agree, and recording it is what lets a LATER echo of the same
+      // snapshot be recognised even after the token list has aged out or a
+      // reload has emptied it.
+      if (remoteInfo.value !== undefined) this.rememberSyncBaseForKey(key, remoteInfo.value);
+      return true;
+    }
+
+    if (verdict === 'skip-agreed') {
+      // The cloud has not moved since we last agreed. Our own pending work
+      // is still pending and will be flushed; there is nothing to merge and
+      // certainly nothing to tell the user about.
+      this.lastRemoteUpdates.set(key, remoteTimestamp);
+      this.markRemoteSeen(key, token);
+      return true;
+    }
+
+    return false;
+  }
+
+  /**
+   * Drop every trace of a namespace's sync bookkeeping, on disk and in
+   * memory. Used when the cloud document itself is deleted, so the next
+   * session does not compare against revisions and an agreed base that
+   * describe a document that is gone.
+   */
+  forgetSyncMetadata(namespace) {
+    const state = this.syncStates.get(namespace);
+    const keys = state ? [...state.keys] : [];
+    for (const key of keys) {
+      this.localRevisions.delete(key);
+      this.lastRemoteUpdates.delete(key);
+      this.ownWrites.delete(key);
+      this.lastRemoteSeen.delete(key);
+      this.syncBases.delete(this.chunkCountKey(namespace, key));
+    }
+    try {
+      const removeItem = this.originalMethods?.removeItem || localStorage.removeItem.bind(localStorage);
+      removeItem(SYNC_REV_KEY_PREFIX + namespace);
+      removeItem(SYNC_BASE_KEY_PREFIX + namespace);
+    } catch (_) { /* nothing to forget */ }
+  }
+
+  /** Remember that this client published a snapshot, so its echo is ours. */
+  rememberOwnWrites(writes) {
+    if (!writes) return;
+    for (const [key, info] of writes) {
+      const token = remoteToken(info);
+      const list = this.ownWrites.get(key) || [];
+      if (list[list.length - 1] !== token) list.push(token);
+      while (list.length > MAX_OWN_WRITE_TOKENS) list.shift();
+      this.ownWrites.set(key, list);
+    }
+  }
+
+  isOwnEcho(key, token) {
+    const list = this.ownWrites.get(key);
+    return Array.isArray(list) && list.indexOf(token) !== -1;
+  }
+
+  markRemoteSeen(key, token) {
+    this.lastRemoteSeen.set(key, token);
+  }
+
+  /** The declared conflict policy for a key; 'auto' unless an app said otherwise. */
+  policyForKey(key) {
+    return this.keyPolicies.get(key) === 'derived' ? 'derived' : 'auto';
   }
 
   /* ---------------------------------------------------------------------
@@ -794,15 +1019,22 @@ class StorageSyncManager {
    */
   rememberSyncBase(namespace, key, value) {
     if (!namespace) return;
-    const index = value === null || value === undefined ? null : recordIndex(value);
-    this.syncBases.set(this.chunkCountKey(namespace, key), index);
+    const empty = value === null || value === undefined;
+    // `hash` is the whole agreed value; `entries` is the per-entry index the
+    // three-way merge needs. A value with no internal structure (a string, a
+    // preference) still gets a base record, because the hash alone is what
+    // proves the cloud has not moved.
+    const base = empty
+      ? null
+      : { ...(valueIndex(value) || { kind: 'opaque', entries: null }), hash: hashValue(value) };
+    this.syncBases.set(this.chunkCountKey(namespace, key), base);
     try {
       const setItem = this.originalMethods?.setItem || localStorage.setItem.bind(localStorage);
       const getItem = this.originalMethods?.getItem || localStorage.getItem.bind(localStorage);
       const storeKey = SYNC_BASE_KEY_PREFIX + namespace;
       let all = {};
       try { all = JSON.parse(getItem(storeKey) || '{}') || {}; } catch (_) { all = {}; }
-      if (index) all[key] = index; else delete all[key];
+      if (base) all[key] = base; else delete all[key];
       setItem(storeKey, JSON.stringify(all));
     } catch (_) {
       // Storage full or blocked. The in-memory base still works for this
@@ -815,8 +1047,15 @@ class StorageSyncManager {
     this.rememberSyncBase(this.namespaceOfKey(key), key, value);
   }
 
-  /** The agreed base for a key, from memory or from the last session. */
-  syncBaseFor(key) {
+  /**
+   * The agreed base record for a key, from memory or from the last session.
+   *
+   * Reads both the current tagged form and the bare id->hash object written
+   * before maps were mergeable, so an upgrading device keeps the base it
+   * already had. A legacy record has no `hash`, so it still merges but
+   * cannot short-circuit an unchanged cloud until the next agreement.
+   */
+  syncBaseRecordFor(key) {
     const namespace = this.namespaceOfKey(key);
     if (!namespace) return null;
     const mapKey = this.chunkCountKey(namespace, key);
@@ -824,10 +1063,106 @@ class StorageSyncManager {
     try {
       const getItem = this.originalMethods?.getItem || localStorage.getItem.bind(localStorage);
       const all = JSON.parse(getItem(SYNC_BASE_KEY_PREFIX + namespace) || '{}') || {};
-      const index = all && typeof all[key] === 'object' ? all[key] : null;
-      this.syncBases.set(mapKey, index);
-      return index;
+      const base = all && typeof all[key] === 'object' ? all[key] : null;
+      this.syncBases.set(mapKey, base);
+      return base;
     } catch (_) { return null; }
+  }
+
+  /** The hash of the whole value the two sides last agreed on, if known. */
+  syncBaseHashFor(key) {
+    const base = this.syncBaseRecordFor(key);
+    return base && typeof base.hash === 'string' ? base.hash : null;
+  }
+
+  /** The agreed base as the merge wants it: a shape tag and an entry index. */
+  syncBaseFor(key) {
+    return this.syncBaseRecordFor(key);
+  }
+
+  /* ---------------------------------------------------------------------
+   * Revision persistence.
+   *
+   * `rev` is a Lamport counter, and a counter that restarts at zero on every
+   * page load is not one. Before this, a reload put the map back to empty,
+   * so the first edit a user made after opening the page was rev 1 against a
+   * cloud sitting at rev 40, and pickConflictWinner handed the cloud the
+   * win on revision alone: a fresh local edit replaced by an older cloud
+   * value, surviving only as an unreachable recovery copy.
+   *
+   * Stored per namespace, one small record per REGISTERED key, so the size
+   * is bounded by the app's key list and cannot grow with the data. Stamped
+   * with the uid that wrote it, because a second account on a shared browser
+   * must not inherit the first one's revisions.
+   * ------------------------------------------------------------------- */
+
+  persistRevisions(namespace) {
+    const state = this.syncStates.get(namespace);
+    if (!state || state.stopped) return;
+    const out = { uid: state.userId, keys: {} };
+    for (const key of state.keys) {
+      const rev = this.localRevisions.get(key);
+      if (!rev) continue;
+      out.keys[key] = {
+        rev: Number(rev.rev) || 0,
+        hash: String(rev.hash || ''),
+        updatedAt: Number(rev.updatedAt) || 0,
+        dirty: !!rev.dirty
+      };
+    }
+    try {
+      const setItem = this.originalMethods?.setItem || localStorage.setItem.bind(localStorage);
+      setItem(SYNC_REV_KEY_PREFIX + namespace, JSON.stringify(out));
+    } catch (_) {
+      // Storage full or blocked: this session still has the in-memory map,
+      // and the next reload degrades to the old zero-based behaviour.
+    }
+  }
+
+  /** Coalesce a burst of revision changes into one localStorage write. */
+  schedulePersistRevisions(namespace) {
+    if (!namespace || this.revisionWrites.has(namespace)) return;
+    this.revisionWrites.add(namespace);
+    const run = () => {
+      this.revisionWrites.delete(namespace);
+      this.persistRevisions(namespace);
+    };
+    if (typeof queueMicrotask === 'function') queueMicrotask(run);
+    else Promise.resolve().then(run);
+  }
+
+  /**
+   * Restore the revision map for a namespace that is starting up.
+   *
+   * The stored hash is checked against what is actually in localStorage now.
+   * A value that changed while this device was not running (another tab, an
+   * import, a hand edit) is unacknowledged work: the revision is kept, so
+   * the Lamport clock does not fall back, and the key is marked dirty, so
+   * the next remote delivery treats it as ours to defend rather than as a
+   * clean copy to silently overwrite.
+   */
+  restoreRevisions(state) {
+    let stored = null;
+    try {
+      const getItem = this.originalMethods?.getItem || localStorage.getItem.bind(localStorage);
+      stored = JSON.parse(getItem(SYNC_REV_KEY_PREFIX + state.namespace) || 'null');
+    } catch (_) { return; }
+    if (!stored || typeof stored !== 'object') return;
+    if (stored.uid !== state.userId) return;   // a different account's counters
+    const saved = stored.keys && typeof stored.keys === 'object' ? stored.keys : {};
+
+    for (const key of state.keys) {
+      const entry = saved[key];
+      if (!entry || typeof entry !== 'object') continue;
+      const currentHash = hashValue(this.readLocalValue(key));
+      const drifted = currentHash !== String(entry.hash || '');
+      this.localRevisions.set(key, {
+        rev: Number(entry.rev) || 0,
+        updatedAt: Number(entry.updatedAt) || 0,
+        hash: currentHash,
+        dirty: !!entry.dirty || drifted
+      });
+    }
   }
 
   /** This device's current value for a key, parsed. */
@@ -866,9 +1201,20 @@ class StorageSyncManager {
     const remoteValue = remoteInfo.deleted ? null : remoteInfo.value;
     const nextRev = Math.max((localRev && localRev.rev) || 0, remoteInfo.rev || 0) + 1;
 
+    // A DERIVED value is a cache the app can rebuild (a fetched profile
+    // snapshot, a UI selection). Both ends still have to converge, so the
+    // same deterministic winner is chosen, but keeping a recovery copy of a
+    // regenerable value and telling the user about it is noise: there is
+    // nothing they typed to recover and nothing for them to do.
+    if (this.policyForKey(key) === 'derived') {
+      if (pickConflictWinner(localRev, remoteInfo) === 'remote') return remoteInfo;
+      this.publishResolved(key, localValue, nextRev);
+      return null;
+    }
+
     const merge = (remoteValue === null || localValue === null)
       ? null
-      : mergeRecordCollections(this.syncBaseFor(key), localValue, remoteValue);
+      : mergeValues(this.syncBaseFor(key), localValue, remoteValue);
 
     if (merge) {
       // A merge loses nothing structurally, so a conflict copy is only kept
@@ -879,7 +1225,9 @@ class StorageSyncManager {
       this.publishResolved(key, merge.merged, nextRev);
       this.notifyConflict(key, {
         resolution: 'merged',
-        recordCount: merge.merged.length,
+        recordCount: Array.isArray(merge.merged)
+          ? merge.merged.length
+          : Object.keys(merge.merged).length,
         conflictedRecordIds: merge.conflicts,
       });
       return {
@@ -887,6 +1235,12 @@ class StorageSyncManager {
         updatedAt: remoteInfo.updatedAt,
         hash: hashValue(merge.merged),
         value: merge.merged,
+        // The merged value has been QUEUED by publishResolved, not accepted
+        // by the cloud, so it is still unacknowledged work. Without this the
+        // apply path below stamped it clean a moment after publishResolved
+        // marked it dirty, and the next remote delivery was then entitled to
+        // replace a merge this device had not managed to upload yet.
+        queuedLocally: true,
       };
     }
 
@@ -942,6 +1296,24 @@ class StorageSyncManager {
     }
   }
 
+  /** The recovery-copy index this device is holding, oldest first. */
+  listConflictCopies() {
+    try {
+      const getItem = this.originalMethods?.getItem || localStorage.getItem.bind(localStorage);
+      const index = JSON.parse(getItem(CONFLICT_INDEX_KEY) || '[]');
+      return Array.isArray(index) ? index : [];
+    } catch (_) { return []; }
+  }
+
+  /** One recovery copy by id, or null when it has aged out of the cap. */
+  readConflictCopy(id) {
+    try {
+      const getItem = this.originalMethods?.getItem || localStorage.getItem.bind(localStorage);
+      const raw = getItem(String(id));
+      return raw ? JSON.parse(raw) : null;
+    } catch (_) { return null; }
+  }
+
   /** Queue a resolved value for upload without going through setItem. */
   publishResolved(key, value, rev) {
     const namespace = this.namespaceOfKey(key);
@@ -952,6 +1324,7 @@ class StorageSyncManager {
     const hash = hashValue(value);
     queue.set(key, { value, rev, updatedAt: Date.now(), deleted: false, hash });
     this.localRevisions.set(key, { rev, updatedAt: Date.now(), hash, dirty: true });
+    this.schedulePersistRevisions(namespace);
     if (state.writeTimer) clearTimeout(state.writeTimer);
     state.writeTimer = setTimeout(() => this.flushWrites(state), DEBOUNCE_MS);
   }
@@ -1036,6 +1409,7 @@ class StorageSyncManager {
       // device one hour fast rejected every legitimate update for an hour.
       dirty: true
     });
+    this.schedulePersistRevisions(state.namespace);
 
     // Clear existing timer
     if (state.writeTimer) {
@@ -1080,6 +1454,7 @@ class StorageSyncManager {
         if (rev && rev.rev === info.rev) this.localRevisions.set(key, { ...rev, dirty: false });
         this.rememberSyncBase(state.namespace, key, info.deleted ? null : info.value);
       }
+      this.schedulePersistRevisions(state.namespace);
 
       // Broadcast to peer tabs that this namespace just changed. Their
       // onSnapshot listeners will eventually fire too, but a same-origin
@@ -1177,6 +1552,12 @@ class StorageSyncManager {
   async flushToFirestore(state, writes) {
     const docPath = `users/${state.userId}/apps/${state.namespace}`;
     const docRef = doc(db, docPath);
+
+    // BEFORE the network call, not after it. The committed echo can reach
+    // the watch stream while this function is still working through its
+    // chunk writes and its stale-part sweep, and an echo we do not yet
+    // recognise as ours is exactly the false conflict this fixes.
+    this.rememberOwnWrites(writes);
 
     const entries = [];       // { key, entry, bytes } for the inline document
     const chunkWrites = [];   // part documents to write before the manifest
@@ -1362,8 +1743,18 @@ class StorageSyncManager {
    * would re-render every view. The manifest carries the same rev,
    * updatedAt and hash the inline entry would, so the existing
    * `decideRemoteChange` short-circuits identically.
+   *
+   * A CONFLICT IS NOT A SHORT-CIRCUIT. This used to `return` on any verdict
+   * other than 'apply', which quietly threw away every genuine conflict on
+   * a value big enough to be chunked: MapTap Rivals' game log crosses the
+   * inline threshold at roughly a thousand rows, so past that point a real
+   * cross-device edit was discarded with no merge, no recovery copy and no
+   * message, and this device's next flush overwrote it. Conflicts now take
+   * the same route 'apply' does - fetch the parts, hand the assembled value
+   * to applyRemoteChange - so there is exactly one conflict system whatever
+   * the size of the value.
    */
-  async applyChunkedRemoteChange(state, key, manifest) {
+  async applyChunkedRemoteChange(state, key, manifest, options = {}) {
     const parts = Number(manifest?.parts) || 0;
     const countKey = this.chunkCountKey(state.namespace, key);
     this.chunkCounts.set(countKey, Math.max(this.chunkCounts.get(countKey) || 0, parts));
@@ -1372,15 +1763,12 @@ class StorageSyncManager {
     const manifestVersion = typeof manifest?.chunkVersion === 'string' ? manifest.chunkVersion : null;
     this.committedChunks.set(countKey, { version: manifestVersion, parts });
 
-    const verdict = decideRemoteChange(
-      this.localRevisions.get(key),
-      manifest,
-      this.lastRemoteUpdates.get(key) || 0
-    );
-    if (verdict !== 'apply') {
-      if (verdict === 'skip-deduped') {
-        this.lastRemoteUpdates.set(key, getTimestamp(manifest.updatedAt));
-      }
+    const verdict = this.verdictFor(key, manifest, options);
+    if (verdict !== 'apply' && verdict !== 'conflict') {
+      // Identical bookkeeping to the inline path, so a chunked key's
+      // own-write echoes, agreed-base short-circuits and re-attach replays
+      // are recorded the same way an inline key's are.
+      this.noteRemoteSkip(key, verdict, manifest, remoteToken(manifest));
       return;
     }
 
@@ -1443,7 +1831,7 @@ class StorageSyncManager {
         updatedAt: manifest.updatedAt,
         hash: manifest.hash,
         value
-      });
+      }, options);
     } catch (error) {
       // Leave lastRemoteUpdates untouched so the next snapshot retries.
       console.warn(`⚠️ Could not assemble chunked value for ${key}:`, error?.message || error);
@@ -1458,6 +1846,8 @@ class StorageSyncManager {
   async flushToRealtimeDb(state, writes) {
     const dbPath = `users/${state.userId}/apps/${state.namespace}`;
     const dbRef = ref(rtdb, dbPath);
+
+    this.rememberOwnWrites(writes);
 
     await rtdbTransaction(dbRef, (currentData) => {
       const data = currentData || { data: {}, meta: {} };
@@ -1529,9 +1919,14 @@ class StorageSyncManager {
       if (remoteData[key] !== undefined) continue;
 
       const parsed = parseValue(localValue);
+      const known = this.localRevisions.get(key);
       localWrites.set(key, {
         value: parsed,
-        rev: 1,
+        // Never BELOW what this device has already reached. A key can be
+        // missing from the cloud while this device holds a restored
+        // revision (last session's flush never landed), and publishing it
+        // as rev 1 would walk the Lamport counter backwards.
+        rev: Math.max(1, ((known && known.rev) || 0) + (known ? 1 : 0)),
         updatedAt: Date.now(),
         hash: hashValue(parsed),
         deleted: false
@@ -1565,6 +1960,11 @@ class StorageSyncManager {
     const state = this.syncStates.get(namespace);
     if (!state) return;
 
+    // Flush the revision map first: a restart (a key-set change, a token
+    // refresh) must not put the Lamport counters back to zero, which is the
+    // reload data-loss path in miniature.
+    this.persistRevisions(namespace);
+
     state.stopped = true;
 
     if (state.writeTimer) {
@@ -1580,6 +1980,8 @@ class StorageSyncManager {
       this.localRevisions.delete(key);
       this.syncLocks.delete(key);
       this.lastRemoteUpdates.delete(key);
+      this.ownWrites.delete(key);
+      this.lastRemoteSeen.delete(key);
       this.chunkCounts.delete(this.chunkCountKey(namespace, key));
     }
   }
@@ -1665,6 +2067,32 @@ export function getGlobalSyncStatus() {
 }
 
 /**
+ * The recovery copies this device is holding, newest last.
+ *
+ * A conflict copy is only written for a GENUINE unresolved conflict now (an
+ * own-write echo, a replayed snapshot and an unchanged cloud are all
+ * recognised before it gets that far), which makes the remaining ones worth
+ * being able to reach. There is deliberately no management UI for them: they
+ * are rare, they are per-device, and the honest thing to expose is the data
+ * itself rather than a screen for a situation most users will never hit.
+ *
+ * @returns {Array<{id: string, key: string, reason: string, at: string}>}
+ */
+export function listConflictCopies() {
+  return syncManager.listConflictCopies();
+}
+
+/**
+ * The value held by one recovery copy, or null when it has aged out.
+ *
+ * @param {string} id an id from listConflictCopies()
+ * @returns {{key: string, reason: string, at: string, recordIds: string[], value: *} | null}
+ */
+export function readConflictCopy(id) {
+  return syncManager.readConflictCopy(id);
+}
+
+/**
  * Delete a user's cloud-side app document. Single canonical entry point
  * for app-level "wipe cloud data" buttons — previously the gym tracker
  * imported Firestore directly to do this, which violated the rule that
@@ -1690,6 +2118,10 @@ export async function eraseCloudData(namespace) {
   // an empty manifest, never orphaned content.
   await deleteChunkDocuments(docPath);
   await deleteDoc(doc(db, docPath));
+  // The revisions and the agreed base describe a document that no longer
+  // exists. Left behind, they would tell the next session the cloud is at
+  // rev 40 and holding a value it agreed with, when it is holding nothing.
+  syncManager.forgetSyncMetadata(namespace);
 }
 
 /**

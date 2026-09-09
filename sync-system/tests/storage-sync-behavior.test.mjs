@@ -1422,10 +1422,39 @@ test('F05: a conflict the page can see and act on', async (t) => {
     assert.equal(seen[0].recordCount, 3);
 });
 
-test('F05: a value that is not a record collection keeps both sides', async (t) => {
-    // Settings objects, preference strings, anything without stable ids: a
-    // merge would be guesswork, so one side wins deterministically and the
-    // other is preserved rather than dropped.
+test('F05: an object value merges field by field, like a record collection', async (t) => {
+    // A plain object is the OTHER shape this repo stores (maptapRivalsDays
+    // is { 'YYYY-MM-DD': City[5] }, one independent entry per date). It used
+    // to be treated as an opaque blob, so two devices that changed two
+    // different dates competed for the whole map and one date was thrown
+    // away. Its keys are identities exactly the way record ids are.
+    const h = await startHarness(t, ['daymap']);
+    const [k] = h.keys;
+
+    const shared = { mon: 1 };
+    h.emit({ [k]: { value: shared, rev: 1, updatedAt: Date.now() - 10_000, hash: hashValue(shared) } });
+    await settle();
+
+    localStorage.setItem(k, JSON.stringify({ mon: 1, tue: 2 }));       // this device added Tuesday
+    const theirs = { mon: 1, wed: 3 };                                  // the other one added Wednesday
+    h.emit({ [k]: { value: theirs, rev: 2, updatedAt: Date.now(), hash: hashValue(theirs) } });
+    await settle();
+
+    assert.deepEqual(
+        JSON.parse(backingStore.get(k)),
+        { mon: 1, wed: 3, tue: 2 },
+        'both devices’ additions survive; neither map replaces the other'
+    );
+    assert.equal(
+        conflictCopies().filter((c) => c.key === k).length, 0,
+        'nothing was lost, so nothing needed preserving'
+    );
+});
+
+test('F05: an object field both sides changed keeps a recoverable copy', async (t) => {
+    // The half of the old behaviour that was right: when the two sides
+    // genuinely disagree about the same entry, one wins deterministically
+    // and the other is preserved rather than dropped.
     const h = await startHarness(t, ['settings']);
     const [k] = h.keys;
 
@@ -1437,15 +1466,12 @@ test('F05: a value that is not a record collection keeps both sides', async (t) 
     await settle();
 
     const copies = conflictCopies().filter((c) => c.key === k);
-    assert.equal(copies.length, 1);
-    assert.ok(['local-superseded', 'remote-superseded'].includes(copies[0].reason));
+    assert.equal(copies.length, 1, 'the losing edit is preserved, not discarded');
+    assert.equal(copies[0].reason, 'record-conflict');
+    assert.deepEqual(conflictCopyValue(copies[0].id), { units: 'lb' }, 'this device’s version is what is kept');
+
     const live = JSON.parse(backingStore.get(k));
-    const preserved = conflictCopyValue(copies[0].id);
-    assert.deepEqual(
-        [live.units, preserved.units].sort(),
-        ['lb', 'st'],
-        'the live value and the preserved copy are the two versions that conflicted'
-    );
+    assert.ok(['lb', 'st'].includes(live.units), 'the live value is one of the two, never a blend');
 });
 
 test('F05: reconnecting in the opposite order reaches the same record set', async (t) => {

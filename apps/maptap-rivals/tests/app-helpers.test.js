@@ -51,17 +51,24 @@ function noopEl() {
 
 const makeStorage = () => {
   const m = new Map();
+  // Every write, in order. The sync layer sits directly behind setItem in
+  // the real app - one setItem is one queued Firestore revision - so this
+  // log is what "how many writes did that operation actually make?" means.
+  const writes = [];
   return {
     getItem: (k) => (m.has(k) ? m.get(k) : null),
-    setItem: (k, v) => m.set(k, String(v)),
+    setItem: (k, v) => { writes.push({ key: k, value: String(v) }); m.set(k, String(v)); },
     removeItem: (k) => m.delete(k),
     clear: () => m.clear(),
+    writes,
   };
 };
 
 // `seed` maps localStorage keys to values (objects are stringified), applied
 // BEFORE app.js runs so its module-level `state` loads them.
-function loadApp(seed = {}) {
+// `fetchImpl` replaces the never-settling default for tests that drive the
+// MapTap sync; everything else keeps the default so nothing can escape.
+function loadApp(seed = {}, { fetchImpl } = {}) {
   const localStorage = makeStorage();
   for (const [k, v] of Object.entries(seed)) {
     localStorage.setItem(k, typeof v === 'string' ? v : JSON.stringify(v));
@@ -97,7 +104,7 @@ function loadApp(seed = {}) {
     history: { replaceState() {} },
     navigator: { clipboard: null },
     matchMedia: () => ({ matches: false, addEventListener() {} }),
-    fetch: () => new Promise(() => {}), // never settles
+    fetch: fetchImpl || (() => new Promise(() => {})), // never settles by default
   };
   sandbox.window = sandbox;
   sandbox.window.MapTapStats = MapTapStats;
@@ -139,6 +146,7 @@ test('vm harness: app.js exports every helper these tests drive', () => {
     'rivalNameHint', 'storedDayCities', 'splitGameCities', 'joinGameCities',
     'persistGames', 'loadGamesFromStorage', 'storedGamesAreInline',
     'migrateInlineCities',
+    'state', 'summarizeMapTapProfile', 'syncMapTapForRival', 'syncAllRivals',
   ];
   const missing = expected.filter((name) => helpers[name] == null);
   assert.deepEqual(missing, [], `js/app.js stopped exporting: ${missing.join(', ')}`);
@@ -1205,4 +1213,183 @@ test('linkAcceptedByMe: legacy yes, pending only for the acceptor', () => {
   const pending = sanitizeLink({ uids: ['a', 'b'], acceptedBy: ['b'] }, 'a__b');
   assert.equal(linkAcceptedByMe(pending, 'b'), true);
   assert.equal(linkAcceptedByMe(pending, 'a'), false);
+});
+
+// ---------------------------------------------------------------------------
+// "Sync all rivals": what one press actually writes.
+//
+// A run is ONE user gesture that checks N rivals against the same two profile
+// endpoints, but it used to be N saves. Every rival called persistMyProfile()
+// unconditionally, and summarizeMapTapProfile() stamped a fresh `verifiedAt`
+// each time, so five rivals produced five genuinely-different snapshots of an
+// unchanged profile: five localStorage writes, five queued Firestore
+// revisions of a key nothing had changed. Each rival that found anything also
+// re-serialised and re-uploaded the ENTIRE game log and day map.
+//
+// Those redundant writes were also the fuel for the sync engine's
+// self-conflict bug: each one was a commit whose echo could land after the
+// next one had been queued. The engine no longer mistakes that for another
+// device (sync-system/tests/storage-sync-conflicts.test.mjs), but the writes
+// were pointless whether or not anything downstream mishandled them.
+// ---------------------------------------------------------------------------
+
+const MAPTAP_HISTORY = {
+  alice: { '2026-09-01': { finalScore: 700, rounds: [{ score: 10 }, { score: 20 }, { score: 30 }, { score: 40 }, { score: 50 }] } },
+  bex:   { '2026-09-02': { finalScore: 600, rounds: [{ score: 11 }, { score: 21 }, { score: 31 }, { score: 41 }, { score: 51 }] } },
+  cy:    { '2026-09-03': { finalScore: 500, rounds: [{ score: 12 }, { score: 22 }, { score: 32 }, { score: 42 }, { score: 52 }] } },
+  nikita: {
+    '2026-09-01': { finalScore: 800, rounds: [{ score: 15 }, { score: 25 }, { score: 35 }, { score: 45 }, { score: 55 }] },
+    '2026-09-02': { finalScore: 810, rounds: [{ score: 16 }, { score: 26 }, { score: 36 }, { score: 46 }, { score: 56 }] },
+    '2026-09-03': { finalScore: 820, rounds: [{ score: 17 }, { score: 27 }, { score: 37 }, { score: 47 }, { score: 57 }] },
+  },
+};
+
+/** A stand-in for the MapTap profile endpoint, counting the calls it serves. */
+function makeMapTapFetch(history = MAPTAP_HISTORY) {
+  const calls = [];
+  const impl = async (_url, options) => {
+    const nickname = JSON.parse(options.body).data.nickname;
+    calls.push(nickname);
+    const gameHistory = history[nickname];
+    return {
+      ok: true,
+      json: async () => (gameHistory
+        ? { result: { success: true, user: { userId: `u-${nickname}`, nickname, joinDate: '2025-01-01', gameHistory } } }
+        : { result: { success: false, error: 'profile not found' } }),
+    };
+  };
+  impl.calls = calls;
+  return impl;
+}
+
+const SYNC_SEED = {
+  maptapRivalsMe: 'Nikita',
+  maptapRivalsMyMapTap: 'nikita',
+  maptapRivalsRivals: [
+    { id: 'r1', name: 'Alice', color: '#f00', icon: '🦊', maptapUsername: 'alice', createdAt: 1 },
+    { id: 'r2', name: 'Bex', color: '#0f0', icon: '🐼', maptapUsername: 'bex', createdAt: 2 },
+    { id: 'r3', name: 'Cy', color: '#00f', icon: '🐙', maptapUsername: 'cy', createdAt: 3 },
+  ],
+  maptapRivalsGames: [],
+  maptapRivalsDays: {},
+};
+
+/** Load the app ready to run a sync, with rendering parked. */
+function loadForSync(seed = SYNC_SEED, history) {
+  const fetchImpl = makeMapTapFetch(history);
+  const ctx = loadApp(seed, { fetchImpl });
+  // Every view renderer is a no-op for an unrecognised view, which is how a
+  // headless run avoids painting into a DOM that is not there.
+  ctx._testExports.state.view = 'none';
+  return { ctx, fetchImpl, writes: ctx.localStorage.writes };
+}
+
+const writesTo = (writes, key) => writes.filter((w) => w.key === key);
+
+test('Sync all rivals: three rivals, ONE write of the profile snapshot', async () => {
+  const { ctx, fetchImpl, writes } = loadForSync();
+  const before = writes.length;
+
+  await ctx._testExports.syncAllRivals();
+
+  assert.equal(fetchImpl.calls.length, 6, 'three rivals, two profile fetches each');
+  const run = writes.slice(before);
+  assert.equal(
+    writesTo(run, 'maptapRivalsMyProfile').length, 1,
+    'the profile snapshot is written once per RUN, not once per rival'
+  );
+  assert.equal(writesTo(run, 'maptapRivalsGames').length, 1, 'the game log is serialised once');
+  assert.equal(writesTo(run, 'maptapRivalsDays').length, 1, 'and so is the day map');
+});
+
+test('Sync all rivals: every rival shares the run’s one verification timestamp', async () => {
+  const { ctx, writes } = loadForSync();
+  await ctx._testExports.syncAllRivals();
+
+  const stored = JSON.parse(writesTo(writes, 'maptapRivalsMyProfile').pop().value);
+  assert.equal(
+    stored.verifiedAt, ctx._testExports.state.myProfile.verifiedAt,
+    'what was written is what the card is showing'
+  );
+  assert.ok(
+    !Number.isNaN(Date.parse(stored.verifiedAt)),
+    'verifiedAt keeps its meaning: an ISO instant, at the granularity of one check'
+  );
+  assert.equal(stored.totalGames, 3, 'and the snapshot itself is the freshly fetched one');
+});
+
+test('Sync all rivals: a run where nothing is new writes no game log at all', async () => {
+  const { ctx, writes } = loadForSync();
+  await ctx._testExports.syncAllRivals();       // first run imports everything
+  const before = writes.length;
+
+  await ctx._testExports.syncAllRivals();       // second run finds nothing new
+  const second = writes.slice(before);
+
+  assert.equal(
+    writesTo(second, 'maptapRivalsGames').length, 0,
+    'an up-to-date log is not re-serialised and re-uploaded'
+  );
+  assert.equal(writesTo(second, 'maptapRivalsDays').length, 0);
+  assert.equal(
+    writesTo(second, 'maptapRivalsMyProfile').length, 1,
+    'the profile is still restamped once: the run DID verify it, and that is what verifiedAt means'
+  );
+});
+
+test('Sync all rivals: the games it does find all land, in one write', async () => {
+  const { ctx, writes } = loadForSync();
+  await ctx._testExports.syncAllRivals();
+
+  const stored = JSON.parse(writesTo(writes, 'maptapRivalsGames').pop().value);
+  // The sync walks every day EITHER side played, so each rival also gets a
+  // me-only row for the two days only I played: three rivals x three days.
+  assert.equal(stored.length, 9, 'batching the write must not lose a rival’s games');
+  const h2h = stored.filter((g) => g.theirScore != null);
+  assert.deepEqual(
+    h2h.map((g) => `${g.rivalId}@${g.date}`).sort(),
+    ['r1@2026-09-01', 'r2@2026-09-02', 'r3@2026-09-03'],
+    'and every head-to-head day landed against the right rival'
+  );
+  assert.equal(stored.length, ctx._testExports.state.games.length, 'storage and memory agree');
+});
+
+test('Sync all rivals: a run where every rival fails does not restamp the profile', async () => {
+  // Nothing was verified, so there is nothing for verifiedAt to record.
+  const { ctx, writes } = loadForSync(SYNC_SEED, {});   // the endpoint knows nobody
+  const before = writes.length;
+
+  await ctx._testExports.syncAllRivals();
+
+  const run = writes.slice(before);
+  assert.equal(writesTo(run, 'maptapRivalsMyProfile').length, 0);
+  assert.equal(writesTo(run, 'maptapRivalsGames').length, 0);
+});
+
+test('a single-rival sync still persists immediately', async () => {
+  // The batching is the RUN's business. The per-card sync button is one
+  // gesture for one rival and must still save the moment it is done.
+  const { ctx, writes } = loadForSync();
+  const before = writes.length;
+
+  await ctx._testExports.syncMapTapForRival('r1');
+
+  const run = writes.slice(before);
+  assert.equal(writesTo(run, 'maptapRivalsMyProfile').length, 1);
+  assert.equal(writesTo(run, 'maptapRivalsGames').length, 1);
+});
+
+test('summarizeMapTapProfile: verifiedAt is caller-supplied or now, never anything else', () => {
+  const c = loadApp({});
+  const user = { userId: 'u', nickname: 'n', joinDate: '2025-01-01', gameHistory: { '2026-09-01': { finalScore: 500 } } };
+  assert.equal(c._testExports.summarizeMapTapProfile(user, '2026-09-09T10:00:00.000Z').verifiedAt,
+    '2026-09-09T10:00:00.000Z');
+  const now = c._testExports.summarizeMapTapProfile(user).verifiedAt;
+  assert.ok(!Number.isNaN(Date.parse(now)), 'omitted, it still stamps the moment of the check');
+  // Two summaries of the SAME profile under one run timestamp are identical,
+  // which is what makes the run's single write a no-op when nothing changed.
+  assert.deepEqual(
+    c._testExports.summarizeMapTapProfile(user, 'T'),
+    c._testExports.summarizeMapTapProfile(user, 'T')
+  );
 });
