@@ -232,7 +232,10 @@ test('a vice at the captain club is penalised against an equivalent vice elsewhe
   assert.equal(result.components.sameClubAsVice, false);
 });
 
-test('a stronger same-club vice still loses to a weaker one elsewhere', () => {
+test('a clearly stronger same-club vice is no longer thrown away for being a team mate', () => {
+  // This case used to resolve the other way, because a same-club vice kept only
+  // half his value. The measured conditional appearance ratio is 0.99, not 0.5
+  // (see SAME_CLUB_FALLBACK_RETENTION), so a genuinely better team mate wins.
   const world = makeWorld([
     { id: 1, teamId: 7, xPoints: 9, ceiling: 18, pAppear: 0.8 },
     { id: 2, teamId: 7, xPoints: 7.4, ceiling: 15, pAppear: 0.95 },
@@ -240,10 +243,24 @@ test('a stronger same-club vice still loses to a weaker one elsewhere', () => {
     ...filler(4, 8),
   ]);
   const result = chooseCaptain(world.xi, world.projections, 1, world.gameState);
+  assert.equal(result.viceCaptain, 2);
+  assert.equal(result.vice.sameClub, true);
+  assert.equal(CAPTAIN_PARAMS.sameClubFallbackRetention, 0.95);
+});
+
+test('the same-club discount still breaks a near-tie towards the other club', () => {
+  // Diversification is not removed, it is sized. Two vice candidates within a
+  // whisker of each other resolve to the one who does not share the captain's
+  // fixture.
+  const world = makeWorld([
+    { id: 1, teamId: 7, xPoints: 9, ceiling: 18, pAppear: 0.8 },
+    { id: 2, teamId: 7, xPoints: 7.0, ceiling: 14, pAppear: 0.95 },
+    { id: 3, teamId: 8, xPoints: 7.0, ceiling: 14, pAppear: 0.95 },
+    ...filler(4, 8),
+  ]);
+  const result = chooseCaptain(world.xi, world.projections, 1, world.gameState);
   assert.equal(result.viceCaptain, 3);
-  // Half of the same-club vice's value is assumed to survive, which is the
-  // documented correlation.
-  assert.equal(CAPTAIN_PARAMS.sameClubCorrelation, 0.5);
+  assert.equal(result.vice.sameClub, false);
 });
 
 test('when only a same-club vice exists the correlation penalty is reported', () => {
@@ -306,7 +323,12 @@ test('an easier fixture and a better-evidenced projection both tilt the armband'
   ]);
   const result = chooseCaptain(confident.xi, confident.projections, 1, confident.gameState);
   assert.equal(result.captain, 2);
-  assert.equal(result.components.confidencePenalty, CAPTAIN_PARAMS.confidencePenalty.high);
+  // The penalty is now a linear reading of the continuous confidence score, so
+  // a fully-evidenced projection is charged nothing and an unevidenced one is
+  // charged the maximum.
+  assert.equal(result.components.confidencePenalty, 0);
+  const weak = result.candidates.find(c => c.playerId === 1);
+  assert.equal(weak.components.confidencePenalty, CAPTAIN_PARAMS.confidenceMaxPenalty);
 });
 
 test('a blank gameweek player is not captained over a player with a fixture', () => {
@@ -429,23 +451,24 @@ function gw3World() {
   ]);
 }
 
-test('gameweek 3: the fixture tilt outweighs a higher projection, by a hair', () => {
+test('gameweek 3: a 0.15 fixture nudge no longer outvotes the better projection', () => {
+  // THIS CASE USED TO GO THE OTHER WAY, by 0.0006 of a point, and it is the
+  // reason MAX_TILT exists. Thiago's whole edge was an unbounded fixture term;
+  // Bruno projects more, has the same ceiling, the same penalties and MORE set
+  // pieces. Four heuristics summing without a bound handed the armband to the
+  // lower projection on a rounding error. Bounded, the projection wins.
   const world = gw3World();
   const result = chooseCaptain(world.xi, world.projections, 1, world.gameState);
 
-  assert.equal(result.captain, GW3_THIAGO);
-  assert.equal(result.viceCaptain, GW3_BRUNO);
+  assert.equal(result.captain, GW3_BRUNO);
 
   const thiago = result.candidates.find(c => c.playerId === GW3_THIAGO);
   const bruno = result.candidates.find(c => c.playerId === GW3_BRUNO);
 
-  // The captain genuinely has FEWER expected points. This is the fact the UI
-  // has to explain, so it is asserted rather than assumed.
   assert.ok(bruno.xPoints > thiago.xPoints);
   assert.ok(Math.abs((bruno.xPoints - thiago.xPoints) - 0.0658697669) < 1e-9);
 
-  // And the fixture term is the whole of the captain's edge: everything else
-  // either ties or favours Bruno.
+  // The raw terms are unchanged; it is their SUM that is now bounded.
   assert.ok(Math.abs(thiago.components.fixture - 0.15) < 1e-12);
   assert.equal(bruno.components.fixture, 0);
   assert.equal(thiago.components.upsideTerm, bruno.components.upsideTerm);
@@ -453,12 +476,46 @@ test('gameweek 3: the fixture tilt outweighs a higher projection, by a hair', ()
   assert.ok(bruno.components.setPieceDuty > thiago.components.setPieceDuty);
   assert.ok(bruno.components.meanTerm > thiago.components.meanTerm);
 
-  // Both are nailed, so the joint fallback term contributes nothing at all and
-  // cannot be what decided this.
+  // Thiago still carries the larger raw tilt, and it is still not enough.
+  assert.ok(thiago.components.rawTilt > bruno.components.rawTilt);
+  assert.ok(Math.abs(thiago.components.tilt) < CAPTAIN_PARAMS.maxTilt);
+  assert.ok(bruno.captainScore > thiago.captainScore);
+
+  // Both are nailed, so the joint fallback term contributes nothing and cannot
+  // be what decided this.
   assert.equal(thiago.captainScore, thiago.value);
   assert.equal(bruno.captainScore, bruno.value);
-  assert.ok(thiago.captainScore - bruno.captainScore > 0);
-  assert.ok(thiago.captainScore - bruno.captainScore < 0.001);
+});
+
+test('the tilts may still decide an armband inside their stated authority', () => {
+  // Bounding them is not disabling them. Half a projected point is the stated
+  // authority (MAX_TILT / meanWeight), and inside it the penalty taker on the
+  // easier fixture still takes the armband off the marginally better projection.
+  const world = makeWorld([
+    { id: 1, teamId: 1, xPoints: 6.0, ceiling: 12, pAppear: 0.95, confidence: 'high', fixtures: [{ fdr: 2 }] },
+    { id: 2, teamId: 2, xPoints: 6.2, ceiling: 12, pAppear: 0.95, confidence: 'high', fixtures: [{ fdr: 5 }] },
+    ...filler(3, 9),
+  ]);
+  world.gameState.players.get(1).setPieces = { penaltiesOrder: 1, directFreekicksOrder: 1, cornersOrder: 1 };
+  const result = chooseCaptain(world.xi, world.projections, 1, world.gameState);
+  assert.equal(result.captain, 1, 'a 0.2 xP gap is inside the tilts authority');
+});
+
+test('no stack of tilts can overturn a large projection gap', () => {
+  // The bound is the point: every heuristic pushed to its maximum in favour of
+  // the weaker player, against a gap comfortably outside their authority.
+  const world = makeWorld([
+    { id: 1, teamId: 1, xPoints: 5.0, ceiling: 10, pAppear: 0.95, confidence: 'high', fixtures: [{ fdr: 1 }] },
+    { id: 2, teamId: 2, xPoints: 6.5, ceiling: 13, pAppear: 0.95, confidence: 'low', fixtures: [{ fdr: 5 }] },
+    ...filler(3, 9),
+  ]);
+  world.gameState.players.get(1).setPieces = { penaltiesOrder: 1, directFreekicksOrder: 1, cornersOrder: 1 };
+  const result = chooseCaptain(world.xi, world.projections, 1, world.gameState);
+  assert.equal(result.captain, 2, 'the projection must win a gap this size');
+
+  const loser = result.candidates.find(c => c.playerId === 1);
+  const winner = result.candidates.find(c => c.playerId === 2);
+  assert.ok(loser.components.tilt - winner.components.tilt <= 2 * CAPTAIN_PARAMS.maxTilt + 1e-12);
 });
 
 test('rounding the pitch to one decimal never reverses the true xP order', () => {

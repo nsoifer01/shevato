@@ -2382,6 +2382,98 @@ Two things the audit reported that are NOT app defects, both proved by probe:
   renders 391px wide in a 390px viewport on every page. The app root itself
   measures 390/390, which is what the app's own assertions check.
 
+## The armband was ranked on inputs that were not comparable (fixed 2026-09-09)
+
+A manager asked why Bruno Fernandes was vice-captain at 3.5 xP when Foden (3.8),
+Isak (3.7) and Raya (3.7) were all in the same eleven. Nothing was stale, no
+field was mismatched and no sort was wrong: the pitch and the armband read the
+SAME `bundle.projections` at the SAME `plan.gw`. The armband is simply not
+ranked on xP, and four of the things it IS ranked on were broken.
+
+**1. Confidence was not season-aware, and contradicted the rest of the model.**
+The tiers were cumulative-minute thresholds, `>= 900` high and `>= 270` medium.
+Those are late-season numbers with no season attached. At gameweek 4 a club has
+played three matches, so 270 is every minute there was: `high` is arithmetically
+unreachable by anyone, `medium` means "never once substituted", everyone else is
+`low`, and the captaincy penalty charged 0.30 points for the difference - larger
+than the whole mean-weighted xP spread of a realistic eleven. It also
+contradicted the minutes model that produced it: Foden held `pAppear` 1.000, the
+highest appearance certainty in the eleven, while being charged the largest
+uncertainty penalty available. Confidence is now the posterior standard
+deviation of a Beta on the START rate over `evidenceMatches`, normalised by the
+no-evidence prior sqrt(1/12). It is season-aware because `evidenceMatches` is,
+it carries prior seasons through the baseline blend, and one start in one match
+scores 0.18 rather than certainty. The tier survives, derived from the score at
+even thirds, because `confidence.js` and the drawer read it.
+
+**It deliberately does NOT fold in how much a player plays.** A settled fringe
+player scores HIGH, because his start rate is one of the best-known numbers in
+the model. That reads oddly until you remember the level already lives in
+`pStart` and `pAppear`, which every consumer reads beside it and which
+`captain.js` floors on before confidence is consulted. Charging the same fact
+twice is exactly the incoherence this replaced.
+
+**2. The ceiling was a step function.** `distQuantile` returns `offset + i`, an
+integer, so at an upside weight of 0.25 the captaincy upside term moved in
+0.25-point jumps. Bruno's ceiling of 8 against Foden's 7 was worth +0.25 while
+their real projection gap was 0.24: a hair of extra threat was worth either
+nothing or a full quarter-point. `distQuantileInterpolated` interpolates across
+the bucket under the standard lattice continuity correction, CLAMPED to the
+support - an unclamped version reported a ceiling of 0.35 for a player who
+cannot play, whose distribution is all mass on zero. `distQuantile` itself is
+unchanged and still correct; it is simply the wrong statistic to rank on.
+
+**3. The same-club vice discount was wrong by a factor of about fifty, and the
+archives could say so directly.** The constant assumed half a same-club vice's
+value survives the captain not playing. Measured over 153,158 same-club pairs of
+nailed players across the four season archives: P(team mate appears) 0.8830,
+P(team mate appears | the other was absent) 0.8701, ratio 0.9854. The
+different-club control over 3,110,050 pairs reads 0.9947, which is the
+league-wide common cause. The effect genuinely attributable to sharing a club is
+**0.9906**, and every season agrees (0.984 / 0.991 / 0.994 / 0.977). A captain
+misses a gameweek far more often for reasons private to him than for reasons
+that take his whole club with him. Now 0.95, which is the measured 0.9906 times
+the 1.77% of team-gameweeks in an otherwise-full round carrying no fixture,
+rounded down for squad-wide events the appearance record books against
+individuals.
+
+**4. The four tilts were unbounded.** Penalty duty, set-piece duty, fixture and
+confidence spanned 1.4 points between them, enough to overturn 1.87 points of
+projection at the 0.75 mean weight, while the module header called them
+"deliberately small". Their sum now passes through tanh at a bound of 0.375,
+which is half a projected point of authority: below that gap the tilts may
+decide the armband, above it they may not. tanh rather than a clamp so there is
+no edge for a candidate to sit on.
+
+**And the UI never explained any of it.** `explain.js` had a
+`captain_over_alternative` sentence that fires only when the CAPTAIN is
+out-projected, and nothing at all for the vice. In the reported case the captain
+happened to be top of the pitch, so the whole disagreement went unmentioned and
+the only sentence about the vice restated the very number that looked wrong.
+There is now a `vice_over_alternative` sentence, both sentences name the one to
+three terms that measurably separated the two rather than a fixed list in a
+fixed order, and neither fires when the armband matches the pitch order.
+
+**Measured on the deciding instrument** (registry entry 26): +2.6 points a
+window, se 2.3, t 1.13, 8W/3L/9T over 20 windows, all four seasons positive.
+That is NOT a points win and is not claimed as one. Nine windows read exactly
++0.0, which is the number that matters: the change alters few decisions and
+improves the ones it alters, unlike the sub-on corrections of entries 23 and 24
+that were worth nothing while reshuffling half of all gameweeks.
+
+**What was NOT changed, and why.** `subOnRate` still has no shrinkage, so one
+substitute appearance in one non-start still returns exactly 1.0 and pins
+`pAppear`. That is a real defect and it is why Foden reads 1.000. It has been
+attacked twice on the deciding instrument and rejected both times (entries 23 and
+24, the second including a bound and an empirical-Bayes prior measured over
+76,475 non-start player-matches: t 0.10, sign test p 1.00, while changing the
+recommendation in 52% to 87% of gameweeks). Entry 24 closes by asking that any
+future attempt be a DATA change accumulating real appearance counts from
+`event/<gw>/live` rather than a third estimator. It also had no part in the
+complaint: `pAppear` is not a term in the captaincy `value`. Where it does reach
+the armband is the captain's fallback term, `(1 - pAppear) * viceValue`, which a
+pinned captain collects nothing from. Recorded as registry entry 27.
+
 ## Open questions / next highest-value work
 
 Ranked 2026-08-12, evening, after 2025-26 qualified (entry 15), bonus closed

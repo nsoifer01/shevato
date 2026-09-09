@@ -660,7 +660,9 @@ export function distVariance(d) {
   return s;
 }
 
-// Smallest value v with P(X <= v) >= q. Used for the projection ceiling.
+// Smallest value v with P(X <= v) >= q. The textbook quantile of a DISCRETE
+// distribution, and the right answer whenever the question is "which attainable
+// score is the qth percentile": FPL points are integers, so this returns one.
 export function distQuantile(d, q) {
   let cum = 0;
   for (let i = 0; i < d.p.length; i++) {
@@ -668,4 +670,54 @@ export function distQuantile(d, q) {
     if (cum >= q - 1e-12) return d.offset + i;
   }
   return d.offset + d.p.length - 1;
+}
+
+// The same percentile read as a CONTINUOUS statistic, by linear interpolation
+// across the bucket the percentile falls inside.
+//
+// WHY BOTH EXIST. `distQuantile` is a step function of q and of the
+// distribution: every probability mass that moves leaves the answer unchanged
+// until it crosses a bucket edge, and then the answer jumps a whole point. That
+// is correct for "what score is the 85th percentile" and wrong for any caller
+// that RANKS players by their upside, because two players whose distributions
+// differ slightly either read identically or differ by a full point, with
+// nothing in between. Ranking needs a statistic that moves when the
+// distribution moves, so it gets this one.
+//
+// The interpolation treats the mass in a bucket as spread evenly across it,
+// which is the standard continuity correction for a lattice distribution:
+// integer score k stands for the interval [k - 0.5, k + 0.5]. The result is
+// monotone in q, agrees with `distQuantile` at each bucket's MIDPOINT, and
+// spans [offset - 0.5, offset + length - 0.5]. It is therefore an upside
+// statistic, not an attainable score, and callers that need the exact discrete
+// quantile must keep using `distQuantile`. It is clamped to the support, so a
+// degenerate distribution (all mass on one value) reports that value exactly.
+export function distQuantileInterpolated(d, q) {
+  const last = d.offset + d.p.length - 1;
+  if (!(d.p.length > 0)) return d.offset;
+  const target = Math.min(Math.max(q, 0), 1);
+  let cum = 0;
+  for (let i = 0; i < d.p.length; i++) {
+    const mass = d.p[i];
+    const next = cum + mass;
+    if (next >= target - 1e-12) {
+      // Where inside this bucket the percentile lands. A bucket carrying no
+      // mass cannot be interpolated across, so it reports its own value.
+      if (mass <= 1e-12) return d.offset + i;
+      const within = (target - cum) / mass;
+      const clamped = Math.min(Math.max(within, 0), 1);
+      // Bucket i spans [i - 0.5, i + 0.5] under the continuity correction.
+      const value = d.offset + i - 0.5 + clamped;
+      // ...but never outside the support. The correction models a lattice that
+      // stands in for something continuous, and at the edges there is nothing
+      // for it to stand in for: a player who cannot play has all his mass on
+      // zero, and his 85th percentile is zero, not 0.35. Clamping costs nothing
+      // in the body of a real distribution, where the quantile being asked for
+      // is interior, and it keeps the statistic inside the scores that can
+      // actually happen.
+      return Math.min(Math.max(value, d.offset), last);
+    }
+    cum = next;
+  }
+  return last;
 }

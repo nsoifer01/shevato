@@ -192,7 +192,10 @@ re-derives "expected points" a second way. `xPointsNet` is the same number less
 the hit. `xPointsHorizon` and `objective` are a DIFFERENT quantity - the
 discounted ranking objective - and deliberately contain neither
 auto-substitutions nor vice succession; see the note in `gameweekPoints`.
-      captain.js         captain and vice-captain
+      captain.js         captain and vice-captain, ranked on a certainty
+                         equivalent plus four BOUNDED tilts (duty, fixture,
+                         confidence), with the vice discounted by a MEASURED
+                         same-club appearance correlation
       transfers.js       transfer search, hits, roll value
       squad-builder.js   full 15-man build (wildcard, free hit, pre-season)
       chips.js           chip evaluation across the season
@@ -611,6 +614,16 @@ number in the model):
   the reasons, derived from minutes uncertainty, injury flags, data freshness,
   horizon distance and how close the runner-up plan is. Never an invented
   percentage.
+- **Why this captain, and why this vice?** (`js/engine/explain.js`) The pitch
+  prints one number per player, xP, and the armband is not ranked on it, so
+  whenever the two disagree the app shows a captain or a vice standing below a
+  team mate and has to say why. Both sentences fire only when the pitch order is
+  actually contradicted, so the obvious armband is never explained at the
+  reader; when they do fire they name the one to three terms that MEASURABLY
+  separated the two, ranked by size, out of the components `captain.js` already
+  computed. The vice half of this did not exist before 2026-09-09: the only
+  sentence about the vice was "X takes over if he does not play, projecting 3.5
+  points", which restates the thing that looks wrong and explains none of it.
 - **What changed?** (`js/ui/plan-diff.js`) diffs the stored plan versions when a
   resync moves the recommendation, and cites the field that moved ("Player A is
   now flagged injured"). Computed, never narrated.

@@ -9,6 +9,9 @@ import {
   availabilityCeiling,
   horizonSteps,
   MINUTES_PARAMS,
+  minutesConfidence,
+  confidenceTierFor,
+  NO_EVIDENCE_START_SD,
 } from '../js/engine/minutes.js';
 import { makeRng } from '../js/engine/ml.js';
 
@@ -255,14 +258,27 @@ test('a blank gameweek yields zero minutes and a double lowers the per-fixture s
   );
 });
 
-test('confidence tracks how much history there is', () => {
+test('confidence measures how well the minutes are known, not how many there are', () => {
   const gs = makeGameState(LEAGUE);
   const nailed = projectMinutes(makePlayer({ minutes: 3200, starts: 36 }), { gameState: gs, gw: 1 });
   const some = projectMinutes(makePlayer({ minutes: 500, starts: 5 }), { gameState: gs, gw: 1 });
-  const barely = projectMinutes(makePlayer({ minutes: 120, starts: 1 }), { gameState: gs, gw: 1 });
+
+  // A full season of evidence, either way round. The nailed starter and the
+  // settled squad player are both WELL KNOWN; that they are known to be very
+  // different players is what pStart is for, and it says so.
   assert.equal(nailed.confidence, 'high');
-  assert.equal(some.confidence, 'medium');
-  assert.equal(barely.confidence, 'low');
+  assert.equal(some.confidence, 'high');
+  assert.ok(nailed.pStart > 0.8);
+  assert.ok(some.pStart < 0.3);
+});
+
+test('the tier is derived from the score and the two can never disagree', () => {
+  const gs = makeGameState(LEAGUE);
+  for (const over of [{ minutes: 3200, starts: 36 }, { minutes: 500, starts: 5 }, { minutes: 90, starts: 1 }, {}]) {
+    const r = projectMinutes(makePlayer(over), { gameState: gs, gw: 1 });
+    assert.equal(r.confidence, confidenceTierFor(r.confidenceScore));
+    assert.ok(r.confidenceScore >= 0 && r.confidenceScore <= 1);
+  }
 });
 
 test('p60 rises with typical starter minutes and is a probability', () => {
@@ -453,4 +469,90 @@ test('calibration exposes a biased model rather than hiding it', () => {
   const report = calibration(rows, { bins: 10 });
   assert.ok(report.ece > 0.15, `a 0.3 bias should show up, ece was ${report.ece}`);
   assert.ok(report.meanPredicted > report.observedRate);
+});
+
+// --- season-aware confidence ----------------------------------------------
+//
+// The tiers used to be cumulative-minute thresholds (900 / 270), which are
+// late-season numbers with no season attached: before roughly gameweek 10 they
+// described nothing, and at gameweek 4 `high` was arithmetically unreachable
+// because 270 was every minute that had been played. These pin the replacement.
+
+test('confidence rises with the season instead of stepping at a fixed minute count', () => {
+  // A club has played g matches; the player has started every one of them, so
+  // this is the best evidence anyone can carry at that point in the season.
+  const scores = [1, 2, 3, 4, 6, 10, 19, 38]
+    .map(g => minutesConfidence({ startRate: 1, evidenceMatches: g }).score);
+  for (let i = 1; i < scores.length; i++) {
+    assert.ok(scores[i] > scores[i - 1], 'more matches must mean more confidence');
+  }
+  // The old thresholds made `high` arithmetically unreachable before gameweek
+  // 10 and `medium` unreachable before gameweek 3, for everyone, whatever they
+  // had done. Both are now reachable on a player's own evidence, well before
+  // the 900 and 270 minute marks that used to gate them.
+  assert.equal(minutesConfidence({ startRate: 1, evidenceMatches: 3 }).tier, 'medium');
+  assert.equal(minutesConfidence({ startRate: 1, evidenceMatches: 10 }).tier, 'high');
+});
+
+test('the top tier is reachable in gameweek 1 on prior-season evidence', () => {
+  // The live gate is `evidenceMatches`, which normalize.js blends from the
+  // season baseline, so an established starter is not held at `low` by the
+  // calendar. A genuine newcomer with one match behind him is `low` because he
+  // has one match of evidence, which is a fact about him and not about the date.
+  assert.equal(minutesConfidence({ startRate: 0.95, evidenceMatches: 38 + 1 }).tier, 'high');
+  assert.equal(minutesConfidence({ startRate: 1, evidenceMatches: 1 }).tier, 'low');
+});
+
+test('an established starter carries his prior season into gameweek 1', () => {
+  // evidenceMatches is the blended denominator, so a returning regular arrives
+  // with a season behind him and reaches the top tier before a ball is kicked.
+  const returning = minutesConfidence({ startRate: 0.95, evidenceMatches: 38 });
+  const debutant = minutesConfidence({ startRate: 0.95, evidenceMatches: 0 });
+  assert.equal(returning.tier, 'high');
+  assert.equal(debutant.tier, 'low');
+  assert.equal(debutant.score, 0, 'no evidence is the uniform prior, which scores zero');
+});
+
+test('a single observation increases confidence without conferring certainty', () => {
+  const one = minutesConfidence({ startRate: 1, evidenceMatches: 1 });
+  assert.ok(one.score > 0, 'one match is more than none');
+  assert.ok(one.score < 0.35, 'one match is nowhere near certainty');
+  const many = minutesConfidence({ startRate: 1, evidenceMatches: 30 });
+  assert.ok(many.score > 3 * one.score);
+});
+
+test('a coin-flip rotation risk is less known than either extreme on the same sample', () => {
+  const n = 12;
+  const nailed = minutesConfidence({ startRate: 0.95, evidenceMatches: n }).score;
+  const never = minutesConfidence({ startRate: 0.05, evidenceMatches: n }).score;
+  const rota = minutesConfidence({ startRate: 0.5, evidenceMatches: n }).score;
+  assert.ok(nailed > rota, 'a nailed starter is better known than a rotation risk');
+  assert.ok(never > rota, 'a settled non-starter is better known than a rotation risk');
+});
+
+test('a published doubt costs confidence directly', () => {
+  const fit = minutesConfidence({ startRate: 0.95, evidenceMatches: 30, availability: 1 });
+  const doubt = minutesConfidence({ startRate: 0.95, evidenceMatches: 30, availability: 0.5 });
+  assert.ok(doubt.score < fit.score);
+  assert.ok(Math.abs(doubt.score - fit.score * 0.5) < 1e-12, 'availability scales the score');
+});
+
+test('the score is bounded, and the worst case is the no-evidence prior', () => {
+  assert.ok(Math.abs(NO_EVIDENCE_START_SD - Math.sqrt(1 / 12)) < 1e-12);
+  for (const n of [0, 1, 3, 7, 20, 38, 200]) {
+    for (const p of [0, 0.15, 0.5, 0.85, 1]) {
+      const { score } = minutesConfidence({ startRate: p, evidenceMatches: n });
+      assert.ok(score >= 0 && score <= 1, `score out of range at n=${n} p=${p}`);
+    }
+  }
+});
+
+test('the same minutes read differently at different points in the season', () => {
+  // 195 minutes after 3 matches is a regular; after 15 it is a fringe player.
+  // The MODEL separates them where the difference belongs, in the start rate,
+  // and reports the later one as better known, which it is.
+  const early = minutesConfidence({ startRate: 195 / 270, evidenceMatches: 3 });
+  const late = minutesConfidence({ startRate: 195 / 1350, evidenceMatches: 15 });
+  assert.ok(late.score > early.score, 'fifteen matches is a bigger sample than three');
+  assert.notEqual(early.tier, 'high', 'three matches cannot be conclusive');
 });

@@ -47,7 +47,7 @@ import {
   distMix,
   distMean,
   distVariance,
-  distQuantile,
+  distQuantileInterpolated,
 } from './ml.js';
 
 // --- Scoring divisors the API does not publish -----------------------------
@@ -785,8 +785,18 @@ export function projectPlayerGw(player, { gameState, strength, gw, model = null,
     pointsBreakdown,
     xPoints,
     sd: Math.sqrt(Math.max(0, variance)),
-    ceiling: distQuantile(dist, CEILING_QUANTILE),
+    // Interpolated, not the discrete quantile. The ceiling is only ever read as
+    // a RANKING signal (captaincy upside, the drawer's "realistic ceiling"), and
+    // the discrete quantile of an integer-scored distribution is a step
+    // function: it answers 7 for every player until the mass crosses a bucket
+    // edge and then answers 8, so a hair of extra threat is worth either nothing
+    // or a whole point. See distQuantileInterpolated in ml.js.
+    ceiling: distQuantileInterpolated(dist, CEILING_QUANTILE),
     confidence: mins.confidence,
+    // The continuous form of the same quantity. The tier is a display and
+    // gating device; anything WEIGHTING confidence must read the score, so that
+    // a player a hair either side of a tier edge cannot swing a decision.
+    confidenceScore: mins.confidenceScore,
     ratesSource: rates.source,
   };
 }

@@ -458,7 +458,13 @@ test('sd and ceiling come from the composed distribution', () => {
 
   assert.ok(a.sd > 0 && b.sd > 0);
   assert.ok(b.sd > a.sd, 'a striker carries more variance than a defensive defender');
-  assert.ok(Number.isInteger(a.ceiling), 'the ceiling is a real point total, not a scaled mean');
+  // The ceiling is the interpolated 85th percentile of the composed
+  // distribution, so it is continuous rather than a whole point total: see
+  // distQuantileInterpolated in ml.js for why a step function was the wrong
+  // statistic to rank captaincy upside on. It is still a POINT TOTAL, drawn
+  // from the support of the distribution rather than scaled off the mean.
+  assert.ok(Number.isFinite(a.ceiling), 'the ceiling is a number');
+  assert.ok(a.ceiling >= 0, 'the ceiling sits inside the support');
   assert.ok(a.ceiling >= a.xPoints);
   assert.ok(b.ceiling - b.xPoints > a.ceiling - a.xPoints, 'the upside gap should be wider for the striker');
   // Not a fixed multiple of the mean, which is what "derived from the

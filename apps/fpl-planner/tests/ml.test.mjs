@@ -24,6 +24,7 @@ import {
   distMean,
   distVariance,
   distQuantile,
+  distQuantileInterpolated,
 } from '../js/engine/ml.js';
 
 const close = (a, b, eps = 1e-9) => assert.ok(Math.abs(a - b) < eps, `${a} !~= ${b} (eps ${eps})`);
@@ -243,4 +244,86 @@ test('makeRng is deterministic and shuffle is reproducible for a seed', () => {
   const s2 = shuffle([1, 2, 3, 4, 5, 6, 7, 8], makeRng(9));
   assert.deepEqual(s1, s2);
   assert.notDeepEqual(s1, [1, 2, 3, 4, 5, 6, 7, 8]);
+});
+
+// --- the interpolated quantile ---------------------------------------------
+//
+// `distQuantile` is a step function: it answers the same integer for every
+// distribution until the mass crosses a bucket edge, and then it answers a whole
+// point more. That is the correct discrete quantile and the wrong statistic to
+// RANK captaincy upside on, which is what the projection ceiling is used for.
+
+test('the interpolated quantile is continuous where the discrete one jumps', () => {
+  // Walk mass across a bucket edge in small steps. The discrete answer jumps a
+  // full point at the crossing; the interpolated one must not.
+  let lastDiscrete = null;
+  let lastInterp = null;
+  let sawJump = false;
+  for (let m = 0.80; m <= 0.90 + 1e-9; m += 0.005) {
+    const d = { offset: 0, p: [m, 1 - m] };
+    const discrete = distQuantile(d, 0.85);
+    const interp = distQuantileInterpolated(d, 0.85);
+    if (lastDiscrete !== null && discrete !== lastDiscrete) sawJump = true;
+    if (lastInterp !== null) {
+      assert.ok(Math.abs(interp - lastInterp) < 0.2, `interpolation jumped by ${Math.abs(interp - lastInterp)}`);
+    }
+    lastDiscrete = discrete;
+    lastInterp = interp;
+  }
+  assert.ok(sawJump, 'the discrete quantile must jump somewhere in this sweep, or the test proves nothing');
+});
+
+test('the interpolated quantile is monotone in q', () => {
+  const d = { offset: 0, p: [0.1, 0.2, 0.3, 0.25, 0.15] };
+  let prev = -Infinity;
+  for (let q = 0; q <= 1 + 1e-9; q += 0.01) {
+    const v = distQuantileInterpolated(d, q);
+    assert.ok(v >= prev - 1e-12, `not monotone at q=${q}`);
+    prev = v;
+  }
+});
+
+test('the interpolated quantile agrees with the discrete one at bucket midpoints', () => {
+  const d = { offset: 0, p: [0.1, 0.2, 0.3, 0.25, 0.15] };
+  // The midpoint of bucket i is at cumulative F(i-1) + p_i/2.
+  let cum = 0;
+  for (let i = 0; i < d.p.length; i++) {
+    const mid = cum + d.p[i] / 2;
+    cum += d.p[i];
+    const v = distQuantileInterpolated(d, mid);
+    // Clamped to the support, so the first and last buckets can sit on the edge.
+    if (i > 0 && i < d.p.length - 1) {
+      assert.ok(Math.abs(v - (d.offset + i)) < 1e-9, `bucket ${i} midpoint gave ${v}`);
+    }
+  }
+});
+
+test('the interpolated quantile stays inside the support', () => {
+  const d = { offset: -2, p: [0.25, 0.25, 0.25, 0.25] };
+  for (let q = 0; q <= 1 + 1e-9; q += 0.05) {
+    const v = distQuantileInterpolated(d, q);
+    assert.ok(v >= -2 && v <= 1, `q=${q} gave ${v}, outside [-2, 1]`);
+  }
+});
+
+test('a degenerate distribution reports its own value exactly', () => {
+  // A player who cannot play has all his mass on zero. His 85th percentile is
+  // zero, not a continuity-corrected 0.35.
+  assert.equal(distQuantileInterpolated({ offset: 0, p: [1] }, 0.85), 0);
+  assert.equal(distQuantileInterpolated({ offset: 4, p: [1] }, 0.5), 4);
+  assert.equal(distQuantileInterpolated({ offset: 0, p: [1] }, 0), 0);
+});
+
+test('an empty bucket is not interpolated across', () => {
+  const d = { offset: 0, p: [0.5, 0, 0.5] };
+  const v = distQuantileInterpolated(d, 0.85);
+  assert.ok(Number.isFinite(v));
+  assert.ok(v >= 0 && v <= 2);
+});
+
+test('a tiny change in probability moves the ceiling by a tiny amount', () => {
+  const a = { offset: 0, p: [0.5, 0.2, 0.2, 0.1] };
+  const b = { offset: 0, p: [0.499, 0.201, 0.2, 0.1] };
+  const moved = Math.abs(distQuantileInterpolated(a, 0.85) - distQuantileInterpolated(b, 0.85));
+  assert.ok(moved < 0.05, `a 0.001 shift moved the ceiling by ${moved}`);
 });
