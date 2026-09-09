@@ -16,10 +16,16 @@ import {
   estimatePayloadBytes,
   sameKeySet,
   decideRemoteChange,
+  remoteToken,
   requeueFailedWrites,
   isPermanentWriteError,
   splitIntoChunks,
-  planFlushBatches
+  planFlushBatches,
+  mapIndex,
+  valueIndex,
+  mergeMaps,
+  mergeValues,
+  normaliseBaseIndex
 } from '../sync-helpers.mjs';
 
 /* -------------------- hashValue -------------------- */
@@ -475,4 +481,189 @@ test('planFlushBatches: an entry that cannot fit alone is reported, not silently
 
 test('planFlushBatches: no entries means no commits', () => {
   assert.deepEqual(planFlushBatches([], 700), { batches: [], oversized: [] });
+});
+
+/* -------------------- decideRemoteChange: the three-way condition --------------------
+ *
+ * `dirty` proves only that WE moved. Treating that alone as a conflict is
+ * what made a single device argue with its own Firestore echo, so these
+ * cover the context that establishes whether the CLOUD moved too.
+ */
+
+const DIRTY = { rev: 5, hash: 'localhash', updatedAt: 1000, dirty: true };
+const REMOTE = { rev: 4, hash: 'remotehash', updatedAt: 5000 };
+
+test('decideRemoteChange: dirty alone is still a conflict when nothing else is known', () => {
+  // The pre-existing three-argument behaviour, unchanged: with no context
+  // the function cannot tell an own echo from a peer, and errs toward
+  // reporting rather than toward silently dropping a side.
+  assert.equal(decideRemoteChange(DIRTY, REMOTE, 0), 'conflict');
+});
+
+test('decideRemoteChange: a body this client published itself is never a conflict', () => {
+  assert.equal(decideRemoteChange(DIRTY, REMOTE, 0, { ownEcho: true }), 'skip-own');
+});
+
+test('decideRemoteChange: a cloud still holding the agreed base has not moved', () => {
+  assert.equal(
+    decideRemoteChange(DIRTY, REMOTE, 0, { baseHash: 'remotehash' }),
+    'skip-agreed',
+    'the cloud is exactly where we left it, however far we have moved'
+  );
+  assert.equal(
+    decideRemoteChange(DIRTY, REMOTE, 0, { baseHash: 'something-else' }),
+    'conflict',
+    'a cloud that has moved away from the base IS a conflict'
+  );
+});
+
+test('decideRemoteChange: a body already resolved is not resolved twice', () => {
+  const seenToken = remoteToken(REMOTE);
+  assert.equal(decideRemoteChange(DIRTY, REMOTE, 0, { seenToken }), 'skip-seen');
+  assert.equal(
+    decideRemoteChange(DIRTY, { ...REMOTE, hash: 'moved-on' }, 0, { seenToken }),
+    'conflict',
+    'a different body under the same revision is still news'
+  );
+});
+
+test('decideRemoteChange: an unresolved serverTimestamp on a pending write is not news', () => {
+  const pending = { rev: 6, hash: 'x', updatedAt: null };
+  assert.equal(decideRemoteChange(DIRTY, pending, 0, { pendingWrites: true }), 'skip-pending');
+});
+
+test('decideRemoteChange: hasPendingWrites does not suppress a genuine committed edit', () => {
+  // A snapshot can carry this client's pending writes AND a peer's committed
+  // change at the same time. Metadata alone must never silence the latter,
+  // which is why it is one signal of three rather than the fix on its own.
+  const committed = { rev: 9, hash: 'theirs', updatedAt: 9000 };
+  assert.equal(decideRemoteChange(DIRTY, committed, 0, { pendingWrites: true }), 'conflict');
+});
+
+test('decideRemoteChange: dedupe still beats every other consideration', () => {
+  const same = { rev: 9, hash: 'localhash', updatedAt: 9000 };
+  assert.equal(decideRemoteChange(DIRTY, same, 0, { ownEcho: false }), 'skip-deduped');
+});
+
+test('remoteToken: identity is revision AND content, never one of them', () => {
+  assert.equal(remoteToken({ rev: 3, hash: 'abc' }), '3:abc');
+  assert.notEqual(remoteToken({ rev: 3, hash: 'abc' }), remoteToken({ rev: 3, hash: 'abd' }));
+  assert.notEqual(remoteToken({ rev: 3, hash: 'abc' }), remoteToken({ rev: 4, hash: 'abc' }));
+  assert.equal(remoteToken(null), '0:null');
+});
+
+/* -------------------- mapIndex / valueIndex -------------------- */
+
+test('mapIndex: a plain object indexes by its own keys', () => {
+  const index = mapIndex({ mon: 1, tue: [2, 3] });
+  assert.deepEqual(Object.keys(index).sort(), ['mon', 'tue']);
+  assert.equal(index.mon, hashValue(1));
+  assert.equal(index.tue, hashValue([2, 3]));
+});
+
+test('mapIndex: an empty object is a legitimate map', () => {
+  assert.deepEqual({ ...mapIndex({}) }, {});
+});
+
+test('mapIndex: arrays and primitives are not maps', () => {
+  assert.equal(mapIndex([{ id: 'a' }]), null);
+  assert.equal(mapIndex('a string'), null);
+  assert.equal(mapIndex(7), null);
+  assert.equal(mapIndex(null), null);
+});
+
+test('mapIndex: the index cannot be poisoned through __proto__', () => {
+  const index = mapIndex(JSON.parse('{"__proto__": {"polluted": true}}'));
+  assert.equal(Object.getPrototypeOf(index), null);
+  assert.equal(({}).polluted, undefined);
+});
+
+test('valueIndex: tags the shape so an array is never merged against an object', () => {
+  assert.equal(valueIndex([{ id: 'a' }]).kind, 'records');
+  assert.equal(valueIndex({ mon: 1 }).kind, 'map');
+  assert.equal(valueIndex('a string'), null);
+});
+
+test('valueIndex: an EMPTY list is mergeable, unlike a shapeless value', () => {
+  // Clearing a collection is a real state. Treating [] as "not a record
+  // collection" made a cleared list arrive on the other device as an
+  // unmergeable conflict rather than as the deletion it is.
+  const index = valueIndex([]);
+  assert.equal(index.kind, 'records');
+  assert.deepEqual({ ...index.entries }, {});
+});
+
+/* -------------------- mergeMaps -------------------- */
+
+test('mergeMaps: two devices adding two different dates keep both', () => {
+  const base = mapIndex({ mon: 1 });
+  const merged = mergeMaps(base, { mon: 1, tue: 2 }, { mon: 1, wed: 3 });
+  assert.deepEqual(merged.merged, { mon: 1, wed: 3, tue: 2 });
+  assert.deepEqual(merged.conflicts, []);
+});
+
+test('mergeMaps: the side that changed a key wins that key', () => {
+  const base = mapIndex({ units: 'kg', theme: 'dark' });
+  const merged = mergeMaps(base, { units: 'lb', theme: 'dark' }, { units: 'kg', theme: 'light' });
+  assert.deepEqual(merged.merged, { units: 'lb', theme: 'light' });
+  assert.deepEqual(merged.conflicts, []);
+});
+
+test('mergeMaps: a key both sides changed is reported, and resolved the same way everywhere', () => {
+  const base = mapIndex({ units: 'kg' });
+  const a = mergeMaps(base, { units: 'lb' }, { units: 'st' });
+  const b = mergeMaps(base, { units: 'st' }, { units: 'lb' });
+  assert.deepEqual(a.conflicts, ['units']);
+  assert.deepEqual(b.conflicts, ['units']);
+  assert.deepEqual(a.merged, b.merged, 'both devices reach the same answer, or they ping-pong');
+});
+
+test('mergeMaps: a deletion is honoured rather than resurrected', () => {
+  const base = mapIndex({ mon: 1, tue: 2 });
+  const merged = mergeMaps(base, { mon: 1, tue: 2, wed: 3 }, { mon: 1 });
+  assert.deepEqual(merged.merged, { mon: 1, wed: 3 }, 'their delete sticks, our addition survives');
+});
+
+test('mergeMaps: with no base at all, nothing is deleted', () => {
+  const merged = mergeMaps(null, { mon: 1 }, { tue: 2 });
+  assert.deepEqual(merged.merged, { tue: 2, mon: 1 });
+});
+
+/* -------------------- mergeValues -------------------- */
+
+test('mergeValues: dispatches on shape and refuses a shape change', () => {
+  assert.ok(mergeValues(null, [{ id: 'a' }], [{ id: 'b' }]), 'two record collections merge');
+  assert.ok(mergeValues(null, { a: 1 }, { b: 2 }), 'two maps merge');
+  assert.equal(mergeValues(null, [{ id: 'a' }], { b: 2 }), null, 'an array is not a map');
+  assert.equal(mergeValues(null, 'a string', 'another'), null, 'primitives have nothing to merge');
+  assert.equal(mergeValues(null, null, { a: 1 }), null, 'a missing side cannot be merged');
+});
+
+test('mergeValues: a base recorded for the other shape is ignored, not misread', () => {
+  // Reading a records base as a map index would label every existing entry
+  // an addition, which is the one thing a base exists to prevent.
+  const recordsBase = { kind: 'records', entries: { mon: 'somehash' } };
+  const merged = mergeValues(recordsBase, { mon: 1 }, {});
+  assert.deepEqual(merged.merged, { mon: 1 }, 'without a usable base, nothing is treated as deleted');
+});
+
+test('normaliseBaseIndex: the legacy bare id->hash base still merges', () => {
+  // Devices upgrading in place hold a base written before maps were
+  // mergeable: a bare object of id -> hash with no shape tag.
+  assert.deepEqual(normaliseBaseIndex({ a: 'h1' }), { kind: 'records', entries: { a: 'h1' } });
+  assert.deepEqual(
+    normaliseBaseIndex({ kind: 'map', entries: { mon: 'h' }, hash: 'whole' }),
+    { kind: 'map', entries: { mon: 'h' } }
+  );
+  assert.equal(normaliseBaseIndex(null), null);
+});
+
+test('mergeValues: a legacy base is honoured, so an upgrade does not resurrect deletions', () => {
+  const legacyBase = { a: hashValue({ id: 'a', v: 1 }), b: hashValue({ id: 'b', v: 1 }) };
+  const merged = mergeValues(legacyBase, [{ id: 'a', v: 1 }, { id: 'c', v: 1 }], [{ id: 'a', v: 1 }]);
+  assert.deepEqual(
+    merged.merged.map((r) => r.id).sort(),
+    ['a', 'c'],
+    'b was deleted remotely and stays deleted'
+  );
 });

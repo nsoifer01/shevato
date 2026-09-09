@@ -134,6 +134,17 @@
     // can and keeps a recoverable copy of whatever it cannot, but neither is
     // any use if nobody knows it happened - so the banner says so, and stays
     // up (no auto-fade) until it is dismissed.
+    //
+    // WORDING. This used to open with "Another device had changed this too",
+    // which the engine had no way of knowing. It fired whenever a remote
+    // value differed from the local one while a local write was still in
+    // flight, which was routinely this same device's own Firestore echo
+    // arriving a moment late. The engine now recognises its own writes and
+    // an unchanged cloud before it will call anything a conflict (see
+    // decideRemoteChange), so by the time this runs there really was an edit
+    // from somewhere else. It still cannot tell WHERE: another tab, another
+    // browser and another device are indistinguishable to it, and only one
+    // of those is a "device". "Another session" is what is actually known.
     function showConflictBanner(detail) {
         if (!bannerEl) return;
         clearTimeout(recoveryTimer);
@@ -142,10 +153,10 @@
         const conflicted = merged && detail.conflictedRecordIds && detail.conflictedRecordIds.length;
         showBanner('conflict', merged
             ? (conflicted
-                ? 'Changes from another device were merged; ' + conflicted
-                  + ' item' + (conflicted === 1 ? '' : 's') + ' differed and a copy of yours was kept'
-                : 'Changes from another device were merged in')
-            : 'Another device had changed this too. A copy of the other version was kept on this device.');
+                ? 'Changes from another session were merged; ' + conflicted
+                  + ' item' + (conflicted === 1 ? '' : 's') + ' differed and a copy of yours was saved on this device'
+                : 'Changes from another session were merged in')
+            : 'This was edited in another session too. The newer version is in use, and a copy of the other one was saved on this device.');
     }
 
     function render() {

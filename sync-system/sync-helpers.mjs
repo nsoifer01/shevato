@@ -170,27 +170,77 @@ export function sameKeySet(existingSet, incomingKeys) {
 }
 
 /**
+ * The identity of one committed snapshot of a key, as both ends see it.
+ *
+ * Revision alone is not enough (two devices can reach the same rev with
+ * different content) and content alone is not enough (a value can be written
+ * back to an earlier state). The pair is what lets a client recognise a
+ * document body it has already dealt with.
+ *
+ * @param {{rev?: number, hash?: string} | null | undefined} info
+ * @returns {string}
+ */
+export function remoteToken(info) {
+  return `${(info && info.rev) || 0}:${String((info && info.hash) || 'null')}`;
+}
+
+/**
  * Decide whether a remote document fragment should overwrite the local
  * copy. Returns one of:
  *
+ *   - 'skip-pending':  the snapshot is Firestore's latency-compensated view
+ *                      of writes this client has not had acknowledged yet,
+ *                      so its serverTimestamp() sentinels are unresolved.
+ *                      There is nothing to learn from it.
+ *   - 'skip-seen':     this exact (rev, hash) of this key has already been
+ *                      considered. Firestore re-emits the whole document on
+ *                      every listener re-attach, so without this one
+ *                      unresolved disagreement re-fired on every re-attach.
  *   - 'skip-stale':    remote timestamp is at or before the last remote
  *                      we already processed; ignore.
  *   - 'skip-deduped':  remote body is byte-identical to our local copy
  *                      (Firestore re-emits on listener re-attach).
+ *   - 'skip-own':      this client published this exact snapshot itself. A
+ *                      device cannot conflict with its own write.
+ *   - 'skip-agreed':   the cloud is still holding exactly the state the two
+ *                      sides last agreed on, so it has not moved and there
+ *                      is nothing to reconcile, however far WE have moved.
  *   - 'skip-older':    local is newer than remote.
+ *   - 'conflict':      both sides moved away from the agreed state.
  *   - 'apply':         remote should be written into localStorage.
  *
- * Local-wins on equal timestamps with lower remote rev; tie at same
- * rev and timestamp resolves to skip-older (defensive: identical
- * content has the same hash and would have been deduped already).
+ * A CONFLICT IS A THREE-WAY CONDITION, and getting that wrong is what made a
+ * single device conflict with its own Firestore echo. `dirty` only proves
+ * that WE moved. The cloud must have moved too, which is what `ownEcho` and
+ * `baseHash` establish. Before they existed this returned 'conflict' for any
+ * dirty key whose remote hash differed, so the ordinary sequence
  *
- * @param {{rev?: number, updatedAt?: number, hash?: string} | undefined} localRev
+ *   local write -> commit -> another local write -> echo of the FIRST commit
+ *
+ * was reported to the user as an edit made on another device.
+ *
+ * Local-wins on equal timestamps with lower remote rev; tie at same rev and
+ * timestamp resolves to skip-older (defensive: identical content has the
+ * same hash and would have been deduped already).
+ *
+ * @param {{rev?: number, updatedAt?: number, hash?: string, dirty?: boolean} | undefined} localRev
  * @param {{rev?: number, updatedAt?: any, hash?: string, value?: any}} remoteInfo
  * @param {number} lastRemoteUpdate ms-epoch of the most recent remote we processed.
- * @returns {'skip-stale'|'skip-deduped'|'skip-older'|'apply'}
+ * @param {{ownEcho?: boolean, baseHash?: string|null, seenToken?: string|null,
+ *          pendingWrites?: boolean}} [context] what this client knows about its
+ *        own traffic. Omitted entirely, this degrades to the two-way
+ *        comparison the function has always made.
+ * @returns {'skip-pending'|'skip-seen'|'skip-stale'|'skip-deduped'|'skip-own'|'skip-agreed'|'skip-older'|'conflict'|'apply'}
  */
-export function decideRemoteChange(localRev, remoteInfo, lastRemoteUpdate) {
+export function decideRemoteChange(localRev, remoteInfo, lastRemoteUpdate, context = {}) {
   const remoteTimestamp = getTimestamp(remoteInfo?.updatedAt);
+
+  // Latency compensation: Firestore delivers our own un-acknowledged writes
+  // straight back, with every serverTimestamp() still unresolved (null).
+  // That snapshot is a view of what WE just did, not news from anywhere.
+  if (context.pendingWrites && remoteTimestamp === 0) return 'skip-pending';
+
+  if (context.seenToken && context.seenToken === remoteToken(remoteInfo)) return 'skip-seen';
 
   if (remoteTimestamp <= (lastRemoteUpdate || 0)) return 'skip-stale';
 
@@ -198,10 +248,22 @@ export function decideRemoteChange(localRev, remoteInfo, lastRemoteUpdate) {
     return 'skip-deduped';
   }
 
+  // Our own commit, coming back off the watch stream. It differs from what is
+  // in localStorage now only because we have written again since.
+  if (context.ownEcho) return 'skip-own';
+
+  // The cloud still holds the last state the two sides agreed on. Whatever
+  // this device has done since, the OTHER side has done nothing, so there is
+  // no second version in existence to reconcile against.
+  if (context.baseHash && remoteInfo?.hash && remoteInfo.hash === context.baseHash) {
+    return 'skip-agreed';
+  }
+
   if (!localRev) return 'apply';
 
-  // DIRTY = this device holds edits the cloud has not accepted yet, so both
-  // sides have moved since they last agreed. That is a conflict, and the
+  // DIRTY = this device holds edits the cloud has not accepted yet. Combined
+  // with everything above (this body is not ours, and is not the agreed
+  // base), both sides have genuinely moved. That is a conflict, and the
   // caller resolves it by merging or by preserving the loser - never by
   // silently dropping one of them.
   if (localRev.dirty) return 'conflict';
@@ -479,4 +541,174 @@ export function mergeRecordCollections(baseIndex, localValue, remoteValue) {
   }
 
   return { merged: [...keep.values()], conflicts };
+}
+
+/**
+ * A key -> content-hash index of a plain object, or null when the value is
+ * not one.
+ *
+ * The sibling of `recordIndex` for the OTHER shape this repo actually
+ * stores: a map keyed by something meaningful. `maptapRivalsDays` is
+ * `{ 'YYYY-MM-DD': City[5] }`, one independent entry per date, and treating
+ * it as an opaque blob meant two devices that synced two different days
+ * competed for the whole map and one day was thrown away.
+ *
+ * Arrays are rejected (they are `recordIndex`'s business), as are class
+ * instances and anything that is not a bare object. An EMPTY object is a
+ * legitimate map, unlike an empty array, which cannot be told from "not a
+ * record collection at all".
+ *
+ * @param {*} value
+ * @returns {Record<string, string> | null}
+ */
+export function mapIndex(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const proto = Object.getPrototypeOf(value);
+  if (proto !== Object.prototype && proto !== null) return null;
+  // Null prototype for the same reason recordIndex uses one: the keys come
+  // from stored user data and '__proto__' must not write through.
+  const index = Object.create(null);
+  for (const key of Object.keys(value)) {
+    if (value[key] === undefined) continue;
+    index[key] = hashValue(value[key]);
+  }
+  return index;
+}
+
+/**
+ * The shape-tagged index of any syncable value, or null when the value has
+ * no internal structure to reconcile (a string, a number, a boolean).
+ *
+ * The tag matters: an array and an object are both "objects" to JavaScript,
+ * and merging one against the other would be nonsense. Recording the kind
+ * alongside the entries lets the merge refuse a shape change outright and
+ * fall back to a whole-value decision.
+ *
+ * @param {*} value
+ * @returns {{kind: 'records'|'map', entries: Record<string,string>} | null}
+ */
+export function valueIndex(value) {
+  if (Array.isArray(value)) {
+    // An empty list is a real state (everything was deleted) and must be
+    // mergeable, or clearing a collection on one device shows up on the
+    // other as an unmergeable conflict rather than as the deletion it is.
+    if (value.length === 0) return { kind: 'records', entries: Object.create(null) };
+    const entries = recordIndex(value);
+    return entries ? { kind: 'records', entries } : null;
+  }
+  const entries = mapIndex(value);
+  return entries ? { kind: 'map', entries } : null;
+}
+
+/**
+ * Three-way merge of two plain objects against the state they last agreed
+ * on, top-level key by top-level key. Same rules as
+ * `mergeRecordCollections`, with the object's own keys standing in for
+ * record ids; see that function for the per-id decision table.
+ *
+ * @param {Record<string,string>|null} baseEntries key -> hash they last agreed on
+ * @param {object} localValue
+ * @param {object} remoteValue
+ * @returns {{merged: object, conflicts: string[]} | null}
+ */
+export function mergeMaps(baseEntries, localValue, remoteValue) {
+  const localIndex = mapIndex(localValue);
+  const remoteIndex = mapIndex(remoteValue);
+  if (!localIndex || !remoteIndex) return null;
+
+  const base = baseEntries && typeof baseEntries === 'object' ? baseEntries : Object.create(null);
+  const conflicts = [];
+  const merged = {};
+
+  const decide = (key) => {
+    const inLocal = Object.prototype.hasOwnProperty.call(localIndex, key);
+    const inRemote = Object.prototype.hasOwnProperty.call(remoteIndex, key);
+    const inBase = Object.prototype.hasOwnProperty.call(base, key);
+
+    if (inLocal && inRemote) {
+      const lh = localIndex[key];
+      const rh = remoteIndex[key];
+      if (lh === rh) return { take: 'remote' };
+      const bh = inBase ? base[key] : undefined;
+      if (bh !== undefined && lh === bh) return { take: 'remote' };   // remote edited
+      if (bh !== undefined && rh === bh) return { take: 'local' };    // local edited
+      conflicts.push(key);
+      return { take: rh > lh ? 'remote' : 'local' };
+    }
+    if (inLocal) return inBase ? null : { take: 'local' };            // deleted remotely / added locally
+    return inBase ? null : { take: 'remote' };                        // deleted locally / added remotely
+  };
+
+  // Remote key order first, then this device's own additions, exactly as the
+  // record merge does, so the two devices converge on the same key set.
+  const keys = [];
+  for (const key of Object.keys(remoteIndex)) keys.push(key);
+  for (const key of Object.keys(localIndex)) if (!Object.prototype.hasOwnProperty.call(remoteIndex, key)) keys.push(key);
+
+  for (const key of keys) {
+    const chosen = decide(key);
+    if (!chosen) continue;
+    merged[key] = chosen.take === 'remote' ? remoteValue[key] : localValue[key];
+  }
+
+  return { merged, conflicts };
+}
+
+/**
+ * Three-way merge of any two syncable values against their agreed base,
+ * dispatched on shape. The single entry point the sync engine uses, so
+ * there is exactly one place that decides what "mergeable" means.
+ *
+ * Returns null when a structural merge is impossible: a primitive, a shape
+ * the indexers do not recognise, a side that does not exist, or the two
+ * sides having become different shapes. The caller then falls back to a
+ * deterministic whole-value winner.
+ *
+ * @param {{kind: string, entries: Record<string,string>}|null} base the stored
+ *        base index; a bare id->hash object is accepted as the legacy
+ *        'records' form written before maps were mergeable.
+ * @param {*} localValue
+ * @param {*} remoteValue
+ * @returns {{merged: *, conflicts: string[]} | null}
+ */
+export function mergeValues(base, localValue, remoteValue) {
+  if (localValue === null || localValue === undefined) return null;
+  if (remoteValue === null || remoteValue === undefined) return null;
+
+  const localKind = valueIndex(localValue);
+  const remoteKind = valueIndex(remoteValue);
+  if (!localKind || !remoteKind) return null;
+  if (localKind.kind !== remoteKind.kind) return null;
+
+  const normalised = normaliseBaseIndex(base);
+  // A base recorded for a different shape describes a value that no longer
+  // exists; merging against it would mislabel every entry as an addition.
+  const entries = normalised && normalised.kind === localKind.kind ? normalised.entries : null;
+
+  return localKind.kind === 'records'
+    ? mergeRecordCollections(entries, localValue, remoteValue)
+    : mergeMaps(entries, localValue, remoteValue);
+}
+
+/**
+ * Accept both the current tagged base (`{ kind, entries, hash }`) and the
+ * bare id->hash object written before maps were mergeable, so a device
+ * upgrading in place keeps the merge base it already had rather than
+ * treating every existing record as new.
+ *
+ * @param {*} base
+ * @returns {{kind: 'records'|'map', entries: Record<string,string>} | null}
+ */
+export function normaliseBaseIndex(base) {
+  if (!base || typeof base !== 'object') return null;
+  if (typeof base.kind === 'string') {
+    // A tagged record. `entries` is null for a value with no internal
+    // structure (a string, a number), which is recorded so its whole-value
+    // hash can still short-circuit an unchanged cloud - but there is no
+    // index to merge with, and falling through to the legacy branch here
+    // would hand the merge the BASE RECORD ITSELF as an id->hash map.
+    if (!base.entries || typeof base.entries !== 'object') return null;
+    return { kind: base.kind === 'map' ? 'map' : 'records', entries: base.entries };
+  }
+  return { kind: 'records', entries: base };
 }

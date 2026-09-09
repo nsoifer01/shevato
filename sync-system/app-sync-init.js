@@ -141,7 +141,18 @@ const APP_SYNC_CONFIG = {
       'maptapRivalsMyProfile',      // Verified profile snapshot (nickname/joinDate/avg/best)
       'maptapRivalsSettings',       // UI prefs (last-selected rival, etc.)
       'maptapRivalsSelectedRivalId' // Currently focused rival on detail view
-    ]
+    ],
+    // Values this app can rebuild, so a disagreement about them is resolved
+    // deterministically but is never worth a recovery copy or a message to
+    // the user: the profile snapshot is re-fetched from maptap.gg on the
+    // next sync, and the other two are which rival the UI was looking at.
+    // The rival list, the game log and the day geography are NOT here -
+    // those are the user's data and conflict normally.
+    policies: {
+      maptapRivalsMyProfile: 'derived',
+      maptapRivalsSettings: 'derived',
+      maptapRivalsSelectedRivalId: 'derived'
+    }
   },
 
   'trip-planner': {
@@ -243,6 +254,9 @@ export async function initAppSync() {
     sync: startStorageSync({
       namespace: config.namespace,
       keys: config.keys,
+      // Per-key conflict policy, optional. Absent, every key is 'auto',
+      // which is what every namespace had before policies existed.
+      policies: config.policies,
       useFirestore: true
     })
   }));

@@ -5845,7 +5845,15 @@
   // Counts every entry with a finite finalScore — same view MapTap's own
   // profile page uses. (Note: the per-game sync still requires a clean
   // 5-round breakdown; those are different concerns.)
-  function summarizeMapTapProfile(user) {
+  //
+  // `verifiedAt` is "when we last checked this against maptap.gg", and its
+  // granularity is one CHECK, not one rival. Stamping `new Date()` inside
+  // here meant a five-rival "Sync all rivals" run produced five different
+  // snapshots of the same profile, five localStorage writes and five
+  // Firestore revisions of a key nothing had actually changed. The run now
+  // passes one timestamp for the whole run; a single verification still
+  // gets its own, because a single verification IS the check.
+  function summarizeMapTapProfile(user, verifiedAt) {
     const gh = user.gameHistory || {};
     const dates = Object.keys(gh);
     let total = 0, sum = 0, best = -Infinity, worst = Infinity;
@@ -5870,7 +5878,7 @@
       bestScore: total > 0 ? best : 0,
       worstScore: total > 0 ? worst : 0,
       mostRecentDate: mostRecent,
-      verifiedAt: new Date().toISOString(),
+      verifiedAt: verifiedAt || new Date().toISOString(),
     };
   }
 
@@ -5959,6 +5967,14 @@
     state.syncAllProgress = { done: 0, total: targets.length, name: targets[0].name };
     renderProfileCard();
     const results = [];
+    // ONE logical save for the whole run. A run is a single user gesture
+    // that checks N rivals against the same two profile endpoints; treating
+    // it as N saves rewrote the profile snapshot N times (each with its own
+    // `verifiedAt`, so every one of them was a genuine change the sync layer
+    // had to ship) and re-uploaded the entire game log N times. The run
+    // shares one verification timestamp and persists once, in the finally,
+    // so a run that fails half way still saves everything it did get.
+    const run = { verifiedAt: new Date().toISOString(), gamesChanged: false, profileFetched: false };
     try {
       // Sequential so we never see partial double-pulls of "me" data. The
       // progress counter is repainted between rivals rather than inside the
@@ -5968,11 +5984,20 @@
         state.syncAllProgress.name = r.name;
         renderProfileCard();
         // eslint-disable-next-line no-await-in-loop
-        results.push(await syncMapTapForRival(r.id));
+        results.push(await syncMapTapForRival(r.id, run));
         state.syncAllProgress.done++;
         renderProfileCard();
       }
     } finally {
+      // Order matters only in that both happen: the day map goes out ahead
+      // of the log inside persistGames() for its own reasons.
+      if (run.gamesChanged) persistGames();
+      // A run that came back with nothing NEW still verified the profile,
+      // and that is exactly what `verifiedAt` records, so this is not gated
+      // on anything having changed. It is gated on the profile actually
+      // having been fetched: a run where every rival failed verified
+      // nothing and must not restamp the timestamp.
+      if (run.profileFetched) persistMyProfile();
       state.syncAllInFlight = false;
       state.syncAllProgress = null;
       // Stays up until the next run rather than self-clearing: it is the
@@ -7293,7 +7318,21 @@
   // up: { ok, added, updated, backfilled } on success, { ok: false, error }
   // when it could not run, { skipped: true } when this rival was already
   // mid-sync (its own button was clicked first) and nothing was attempted.
-  async function syncMapTapForRival(rivalId) {
+  /**
+   * Pull one rival's MapTap history and merge it into the game log.
+   *
+   * `run` is the batching context "Sync all rivals" passes in, and it is the
+   * whole difference between a run being one logical save and being one save
+   * per rival. Given one, this function updates `state` (so every card
+   * repaints with fresh numbers as the run walks the list) but leaves the
+   * writing to the caller, which does it once at the end. Called without one
+   * - the per-rival sync button - nothing changes: it persists immediately.
+   *
+   * @param {string} rivalId
+   * @param {{verifiedAt: string, gamesChanged: boolean}} [run] run-scoped
+   *        batching context, mutated in place.
+   */
+  async function syncMapTapForRival(rivalId, run) {
     const rival = state.rivals.find(r => r.id === rivalId);
     if (!rival) return { ok: false, error: 'rival not found' };
 
@@ -7323,9 +7362,14 @@
         fetchMapTapProfile(rival.maptapUsername),
       ]);
       // Keep the cached "Your profile" card snapshot fresh on every sync —
-      // no need to wait for the user to click Verify again.
-      state.myProfile = summarizeMapTapProfile(mineProfile);
-      persistMyProfile();
+      // no need to wait for the user to click Verify again. Inside a run the
+      // in-memory update still happens per rival (the card's totals stay
+      // live), but every rival shares the run's one verification timestamp,
+      // so the value only actually changes when the profile did, and the
+      // write is the caller's to make once at the end.
+      state.myProfile = summarizeMapTapProfile(mineProfile, run && run.verifiedAt);
+      if (run) run.profileFetched = true;
+      else persistMyProfile();
       const mineByDate = mapTapHistoryToRounds(mineProfile.gameHistory);
       const theirsByDate = mapTapHistoryToRounds(theirsProfile.gameHistory);
 
@@ -7342,7 +7386,15 @@
         now: Date.now(),
       });
       for (const g of newGames) state.games.push(g);
-      if (added || backfilled || updated) persistGames();
+      // persistGames() re-serialises the WHOLE log (and its day-geography
+      // map) every time, so doing it per rival made a five-rival run write
+      // and upload the entire history five times over to add a handful of
+      // rows. Inside a run the change is recorded and written once, after
+      // the last rival; on its own it still writes immediately.
+      if (added || backfilled || updated) {
+        if (run) run.gamesChanged = true;
+        else persistGames();
+      }
       if (added) {
         track('trackAction', 'games_logged', { entry_method: 'maptap_sync', game_count: added });
       }
@@ -8353,6 +8405,14 @@
       parseWhatsAppText,
       dayBucketDate,
       rivalNameHint,
+      // The MapTap sync run, and the live state it writes through, so a test
+      // can count what one "Sync all rivals" press actually persists. A run
+      // used to be N saves for N rivals, each of them restamping the same
+      // profile snapshot and re-serialising the whole game log.
+      state,
+      summarizeMapTapProfile,
+      syncMapTapForRival,
+      syncAllRivals,
     };
   }
 })();
