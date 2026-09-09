@@ -1682,6 +1682,110 @@ xG/xA rate quality, and early-window squad construction where a wrong opening
 channel; running more weights is known to be useless, because no flat weight
 can satisfy three seasons whose optima genuinely differ.
 
+## 28. Counted substitute appearances: the DATA change entry 24 asked for, REJECT
+
+- **Date:** 2026-09-09
+- **Decision: REJECT.** Nothing shipped; `js/engine/minutes.js` and
+  `js/engine/backtest.js` are unchanged. This is the THIRD rejection of a fix
+  for the same defect, and the first one that was not an estimator.
+- **Kind:** minutes-model data correction.
+- **Question:** entry 24 closed by asking that any future attempt COUNT
+  substitute appearances from the appearance record rather than model them.
+  Does counting them win FPL points?
+- **Instrument:** 3, paired trajectories, 20 windows / 60 trajectories.
+  `null-arm` was run first on the same tree and reported +0 on all 60.
+- **Command:** 120 replays in 218.5s. The candidate added a `played` total to
+  the replay accumulator (one per row with minutes on it), published it as
+  `playedMatches` beside the existing `evidenceMatches`, and had `minutes.js`
+  take `subApps = playedMatches - starts` instead of inferring it. The control
+  arm ignored the count via a temporary `FPL_NO_COUNTED_APPEARANCES` gate, and
+  both the gate and the plumbing were reverted after the run.
+
+**The candidate is not a better guess, it is the answer.** There is no prior, no
+shrinkage and no positional table in it: the number of matches a player came off
+the bench is the number of matches he played minus the number he started, and
+both are in the archive per player per fixture. This is what entry 24 asked for.
+
+**It fixes the defect it was aimed at, comprehensively.** At 2025-26 gameweek
+30, `pAppear` pinned at exactly 1.0000 falls from **16.0% of players with
+minutes to 3.9%**. Of the 69 players with 15+ starts and ZERO real substitute
+appearances, the old inference modelled **31 as certain to appear**; none now.
+Salah, 19 starts and 21 appearances in 29 covered matches, moves from 1.0000 to
+0.6911.
+
+**And it predicts appearances better, in every season.** Out of sample over
+66,614 player-gameweeks, inferred -> counted:
+
+| season | Brier before | Brier after | pinned before | pinned after |
+| --- | ---: | ---: | ---: | ---: |
+| 2022-23 | 0.1835 | **0.1750** | 14.6% | 8.8% |
+| 2023-24 | 0.1898 | **0.1818** | 14.4% | 5.1% |
+| 2024-25 | 0.1840 | **0.1728** | 13.1% | 7.8% |
+| 2025-26 | 0.1861 | **0.1748** | 14.9% | 7.9% |
+
+Mean appearance bias moves the other way, from about 0.000 to **+0.030**: the
+counted model is sharper but slightly optimistic, because the old near-zero bias
+was the pin's over-prediction cancelling under-prediction elsewhere rather than
+calibration.
+
+**The points, which are what decide:**
+
+| measure | per window (seeds averaged) |
+| --- | ---: |
+| observations | 20 |
+| total delta | **+0** |
+| mean | **+0.0** |
+| standard deviation | 39.7 |
+| standard error | 8.9 |
+| t | **0.00** |
+| 95% CI | -18.6 to +18.6 |
+| wins / losses / ties | 9 / 11 / 0 |
+| sign test p | 0.82 |
+
+| season | control | candidate | delta | W-L-T |
+| --- | ---: | ---: | ---: | --- |
+| 2022-23 | 10630 | 10703 | +73 | 5-8-2 |
+| 2023-24 | 10946 | 11322 | **+376** | 10-5-0 |
+| 2024-25 | 11789 | 11745 | -44 | 7-8-0 |
+| 2025-26 | 10729 | 10325 | **-404** | 5-10-0 |
+
+Control 44094 across 60 trajectories, candidate 44095. **One point.**
+
+**Why this is a rejection and not a wash to be waved through.** t is 0.00 and
+the sign test is 0.82, so there is no effect to accept. What there IS, and what
+entries 23 and 24 did not have to this degree, is VARIANCE: a per-window
+standard deviation of 39.7 against 10.5 for entry 26 on the same instrument, a
++376 season sitting beside a -404 season, and 0 ties in 20 windows where entry
+26 had 9. The arms disagree in every single window. That is the churn signature
+entry 24 named as a cost, arriving with no gain to pay for it, and this file's
+own rule applies without needing the churn harness to confirm it: an aggregate
+that hides a single-season collapse is a rejection, and here there is no
+aggregate at all.
+
+**A same-squad churn count was started and deliberately abandoned once the
+points landed on zero**, so this entry does NOT quote one. The variance above is
+evidence of decision movement, not a measurement of it. If this is ever
+reopened, measure churn first: it is the cheaper instrument and it would have
+answered the question before 218 seconds of replay did.
+
+**This is the calibration trap for the fourth time**, and it is the sharpest
+instance yet, because this candidate is not a rival model that might be worse
+than it looks. It is the ground truth, it improves Brier in all four seasons, it
+halves the pin, and it is worth exactly nothing. Entries 12, 13, 23 and 24
+recorded the same shape. The rule holds: prediction metrics decide nothing,
+points decide.
+
+**What this closes.** The defect is now understood as well as it is going to be
+without a new instrument, and three fixes have failed on points: a positional
+shrinkage (entry 23), a bounded empirical-Bayes estimator (entry 24) and the
+ground truth itself (this entry). **Do not attempt a fourth fix for the
+`subOnRate` pin as a points change.** The remaining harms are real but they are
+not point-scoring harms: `autosubValue`, `gkValue` and the minutes-risk term go
+identically zero for a pinned eleven, `chips.js`'s `BENCH_WEAK_P_APPEAR` gate
+cannot fire for 41% of the owned pool, and the bench-order tie-break degenerates
+to ascending player id. If one of those is to be fixed, fix it AT ITS OWN SITE
+against its own evidence, and do not route it through `pAppear` again.
+
 ## 26. The captaincy model made coherent: four inputs repaired, ACCEPT
 
 - **Date:** 2026-09-09
@@ -1773,6 +1877,11 @@ one changes little and improves what it changes.
 - **Decision: DO NOT SHIP, and no new arm was run.** This is recorded because
   the request to fix it was explicit and reasonable, and the reason for
   declining is evidence rather than preference.
+- **SUPERSEDED THE SAME DAY by entry 28**, which ran the arm this entry declined
+  to run, in the DATA form entry 24 asked for rather than as another estimator.
+  It fixes the defect completely and is worth exactly zero points. Read entry 28
+  instead of this one; what survives here is only the account of why an estimator
+  was not the thing to try.
 
 `subOnRate = clamp01(inferredSubApps / benchMatches)` has no shrinkage, so one
 substitute appearance in one non-start returns exactly 1.0 and `pAppear` becomes

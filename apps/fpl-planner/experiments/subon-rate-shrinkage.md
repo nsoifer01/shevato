@@ -5,6 +5,27 @@
 The defect this was aimed at is REAL, measured, and still open; what failed is
 this fix for it.
 
+> ## THE DEFECT IS NOW CLOSED AS A POINTS QUESTION, 2026-09-09
+>
+> Three fixes have been measured on the deciding instrument and all three are
+> worth nothing:
+>
+> | attempt | what it was | result |
+> | --- | --- | ---: |
+> | registry 23, this file | positional shrinkage on the inferred rate | +7.9/window, t 0.93 |
+> | registry 24 | bounded empirical-Bayes estimator | +0.8/window, t 0.10 |
+> | **registry 28** | **the appearance record itself, no model at all** | **+0.0/window, t 0.00** |
+>
+> Entry 28 is the one that settles it. It is not a rival estimator that might be
+> worse than it looks: it is `playedMatches - starts`, the ground truth, and it
+> collapses the `pAppear` pin from 16.0% of players to 3.9% and improves Brier
+> in all four seasons. It still moves the season total by one point across 60
+> trajectories, while swinging +376 in one season and -404 in another.
+>
+> **Do not attempt a fourth fix for this as a points change.** The remaining
+> harms are real and are listed at the end of entry 28; each should be fixed at
+> its own site against its own evidence rather than routed through `pAppear`.
+
 ## The defect
 
 `minutes.js` builds `pAppear` as
