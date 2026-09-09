@@ -118,11 +118,13 @@ const NEUTRAL_FDR = 3;
 // quietly outvoting the model is not a tie-break, and the module header already
 // claimed they were "deliberately small" while the arithmetic said otherwise.
 //
-// The sum is squashed through tanh, which is the identity to within 2% for the
-// small tilts that are the normal case and saturates smoothly at the bound, so
-// there is no edge for a candidate to sit on. The bound is half a projected
-// point of authority: MAX_TILT / meanWeight = 0.375 / 0.75 = 0.5 xP. Below that
-// gap the tilts may decide the armband; above it they may not.
+// The sum is squashed through tanh, which saturates smoothly at the bound so
+// there is no edge for a candidate to sit on. It leaves a genuine tie-break
+// almost untouched and bites hardest exactly where the old behaviour was worst:
+// a 0.05 tilt is shrunk by 0.6%, 0.10 by 2.3%, 0.15 by 5.0%, but 0.40 by 26%
+// and the old 0.65 maximum by 46%. The bound is half a projected point of
+// authority: MAX_TILT / meanWeight = 0.375 / 0.75 = 0.5 xP. Below that gap the
+// tilts may decide the armband; above it they may not.
 const MAX_TILT = 0.375;
 
 export function boundedTilt(raw, max = MAX_TILT) {
