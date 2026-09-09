@@ -28,9 +28,10 @@
   justify-content: flex-start;
 }
 
-/* Wipe legacy per-child width/padding rules from main.css. Flex-basis is
-   computed so exactly three cards fit per row at typical widths — 4 cards
-   would never fit, so a 5-card layout always reads as 3 + 2 (centered). */
+/* Wipe legacy per-child width/padding rules from main.css. That file sizes
+   cards with nth-child selectors, so this list has to carry the same
+   pseudo-classes to outrank them; the !important covers the rest. RESET
+   ONLY - nothing responsive may live in this rule, see below. */
 .highlights > *,
 .highlights > section,
 .highlights > :nth-child(-n + 3),
@@ -41,6 +42,27 @@
   padding: 0 !important;
   margin: 0 !important;
   display: block;
+}
+
+/* Sizing is a SEPARATE, low-specificity rule so the breakpoints at the
+   bottom of this file can override it.
+
+   It used to share the reset's selector list, and that quietly broke every
+   small viewport: a selector list takes the specificity of its widest arm,
+   so the nth-child pseudo-classes made the whole rule (0,2,0), while both
+   media-query rules are (0,1,0)/(0,1,1). The desktop three-column basis and
+   its 240px min-width therefore beat the mobile single-column rule for every
+   card the list matched. With eight cards that is seven of them: only the
+   5th matches none of -n+3 (1,2,3), nth-last-child(-n+3) (6,7,8),
+   3n+1 (1,4,7) or 3n (3,6). So on a phone the apps hub rendered seven cards
+   pinned at 240px with dead space either side and one card, MapTap Rivals,
+   correctly full width - which read as "one card is wrong" when in fact it
+   was the only right one.
+
+   Flex-basis is computed so exactly three cards fit per row at typical
+   widths: 4 would never fit, so a trailing partial row reads as 3 + 2,
+   centered. */
+.highlights > * {
   flex: 0 1 calc((100% - 3rem) / 3);
   min-width: 240px;
   max-width: 360px;
@@ -122,7 +144,7 @@
   max-width: 13.5rem;
 }
 
-/* Tablet — drop to 2-up. With justify-content: center, a 5-card list
+/* Tablet - drop to 2-up. With justify-content: center, a 5-card list
    becomes 2 + 2 + 1, and every row is centered. */
 @media screen and (max-width: 880px) {
   .highlights {
@@ -150,11 +172,15 @@
   }
 }
 
-/* Mobile — single column. Each card centered (only one per row). */
+/* Mobile - single column. Each card centered (only one per row). */
 @media screen and (max-width: 480px) {
   .highlights > *,
   .highlights > section {
     flex: 0 1 100%;
+    /* min-width goes too. 240px is a three-up floor; left standing it makes
+       the card wider than the grid on a 320px phone, which is an overflow
+       rather than a narrow card. */
+    min-width: 0;
     max-width: 100%;
   }
   .highlights .content {
