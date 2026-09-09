@@ -16,6 +16,7 @@
 import { makeReason, fmtValue, squadTrajectory, chipLabel, xpOf, discountWeights } from './chips.js';
 import { hitCost, transferStateOf, isUnlimited } from './transfer-state.js';
 import { openingSquadMoney } from './squad.js';
+import { CAPTAIN_PARAMS } from './captain.js';
 
 // The exact neutral wording used whenever the squad on file differs from what
 // was recommended last time. Exported so the UI cannot reinvent it in a less
@@ -209,32 +210,51 @@ function transferReasons(plan, ctx) {
 // objective; it is to say which term paid for the difference, out of the
 // components captain.js already computed and squadTrajectory already carries.
 //
-// Ordered by how much of the gap each term typically explains. The threshold
-// keeps a rounding-level difference from being reported as a reason.
-const ARMBAND_EDGES = [
-  ['upsideTerm', 'a higher ceiling'],
-  ['fixture', 'a kinder fixture'],
-  ['penaltyDuty', 'penalty duty'],
-  ['setPieceDuty', 'set-piece duty'],
-];
+// A difference smaller than this is a rounding artefact, not a reason, and must
+// never be printed as one.
 const EDGE_THRESHOLD = 0.01;
 
-function edgePhrases(chosen, rival) {
+// The most reasons one sentence may carry. Naming every term that moved a
+// hundredth of a point is not an explanation, it is a dump of the model.
+const MAX_EDGES = 3;
+
+// Every term that can separate two armband candidates, MEASURED, so the
+// sentence names the terms that actually decided this one rather than reciting
+// a fixed list in a fixed order. Sizes are the raw component differences: they
+// are what a manager recognises ("he takes the penalties"), and the bounded
+// tilt in captain.js means they no longer sum to the value gap, so they are
+// used for RANKING the reasons and never quoted as arithmetic.
+function armbandEdges(chosen, rival, { diversification = 0 } = {}) {
   const mine = (chosen && chosen.components) || {};
   const theirs = (rival && rival.components) || {};
-  const phrases = [];
-  for (const [key, label] of ARMBAND_EDGES) {
-    if ((mine[key] || 0) - (theirs[key] || 0) > EDGE_THRESHOLD) phrases.push(label);
-  }
+  const edges = [];
+  const add = (size, label) => { if (size > EDGE_THRESHOLD) edges.push({ size, label }); };
+
+  add((mine.upsideTerm || 0) - (theirs.upsideTerm || 0), 'a higher ceiling');
+  add((mine.fixture || 0) - (theirs.fixture || 0), 'a kinder fixture');
+  add((mine.penaltyDuty || 0) - (theirs.penaltyDuty || 0), 'penalty duty');
+  add((mine.setPieceDuty || 0) - (theirs.setPieceDuty || 0), 'set-piece duty');
   // A confidence penalty is subtracted, so the smaller one is the advantage.
-  if ((theirs.confidencePenalty || 0) - (mine.confidencePenalty || 0) > EDGE_THRESHOLD) {
-    phrases.push('a better-evidenced projection');
-  }
+  add((theirs.confidencePenalty || 0) - (mine.confidencePenalty || 0), 'a better-evidenced projection');
+  // Vice only: not sharing the captain's fixture is worth something real.
+  add(diversification, 'availability that is not tied to the captain');
+
+  edges.sort((a, b) => b.size - a.size);
+  return edges;
+}
+
+function edgePhrases(chosen, rival, opts = {}) {
+  const edges = armbandEdges(chosen, rival, opts);
+  const phrases = edges.slice(0, MAX_EDGES).map(e => e.label);
   // The pair is chosen jointly, so a safer fallback is a real edge too. It is
   // not a component; it is what the captaincy score adds on top of the value.
-  const myFallback = (chosen.captainScore || 0) - (chosen.value || 0);
-  const theirFallback = (rival.captainScore || 0) - (rival.value || 0);
-  if (myFallback - theirFallback > EDGE_THRESHOLD) phrases.push('a safer vice-captain behind him');
+  if (opts.withFallback !== false) {
+    const myFallback = (chosen.captainScore || 0) - (chosen.value || 0);
+    const theirFallback = (rival.captainScore || 0) - (rival.value || 0);
+    if (myFallback - theirFallback > EDGE_THRESHOLD && phrases.length < MAX_EDGES) {
+      phrases.push('a safer vice-captain behind him');
+    }
+  }
   return phrases;
 }
 
@@ -251,6 +271,30 @@ function highestXpRival(captainId, candidates) {
   let rival = null;
   for (const c of candidates) {
     if (c.playerId === captainId || !c.eligible) continue;
+    if (!rival || c.xPoints > rival.xPoints) rival = c;
+  }
+  return rival;
+}
+
+// THE VICE HAS THE SAME PROBLEM AS THE CAPTAIN AND NEVER HAD THE ANSWER.
+//
+// The pitch prints xP and a V. When those disagree it shows a vice-captain on
+// 3.5 standing under three team mates on 3.7, 3.8 and 3.9, and the only
+// sentence the app produced was "X takes over if he does not play, projecting
+// 3.5 points" - which states the very thing that looks wrong and explains none
+// of it. Worse, the captain's own "why not the higher projection" sentence
+// fires only when the CAPTAIN is out-projected, so when the captain happens to
+// be top of the pitch the whole disagreement went unmentioned.
+//
+// The vice is ranked on value x the same-club retention factor, so that is what
+// this compares. The highest-xP eligible non-captain is the player a manager
+// actually looks at, so it is the one the sentence has to answer for.
+function highestXpViceRival(captainId, viceId, candidates) {
+  let rival = null;
+  for (const c of candidates) {
+    if (c.playerId === captainId || c.playerId === viceId) continue;
+    // The vice floor is lower than the captain floor, and `eligible` on a
+    // candidate row is the CAPTAIN floor, so it is deliberately not used here.
     if (!rival || c.xPoints > rival.xPoints) rival = c;
   }
   return rival;
@@ -330,6 +374,36 @@ function captainReason(plan, ctx) {
       'vice_cover',
       `${nameOf(gameState, plan.viceCaptain)} takes over if he does not play, projecting {v} points.`,
       viceRow.xPoints,
+    ));
+  }
+
+  // And why THAT vice, whenever the pitch makes it look like a mistake.
+  const vice = candidates.find(c => c.playerId === plan.viceCaptain) || null;
+  const viceRival = vice ? highestXpViceRival(plan.captain, plan.viceCaptain, candidates) : null;
+  if (vice && viceRival && viceRival.xPoints > vice.xPoints + 1e-9) {
+    const gap = viceRival.xPoints - vice.xPoints;
+    // Was the rival held back by sharing the captain's club? Only say so when
+    // it is true AND the vice does not share it, because the sentence claims a
+    // contrast between the two.
+    const captainCandidate = candidates.find(c => c.playerId === plan.captain) || null;
+    const captainTeam = captainCandidate ? captainCandidate.teamId : null;
+    const rivalShares = captainTeam !== null && viceRival.teamId === captainTeam;
+    const viceShares = captainTeam !== null && vice.teamId === captainTeam;
+    const diversification = rivalShares && !viceShares
+      ? (viceRival.value || 0) * (1 - CAPTAIN_PARAMS.sameClubFallbackRetention)
+      : 0;
+    const phrases = edgePhrases(vice, viceRival, { diversification, withFallback: false });
+    const viceName = nameOf(gameState, plan.viceCaptain);
+    const rivalName = nameOf(gameState, viceRival.playerId);
+    const because = phrases.length
+      ? `on ${joinPhrases(phrases)}`
+      : 'on the captaincy rating, which weighs ceiling, fixture and duty alongside the projection';
+    reasons.push(makeReason(
+      'vice_over_alternative',
+      fmtValue(gap, 'points') === '0.0'
+        ? `${rivalName} projects fractionally more, but ${viceName} rates higher as an armband ${because}.`
+        : `${rivalName} projects {v} more points this gameweek, but ${viceName} rates higher as an armband ${because}.`,
+      gap,
     ));
   }
 

@@ -863,32 +863,59 @@ const GW3_SPECS = [
   })),
 ];
 
+// A captain the pitch shows BEHIND a team mate. The gap is 0.2, inside the
+// tilts' stated authority of half a point, and the duty and fixture terms pay
+// for it. GW3_SPECS no longer produces this shape: bounding the tilts means a
+// lone 0.15 fixture nudge can no longer buy an armband off a better projection,
+// which is the fix, so the explanation needs a case that still happens.
+const TILTED_SPECS = [
+  {
+    id: 106, position: 4, teamId: 4,
+    xPoints: 6.0, ceiling: 12, sd: 3.5,
+    pAppear: 1, pStart: 0.9, confidence: 'high',
+    penaltiesOrder: 1, freekicksOrder: 1, cornersOrder: 1,
+    fixtures: [{ fixtureId: 22, opponentId: 20, isHome: true, fdr: 2 }],
+  },
+  {
+    id: 426, position: 3, teamId: 16,
+    xPoints: 6.2, ceiling: 12, sd: 3.6,
+    pAppear: 1, pStart: 0.9, confidence: 'high',
+    fixtures: [{ fixtureId: 30, opponentId: 9, isHome: false, fdr: 5 }],
+  },
+  ...Array.from({ length: 9 }, (_, i) => ({
+    id: 200 + i, teamId: 50 + i, xPoints: 2, ceiling: 4, pAppear: 0.9,
+  })),
+];
+
 test('a captain projecting less than a team mate says which term bought the armband', () => {
-  const { armband, reasons } = armbandExplanation(GW3_SPECS);
+  const { armband, reasons } = armbandExplanation(TILTED_SPECS);
   assert.equal(armband.captain, 106);
-  assert.equal(armband.viceCaptain, 426);
 
   const over = reasons.find(r => r.code === 'captain_over_alternative');
   assert.ok(over, 'the explanation must answer for a captain the pitch shows behind a team mate');
 
-  // It names the player a manager is comparing against, and the term that won.
-  assert.match(over.text, /Pl\w+ projects 0\.1 more points this gameweek/);
-  assert.match(over.text, /takes the armband on a kinder fixture/);
+  // It names the player a manager is comparing against, and the terms that won.
+  assert.match(over.text, /Pl\w+ projects 0\.2 more points this gameweek/);
+  assert.match(over.text, /takes the armband on /);
+  assert.match(over.text, /penalty duty|set-piece duty|a kinder fixture/);
 
   // The printed figure is the engine's own gap, not a written-in number.
-  assert.equal(fmtValue(over.value, 'points'), '0.1');
-  assert.ok(Math.abs(over.value - (4.952746603840873 - 4.8868768368893285)) < 1e-12);
+  assert.equal(fmtValue(over.value, 'points'), '0.2');
+  assert.ok(Math.abs(over.value - (6.2 - 6.0)) < 1e-9);
 
-  // Nothing that did not actually favour the captain may be claimed: Bruno held
-  // the set pieces and the higher mean, and both ceilings were identical.
-  assert.doesNotMatch(over.text, /set-piece duty/);
+  // Nothing that did not actually favour the captain may be claimed: the
+  // ceilings are identical and both are equally well evidenced.
   assert.doesNotMatch(over.text, /higher ceiling/);
-  assert.doesNotMatch(over.text, /penalty duty/);
+  assert.doesNotMatch(over.text, /better-evidenced/);
+});
 
-  // A margin of six ten-thousandths must not read as a confident preference.
-  const close = reasons.find(r => r.code === 'captain_close');
-  assert.ok(close, 'a near-tie must be declared');
-  assert.ok(close.value > 0 && close.value < 0.001);
+test('the bounded tilts no longer buy an armband on a lone fixture nudge', () => {
+  // The live gameweek 3 case that used to resolve to the lower projection by
+  // 0.0006 of a point. It now resolves to the better projection, so there is
+  // nothing for the explanation to answer for.
+  const { armband, reasons } = armbandExplanation(GW3_SPECS);
+  assert.equal(armband.captain, 426, 'the higher projection takes it');
+  assert.equal(reasons.find(r => r.code === 'captain_over_alternative'), undefined);
 });
 
 test('the highest projected captain is never made to explain himself', () => {
@@ -951,10 +978,104 @@ test('the ceiling and the evidence are named when they are what won the armband'
 test('the armband sentences survive the same number sweep as the rest', () => {
   // Every digit in an explanation must be an engine quantity. The new sentences
   // carry one number between them, and it is the reason's own value.
-  const { reasons } = armbandExplanation(GW3_SPECS);
-  for (const code of ['captain_over_alternative', 'captain_close']) {
+  const { reasons } = armbandExplanation(TILTED_SPECS);
+  for (const code of ['captain_over_alternative']) {
     const r = reasons.find(x => x.code === code);
     const digits = r.text.match(/\d+(?:\.\d+)?/g) || [];
     for (const d of digits) assert.equal(d, fmtValue(r.value, r.unit), `${code}: "${d}" is not the reason's value`);
   }
+});
+
+// --- the vice-captain explanation -----------------------------------------
+//
+// The pitch prints xP and a V, so a vice below three team mates looks like a
+// bug. Until 2026-09-09 the only sentence the app produced about the vice was
+// "X takes over if he does not play, projecting 3.5 points", which restates the
+// thing that looks wrong and explains none of it.
+
+test('a vice below the pitch order says which term earned the armband', () => {
+  // The rival out-projects the vice by 0.4 but has no duty and a hard fixture.
+  const { armband, reasons } = armbandExplanation([
+    { id: 1, teamId: 1, xPoints: 9.0, ceiling: 18, pAppear: 0.7, confidence: 'high', fixtures: [{ fdr: 3 }] },
+    {
+      id: 2, teamId: 2, xPoints: 6.0, ceiling: 14, pAppear: 0.95, confidence: 'high',
+      penaltiesOrder: 1, freekicksOrder: 1, cornersOrder: 1, fixtures: [{ fdr: 2 }],
+    },
+    { id: 3, teamId: 3, xPoints: 6.4, ceiling: 12, pAppear: 0.95, confidence: 'high', fixtures: [{ fdr: 5 }] },
+    ...Array.from({ length: 9 }, (_, i) => ({ id: 200 + i, teamId: 50 + i, xPoints: 2, ceiling: 4, pAppear: 0.9 })),
+  ]);
+  assert.equal(armband.captain, 1);
+  assert.equal(armband.viceCaptain, 2);
+
+  const over = reasons.find(r => r.code === 'vice_over_alternative');
+  assert.ok(over, 'a vice the pitch shows behind a team mate must be explained');
+  assert.match(over.text, /projects 0\.4 more points this gameweek/);
+  assert.match(over.text, /rates higher as an armband on /);
+  assert.match(over.text, /penalty duty|a higher ceiling|a kinder fixture/);
+  assert.equal(fmtValue(over.value, 'points'), '0.4');
+});
+
+test('a vice that is simply the best remaining projection explains nothing', () => {
+  const { armband, reasons } = armbandExplanation([
+    { id: 1, teamId: 1, xPoints: 9.0, ceiling: 18, pAppear: 0.9, confidence: 'high' },
+    { id: 2, teamId: 2, xPoints: 7.0, ceiling: 14, pAppear: 0.95, confidence: 'high' },
+    { id: 3, teamId: 3, xPoints: 5.0, ceiling: 10, pAppear: 0.95, confidence: 'high' },
+    ...Array.from({ length: 9 }, (_, i) => ({ id: 200 + i, teamId: 50 + i, xPoints: 2, ceiling: 4, pAppear: 0.9 })),
+  ]);
+  assert.equal(armband.captain, 1);
+  assert.equal(armband.viceCaptain, 2);
+  assert.equal(reasons.find(r => r.code === 'vice_over_alternative'), undefined,
+    'the obvious vice must not clutter the panel');
+});
+
+test('a diversification call against a same-club rival is named as one', () => {
+  // The rival is the captain's team mate and projects more; the vice is not.
+  // The sentence has to say that is part of why, and only when it is true.
+  const { armband, reasons } = armbandExplanation([
+    { id: 1, teamId: 7, xPoints: 9.0, ceiling: 18, pAppear: 0.7, confidence: 'high' },
+    { id: 2, teamId: 7, xPoints: 7.02, ceiling: 14, pAppear: 0.95, confidence: 'high' },
+    { id: 3, teamId: 8, xPoints: 7.0, ceiling: 14, pAppear: 0.95, confidence: 'high' },
+    ...Array.from({ length: 9 }, (_, i) => ({ id: 200 + i, teamId: 50 + i, xPoints: 2, ceiling: 4, pAppear: 0.9 })),
+  ]);
+  assert.equal(armband.captain, 1);
+  assert.equal(armband.viceCaptain, 3, 'the near-tie breaks to the other club');
+  const over = reasons.find(r => r.code === 'vice_over_alternative');
+  assert.ok(over);
+  assert.match(over.text, /availability that is not tied to the captain/);
+});
+
+test('the diversification phrase is never claimed when the vice shares the club too', () => {
+  const { armband, reasons } = armbandExplanation([
+    { id: 1, teamId: 7, xPoints: 9.0, ceiling: 18, pAppear: 0.7, confidence: 'high' },
+    {
+      id: 2, teamId: 7, xPoints: 6.0, ceiling: 14, pAppear: 0.95, confidence: 'high',
+      penaltiesOrder: 1, freekicksOrder: 1, cornersOrder: 1, fixtures: [{ fdr: 2 }],
+    },
+    { id: 3, teamId: 7, xPoints: 6.4, ceiling: 12, pAppear: 0.95, confidence: 'high', fixtures: [{ fdr: 5 }] },
+    ...Array.from({ length: 9 }, (_, i) => ({ id: 200 + i, teamId: 50 + i, xPoints: 2, ceiling: 4, pAppear: 0.9 })),
+  ]);
+  assert.equal(armband.captain, 1);
+  assert.equal(armband.viceCaptain, 2);
+  const over = reasons.find(r => r.code === 'vice_over_alternative');
+  assert.ok(over);
+  assert.doesNotMatch(over.text, /not tied to the captain/,
+    'both share the captain club, so there is no diversification to claim');
+});
+
+test('an armband sentence names at most three reasons', () => {
+  const { reasons } = armbandExplanation([
+    { id: 1, teamId: 1, xPoints: 9.0, ceiling: 18, pAppear: 0.7, confidence: 'high' },
+    {
+      id: 2, teamId: 2, xPoints: 6.0, ceiling: 16, pAppear: 0.95, confidence: 'high',
+      penaltiesOrder: 1, freekicksOrder: 1, cornersOrder: 1, fixtures: [{ fdr: 1 }],
+    },
+    { id: 3, teamId: 3, xPoints: 6.4, ceiling: 9, pAppear: 0.95, confidence: 'low', fixtures: [{ fdr: 5 }] },
+    ...Array.from({ length: 9 }, (_, i) => ({ id: 200 + i, teamId: 50 + i, xPoints: 2, ceiling: 4, pAppear: 0.9 })),
+  ]);
+  const over = reasons.find(r => r.code === 'vice_over_alternative');
+  assert.ok(over);
+  // Every candidate phrase is comma or "and" separated; count the segments.
+  const tail = over.text.split('rates higher as an armband on ')[1] || '';
+  const parts = tail.replace(/\.$/, '').split(/, | and /).filter(Boolean);
+  assert.ok(parts.length <= 3, `named ${parts.length} reasons: ${tail}`);
 });

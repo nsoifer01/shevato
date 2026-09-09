@@ -26,15 +26,19 @@
 //    much safer fallback.
 //
 // 3. THE FALLBACK CAN FAIL WITH HIM. A vice at the same club shares the
-//    captain's fixture. A postponement, an abandoned match, a rested spine or a
-//    blank takes both, so the fallback term is discounted by
-//    SAME_CLUB_CORRELATION when the two share a club.
+//    captain's fixture, so the fallback term is discounted when the two share a
+//    club. The size of that discount is MEASURED, not assumed: see
+//    SAME_CLUB_FALLBACK_RETENTION. It is about one percent, not the half this
+//    module asserted until 2026-09-09.
 //
-// On top of the certainty equivalent sit three small, explicitly-labelled
-// tilts: penalty and set-piece duty, fixture difficulty, and model confidence.
-// They are deliberately small because the projection already contains the
-// primary effect of all three; their job is to break ties and to separate a
-// nailed penalty taker from an identical player without the ball.
+// On top of the certainty equivalent sit four small, explicitly-labelled tilts:
+// penalty duty, set-piece duty, fixture difficulty, and model confidence. They
+// are small because the projection already contains the primary effect of all
+// four; their job is to break ties and to separate a nailed penalty taker from
+// an identical player without the ball. They are summed and then bounded
+// TOGETHER through MAX_TILT, because until 2026-09-09 they were not bounded at
+// all and four heuristics stacking in the same direction could overturn nearly
+// two points of projection between them.
 //
 // And a hard floor: a player below MIN_CAPTAIN_PAPPEAR is never captained, no
 // matter how good the ceiling looks, because a captain who does not play costs
@@ -52,10 +56,45 @@ const RISK_PROFILES = {
 const MIN_CAPTAIN_PAPPEAR = 0.5;
 const MIN_VICE_PAPPEAR = 0.35;
 
-// How much of a same-club vice's value survives the captain not playing. Half:
-// some of the ways a captain misses a gameweek (a late knock, a rotation) leave
-// his team mate playing, and some (postponement, abandonment, a blank) do not.
-const SAME_CLUB_CORRELATION = 0.5;
+// How much of a same-club vice's value survives the captain not playing.
+//
+// THIS WAS 0.5, AND AS A PENALTY THAT IS WRONG BY ABOUT FIFTY TIMES. The
+// number is a
+// conditional appearance probability written as a ratio,
+//
+//   P(vice appears | captain did not) / P(vice appears)
+//
+// and that ratio is directly measurable in the four season archives this repo
+// already holds. Over 153,158 same-club pairs of nailed players (10+ gameweeks,
+// 60%+ start rate), pooled across 2022-23 to 2025-26:
+//
+//   P(team mate appears)                      0.8830
+//   P(team mate appears | the other was out)  0.8701   ratio 0.9854
+//
+// and the different-club control over 3,110,050 pairs reads 0.8825 / 0.8779,
+// ratio 0.9947, which is the league-wide common cause (congested rounds rotate
+// everybody a little). Dividing one by the other leaves the effect that is
+// genuinely ABOUT sharing a club: **0.9906**, a one percent penalty. Every
+// season agrees: 0.984, 0.991, 0.994, 0.977.
+//
+// The intuition behind 0.5 was not wrong, only its size. A captain misses a
+// gameweek far more often for reasons private to him (a knock in the warm-up,
+// rotation, a suspension, illness) than for reasons that take his whole club
+// with him, and the appearance record says the private reasons dominate by two
+// orders of magnitude.
+//
+// What the archive CANNOT see is a fixture that never happened: a postponement
+// or abandonment removes both players' rows entirely, so those pairs are absent
+// from the sample above rather than counted as a joint failure. Bounding it:
+// 53 of 3,000 team-gameweeks inside an otherwise-full round carried no fixture,
+// 1.77%, and that is an upper bound because most of them are scheduled blanks
+// the projection has already priced through pAppear.
+//
+// So the retained fraction is 0.9906 x (1 - 0.0177) = 0.973 as measured, and it
+// is set at 0.95 rather than 0.973 to leave room for the squad-wide events the
+// appearance record books against individuals: an illness sweep, a spine rested
+// before a European tie, a manager sacked mid-week.
+const SAME_CLUB_FALLBACK_RETENTION = 0.95;
 
 // Duty tilts by order of preference. Penalties matter most because a penalty
 // converts a fixture into a near-certain shot, which is a ceiling event.
@@ -69,20 +108,57 @@ const SET_PIECE_DUTY_BONUS = [0.10, 0.04, 0.01];
 const FIXTURE_WEIGHT = 0.15;
 const NEUTRAL_FDR = 3;
 
+// THE TILTS ARE A TIE-BREAK AND ARE NOW BOUNDED LIKE ONE.
+//
+// Penalty duty, set-piece duty, fixture and confidence are all corrections to a
+// projection that already contains the primary effect of each. Unbounded they
+// summed to a span of 1.4 points (+0.65 for a nailed penalty taker on the
+// easiest fixture, -0.75 for an unknown on the hardest), and at a mean weight of
+// 0.75 that is enough to overturn a 1.87-point projection gap. Four heuristics
+// quietly outvoting the model is not a tie-break, and the module header already
+// claimed they were "deliberately small" while the arithmetic said otherwise.
+//
+// The sum is squashed through tanh, which is the identity to within 2% for the
+// small tilts that are the normal case and saturates smoothly at the bound, so
+// there is no edge for a candidate to sit on. The bound is half a projected
+// point of authority: MAX_TILT / meanWeight = 0.375 / 0.75 = 0.5 xP. Below that
+// gap the tilts may decide the armband; above it they may not.
+const MAX_TILT = 0.375;
+
+export function boundedTilt(raw, max = MAX_TILT) {
+  if (!Number.isFinite(raw)) return 0;
+  if (!(max > 0)) return 0;
+  return max * Math.tanh(raw / max);
+}
+
 // A projection built on a handful of minutes is not the same bet as one built
 // on three seasons, even at the same mean.
-const CONFIDENCE_PENALTY = { high: 0, medium: 0.15, low: 0.45 };
+//
+// This used to be a lookup on the confidence TIER, which made it a cliff: two
+// players a single minute either side of a threshold were charged 0.30 points
+// apart, and at gameweek 4 the thresholds put almost the whole pool on one side
+// of that cliff for reasons that had nothing to do with sample size (see the
+// long note in minutes.js). It is now a linear reading of the continuous
+// confidence score, so the charge moves with the evidence instead of with a
+// bucket edge, and the tier is left to the UI.
+const CONFIDENCE_MAX_PENALTY = 0.45;
+
+// Fallback for a projection row that predates `confidenceScore` (the backtest's
+// perfect-foresight oracle builds rows by hand). Tier midpoints, so the old
+// behaviour is recovered rather than approximated.
+const TIER_SCORE = { high: 1, medium: 0.5, low: 0 };
 
 export const CAPTAIN_PARAMS = Object.freeze({
   riskProfiles: RISK_PROFILES,
   minCaptainPAppear: MIN_CAPTAIN_PAPPEAR,
   minVicePAppear: MIN_VICE_PAPPEAR,
-  sameClubCorrelation: SAME_CLUB_CORRELATION,
+  sameClubFallbackRetention: SAME_CLUB_FALLBACK_RETENTION,
   penaltyDutyBonus: PENALTY_DUTY_BONUS,
   setPieceDutyBonus: SET_PIECE_DUTY_BONUS,
   fixtureWeight: FIXTURE_WEIGHT,
   neutralFdr: NEUTRAL_FDR,
-  confidencePenalty: CONFIDENCE_PENALTY,
+  confidenceMaxPenalty: CONFIDENCE_MAX_PENALTY,
+  maxTilt: MAX_TILT,
 });
 
 function dutyBonus(player) {
@@ -115,19 +191,30 @@ function fixtureBonus(proj) {
   return FIXTURE_WEIGHT * (NEUTRAL_FDR - sum / n);
 }
 
+function confidenceScoreOf(proj) {
+  if (proj && Number.isFinite(proj.confidenceScore)) return Math.min(1, Math.max(0, proj.confidenceScore));
+  const tier = (proj && proj.confidence) || 'low';
+  return TIER_SCORE[tier] ?? 0;
+}
+
 function buildCandidate(playerId, proj, player, weights) {
   const xPoints = proj ? proj.xPoints : 0;
   const ceiling = proj ? proj.ceiling : 0;
   const sd = proj ? proj.sd : 0;
   const pAppear = proj ? proj.pAppear : 0;
   const confidence = (proj && proj.confidence) || 'low';
+  const confidenceScore = confidenceScoreOf(proj);
 
   const certaintyEquivalent = weights.meanWeight * xPoints + weights.upsideWeight * ceiling;
   const duty = dutyBonus(player);
   const fixture = fixtureBonus(proj);
-  const confidencePenalty = CONFIDENCE_PENALTY[confidence] ?? CONFIDENCE_PENALTY.low;
+  const confidencePenalty = CONFIDENCE_MAX_PENALTY * (1 - confidenceScore);
 
-  const value = certaintyEquivalent + duty.penalties + duty.setPieces + fixture - confidencePenalty;
+  // The four tilts are summed and then bounded TOGETHER, so no combination of
+  // them can outvote the projection by more than MAX_TILT.
+  const rawTilt = duty.penalties + duty.setPieces + fixture - confidencePenalty;
+  const tilt = boundedTilt(rawTilt);
+  const value = certaintyEquivalent + tilt;
 
   return {
     playerId,
@@ -137,6 +224,7 @@ function buildCandidate(playerId, proj, player, weights) {
     sd,
     pAppear,
     confidence,
+    confidenceScore,
     value,
     eligibleCaptain: pAppear >= MIN_CAPTAIN_PAPPEAR,
     eligibleVice: pAppear >= MIN_VICE_PAPPEAR,
@@ -148,6 +236,10 @@ function buildCandidate(playerId, proj, player, weights) {
       setPieceDuty: duty.setPieces,
       fixture,
       confidencePenalty,
+      // Both forms, because the explanation layer has to name the term that
+      // moved the decision (raw) while the arithmetic has to add up (bounded).
+      rawTilt,
+      tilt,
     },
   };
 }
@@ -254,7 +346,7 @@ export function chooseCaptain(startingXI, projections, gw, gameState, opts = {})
 
 function correlationFactor(captain, vice) {
   if (vice.teamId === null || captain.teamId === null) return 1;
-  return vice.teamId === captain.teamId ? 1 - SAME_CLUB_CORRELATION : 1;
+  return vice.teamId === captain.teamId ? SAME_CLUB_FALLBACK_RETENTION : 1;
 }
 
 function bestViceFor(captain, vicePool) {

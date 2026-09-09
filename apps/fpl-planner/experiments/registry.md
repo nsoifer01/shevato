@@ -1682,6 +1682,127 @@ xG/xA rate quality, and early-window squad construction where a wrong opening
 channel; running more weights is known to be useless, because no flat weight
 can satisfy three seasons whose optima genuinely differ.
 
+## 26. The captaincy model made coherent: four inputs repaired, ACCEPT
+
+- **Date:** 2026-09-09
+- **Decision: ACCEPT.** Shipped. A DEFECT REPAIR measured on the deciding
+  instrument to confirm it costs nothing, not a points experiment: the case for
+  it is that the armband was ranked on inputs that were not comparable between
+  players, and three of the four are demonstrably wrong rather than merely
+  untuned.
+- **Kind:** captaincy-model correction.
+- **Instrument:** 3, paired trajectories, 20 windows / 60 trajectories.
+  `null-arm` was run first on the same tree and reported +0 on all 60.
+- **Command:** the control arm was produced by a TEMPORARY `FPL_LEGACY_CAPTAINCY`
+  gate at four call sites (the confidence tier in `minutes.js`, the ceiling
+  quantile in `projections.js`, and the confidence penalty and same-club factor
+  in `captain.js`), removed before commit rather than left in production code.
+  120 replays in 122.3s, tree engine ec65961b9972.
+
+**What was wrong, and how each was established.**
+
+1. **Confidence was not season-aware.** The tiers were cumulative-minute
+   thresholds, 900 for high and 270 for medium. Before roughly gameweek 10 they
+   sort players by whether their manager substitutes them, not by how much is
+   known about them: at gameweek 4 a club has played three matches, so 270 is
+   every minute there was, `high` is arithmetically unreachable by anyone, and
+   everybody else is `low`. The captaincy penalty then charged 0.30 points for
+   that. It also contradicted the rest of the model - Foden at gameweek 4 of
+   2026/27 carried `pAppear` 1.000, the highest appearance certainty in the
+   eleven, while being charged the largest uncertainty penalty available.
+   Replaced by the standard deviation of a Beta posterior on the start rate over
+   `evidenceMatches`, normalised by the no-evidence prior sqrt(1/12).
+2. **The ceiling was a step function.** `distQuantile` returns an integer, so at
+   an upside weight of 0.25 a hair of extra threat was worth either nothing or a
+   full 0.25 of captaincy value. Bruno's ceiling of 8 against Foden's 7 was worth
+   +0.25 while their real projection gap was 0.24. Replaced by an interpolated
+   quantile, clamped to the support.
+3. **The same-club vice discount was wrong by a factor of about fifty, and this
+   is measured.** Over 153,158 same-club pairs of nailed players in the four
+   season archives, P(team mate appears) is 0.8830 and P(team mate appears | the
+   other was absent) is 0.8701, a ratio of 0.9854. The different-club control
+   over 3,110,050 pairs reads 0.9947, so the effect genuinely attributable to
+   sharing a club is **0.9906**. Every season agrees: 0.984 / 0.991 / 0.994 /
+   0.977. The shipped constant assumed 0.5. Set to 0.95, which is 0.9906 times
+   the 1.77% of team-gameweeks in an otherwise-full round that carry no fixture
+   (53 of 3,000, an upper bound since most are scheduled blanks the projection
+   has already priced), rounded down to leave room for squad-wide events the
+   appearance record books against individuals.
+4. **The four tilts were unbounded.** Penalty duty, set-piece duty, fixture and
+   confidence spanned 1.4 points between them, enough to overturn a 1.87-point
+   projection gap at the 0.75 mean weight, while the module documented them as
+   "deliberately small". Their sum now passes through tanh with a bound of 0.375,
+   which is half a projected point of authority.
+
+**The result:**
+
+| measure | per window (seeds averaged) |
+| --- | ---: |
+| observations | 20 |
+| mean | +2.6 |
+| standard deviation | 10.5 |
+| standard error | 2.3 |
+| t | 1.13 |
+| 95% CI | -2.3 to +7.5 |
+| wins / losses / ties | 8 / 3 / 9 |
+| sign test p | 0.23 |
+
+| season | control | candidate | delta | W-L-T |
+| --- | ---: | ---: | ---: | --- |
+| 2022-23 | 10602 | 10630 | +28 | 6-0-9 |
+| 2023-24 | 10943 | 10946 | +3 | 6-3-6 |
+| 2024-25 | 11714 | 11789 | +75 | 5-1-9 |
+| 2025-26 | 10677 | 10729 | +52 | 4-3-8 |
+
+**How to read it, honestly.** t is 1.13 and this file's own standard is that a t
+near 2 is suggestive rather than a result, so **this is not a points win and is
+not claimed as one**. What it is is a clean absence of harm on the instrument
+that has rejected four previous ideas: all four seasons positive, 8 windows won
+against 3 lost, and NINE windows at exactly +0.0 because the change frequently
+does not alter a decision at all. That last number is the important one. Entry
+24 rejected a correction that was also worth nothing in points but reshuffled
+the recommendation in 52% to 87% of gameweeks; churn like that is a cost. This
+one changes little and improves what it changes.
+
+- **Re-test if:** the risk profile weights move, or the projection's variance
+  model changes enough to move ceilings materially.
+
+## 27. subOnRate shrinkage, asked for again and REFUSED on the existing evidence
+
+- **Date:** 2026-09-09
+- **Decision: DO NOT SHIP, and no new arm was run.** This is recorded because
+  the request to fix it was explicit and reasonable, and the reason for
+  declining is evidence rather than preference.
+
+`subOnRate = clamp01(inferredSubApps / benchMatches)` has no shrinkage, so one
+substitute appearance in one non-start returns exactly 1.0 and `pAppear` becomes
+a hard 1.000. That is the defect, it is real, and it is the reason Foden reads
+`pAppear` 1.000 at gameweek 4 of 2026/27.
+
+It has been attacked twice on the deciding instrument and rejected both times:
+
+- **Entry 23** shrank it toward a measured per-position prior: +7.9 a window,
+  t 0.93, 11W/8L/1T, two of four seasons losing and they are the two most recent.
+- **Entry 24** attacked the estimator itself, including a bound that makes a
+  phantom impossible and an empirical-Bayes prior measured over 76,475 non-start
+  player-matches: **+0.8 a window, t 0.10, 10W/9L/1T, sign test p 1.00** - while
+  changing the recommendation in 52% to 87% of gameweeks and moving one to two
+  players in and out of the eleven whenever it moved it at all.
+
+Entry 24 closes with an explicit instruction: any future attempt should be a
+DATA change, accumulating real appearance counts from `event/<gw>/live`, rather
+than another estimator, and must clear the churn bar as well as the points bar.
+Shipping a third estimator variant would be re-running a rejected arm against
+that instruction.
+
+**It also does not touch the complaint that prompted this round.** `pAppear` is
+not a term in the captaincy `value`, so `subOnRate` had no part in ranking either
+armband. Where it does reach the armband is the captain's fallback term,
+`(1 - pAppear) * viceValue`: a captain pinned at `pAppear` 1.000 is credited
+nothing for having a good vice behind him. That is worth fixing, and it is worth
+fixing as the data change entry 24 asked for, on evidence, not by a fourth pass
+at the estimator.
+
 ## 25. Triple captain, valued with vice succession: REJECT because it is INERT
 
 **Decision: REJECT.** Nothing shipped. The correction is mathematically right,

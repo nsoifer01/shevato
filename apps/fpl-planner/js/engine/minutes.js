@@ -496,6 +496,90 @@ export function availabilityCeiling(player, { steps = 0 } = {}) {
   return { availability, reason };
 }
 
+// --- How well the minutes are KNOWN, not how high they are -----------------
+//
+// THE DEFECT THIS REPLACES. Confidence used to be three cumulative-minute
+// thresholds: 900 for high, 270 for medium, low below. Those are late-season
+// numbers wearing no season label, and before roughly gameweek 10 they do not
+// describe evidence at all. At gameweek 4 a club has played three matches, so
+// 270 is every minute there was: `high` is arithmetically unreachable by
+// anybody, `medium` means "never once substituted" and everyone else is `low`.
+// The tier stopped being a statement about sample size and became a statement
+// about whether a player gets taken off, which is a fact about his manager.
+//
+// It also contradicted the rest of the model. Foden at gameweek 4 of 2026/27
+// carried 195 minutes across all three matches, so `pAppear` was 1.000, the
+// highest appearance certainty in the eleven, while this function called him
+// `low` and captain.js charged him the largest confidence penalty available.
+// A player cannot simultaneously be the surest to play and the least known.
+//
+// WHAT IT IS NOW. Confidence is the PRECISION of the start-rate estimate, which
+// is what the word should have meant all along, and it is read off the sample
+// that produced that estimate rather than off a raw minute count:
+//
+//   posterior = Beta(1 + p*n, 1 + (1-p)*n)   n = evidence matches, p = start rate
+//   score     = 1 - sd(posterior) / sd(Beta(1,1))
+//
+// A uniform Beta(1,1) prior is the honest no-evidence state, and its standard
+// deviation, sqrt(1/12), is therefore the worst any player can score. Every
+// property the old thresholds lacked falls out of this rather than being
+// legislated:
+//
+// - It is season-aware by construction. n is the matches the evidence actually
+//   covers, so the same 195 minutes means one thing after three matches and
+//   another after fifteen, and no tier is unreachable merely because the season
+//   is young.
+// - It carries prior seasons. `evidenceMatchesFor` already counts the baseline
+//   matches blended into the totals, so an established starter arrives at
+//   gameweek 1 with a season of evidence behind him and a new signing does not.
+// - Extremes are known better than coin flips. p(1-p) is largest at 0.5, so a
+//   nailed starter and a settled non-starter both score above a rotation risk
+//   on the same sample, which is the true state of knowledge.
+// - Small samples cannot reach certainty. One start from one match is
+//   Beta(2,1), sd 0.2357, score 0.18, not the 1.0 a raw ratio would report.
+//
+// It reads the START rate, not the appearance rate, deliberately: `subOnRate`
+// is the one rate in this module with a known saturation defect (registry
+// entries 23 and 24), and confidence must not inherit it.
+//
+// WHAT THIS DELIBERATELY DOES NOT DO. It does not fold in how MUCH a player
+// plays, only how well that is known. A settled fringe player - five starts in
+// thirty-eight matches - scores high here, because his start rate is one of the
+// best known numbers in the model, and that reads oddly until you remember what
+// consumes it: the level lives in `pStart` and `pAppear`, which every consumer
+// already reads beside this, and captain.js floors on `pAppear` before
+// confidence is ever consulted. Folding the level in as well would charge the
+// same fact twice, which is precisely the incoherence this replaced - Foden on
+// a `pAppear` of 1.000 being handed the largest uncertainty penalty in the
+// eleven. Confidence answers "how well do we know this player's minutes"; it is
+// not a second opinion on whether they are good.
+//
+// The tier survives because other modules read it (`confidence.js` treats `low`
+// as shaky, the drawer prints it), but it is now DERIVED from the score at even
+// thirds rather than being the primary quantity. captain.js reads the score.
+export const NO_EVIDENCE_START_SD = Math.sqrt(1 / 12);
+export const CONFIDENCE_TIER_BOUNDS = Object.freeze({ high: 2 / 3, medium: 1 / 3 });
+
+export function confidenceTierFor(score) {
+  if (score >= CONFIDENCE_TIER_BOUNDS.high) return 'high';
+  if (score >= CONFIDENCE_TIER_BOUNDS.medium) return 'medium';
+  return 'low';
+}
+
+export function minutesConfidence({ startRate, evidenceMatches, availability = 1 } = {}) {
+  const n = Math.max(0, Number.isFinite(evidenceMatches) ? evidenceMatches : 0);
+  const p = clamp01(Number.isFinite(startRate) ? startRate : 0.5);
+  const a = 1 + p * n;
+  const b = 1 + (1 - p) * n;
+  const total = a + b;
+  const sd = Math.sqrt((a * b) / (total * total * (total + 1)));
+  // A published doubt is uncertainty the appearance record cannot see, so it
+  // costs confidence directly rather than only capping the level.
+  const avail = clamp01(Number.isFinite(availability) ? availability : 1);
+  const score = clamp01(1 - sd / NO_EVIDENCE_START_SD) * avail;
+  return { score, tier: confidenceTierFor(score), sd, evidenceMatches: n };
+}
+
 export function projectMinutes(player, { gameState, gw, fixtureCount } = {}) {
   const { priors, teamMatches, matchesByTeam, priceBands: bands } = positionPriors(gameState);
   const prior = priors.get(player.position) || { ...FALLBACK_PRIORS };
@@ -511,9 +595,10 @@ export function projectMinutes(player, { gameState, gw, fixtureCount } = {}) {
     fixtureCount: nFixtures,
   };
 
-  if (nFixtures === 0) return { ...zero, confidence: 'high', reason: 'blank-gameweek' };
+  // Certainty that he does NOT play is still certainty, so these three score 1.
+  if (nFixtures === 0) return { ...zero, confidence: 'high', confidenceScore: 1, reason: 'blank-gameweek' };
   if (UNAVAILABLE_STATUSES.has(player.status)) {
-    return { ...zero, confidence: 'high', reason: `status-${player.status}` };
+    return { ...zero, confidence: 'high', confidenceScore: 1, reason: `status-${player.status}` };
   }
 
   // Availability ceiling. An explicit percentage wins over everything; a
@@ -522,20 +607,21 @@ export function projectMinutes(player, { gameState, gw, fixtureCount } = {}) {
   const ceiling = availabilityCeiling(player, { steps: horizonSteps(gameState, gw) });
   const availability = ceiling.availability;
   let reason = ceiling.reason;
-  if (availability === 0) return { ...zero, confidence: 'high', reason };
+  if (availability === 0) return { ...zero, confidence: 'high', confidenceScore: 1, reason };
 
   const hasHistory = player.minutes > 0 && teamMatches > 0;
   let baseStart;
   let meanStarterMinutes;
   let meanSubMinutes;
   let subOnRate;
-  let confidence;
+
+  // Every rate below is read against the matches the totals actually cover,
+  // which on a live payload is the league's match count and in a replay
+  // includes whatever previous season was seeded into them. It is also the
+  // sample size confidence is scored on, so it is read once for both.
+  const evidence = evidenceMatchesFor(player, teamMatches);
 
   if (hasHistory) {
-    // Every rate below is read against the matches the totals actually cover,
-    // which on a live payload is the league's match count and in a replay
-    // includes whatever previous season was seeded into them.
-    const evidence = evidenceMatchesFor(player, teamMatches);
     const observedStartRate = clamp01(player.starts / evidence);
     const wRate = evidence / (evidence + START_RATE_SHRINK_MATCHES);
     baseStart = wRate * observedStartRate + (1 - wRate) * prior.startRate;
@@ -566,7 +652,6 @@ export function projectMinutes(player, { gameState, gw, fixtureCount } = {}) {
 
     const benchMatches = Math.max(1, evidence - player.starts);
     subOnRate = clamp01(inferredSubApps / benchMatches);
-    confidence = player.minutes >= 900 ? 'high' : player.minutes >= 270 ? 'medium' : 'low';
   } else {
     // No Premier League minutes: promoted-club players, new signings, youth.
     // The price prior is the pre-season answer, and it decays against the
@@ -578,7 +663,6 @@ export function projectMinutes(player, { gameState, gw, fixtureCount } = {}) {
     meanStarterMinutes = prior.starterMinutes;
     meanSubMinutes = prior.subMinutes;
     subOnRate = priceWeight * NO_HISTORY_SUB_ON_RATE;
-    confidence = 'low';
     if (reason === 'historical') reason = missed > 0 ? 'no-history-unplayed' : 'no-history-prior';
   }
 
@@ -607,7 +691,15 @@ export function projectMinutes(player, { gameState, gw, fixtureCount } = {}) {
   );
   const xMins = pStart * meanStarterMinutes + pBench * meanSubMinutes;
 
-  if (availability < 1 && confidence === 'high') confidence = 'medium';
+  // Scored on the SHRUNK start rate and the sample behind it, so it describes
+  // the estimate the projection actually uses. A player with no history has no
+  // sample of his own, so he is scored on the prior's worth in matches.
+  const confidenceEvidence = hasHistory ? evidence : 0;
+  const { score: confidenceScore, tier: confidence } = minutesConfidence({
+    startRate: baseStart01,
+    evidenceMatches: confidenceEvidence,
+    availability,
+  });
 
   return {
     pStart,
@@ -625,6 +717,7 @@ export function projectMinutes(player, { gameState, gw, fixtureCount } = {}) {
     availability,
     fixtureCount: nFixtures,
     confidence,
+    confidenceScore,
     reason,
   };
 }
