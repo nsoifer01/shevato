@@ -1012,6 +1012,47 @@ skip, and derives the cross-tree-import case from the e2e's own `import`
 statements, so adding a shared dependency without widening the trigger fails the
 suite.
 
+## The suite could skip ITSELF and the runner called that a pass (2026-09-08)
+
+The section above is about a job that reports green without running the
+emulator. This is the same failure one layer down, and it was live in the
+runner the whole time that section was being written.
+
+`run-emulator.mjs` starts the emulators, waits for their PORTS, then imports
+the suite. The suite's own first act is `emulatorReachable()`, which was a
+single HTTP GET at Firestore and Auth with a 1.5 s timeout, and returned false
+on any error. A JVM on a loaded box ACCEPTS the socket seconds before it
+answers HTTP, so the runner's port wait can be satisfied while the emulator is
+still coming up. When that gap exceeded 1.5 s the suite recorded one
+skip - "Firestore/Auth emulators not running on 8085/9099" - and returned.
+
+The runner then printed:
+
+```
+ARENA EMULATOR E2E: 0/0 passed, 1 skipped
+```
+
+and exited **0**. Reproduced on this workstation on 2026-09-08: a run started
+straight after a previous one released the ports skipped in eight seconds. In
+CI that is a green `rules` check on a pull request that touched
+`firestore.rules`, having verified nothing at all. `ARENA_RULES_REQUIRE=1`
+did not help: it is read by the harness, and covers a MISSING emulator (no
+Java, no download), not a suite that reached its own probe and gave up.
+
+Two fixes, one per layer:
+
+- `emulatorReachable()` polls for up to 30 s instead of trying once. The ports
+  are already up by the time it runs, so an answer is coming; the old
+  one-shot call was measuring startup jitter and reporting it as absence.
+- Under `ARENA_RULES_REQUIRE`, a run whose checks are ALL skips is a failure,
+  pushed into the results as its own FAIL line naming the skip reasons. A
+  filtered local run (`ARENA_E2E_ONLY`) is unaffected: it always leaves real
+  checks alongside the skips, and it does not set the variable.
+
+The rule this shares with the section above: **a check that cannot run must
+say so by failing, never by passing quietly.** Both bugs read as green CI, and
+neither would ever have been noticed by watching for red.
+
 ## Actions runs `run:` blocks as `bash -e`, and grep exits 1 on no match (2026-09-08)
 
 The Scope step above shipped with a bug that took every non-Arena pull request
