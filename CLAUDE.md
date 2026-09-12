@@ -78,7 +78,14 @@ REJECT, whichever way it goes.
   README.
 - **`privacy.html` is binding.** It makes narrow checkable promises per app
   (what is sent, stored, synced, deletable). Check it BEFORE adding tracking,
-  identifiers, storage or third-party calls; update it in the same change.
+  identifiers, storage or third-party calls; update it in the same change, and
+  **bump `Last reviewed:` to the date the change SHIPS, not the day you wrote
+  the words.** A review date is a claim about the published page. PR #530 moved
+  it 7 -> 11 September when the paragraphs were written, then ran another day
+  and merged on the 12th, publishing a date older than the content it
+  described, so re-read that line at merge time. `tests/static/privacy-review-date.test.mjs`
+  fails when the policy prose changes and the date does not; when it goes red,
+  bump the date and record the new digest it prints, never the digest alone.
 - **Screenshot-verify every visual change** on desktop 1280 AND mobile 390
   before believing it. Computed styles for any colour claim, never eyeballing:
   `assets/css/main.css` sets `button { color:#555 !important }`, a red hover
