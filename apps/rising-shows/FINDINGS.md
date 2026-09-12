@@ -1006,6 +1006,40 @@ Kometa and MDBList exports, the split index) plus the site-wide static
 invariants the generated pages feed. The rest of the estate is gated on every
 PR and every push to master, which is where it belongs.
 
+## A cache-hit guard has to test the file the CONSUMER needs (2026-09-12)
+
+`browser-tests.yml` downloads the gitignored dataset, splits it, and caches the
+result. 64 assertions across three suites are gated on it being present; without
+it they SKIP, and a skipped assertion is a green shard that checked nothing.
+
+Two halves drifted apart and stayed broken for a week:
+
+- the cache `path:` list held `data.json`, `data-index.json` and `data/`, but
+  NOT `shows-index.json`, the file the finder actually boots from (it landed in
+  PR #509 and nobody added it to the list);
+- the "do I already have it?" guard tested `data-index.json`, which the cache
+  DID restore.
+
+So every run after the first cache save restored a dataset the app could not
+boot, declared a hit, skipped the rebuild, and silently skipped all 64
+assertions. Run 34672062079 shows it plainly: `dataset restored from cache`
+immediately followed by 21 `no show data` skips. The a11y contrast regression
+above shipped straight past four green browser shards because of it, and the
+first local run against real data caught it in eleven minutes.
+
+Fixed on both halves: `shows-index.json` is cached by name, and the guard tests
+what the suites test (`shows-index.json` + `data-index.json` + `data/detail`),
+with a middle branch that splits a cache holding only the raw download rather
+than re-fetching 111 MB. `tests/static/ci-rising-shows-dataset.test.mjs` extracts
+the real shell out of the workflow and drives it against canned trees with a
+stubbed npm, and derives the required cache entries from `split-data.js`'s own
+`paths()` helper, so a new split output that nobody caches fails there. Five of
+its seven assertions fail against the pre-fix workflow.
+
+The transferable rule: a cache-hit guard must test the artifact the CONSUMER
+needs, and the cache must carry everything the producer writes. Checking a file
+that is merely cheap to stat turns a partial restore into a silent skip.
+
 ## The shipped dataset is checked now, in the only place it can be
 
 Two facts had to meet before this was worth writing down. First, every test
@@ -1441,12 +1475,39 @@ is a ranked list, not an addressable identity.
 
 `makeShowShapeBadge(shape, confidence)` adds `is-low-confidence` and the same
 "Low confidence (0.34): the ... pattern is only just there" title `makeShapeTag`
-uses for season pills; the existing `.shape-tag.is-low-confidence` rule (opacity
-0.6, dashed border) already covered it, so no CSS changed. The confidence is
-computed in the browser from the row's own `seasonAvgs`, NOT shipped in the
-index - putting it in the index would have needed a `split-data.js` rebuild.
-After the reorder 64.9% of trajectory badges are still under the floor (down
-from 72.2%), and all of them now say so instead of asserting the pattern flatly.
+uses for season pills. The confidence is computed in the browser from the row's
+own `seasonAvgs`, NOT shipped in the index - putting it in the index would have
+needed a `split-data.js` rebuild. After the reorder 64.9% of trajectory badges
+are still under the floor (down from 72.2%), and all of them now say so instead
+of asserting the pattern flatly.
+
+### `opacity` is not a way to dim text
+
+Reusing the existing `.shape-tag.is-low-confidence` rule looked free, and it was
+not. That rule said `opacity: 0.6`, which the season pills had survived because
+they are grey-on-grey with headroom (5.78:1 after the fade). The new CARD badge
+is not: `.shape-tag-show` paints IMDb yellow on a 12% yellow wash, and fading
+the element as a GROUP composites the text down along with the fill. It measured
+**4.12:1 over `--surface` and 3.94:1 over `--surface-2`**, under the 4.5:1 AA
+floor, and axe reported eight serious `color-contrast` violations across the
+finder at 1280 and at 390.
+
+The rule now dims by choosing quieter tokens instead: `--surface-3` fill,
+`--muted` ink (6.50:1), a dashed `--border-strong` edge and `font-weight: 500`
+against the badge's own 650. It reads as a visibly weaker claim beside an accent
+badge, and it is legible. The clickable variant needs its colour re-pinned with
+`!important` (main.css owns bare `<button>` colour) AND a hover rule at higher
+specificity than that pin, or a low-confidence pill is the one pill that never
+lights up under the cursor.
+
+The general rule: to quiet an element that carries text, change its colours.
+`opacity` is for whole decorative layers.
+
+`e2e/audit-2026-08.mjs` U2 used to assert `opacity < 1`, which pinned the bug
+itself. It now asserts the properties: dashed border, a colour different from a
+full-confidence pill, `opacity === '1'`, and a measured contrast at or above
+4.5:1 (composited up the ancestor chain, because the chip's own background can
+be a wash). Both halves were proven live by re-introducing each defect.
 
 ### Named examples
 

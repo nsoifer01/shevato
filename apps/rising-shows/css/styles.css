@@ -1689,17 +1689,41 @@ button.shape-tag.is-clickable {
   transition: background-color 0.12s, color 0.12s, border-color 0.12s;
 }
 /* Confidence under 0.35: the pattern is only just there (a "Big finale" on
-   a 0.1-point margin). Dimmed and dashed so it reads as a weaker claim than
-   its neighbours; the title explains. */
+   a 0.1-point margin). A low-confidence chip gives up the accent treatment and
+   goes quiet-grey behind a dashed edge, so it reads as a weaker claim than its
+   neighbours; the title explains.
+
+   It used to say `opacity: 0.6`, and that is the trap: opacity fades the whole
+   element as a group, so the TEXT composites down with the fill. On the
+   accent-tinted card badge (`.shape-tag-show`, IMDb yellow on a 12% yellow
+   wash) that measured 4.12:1 over --surface and 3.94:1 over --surface-2,
+   under the 4.5:1 WCAG AA floor, and axe caught it as eight serious
+   color-contrast violations across the finder at both 1280 and 390. Dim a chip
+   by choosing quieter tokens, never by fading the element. */
 .shape-tag.is-low-confidence {
-  opacity: 0.6;
+  background: var(--surface-3);
+  color: var(--muted);            /* 6.50:1 on --surface-3 */
   border-style: dashed;
+  border-color: var(--border-strong);
+  font-weight: 500;
+}
+/* main.css pins bare <button> to `color:#555 !important`, so the clickable
+   variant re-pins --text with !important; the low-confidence colour has to
+   answer at the same weight or the modal pills stay full-strength. */
+button.shape-tag.is-clickable.is-low-confidence {
+  color: var(--muted) !important;
 }
 button.shape-tag.is-clickable:hover {
   background: var(--accent-soft);
   color: var(--accent) !important;
   border-color: var(--accent-strong);
   box-shadow: none !important;
+}
+/* ...and the hover state has to answer back at a HIGHER specificity than that
+   pin, or a low-confidence pill is the one pill that never lights up under the
+   cursor. Background and border already win from the plain :hover rule. */
+button.shape-tag.is-clickable.is-low-confidence:hover {
+  color: var(--accent) !important;
 }
 button.shape-tag.is-clickable:focus-visible {
   outline: 2px solid var(--accent);

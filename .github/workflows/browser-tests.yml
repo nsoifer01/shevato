@@ -163,9 +163,17 @@ jobs:
         if: steps.guard.outputs.run == 'true'
         uses: actions/cache@v4
         with:
+          # shows-index.json is what the FINDER boots from, and it is the file
+          # the suites' data guards actually test for. It was missing from this
+          # list while data-index.json (the guard below) was in it, so every
+          # run after the first cache save restored a dataset the app could not
+          # boot, short-circuited the rebuild, and silently skipped all 64
+          # rising-shows assertions. That is how the low-confidence badge
+          # shipped a 4.12:1 contrast regression past four green shards.
           path: |
             apps/rising-shows/data.json
             apps/rising-shows/data-index.json
+            apps/rising-shows/shows-index.json
             apps/rising-shows/data
           key: rising-shows-data-${{ hashFiles('apps/rising-shows/scripts/fetch-data.js', 'apps/rising-shows/scripts/split-data.js') }}-${{ github.run_id }}
           restore-keys: |
@@ -177,8 +185,18 @@ jobs:
         continue-on-error: true
         run: |
           set -e
-          if [ -f apps/rising-shows/data-index.json ]; then
+          # Gate on what the SUITES gate on (shows-index.json plus a detail
+          # shard), never on a file that merely happens to be cheap to check.
+          # A cache that holds the raw download but not the split output is a
+          # partial hit: split it rather than skipping the whole dataset.
+          if [ -s apps/rising-shows/shows-index.json ] \
+            && [ -s apps/rising-shows/data-index.json ] \
+            && [ -d apps/rising-shows/data/detail ]; then
             echo "dataset restored from cache"
+          elif [ -s apps/rising-shows/data.json ] \
+            && [ -s apps/rising-shows/data/show-modal-extras.json ]; then
+            echo "cache held the raw dataset but not the split output; splitting"
+            npm run build:rising-shows:split
           else
             npm run fetch:rising-shows-data
             npm run build:rising-shows:split

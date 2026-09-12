@@ -280,8 +280,12 @@ npm run test:trip-planner:e2e | test:fpl-planner:e2e   # one app's browser E2E s
                            #   (append :headed to the trip-planner one to watch it)
 ```
 
-For day-to-day development: `npm test` (about three minutes). Before merging:
-`npm run test:all`. The cross-browser smoke runs weekly on CI and on demand.
+For day-to-day development: `npm test` (about three minutes). Before OPENING A
+PR, not after it goes red: `npm run test:all` (or `npm test` plus
+`npm run test:browser:parallel`, about twelve minutes). `npm test` cannot see
+browser-only breakage, because most source files are never imported by the unit
+estate and load cleanly under `node --test` even when they are dead in a
+browser. The cross-browser smoke runs weekly on CI and on demand.
 
 ### Known-defect quarantine
 

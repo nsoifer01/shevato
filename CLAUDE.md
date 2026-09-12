@@ -62,6 +62,17 @@ REJECT, whichever way it goes.
   chore/docs/seo edits, before reporting done. Cross-cutting invariant tests
   under `sync-system/tests/` catch tiny edits (sitemap forms, A-Z ordering,
   shared-UI scoping).
+- **`npm run test:browser:parallel` must be green BEFORE `gh pr create`, not
+  after.** About twelve minutes, four shards at once; budget it into the round.
+  `npm test` structurally cannot see browser-only breakage: 71 of 187 source
+  files are never imported by the unit estate, and every one of them loads
+  cleanly on its own under `node --test` even when it is dead in a browser. On
+  PR #530, 6,331 unit tests and a clean lint gate were all green while the
+  Rising Shows app rendered nothing, because `match.js` had gained a top-level
+  `const API` that collided with `finder-lib.js`'s in the shared classic-script
+  scope. If sub-agents are running, tell them NOT to start browser suites (they
+  contend over CDP 9222), then run it yourself once they have all finished;
+  that handoff is where it gets skipped.
 - **Apps are listed A-Z on every surface**, no exceptions; enforced by tests.
   Adding an app touches ~20 surfaces: follow "Adding a new app" in the root
   README.
