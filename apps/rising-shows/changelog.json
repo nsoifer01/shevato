@@ -1,6 +1,286 @@
 {
   "updates": [
     {
+      "builtAt": "2026-09-12T10:18:32.835Z",
+      "totals": {
+        "seasons": 66664,
+        "delta": -3
+      },
+      "shapeCounts": {
+        "rebound": 10173,
+        "rising": 2609,
+        "slow-burn": 4409,
+        "big-finale": 12161,
+        "u-shaped": 3083,
+        "rollercoaster": 14152,
+        "mid-peak": 4640,
+        "saved-best-for-last": 1493,
+        "front-loaded": 3516,
+        "declining": 1889,
+        "bad-finale": 4646,
+        "consistent": 2618,
+        "shape-drift": 1572
+      },
+      "shapeDeltas": {
+        "rebound": -3,
+        "slow-burn": -4,
+        "big-finale": 2,
+        "u-shaped": -1,
+        "rollercoaster": -12,
+        "mid-peak": -1,
+        "saved-best-for-last": -2,
+        "front-loaded": -1,
+        "declining": 5,
+        "bad-finale": -7,
+        "shape-drift": -8
+      },
+      "added": [
+        {
+          "seriesId": "tt9780442",
+          "title": "RuPaul's Drag Race UK",
+          "season": 8,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt0080236",
+          "title": "Keep It in the Family",
+          "season": 4,
+          "seasonYear": 1982
+        },
+        {
+          "seriesId": "tt0320037",
+          "title": "Jimmy Kimmel Live!",
+          "season": 25,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt38956012",
+          "title": "LOL Next",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt4378376",
+          "title": "Babylon Berlin",
+          "season": 5,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt16227378",
+          "title": "Irai",
+          "season": 1,
+          "seasonYear": 2022
+        },
+        {
+          "seriesId": "tt22189022",
+          "title": "Ingen ängel",
+          "season": 1,
+          "seasonYear": 2023
+        },
+        {
+          "seriesId": "tt38218082",
+          "title": "Crew Girl",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt37439410",
+          "title": "The Perfect Lie",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt43641922",
+          "title": "Miraculous Secrets",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt8835780",
+          "title": "Part-Time Idol",
+          "season": 1,
+          "seasonYear": 2017
+        }
+      ],
+      "removed": [
+        {
+          "seriesId": "tt2733562",
+          "title": "Yagmurdan Kaçarken",
+          "season": 1,
+          "seasonYear": 2013
+        },
+        {
+          "seriesId": "tt3659018",
+          "title": "That's My Life",
+          "season": 4,
+          "seasonYear": 2016
+        },
+        {
+          "seriesId": "tt3659018",
+          "title": "That's My Life",
+          "season": 3,
+          "seasonYear": 2015
+        },
+        {
+          "seriesId": "tt0200358",
+          "title": "Omnibus",
+          "season": 31,
+          "seasonYear": 1993
+        },
+        {
+          "seriesId": "tt1719836",
+          "title": "Hallo K3",
+          "season": 3,
+          "seasonYear": 2012
+        },
+        {
+          "seriesId": "tt0069646",
+          "title": "Toma",
+          "season": 1,
+          "seasonYear": 1973
+        },
+        {
+          "seriesId": "tt0416359",
+          "title": "The Contender",
+          "season": 2,
+          "seasonYear": 2006
+        },
+        {
+          "seriesId": "tt12107408",
+          "title": "Trailer Park Boys: Park After Dark",
+          "season": 1,
+          "seasonYear": 2019
+        },
+        {
+          "seriesId": "tt28254897",
+          "title": "Mystery Files",
+          "season": 2,
+          "seasonYear": 2024
+        },
+        {
+          "seriesId": "tt3357710",
+          "title": "Blind Film Critic",
+          "season": 1,
+          "seasonYear": 2011
+        },
+        {
+          "seriesId": "tt5782294",
+          "title": "24 uur met...",
+          "season": 10,
+          "seasonYear": 2016
+        },
+        {
+          "seriesId": "tt5966234",
+          "title": "Broodje gezond",
+          "season": 1,
+          "seasonYear": 2016
+        },
+        {
+          "seriesId": "tt0416359",
+          "title": "The Contender",
+          "season": 6,
+          "seasonYear": 2018
+        },
+        {
+          "seriesId": "tt6740148",
+          "title": "Boku wa Mari no naka",
+          "season": 1,
+          "seasonYear": 2017
+        }
+      ],
+      "ratingSwings": [
+        {
+          "seriesId": "tt23396714",
+          "title": "Sarmasik Zamani",
+          "season": 1,
+          "from": 6.9,
+          "to": 7.96,
+          "delta": 1.06
+        },
+        {
+          "seriesId": "tt33377409",
+          "title": "Interrogation",
+          "season": 1,
+          "from": 6.93,
+          "to": 7.74,
+          "delta": 0.81
+        },
+        {
+          "seriesId": "tt33090936",
+          "title": "Kötü Kan",
+          "season": 1,
+          "from": 6.67,
+          "to": 7.48,
+          "delta": 0.81
+        },
+        {
+          "seriesId": "tt38866019",
+          "title": "Three Months to Break Your Heart",
+          "season": 1,
+          "from": 9.04,
+          "to": 9.76,
+          "delta": 0.72
+        },
+        {
+          "seriesId": "tt28380138",
+          "title": "Kirli Sepeti",
+          "season": 2,
+          "from": 8.58,
+          "to": 9.28,
+          "delta": 0.7
+        },
+        {
+          "seriesId": "tt31064976",
+          "title": "Kül Masali",
+          "season": 1,
+          "from": 9.34,
+          "to": 9.88,
+          "delta": 0.54
+        },
+        {
+          "seriesId": "tt0229405",
+          "title": "Galaxy High School",
+          "season": 1,
+          "from": 7.46,
+          "to": 7.98,
+          "delta": 0.52
+        },
+        {
+          "seriesId": "tt3659018",
+          "title": "That's My Life",
+          "season": 1,
+          "from": 7.66,
+          "to": 7.16,
+          "delta": -0.5
+        },
+        {
+          "seriesId": "tt22355610",
+          "title": "The Turkish Passion",
+          "season": 1,
+          "from": 5.25,
+          "to": 5.72,
+          "delta": 0.47
+        },
+        {
+          "seriesId": "tt38801678",
+          "title": "Ben Onun Annesiyim",
+          "season": 1,
+          "from": 6,
+          "to": 6.45,
+          "delta": 0.45
+        }
+      ],
+      "modifiedCounts": {
+        "seriesVotes": 15003,
+        "avgRating": 1066,
+        "shapes": 193,
+        "episodeCount": 85,
+        "seriesRating": 210,
+        "poster": 2,
+        "overview": 3
+      }
+    },
+    {
       "builtAt": "2026-09-11T10:38:26.630Z",
       "totals": {
         "seasons": 66667,
@@ -7634,225 +7914,6 @@
         "seriesRating": 363,
         "episodeCount": 90,
         "poster": 1
-      }
-    },
-    {
-      "builtAt": "2026-08-09T06:59:37.398Z",
-      "totals": {
-        "seasons": 66210,
-        "delta": 15
-      },
-      "shapeCounts": {
-        "mid-peak": 4636,
-        "rebound": 10084,
-        "rising": 2904,
-        "slow-burn": 4373,
-        "big-finale": 12121,
-        "u-shaped": 3091,
-        "rollercoaster": 14058,
-        "saved-best-for-last": 1543,
-        "front-loaded": 3469,
-        "declining": 1876,
-        "bad-finale": 4664,
-        "consistent": 2619,
-        "shape-drift": 1641
-      },
-      "shapeDeltas": {
-        "mid-peak": 1,
-        "rising": 5,
-        "slow-burn": -2,
-        "big-finale": -2,
-        "u-shaped": 1,
-        "rollercoaster": -3,
-        "saved-best-for-last": -1,
-        "front-loaded": -1,
-        "declining": 1,
-        "bad-finale": 1,
-        "shape-drift": 6
-      },
-      "added": [
-        {
-          "seriesId": "tt38264832",
-          "title": "Alley Cats",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt2100976",
-          "title": "Impractical Jokers",
-          "season": 13,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt21908550",
-          "title": "Vadhandhi",
-          "season": 2,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt36955608",
-          "title": "Our Sticky Love",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt41785451",
-          "title": "Affairs Not the Only Secret",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt0081934",
-          "title": "Solo",
-          "season": 2,
-          "seasonYear": 1982
-        },
-        {
-          "seriesId": "tt0810500",
-          "title": "Bibin svijet",
-          "season": 3,
-          "seasonYear": 2007
-        },
-        {
-          "seriesId": "tt1166709",
-          "title": "Say Yes to the Dress",
-          "season": 13,
-          "seasonYear": 2015
-        },
-        {
-          "seriesId": "tt28083272",
-          "title": "Betrayal",
-          "season": 4,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt18968062",
-          "title": "Fixer to Fabulous: Welcome Inn",
-          "season": 1,
-          "seasonYear": 2022
-        },
-        {
-          "seriesId": "tt32896333",
-          "title": "No One Will Miss Us",
-          "season": 2,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt33294281",
-          "title": "De bedste år",
-          "season": 2,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt42344158",
-          "title": "Paris Is Always A Good Idea",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt38856819",
-          "title": "Be My Player Two",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt43738667",
-          "title": "Eight Blocks",
-          "season": 1,
-          "seasonYear": 2025
-        }
-      ],
-      "removed": [],
-      "ratingSwings": [
-        {
-          "seriesId": "tt0159876",
-          "title": "Great Performances",
-          "season": 42,
-          "from": 7,
-          "to": 8.23,
-          "delta": 1.23
-        },
-        {
-          "seriesId": "tt0200358",
-          "title": "Omnibus",
-          "season": 31,
-          "from": 8.6,
-          "to": 7.65,
-          "delta": -0.95
-        },
-        {
-          "seriesId": "tt1034201",
-          "title": "Britain's Got Talent",
-          "season": 9,
-          "from": 6.4,
-          "to": 5.54,
-          "delta": -0.86
-        },
-        {
-          "seriesId": "tt21764074",
-          "title": "Cranberry Sorbet",
-          "season": 4,
-          "from": 6.59,
-          "to": 7.41,
-          "delta": 0.82
-        },
-        {
-          "seriesId": "tt41672842",
-          "title": "Salish & Jordan Matter",
-          "season": 1,
-          "from": 4.14,
-          "to": 3.39,
-          "delta": -0.75
-        },
-        {
-          "seriesId": "tt32590226",
-          "title": "Laughter Chefs Unlimited Entertainment",
-          "season": 3,
-          "from": 5.73,
-          "to": 4.99,
-          "delta": -0.74
-        },
-        {
-          "seriesId": "tt22816510",
-          "title": "Travesuras de la Niña Mala",
-          "season": 1,
-          "from": 6.87,
-          "to": 7.47,
-          "delta": 0.6
-        },
-        {
-          "seriesId": "tt37522426",
-          "title": "A Killer Among Friends",
-          "season": 2,
-          "from": 7.13,
-          "to": 6.57,
-          "delta": -0.56
-        },
-        {
-          "seriesId": "tt29420686",
-          "title": "1670",
-          "season": 3,
-          "from": 7.44,
-          "to": 6.93,
-          "delta": -0.51
-        },
-        {
-          "seriesId": "tt0437741",
-          "title": "Project Runway",
-          "season": 22,
-          "from": 4.55,
-          "to": 4.08,
-          "delta": -0.47
-        }
-      ],
-      "modifiedCounts": {
-        "seriesVotes": 20966,
-        "avgRating": 1215,
-        "shapes": 221,
-        "episodeCount": 67,
-        "seriesRating": 309,
-        "overview": 5,
-        "poster": 2
       }
     }
   ]
