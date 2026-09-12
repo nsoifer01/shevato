@@ -121,7 +121,40 @@ function venueTrip(n, name, prefix) {
 
 const paintedCount = (s) => evaluate(s, `document.querySelectorAll('#board .tp-maps-link .tpm-rating').length`);
 const slotCount = (s) => evaluate(s, `document.querySelectorAll('#board .tp-maps-link[data-place-key]').length`);
-const scrollBoardToEnd = (s) => evaluate(s, `(() => { window.scrollTo(0, document.body.scrollHeight); return window.scrollY; })()`);
+// Walk the board past the viewport in steps, the way a reader does.
+//
+// This used to be a single `window.scrollTo(0, document.body.scrollHeight)`,
+// and that is not "scrolling the board": it teleports to the bottom of the
+// DOCUMENT in one frame. The rating slots hydrate from an IntersectionObserver,
+// which only fires for elements that actually intersect the viewport, so a
+// one-frame jump past forty venues hydrates none of them. It passed only
+// because the page happened to be short enough that the last venues were still
+// on screen once you hit the bottom. Adding ANY content below the board (a
+// sentence to the .app-about block was enough) pushed them out of view and the
+// suite reported "scrolling fetches nothing", which looked like an app bug and
+// was a test-mechanism bug.
+//
+// Stepping by viewport instead is both faithful to a real reader and immune to
+// whatever sits below the board. The pause per step gives the observer a frame
+// to fire in.
+const scrollBoardToEnd = async (s) => {
+  const viewport = Math.max(200, Number(await evaluate(s, 'window.innerHeight')) || 800);
+  const end = Math.max(0, Number(await evaluate(s, `(() => {
+    const b = document.getElementById('board');
+    if (!b) return document.body.scrollHeight;
+    return Math.ceil(window.scrollY + b.getBoundingClientRect().bottom);
+  })()`)) || 0);
+  // 80% of a viewport per step leaves a band of overlap, so nothing can sit
+  // between two steps without ever intersecting. The iteration cap is a
+  // seatbelt: a bad measurement must slow one check down, never hang a suite.
+  const stride = Math.max(100, Math.floor(viewport * 0.8));
+  const steps = Math.min(60, Math.ceil(end / stride) + 1);
+  for (let i = 1; i <= steps; i += 1) {
+    await evaluate(s, `window.scrollTo(0, ${i * stride})`);
+    await sleep(90);
+  }
+  return evaluate(s, 'window.scrollY');
+};
 
 export async function run({ base, cdpPort }) {
   const R = [];

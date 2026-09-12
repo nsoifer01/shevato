@@ -480,6 +480,40 @@ and coordinate have different rules and must never be given one lifetime.
   stale own-prefix caches are the proof. One offer per tab, suppressed in the
   first 10s after load.
 
+## A one-frame `scrollTo(bottom)` is not "scrolling", and it hid behind page height
+
+`apps/trip-planner/e2e/places.mjs` checked that scrolling a 50-venue trip buys
+the ratings that come into view. Its helper was:
+
+    window.scrollTo(0, document.body.scrollHeight)
+
+That teleports to the bottom of the DOCUMENT in a single frame. Rating slots
+hydrate from an `IntersectionObserver`, which only fires for elements that
+actually intersect the viewport, so a one-frame jump past forty venues hydrates
+none of them. The check passed only because the page happened to be short
+enough that the last venues were still on screen once you hit the bottom.
+
+On 2026-09-11 a single sentence added to the `.app-about` block pushed them out
+of view, and the suite reported `9 -> 9`: "scrolling fetches nothing". That
+reads as an app bug and is a test-mechanism bug. It cost a while to find,
+because the diff provably did not touch the venue path at all.
+
+Two things settled it, and both are the method to reuse:
+
+- **The saved screenshot.** It showed the footer and the prose block, not the
+  board, which said immediately that the scroll had overshot rather than that
+  the fetching was broken.
+- **A worktree on master, same machine, same suite.** 110/110 there against
+  109/110 on the branch isolated the change as the cause without guessing.
+
+The helper now steps by 80% of a viewport with a pause per step, ends at the
+BOARD's bottom rather than the document's, and caps its iterations. Runtime is
+unchanged (114s). Anything below the board can now grow freely.
+
+The general rule: an `IntersectionObserver` cannot be driven by a jump. If a
+check depends on things scrolling INTO view, it has to move through them, and
+it must anchor to the element it cares about, never to the document.
+
 ## Headless-probe traps specific to this app
 
 - App state is closure-scoped: seed `trip-planner:v1` in localStorage and
