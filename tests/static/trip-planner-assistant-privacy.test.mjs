@@ -70,7 +70,14 @@ test('privacy.html names the booking facts the assistant is NOT given', () => {
   }
 });
 
-test('the Last reviewed date moved when the assistant prose did', () => {
+// NAME CHANGED 2026-09-12. This was called "the Last reviewed date moved when
+// the assistant prose did", which it never checked: it reads the date, not the
+// prose, and any date after the floor satisfies it. That name is why the gap
+// looked covered while PR #530 shipped a review date one day older than the
+// paragraphs it described. The real rule now lives in
+// tests/static/privacy-review-date.test.mjs; this stays as what it always was,
+// a floor under the assistant section's own last rewrite.
+test('the Last reviewed date is not older than the assistant section it describes', () => {
   const m = /<strong>Last reviewed:<\/strong>\s*([0-9]{1,2} [A-Za-z]+ [0-9]{4})/.exec(privacy);
   assert.ok(m, 'the Last reviewed line is gone');
   const when = new Date(m[1]);

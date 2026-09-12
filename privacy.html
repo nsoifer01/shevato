@@ -92,7 +92,17 @@
 
       <article class="about-shell">
 
-        <p><strong>Last reviewed:</strong> 11 September 2026. <!-- TODO(owner): update this date whenever the behaviour described below changes. --></p>
+        <p><strong>Last reviewed:</strong> 12 September 2026.
+          <!-- THE RULE, for whoever is editing this file (it is not the owner's chore):
+               if your change alters what any app sends, stores, syncs or deletes, OR
+               alters the wording below, bump this date IN THE SAME PULL REQUEST, to the
+               date the change SHIPS. It was 7 -> 11 September in PR #530 because that is
+               when the paragraphs were written, and the branch then ran another day and
+               merged on the 12th with a date that was already stale. A review date is a
+               claim about the published page, not about your working copy, so re-read it
+               at merge time.
+               tests/static/privacy-review-date.test.mjs enforces the first half of this:
+               the policy text below cannot change while this date stands still. --></p>
 
         <h2>The short version</h2>
 
