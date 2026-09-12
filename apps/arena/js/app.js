@@ -6099,9 +6099,9 @@ function progressRoomClock() {
         });
     }
 
-    const fireAdvance = () => {
+    const fireAdvance = (opts) => {
         state.earlyAdvanceForQuestion = key;
-        advanceQuestionOrFinish().catch((err) => {
+        advanceQuestionOrFinish(opts).catch((err) => {
             console.warn('advance failed:', err);
             // Retry about once a second instead of every frame.
             setTimeout(() => {
@@ -6115,7 +6115,10 @@ function progressRoomClock() {
         && state.earlyAdvanceForQuestion !== key
         && live.length > 0
         && live.every((p) => p.readyAfterQId === currentQId)) {
-        fireAdvance();
+        // Single write, not a transaction: nothing else may advance the room
+        // before the deadline, and the two-phase version misses the window it
+        // exists to beat when the SDK's queue stalls. See the function.
+        fireAdvance({ unanimous: true });
         return;
     }
 
@@ -6191,84 +6194,73 @@ async function maybeAutoPickCategory(room) {
 
 /**
  * Move the room past the current question: next location (Globe Drop),
- * the next picking stage (Trivia) or the finished state. A transaction
- * with an idempotent precondition (still playing, same question id and
- * index) so the host and a member's fallback can race without a
- * double-advance; a no-op when someone else already moved the room.
+ * the next picking stage (Trivia) or the finished state.
+ *
+ * TWO WRITE PATHS, and which one is correct is decided by firestore.rules,
+ * not by preference:
+ *
+ *   `{ unanimous: true }` is the Globe Drop Ready-skip, which fires strictly
+ *   BEFORE questionOverMs(). The rules let a MEMBER advance the room only at
+ *   or after that moment (memberTimedAdvance re-checks the deadline on the
+ *   server clock), so at this instant the host is the only client that can
+ *   write an advance at all, and it has already serialised itself on
+ *   state.earlyAdvanceForQuestion. A transactional re-read therefore defends
+ *   against a race that cannot happen, and it costs the feature the thing it
+ *   is made of - see below. The precondition is still checked, against the
+ *   host's own listener copy, which is the same document the Ready gate just
+ *   read.
+ *
+ *   Everything else is the timed advance, where the host and any member's
+ *   fallback genuinely do race, and the transaction's idempotent precondition
+ *   is what stops a double-advance. That path is unchanged.
+ *
+ * WHY THE SPLIT EXISTS (2026-09-12). runTransaction is two DEPENDENT RPCs on
+ * the SDK's single serialised async queue: BatchGetDocuments, then Commit
+ * issued from the read's continuation. Measured on a starved two-core runner
+ * with the RPCs timed in the page, the read answered in 0.1-0.2 s and the
+ * commit was issued 4.2 s AFTER it, with the main thread never blocked
+ * (longest frame gap 0.24 s) and no transaction retry: the stall is the queue
+ * between the phases, not the network, not the emulator and not contention.
+ * The advance then landed 1.5 s past the deadline it exists to beat, so the
+ * room sat out the whole ten-second reveal that every player had just voted
+ * to skip. The Ready-skip's entire budget is the remainder of that window
+ * after collecting the votes, which is about five seconds; a stall between
+ * two phases eats it, a stall before one write does not.
  */
-async function advanceQuestionOrFinish() {
+async function advanceQuestionOrFinish({ unanimous = false } = {}) {
     if (!state.roomCode || !state.roomData) return;
-    const expectedQId = state.roomData.currentQuestionId;
-    const expectedIdx = state.roomData.currentQuestionIndex || 0;
     const roomRef = doc(db, 'triviaRooms', state.roomCode);
     // Ranking and rotation come from the player docs we hold now; they are
     // not part of the transaction (different documents), which is fine: the
     // asking window is closed, so scores are final.
-    const finalRanking = currentFinalRanking();
-    const currentPlayers = sortPlayersForRotation(livePlayers())
-        .map((p) => p.uid)
-        .filter((uid) => typeof uid === 'string' && uid.length > 0);
+    //
+    // No per-player reset write here either. The rules (correctly) forbid the
+    // host from writing other players' docs, so resetting their per-question
+    // fields would 403. `currentAnsweredFor` (written by the player
+    // themselves on submit) is the per-question marker.
+    const opts = {
+        expectedQuestionId: state.roomData.currentQuestionId,
+        expectedIndex: state.roomData.currentQuestionIndex || 0,
+        finalRanking: currentFinalRanking(),
+        players: sortPlayersForRotation(livePlayers())
+            .map((p) => p.uid)
+            .filter((uid) => typeof uid === 'string' && uid.length > 0),
+        stamp: serverTimestamp()
+    };
+
+    if (unanimous) {
+        const payload = RoomState.nextRoomStateAfterQuestion(state.roomData, opts);
+        if (!payload) return;
+        await updateDoc(roomRef, payload);
+        return;
+    }
 
     await runTransaction(db, async (tx) => {
         const snap = await tx.get(roomRef);
         if (!snap.exists()) return;
-        const room = snap.data() || {};
-        if (room.status !== 'playing') return;
-        if (room.currentQuestionId !== expectedQId) return;
-        if ((room.currentQuestionIndex || 0) !== expectedIdx) return;
-
-        const idx = room.currentQuestionIndex || 0;
-        const total = room.totalQuestions;
-        const nextIdx = idx + 1;
-        const playedIds = Array.isArray(room.playedQuestionIds) ? room.playedQuestionIds.slice() : [];
-        if (expectedQId && !playedIds.includes(expectedQId)) playedIds.push(expectedQId);
-
-        // No per-player reset write here. The rules (correctly) forbid the
-        // host from writing other players' docs, so resetting their
-        // per-question fields would 403. `currentAnsweredFor` (written by
-        // the player themselves on submit) is the per-question marker.
-
-        if (nextIdx >= total) {
-            tx.update(roomRef, {
-                status: 'finished',
-                finishedAt: serverTimestamp(),
-                playedQuestionIds: playedIds,
-                finalRanking
-            });
-            return;
-        }
-
-        if (room.gameType === 'globe-drop') {
-            const pool = Array.isArray(room.questions) ? room.questions : [];
-            const nextLoc = pool[nextIdx];
-            if (!nextLoc) return;
-            tx.update(roomRef, {
-                status: 'playing',
-                currentQuestionIndex: nextIdx,
-                currentQuestionId: nextLoc.id,
-                questionStartedAt: serverTimestamp(),
-                revealStartedAt: null,
-                playedQuestionIds: playedIds
-            });
-            return;
-        }
-
-        // Trivia: rotate the decider over the CURRENT live players (late
-        // joiners enter the rotation, ghosts are skipped) and re-enter the
-        // picking stage.
-        const nextDecider = RoomState.pickDecider(currentPlayers, nextIdx);
-        tx.update(roomRef, {
-            status: 'picking',
-            currentQuestionIndex: nextIdx,
-            currentQuestionId: null,
-            selectedCategory: null,
-            questionStartedAt: null,
-            revealStartedAt: null,
-            pickingStartedAt: serverTimestamp(),
-            playerOrder: currentPlayers,
-            deciderUid: nextDecider,
-            playedQuestionIds: playedIds
-        });
+        const payload = RoomState.nextRoomStateAfterQuestion(snap.data() || {}, opts);
+        if (!payload) return;
+        tx.update(roomRef, payload);
     });
 }
 

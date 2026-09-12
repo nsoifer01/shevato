@@ -122,6 +122,19 @@ REJECT, whichever way it goes.
   gate until 2026-09-11. A covered file reports 28.
 - `npm run test:all` is the local merge gate and now runs lint first, so the
   cheapest check fails fastest.
+- **Debug a slow/flaky e2e with the narrowest run and a unit test, never by
+  re-running the suite.** The Arena emulator suite takes 5-11 minutes; one
+  scenario takes about 70 seconds (`ARENA_E2E_ONLY=S6:`, which works standalone
+  since 2026-09-12 because `guard()` opens the client pages). Read the code and
+  form the hypothesis first, add every probe you might want in ONE pass
+  (re-arming costs a whole run), reproduce ONCE, then pin the logic with a
+  `node:test` unit test in milliseconds and run the full suite ONCE at the end.
+  Never run other work on the box while a timing-sensitive run is going, and
+  check the emulator ports are free first: a leftover emulator makes the run
+  SKIP, and a skipped batch looks like a finished one. Chasing one timing bug
+  by re-running the whole suite eleven times cost 70 wasted minutes on
+  2026-09-12; the reasoning is in `apps/arena/FINDINGS.md`, "One scenario should
+  cost one scenario".
 - `.features/` holds each app's living test-plan pair (gitignored,
   owner-reviewed); plans are archived, never deleted.
 

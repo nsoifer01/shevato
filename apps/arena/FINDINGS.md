@@ -938,6 +938,94 @@ a frozen podium.
 live; the read-only recap is for people who were not in it. The suite is
 95/95 with the fix.
 
+## The Ready-skip advance was two RPCs where one would do (2026-09-12)
+
+`rules` went red on `emulator (globe): every live player Ready during the
+reveal advances the round early`, and the previous section's reordering had
+reduced but not removed it. The measurement that settled it was new, and it is
+the one every earlier round of this investigation lacked: **when did the host
+KNOW, as distinct from when could it ACT.**
+
+The e2e now records both. `armReadyBar` puts a MutationObserver on the host's
+own `#globe-drop-ready-status`, which `renderReadyBar` paints from the same
+live set `progressRoomClock` gates the skip on, so the moment it first reads
+`N/N ready` IS the moment the host's snapshot carried unanimity. `armRpc`
+hooks XHR/fetch and records every Firestore RPC's start and finish.
+
+Reproduced locally with the suite pinned to two cores plus one spinner
+(`taskset -c 0,1` + a busy loop; four spinners is too much, the votes fall out
+of the window entirely and you get a different failure):
+
+```
+hostSawAllReady -6.5s      the host knew, 6.5 s before the deadline
+hostFrameGap    237ms      its clock was running
+warns A=0                  advanceQuestionOrFinish never threw
+advance stamped +2.0s      the room doc moved 8.5 s later, PAST the deadline
+RPC  batchGet@-5.9  commit@-1.7
+```
+
+One `batchGet`, one `commit`, 4.2 s apart, and in the healthy runs those same
+two calls answer in 0.1-0.2 s and 0.3 s. So: not the network, not the
+emulator, not a transaction retry, not a blocked main thread. `runTransaction`
+is **two dependent RPCs on the SDK's single serialised async queue**, and the
+commit is issued from the read's continuation. A stall between the phases
+eats the whole budget; a stall before one write does not.
+
+**The fix is to stop using a transaction for the early advance.** The
+transaction defends the host against a member's fallback advance. But the
+Ready-skip fires strictly BEFORE `questionOverMs()`, and `firestore.rules`
+lets a member advance only at or after that moment (`memberTimedAdvance`
+re-checks the deadline on the server clock). Before the deadline the host is
+the only client that can write an advance at all, and it has already
+serialised itself on `state.earlyAdvanceForQuestion`. So the read defends
+against a race that cannot happen. `advanceQuestionOrFinish({ unanimous:
+true })` now does one `updateDoc`; every other caller keeps the transaction,
+where the race is real. No rules change: the security model is unchanged, and
+a plain host `updateDoc` with `serverTimestamp()` is already what `startGame`
+and `pickCategoryAndStart` do.
+
+Both paths build their payload from `RoomState.nextRoomStateAfterQuestion`,
+including the idempotent precondition (still playing, same question id, same
+index), so they cannot drift and neither can advance a stale room.
+`tests/advance-payload.test.js` pins that in 40 ms.
+
+Measured after, same two-core-plus-spinner starvation, unanimity to stamped:
+
+| | before (transaction) | after (single write) |
+| --- | --- | --- |
+| healthy | 0.5 s | 0.7 s |
+| starved | 4.2 s, 6.6 s (CI x2), 8.5 s | 0.7, 1.0, 0.7, and a 4th run green |
+
+The RPC trail is the tell: a healthy advance now reads `Write@..(0.3s)` with
+no `batchGet`/`commit` pair at all.
+
+## One scenario should cost one scenario (2026-09-12)
+
+Finding the above took 106 minutes, and about 70 of those were the harness.
+`ARENA_E2E_ONLY` existed, but the three client pages were opened INSIDE S1, so
+`ARENA_E2E_ONLY=S6:` crashed on a null page and the only usable filter was
+`S1:,S6:` - which drags a complete five-round three-client trivia game in
+front of every iteration. Each validation cost 5-11 minutes, so the loop was
+run eleven times instead of the fix being covered by a unit test.
+
+`ensurePages()` now runs in `guard()` and opens whatever a filtered run is
+missing. A full run is unaffected (S1 inherits exactly the pages it used to
+open, with the same options, untouched). `ARENA_E2E_ONLY=S6:` went from
+impossible to **72 seconds**.
+
+The rule this earns, for any timing bug in this suite:
+
+1. Read the code and form the hypothesis before running anything.
+2. Add every probe you might want in ONE pass. Re-arming costs a whole run.
+3. Reproduce ONCE, with the narrowest `ARENA_E2E_ONLY` that contains the
+   scenario.
+4. Cover the logic with a `node:test` unit test (milliseconds), not with
+   repeat runs of the scenario.
+5. Run the full suite ONCE at the end.
+6. Never run anything else on the box while a timing-sensitive run is going,
+   and check the emulator ports are free first: a leftover emulator makes the
+   harness SKIP, and a skipped batch looks like a finished one.
+
 ## The Ready-skip check: where six seconds went (2026-09-08, PR #505)
 
 `rules` went pass, fail, pass, fail, pass, fail on six consecutive runs of

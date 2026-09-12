@@ -545,6 +545,90 @@
         };
     }
 
+    /**
+     * The room-doc update that moves a room past its current question, or
+     * null when the room is not in a state that can advance.
+     *
+     * Pure, and deliberately shared by BOTH advance paths in app.js (the
+     * single-write Ready-skip and the transactional timed advance), so the
+     * two can never drift apart on what "the next question" means. The
+     * caller supplies what is NOT in the room document: the server-timestamp
+     * sentinel, and the ranking / rotation it derived from the player docs.
+     *
+     * `expectedQuestionId` and `expectedIndex` are the idempotent
+     * precondition. Inside a transaction they are checked against the
+     * freshly-read document; on the single-write path they are checked
+     * against the host's own listener copy, which is the same value the
+     * caller just gated on.
+     *
+     * @param {object} room - the room document
+     * @param {object} opts - { stamp, finalRanking, players, expectedQuestionId, expectedIndex }
+     * @returns {object|null}
+     */
+    function nextRoomStateAfterQuestion(room, opts) {
+        const o = opts || {};
+        const r = room || {};
+        // `stamp` is the server-timestamp sentinel every branch writes. A
+        // payload built without it would send `undefined` for the clock the
+        // whole round is measured from, so a caller that forgot it gets a
+        // no-op rather than a room with no deadline.
+        if (o.stamp === undefined || o.stamp === null) return null;
+        if (r.status !== 'playing') return null;
+        if (o.expectedQuestionId !== undefined && r.currentQuestionId !== o.expectedQuestionId) return null;
+        const idx = r.currentQuestionIndex || 0;
+        if (o.expectedIndex !== undefined && idx !== o.expectedIndex) return null;
+
+        const nextIdx = idx + 1;
+        const playedIds = Array.isArray(r.playedQuestionIds) ? r.playedQuestionIds.slice() : [];
+        if (r.currentQuestionId && !playedIds.includes(r.currentQuestionId)) {
+            playedIds.push(r.currentQuestionId);
+        }
+
+        // Last question: the game ends, and the index deliberately does NOT
+        // move (firestore.rules reads an unchanged index plus status
+        // 'finished' as the finish shape).
+        if (nextIdx >= r.totalQuestions) {
+            return {
+                status: 'finished',
+                finishedAt: o.stamp,
+                playedQuestionIds: playedIds,
+                finalRanking: Array.isArray(o.finalRanking) ? o.finalRanking : []
+            };
+        }
+
+        // Globe Drop plays its locations in order: no picking stage, no decider.
+        if (r.gameType === 'globe-drop') {
+            const pool = Array.isArray(r.questions) ? r.questions : [];
+            const nextLoc = pool[nextIdx];
+            if (!nextLoc) return null;
+            return {
+                status: 'playing',
+                currentQuestionIndex: nextIdx,
+                currentQuestionId: nextLoc.id,
+                questionStartedAt: o.stamp,
+                revealStartedAt: null,
+                playedQuestionIds: playedIds
+            };
+        }
+
+        // Trivia: rotate the decider over the CURRENT live players (late
+        // joiners enter the rotation, ghosts are skipped) and re-enter the
+        // picking stage.
+        const players = Array.isArray(o.players) ? o.players : [];
+        return {
+            status: 'picking',
+            currentQuestionIndex: nextIdx,
+            currentQuestionId: null,
+            selectedCategory: null,
+            questionStartedAt: null,
+            revealStartedAt: null,
+            pickingStartedAt: o.stamp,
+            playerOrder: players,
+            deciderUid: pickDecider(players, nextIdx),
+            playedQuestionIds: playedIds
+        };
+    }
+
     return {
         generateRoomCode,
         normalizeRoomCode,
@@ -564,6 +648,7 @@
         livePlayers,
         shouldTakeOverHost,
         finalRankingSnapshot,
+        nextRoomStateAfterQuestion,
         endOfGameStatsDelta
     };
 }));

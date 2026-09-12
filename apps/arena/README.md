@@ -295,7 +295,41 @@ Arena has three suites at three depths:
 npm run test:arena           # pure-module unit tests (part of `npm test`)
 npm run test:arena:rules     # Firestore security-rules suite (emulator; needs Java)
 npm run test:arena:emulator  # two-client multiplayer e2e (emulator + headless Chromium)
+
+# ONE scenario, for iterating on a bug. Comma-separated, matched as a
+# substring of the scenario label, so `S6` and `S6:` both work:
+ARENA_E2E_ONLY=S6 npm run test:arena:emulator          # about 70 seconds
+ARENA_E2E_ONLY=S2,S10 npm run test:arena:emulator      # host handoff, both paths
+ARENA_E2E_ONLY=S6 ARENA_E2E_VERBOSE=1 npm run test:arena:emulator   # detail on passes too
 ```
+
+Every scenario runs standalone: the three client pages are opened by `guard()`,
+not inside S1, so a filtered run pays for nothing it filtered out (before
+2026-09-12 the pages lived in S1, which meant every "focused" run replayed a
+full five-round three-client game first and cost 5 to 11 minutes). The
+skipped scenarios are still REPORTED, with the filter that excluded them, so a
+filtered run can never be mistaken for a full one. Read the preconditions in
+the output before believing a filtered pass: the scenarios share one live
+multi-client session and some leave the clients where the next one expects
+them.
+
+**The validation ladder** for a failure here, cheapest rung first. Do not start
+at the bottom:
+
+1. A `node --test` unit test that reproduces the logic (milliseconds; run it
+   forty times if it is a race).
+2. `ARENA_E2E_ONLY=<scenario>` (about 70 seconds).
+3. `npm run test:arena:emulator` in full, ONCE (5 to 11 minutes).
+4. The repository gates: `npm test`, `npm run lint`,
+   `npm run test:browser:parallel`, ONCE at the end.
+
+**Stale emulators.** An interrupted run used to leave the emulator holding
+port 8085, and the next run then SKIPPED, which reads exactly like a finished
+run. Two guards now: `run-emulator.mjs` tears down emulators, both static
+servers and Chrome on `SIGINT`/`SIGTERM`/`SIGHUP`, and `startEmulator` reaps
+leftovers of its own (matched on `emulators:start` plus the throwaway project
+id, so a real Firebase emulator for another project is never touched) and says
+so with the PIDs. A busy port owned by anything else is reported, not killed.
 
 - **Unit** (`node --test apps/arena/tests/`): trivia scoring and streaks, Globe Drop distance/multiplier/difficulty scoring, room-code generation and alphabet validation, daily-challenge determinism, Wikidata/Trivia normalization, chat sanitization/moderation, the sliding chat window and its unread bookkeeping, the host-takeover predicate, and the room-gate hash derivation (pinned against independently computed SHA-256 vectors).
 - **Rules** (`apps/arena/tests-rules/`): runs the real `firestore.rules` inside the Firestore emulator via plain REST - player-doc ownership, the hashed password gate, chat caps and append-only, guest exclusions, admin deletes, plus no-regression pins for the shared non-arena sections. Deliberately NOT part of `npm test`: it needs Java plus a one-time firebase-tools/emulator download (pinned version, cached afterwards), which the dependency-free push/PR CI does not have. Skips cleanly when the environment is missing; CI runs it with `ARENA_RULES_REQUIRE=1`, which turns that skip into a hard failure (`.github/workflows/arena-rules.yml`). Rules are loaded through the emulator's `PUT :securityRules` endpoint with a deny-all negative control, because `emulators:start/exec` does not reliably compile updated rules.

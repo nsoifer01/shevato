@@ -518,21 +518,38 @@ export async function run({ base, cdpPort, base2 = null }) {
     const onlyFilter = process.env.ARENA_E2E_ONLY
       ? process.env.ARENA_E2E_ONLY.split(',').map((x) => x.trim()).filter(Boolean)
       : null;
+    // The three client pages are opened ONCE and inherited by every scenario.
+    // They used to be opened inside S1, which made every filtered run drag S1
+    // along: `ARENA_E2E_ONLY=S6:` still paid for a whole five-round trivia
+    // game before reaching the scenario under test, so iterating on one
+    // timing bug cost ten minutes a go (2026-09-12; see FINDINGS, "One
+    // scenario should cost one scenario"). Opening them here instead makes a
+    // filtered run cost only what it filtered to, and costs a full run
+    // nothing: S1 now inherits exactly the pages it used to create, with the
+    // same options, so its first-time-guest assertions are unchanged.
+    const ensurePages = async () => {
+      if (!A) A = await arenaPage(baseA);
+      if (!B) B = await arenaPage(baseB, { width: 360, height: 740, mobile: true });
+      if (!C && baseC) C = await arenaPage(baseC);
+    };
     const guard = async (label, fn) => {
       if (onlyFilter && !onlyFilter.some((f) => label.includes(f))) {
         skip(`arena-emulator: ${label}`, `skipped by ARENA_E2E_ONLY=${onlyFilter.join(',')}`);
         return;
       }
-      try { await fn(); } catch (e) {
+      try {
+        await ensurePages();
+        await fn();
+      } catch (e) {
         t(`arena-emulator: ${label} ran to completion`, false, String(e && e.message || e).slice(0, 200));
       }
     };
 
     await guard('S1: fresh guest create (D2) + full three-client game', async () => {
       /* ---------- S1: fresh guest create (D2) + full three-client game ---------- */
-      A = await arenaPage(baseA);
-      B = await arenaPage(baseB, { width: 360, height: 740, mobile: true });
-      if (baseC) C = await arenaPage(baseC);
+      // Pages are opened by guard()'s ensurePages, so a filtered run that
+      // skips this scenario still has them. They are as fresh here as when
+      // this block opened them itself: nothing has touched them yet.
       await front(A);
 
       // Host: switch to trivia, shortest game, fastest timer, create - as a
@@ -1301,6 +1318,65 @@ export async function run({ base, cdpPort, base2 = null }) {
         const w = (await evaluate(s, 'window.__warns||[]')) || [];
         return `${w.length}${w.length ? '@' + (Math.round((w[0][0] - naturalEnd) / 100) / 10) + ':' + String(w[0][1]).slice(0, 60) : ''}`;
       };
+      // WHEN DID THE HOST KNOW? The single fact every earlier investigation
+      // of this check was missing. The Ready-skip gate in progressRoomClock
+      // reads the same live set renderReadyBar paints, so the moment the
+      // host's own status line first reads "N/N ready" IS the moment the
+      // host's snapshot carried unanimity. Splitting the delay there turns
+      // one opaque number into two answerable ones: the host did not know
+      // yet (snapshot/propagation), or the host knew and could not act
+      // (the advance write). A MutationObserver, not a poll: the bar is
+      // painted from the same rAF loop the gate runs on, so a poll would
+      // measure the poll.
+      const armReadyBar = (s) => evaluate(s, `(()=>{window.__rb={at:0,seen:[]};
+        const el=document.getElementById('globe-drop-ready-status');if(!el)return false;
+        const look=()=>{const txt=(el.textContent||'').trim();
+          const prev=window.__rb.seen[window.__rb.seen.length-1];
+          if(txt&&(!prev||prev[1]!==txt))window.__rb.seen.push([Date.now(),txt]);
+          if(!window.__rb.at){const m=txt.match(/(\\d+)\\/(\\d+)\\s+(?:ready|finishing)/);
+            if(m&&m[1]===m[2]&&Number(m[2])>0)window.__rb.at=Date.now();}};
+        look();new MutationObserver(look).observe(el,{childList:true,subtree:true,characterData:true});return true})()`);
+      // Every Firestore RPC the host issues, start and finish, so a slow
+      // advance names the call it is waiting on instead of being one opaque
+      // number. This is what identified the 2026-09-12 defect: the Ready-skip
+      // transaction's BatchGetDocuments answered in 0.1-0.2 s and its Commit
+      // left 4.2 s later, which ruled out the network, the emulator, a retry
+      // and a blocked main thread in one reading, and pointed at the SDK's
+      // serialised queue between the two phases. The fix made the early
+      // advance a single Write, so a healthy trail here now reads
+      // `Write@..(0.3s)` with no batchGet/commit pair at all.
+      // Every hook is defensive: instrumentation must never be able to break
+      // the page it is measuring.
+      const armRpc = (s) => evaluate(s, `(()=>{window.__rpc=[];
+        const kind=(u)=>{try{const m=String(u).match(/Firestore\\/(\\w+)/)||String(u).match(/documents:(\\w+)/);
+          return m?m[1]:String(u).slice(-30);}catch(e){return '?';}};
+        const mark=(u)=>{try{const rec=[Date.now(),kind(u),0];window.__rpc.push(rec);return rec;}catch(e){return null;}};
+        const ox=XMLHttpRequest.prototype.open;
+        XMLHttpRequest.prototype.open=function(m,u){
+          const rec=mark(u);
+          try{if(rec)this.addEventListener('loadend',()=>{rec[2]=Date.now();});}catch(e){}
+          return ox.apply(this,arguments);};
+        const of=window.fetch;window.fetch=function(u,o){
+          const rec=mark(u&&u.url?u.url:u);
+          const done=()=>{try{if(rec)rec[2]=Date.now();}catch(e){}};
+          return of.apply(this,arguments).then((r)=>{done();return r;},(e)=>{done();throw e;});};
+        return 1})()`);
+      const rpcOn = async (s) => {
+        const r = (await evaluate(s, 'window.__rpc||[]')) || [];
+        const rel = (ms) => Math.round((ms - naturalEnd) / 100) / 10;
+        return r.filter(([, k]) => /batchGet|commit|Write|Listen/i.test(k))
+          .map(([t0, k, t1]) => `${k}@${rel(t0)}${t1 ? `..${rel(t1)}(${Math.round((t1 - t0) / 100) / 10}s)` : '..OPEN'}`)
+          .join(' ');
+      };
+      const readyBarOn = async (s) => {
+        const r = await evaluate(s, 'window.__rb||null');
+        if (!r) return 'n/a';
+        const when = r.at ? String(Math.round((r.at - naturalEnd) / 100) / 10) : 'never';
+        const trail = (r.seen || []).slice(-3)
+          .map(([ts, txt]) => `${Math.round((ts - naturalEnd) / 100) / 10}:${txt.replace(/\s+/g, ' ')}`)
+          .join(' -> ');
+        return `${when}${trail ? ' [' + trail.slice(0, 120) + ']' : ''}`;
+      };
       // The host's clock runs from its rAF loop; a stall of the main thread
       // (a texture re-upload under software GL, a long task) is a gap in
       // that loop, and this records the longest one seen since arming.
@@ -1385,6 +1461,8 @@ export async function run({ base, cdpPort, base2 = null }) {
       // check measures.
       await armWarns(A);
       await armWarns(B);
+      await armReadyBar(A);
+      await armRpc(A);
       const readyB = await waitForExpr(B, readyBtnLive, { timeout: REVEAL_LEAD_MS + 8000 });
       const tBtnB = at();
       await armClicks(B);
@@ -1424,6 +1502,8 @@ export async function run({ base, cdpPort, base2 = null }) {
         + (clickA.misses.length || clickB.misses.length
           ? ` | misses A=[${clickA.misses.join('; ')}] B=[${clickB.misses.join('; ')}]` : '')
         + ` | flags=${readyFlags.join(',')}`
+        + ` | hostSawAllReady ${await readyBarOn(A)}`
+        + ` | RPC ${await rpcOn(A)}`
         + ` | warns A=${await warnsOn(A)} B=${await warnsOn(B)} | hostFrameGap=${await frameGapOn(A)}`;
       // Split into two checks. "Both players registered Ready" and "that made
       // the round advance early" are different claims, and folding them into
