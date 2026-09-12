@@ -689,7 +689,7 @@ function tagShapeDrift(matches) {
 // stored scores). Reading the bare global would have meant app.js shadowing the
 // classifier it was trying to call - silently, because the shadow returns null
 // rather than throwing. RisingShowsFinder solved the same problem the same way.
-const API = {
+const MATCH_API = {
   isRising,
   isConsistent,
   isSlowBurn,
@@ -712,7 +712,7 @@ const API = {
 };
 
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = API;
+  module.exports = MATCH_API;
 } else if (typeof window !== 'undefined') {
-  window.RisingShowsMatch = API;
+  window.RisingShowsMatch = MATCH_API;
 }

@@ -3,6 +3,47 @@
 A living document: best current understanding, not a diary. See the
 repo-root `CLAUDE.md` for the convention.
 
+## `scripts/*.js` are classic scripts and share ONE global scope
+
+`index.html` loads `match.js`, `finder-lib.js` and `providers-lib.js` as plain
+`<script defer>` tags. `integrations-lib.js` is the odd one out: it carries
+`type="module"`, so it gets its own scope and cannot collide with the rest.
+
+For the three classic ones, every top-level `const` lands in the same global
+lexical scope. A second declaration of the same name is a SyntaxError that kills
+the ENTIRE file it appears in, its export footer never runs, and the next thing
+to read its global dies with `X is not defined`.
+
+This bit on 2026-09-11. The confidence-ordering work added `const API` to
+`match.js`, which loads first, alongside the `const API` `finder-lib.js` already
+had. CI reported it as:
+
+    SyntaxError: Identifier 'API' has already been declared
+    ReferenceError: RisingShowsFinder is not defined
+
+`app.js` reads `RisingShowsFinder` 20 times, so the Show Finder did not work at
+all. Renamed to `MATCH_API`. Note that `finder-lib.js` and `integrations-lib.js`
+BOTH declare `API` and `CATEGORICAL_SHAPES` and do not collide, purely because
+the second one is a module; do not read that as permission to reuse a name.
+
+Two things make this class hard to catch:
+
+- `npm test` cannot see it. Each file `require()`s cleanly on its own, which is
+  the only way the unit estate loads them, so every unit test stayed green while
+  the app was dead in a browser.
+- The failure is silent in the file that "wins". Nothing logs, nothing throws in
+  the surviving file, and the symptom appears somewhere else entirely.
+
+`tests/classic-script-globals.test.js` now evaluates every classic script
+index.html loads into one `vm` context and asserts each library still reaches
+`window`. It reads the script tags from index.html rather than hardcoding a
+list, and it splits classic from module by the tag's own `type` attribute, so
+adding a script or converting one to a module keeps it honest. A first draft of
+that test treated all four as classic and produced a confident false positive
+about `integrations-lib.js` being broken on master, which is worth remembering:
+simulate the loader the page actually uses, not the one you assume.
+
+
 ## The phone close button was 36x2 px for as long as it was sticky (2026-09-11)
 
 `.modal-close` is a 36 px circle. At 760 px and below it was not: it measured
