@@ -1,6 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { checkQuota, DEFAULT_LIMITS } from '../lib/tp-assist-quota.mjs';
+import {
+  checkQuota, DEFAULT_LIMITS, MONTHLY_BUDGET, resetAtFor, monthBucketOf,
+} from '../lib/tp-assist-quota.mjs';
 
 const HOUR = 3600000;
 const DAY = 86400000;
@@ -149,4 +151,78 @@ test('a clientId of "__proto__" is capped exactly like any other client', () => 
   // and the poisoned key must not leak onto other clients' reads
   const one = checkQuota({}, '__proto__', T0).usage;
   assert.equal(checkQuota(one, 'innocent', T0).usage.clientHour.innocent, 1);
+});
+
+// ------------------------------------------------------- the monthly cap ----
+//
+// WHY A MONTH BUCKET EXISTS HERE. An hour cap and a day cap cannot bound a
+// month: 400 a day is 12,000 a month, every one of them a billed Gemini turn if
+// the key's Cloud project has billing enabled. tp-places grew exactly this
+// dimension for exactly this reason (MONTHLY_BUDGET / billedMonth there), and
+// these pin the same property for the assistant.
+
+test('the monthly budget is what actually bounds a month, not 30 x globalDay', () => {
+  assert.ok(MONTHLY_BUDGET < 30 * DEFAULT_LIMITS.globalDay,
+    'a month of full days must not be reachable, or the month cap says nothing');
+  assert.ok(MONTHLY_BUDGET > DEFAULT_LIMITS.globalDay,
+    'but one heavy day must never exhaust the month on its own');
+});
+
+test('rejects at the monthly budget even with every other bucket fresh', () => {
+  // A fresh hour, a fresh day, a brand-new client: only the month can refuse.
+  const spent = {
+    monthBucket: monthBucketOf(T0),
+    globalMonth: MONTHLY_BUDGET,
+  };
+  const r = checkQuota(spent, 'fresh-client', T0);
+  assert.equal(r.allowed, false);
+  assert.equal(r.scope, 'global_month');
+  assert.equal(r.usage.globalMonth, MONTHLY_BUDGET, 'a rejection moves nothing');
+});
+
+test('the month counter survives a day rollover, which is the whole point', () => {
+  let usage = drain(DEFAULT_LIMITS.perClientHour, 'alice', T0);
+  assert.equal(usage.globalMonth, DEFAULT_LIMITS.perClientHour);
+  const nextDay = checkQuota(usage, 'alice', T0 + DAY);
+  assert.equal(nextDay.usage.globalDay, 1, 'the day reset');
+  assert.equal(nextDay.usage.globalMonth, DEFAULT_LIMITS.perClientHour + 1, 'the month did not');
+});
+
+test('the month counter resets when the billing month turns', () => {
+  const inJan = Date.parse('2027-01-20T12:00:00Z');
+  const inFeb = Date.parse('2027-02-20T12:00:00Z');
+  const spent = { monthBucket: monthBucketOf(inJan), globalMonth: MONTHLY_BUDGET };
+  assert.equal(checkQuota(spent, 'alice', inJan).allowed, false);
+  const feb = checkQuota(spent, 'alice', inFeb);
+  assert.equal(feb.allowed, true);
+  assert.equal(feb.usage.globalMonth, 1, 'January is gone, not carried');
+});
+
+test('the month boundary is never EARLIER than a provider month, in either convention', () => {
+  // The reset is shifted 8 hours after UTC, so it lands at 08:00Z on the 1st:
+  // aligned with midnight Pacific in winter, an hour late in summer, and late
+  // against a plain UTC month. Late is the only safe direction - resetting
+  // early would hand out a fresh budget while the provider was still counting
+  // the old month.
+  const lastSecondUtc = Date.parse('2027-03-01T00:00:00Z');   // UTC says March
+  const justBeforeShift = Date.parse('2027-03-01T07:59:59Z');
+  const afterShift = Date.parse('2027-03-01T08:00:01Z');
+  assert.equal(monthBucketOf(lastSecondUtc), monthBucketOf(justBeforeShift),
+    'still counting February after the UTC month turned');
+  assert.notEqual(monthBucketOf(justBeforeShift), monthBucketOf(afterShift));
+});
+
+test('resetAtFor names the edge each bucket refills on, including the month', () => {
+  assert.equal(resetAtFor('client_hour', T0), (Math.floor(T0 / HOUR) + 1) * HOUR);
+  assert.equal(resetAtFor('network_hour', T0), (Math.floor(T0 / HOUR) + 1) * HOUR);
+  for (const scope of ['client_day', 'network_day', 'global_day']) {
+    assert.equal(resetAtFor(scope, T0), (Math.floor(T0 / DAY) + 1) * DAY, scope);
+  }
+  // The month reset is the SHIFTED boundary, so what is promised is what the
+  // counter actually honours.
+  const jan = Date.parse('2027-01-20T12:00:00Z');
+  assert.equal(resetAtFor('global_month', jan), Date.parse('2027-02-01T08:00:00Z'));
+  // Contention clears in seconds; it is not a bucket edge at all.
+  assert.ok(resetAtFor('contention', T0) - T0 <= 5000);
+  assert.ok(resetAtFor('whatever', T0) > T0);
 });

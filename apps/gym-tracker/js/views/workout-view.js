@@ -8,7 +8,7 @@ import { WorkoutExercise } from '../models/WorkoutExercise.js';
 import { Set } from '../models/Set.js';
 import { timerService } from '../services/TimerService.js';
 import { storageService } from '../services/StorageService.js';
-import { showToast, showConfirmModal, formatMuscleGroup, vibrate, playSound, escapeHtml, debugLog, formatDate, pluralLabel } from '../utils/helpers.js';
+import { showToast, showConfirmModal, formatMuscleGroup, vibrate, playSound, escapeHtml, debugLog, formatDate, pluralLabel, downloadJSON } from '../utils/helpers.js';
 import { trapModalFocus } from '../utils/modal-focus.js';
 import { renderPausedBannerHTML, wirePausedBannerActions } from './paused-banner.js';
 import { orderPrograms } from '../utils/program-order.js';
@@ -147,6 +147,7 @@ class WorkoutView {
         this.setupEventListeners();
         this.setupNavigationGuard();
         this.setupPersistenceGuards();
+        this.setupWakeLock();
         this.wireWorkoutActions();
     }
 
@@ -164,6 +165,127 @@ class WorkoutView {
         document.addEventListener('visibilitychange', () => {
             if (document.visibilityState === 'hidden') this.flushPendingPersist();
         });
+    }
+
+    /**
+     * Screen Wake Lock: keep the phone awake for the whole of a workout.
+     *
+     * A phone screen sleeps after ~30 s. Programmed rests are 60-180 s
+     * (`WorkoutExercise.restSeconds` defaults to 90), so the screen died in
+     * the middle of every rest - and once the tab is backgrounded, the
+     * 250 ms rest tick in TimerService is throttled to roughly once a
+     * minute, so `restTickCues` never observes `remaining ===
+     * firstWarningSeconds` and `playSound` (which schedules against
+     * `ctx.currentTime` at tick time, with nothing pre-scheduled) never fires
+     * the warning ping or the countdown pips at all. The rest cues only ever
+     * worked while you were holding the phone and watching it.
+     *
+     * Three rules this machinery must never break:
+     *   1. Starting a workout NEVER fails because of it. The API does not
+     *      exist on Firefox or Safari < 16.4, and `request()` rejects when
+     *      the page is hidden or the platform says no. Every call is wrapped.
+     *   2. The lock is re-acquired on `visibilitychange`, because the
+     *      platform drops the sentinel whenever the page is hidden. Without
+     *      that it works exactly once, which passes a desk test and fails in
+     *      a gym.
+     *   3. It is released on pause, finish and discard, so a workout that
+     *      ended can never leave the screen pinned on.
+     */
+    setupWakeLock() {
+        if (typeof document === 'undefined') return;
+        document.addEventListener('visibilitychange', () => this.handleWakeLockVisibility());
+    }
+
+    /**
+     * The platform accessor, kept to one line on purpose: it is the only part
+     * of this feature that cannot run under node, so it is the only part the
+     * tests stub.
+     */
+    _wakeLockApi() {
+        return (typeof navigator !== 'undefined' && navigator && navigator.wakeLock) || null;
+    }
+
+    /** The lifter's Settings choice. Absent means ON (Settings defaults it). */
+    wakeLockPreferred() {
+        return this.app?.settings?.keepScreenAwake !== false;
+    }
+
+    /** Current page visibility, as one read (stubbed like _wakeLockApi). */
+    _wakeLockVisibility() {
+        return typeof document !== 'undefined' ? document.visibilityState : 'visible';
+    }
+
+    async acquireWakeLock() {
+        if (this._wakeLockSentinel || this._wakeLockPending) return;
+        if (!this.hasActiveWorkout()) return;
+        if (!this.wakeLockPreferred()) return;
+        const api = this._wakeLockApi();
+        if (!api || typeof api.request !== 'function') return;
+
+        this._wakeLockPending = true;
+        try {
+            const sentinel = await api.request('screen');
+            // The workout can end, or the setting can change, while the
+            // request is in flight; do not leave a lock behind for it.
+            if (!this.hasActiveWorkout() || !this.wakeLockPreferred()) {
+                this._releaseSentinel(sentinel);
+                return;
+            }
+            this._wakeLockSentinel = sentinel;
+            if (typeof sentinel?.addEventListener === 'function') {
+                // The platform releases the sentinel itself whenever the page
+                // is hidden. Forgetting it here is what lets the
+                // visibilitychange re-acquire actually take a new one.
+                sentinel.addEventListener('release', () => {
+                    if (this._wakeLockSentinel === sentinel) this._wakeLockSentinel = null;
+                });
+            }
+        } catch (_) {
+            // Unsupported, denied, or the page was hidden when we asked.
+            // A workout does not depend on the screen staying on.
+        } finally {
+            this._wakeLockPending = false;
+        }
+    }
+
+    releaseWakeLock() {
+        const sentinel = this._wakeLockSentinel;
+        this._wakeLockSentinel = null;
+        this._releaseSentinel(sentinel);
+    }
+
+    /** Release one sentinel, swallowing both a throw and a rejected promise. */
+    _releaseSentinel(sentinel) {
+        if (!sentinel || typeof sentinel.release !== 'function') return;
+        try {
+            const result = sentinel.release();
+            if (result && typeof result.catch === 'function') result.catch(() => {});
+        } catch (_) { /* already released, or the page went away */ }
+    }
+
+    /** Re-take the lock the platform dropped while the page was hidden. */
+    async handleWakeLockVisibility() {
+        if (this._wakeLockVisibility() !== 'visible') return;
+        // Belt and braces for a platform that drops the lock without firing
+        // the release event: a stale sentinel would make acquire a no-op.
+        if (this._wakeLockSentinel && this._wakeLockSentinel.released) {
+            this._wakeLockSentinel = null;
+        }
+        if (!this.hasActiveWorkout()) return;
+        await this.acquireWakeLock();
+    }
+
+    /**
+     * Apply the Settings toggle to the workout that is running RIGHT NOW.
+     * Called by the settings view after a save, so turning it off does not
+     * wait for the next workout to take effect.
+     */
+    async syncWakeLock() {
+        if (this.hasActiveWorkout() && this.wakeLockPreferred()) {
+            await this.acquireWakeLock();
+            return;
+        }
+        this.releaseWakeLock();
     }
 
     /**
@@ -251,6 +373,14 @@ class WorkoutView {
                 case 'start-workout':
                     e.preventDefault();
                     this.startWorkout(target.dataset.programId);
+                    break;
+                case 'start-quick-workout':
+                    e.preventDefault();
+                    this.startQuickWorkout();
+                    break;
+                case 'add-session-exercise':
+                    e.preventDefault();
+                    this.openAddExercisePicker();
                     break;
                 case 'select-week-day':
                     e.preventDefault();
@@ -342,7 +472,16 @@ case 'toggle-warmup':
                     break;
                 case 'pick-swap-exercise':
                     e.preventDefault();
-                    this.pickSwapExercise(target.dataset.exerciseId);
+                    // One picker, two jobs: replace the exercise the swap
+                    // button was pressed on, or append a new one to a quick
+                    // workout. openAddExercisePicker sets the mode.
+                    if (this.pickerMode === 'add') {
+                        document.getElementById('swap-exercise-modal')?.classList.remove('active');
+                        this.pickerMode = null;
+                        this.addSessionExercise(target.dataset.exerciseId);
+                    } else {
+                        this.pickSwapExercise(target.dataset.exerciseId);
+                    }
                     break;
             }
         });
@@ -815,12 +954,77 @@ case 'toggle-warmup':
                     session.elapsedBeforePause = elapsed;
                 }
             }
-            storageService.saveActiveWorkout(session.toJSON());
+            // The return value is load-bearing. `StorageService.set` reports a
+            // refused write (quota exhausted, evicted storage) by returning
+            // false, and this path used to drop it on the floor: every set
+            // commit after the quota ran out failed silently while the screen
+            // kept counting, and the whole workout went with the next reload.
+            const saved = storageService.saveActiveWorkout(session.toJSON());
+            this.setWorkoutStorageFailed(saved === false);
             // The rest countdown is active state too: Resume restores it.
             if (!session.paused) storageService.claimActiveWorkoutLock();
         } catch (error) {
             console.error('Could not save the in-progress workout:', error);
+            // Safari in private mode throws rather than returning false.
+            this.setWorkoutStorageFailed(true);
         }
+    }
+
+    /**
+     * Surface (or retire) "this workout is not being saved".
+     *
+     * A toast is the wrong shape for it: the condition lasts until the lifter
+     * frees some space, and a toast is gone in seconds. This uses the app's
+     * existing persistent in-view banner component, the same one the workout
+     * recovery banner is built from, and it stays until a write succeeds.
+     */
+    setWorkoutStorageFailed(failed) {
+        if (failed === this._storageWriteFailed) return;
+        this._storageWriteFailed = failed;
+        const host = document.getElementById('workout-storage-banner');
+        if (!host) return;
+        if (!failed) {
+            host.innerHTML = '';
+            host.hidden = true;
+            return;
+        }
+        host.innerHTML = `
+            <div class="paused-workout-banner paused-workout-banner--storage">
+                <div class="paused-workout-icon">
+                    <i class="fas fa-triangle-exclamation" aria-hidden="true"></i>
+                </div>
+                <div class="paused-workout-info">
+                    <h3>This workout is not being saved</h3>
+                    <p>Your device storage is full, so the last change never reached it.
+                       What you see here is safe until you close or reload this tab.</p>
+                    <p class="paused-workout-note">Free some space and this clears itself on
+                       your next change. A backup keeps a copy of this workout as it stands.</p>
+                </div>
+                <div class="paused-workout-actions">
+                    <button class="btn btn-primary" type="button" data-storage-action="backup">
+                        <i class="fas fa-download" aria-hidden="true"></i> Download a backup
+                    </button>
+                </div>
+            </div>
+        `;
+        host.hidden = false;
+        host.querySelector('[data-storage-action="backup"]')
+            ?.addEventListener('click', () => this.downloadWorkoutRescueBackup());
+    }
+
+    /**
+     * The escape hatch the banner offers. A plain export would rescue only the
+     * data that DID save; the in-progress session is precisely what the failed
+     * write was carrying, so it rides along under its own key. Import reads
+     * known keys only, so the file is still an ordinary, importable backup.
+     */
+    downloadWorkoutRescueBackup() {
+        const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+        downloadJSON({
+            ...this.app.exportData(),
+            activeWorkout: this.currentWorkoutSession ? this.currentWorkoutSession.toJSON() : null,
+        }, `gym-tracker-backup-${stamp}.json`);
+        showToast('Backup downloaded. Free some space and keep going.', 'info', 5000);
     }
 
     /**
@@ -858,6 +1062,7 @@ case 'toggle-warmup':
         if (this._takenOver) return;
         this._takenOver = true;
         timerService.stopWorkoutTimer();
+        this.releaseWakeLock();
         this.skipRest();
         this.disarmBackGuard();
         this.currentWorkoutSession = null;
@@ -911,6 +1116,7 @@ case 'toggle-warmup':
 
         // Stop the timer
         timerService.stopWorkoutTimer();
+        this.releaseWakeLock();
 
         debugLog('Workout paused and saved', this.currentWorkoutSession.toJSON());
 
@@ -950,6 +1156,14 @@ case 'toggle-warmup':
     editProgramFromWorkout() {
         if (!this.hasActiveWorkout()) return;
         const programId = this.currentWorkoutSession.programId;
+        // A quick workout has no program to edit. The menu item is hidden for
+        // one (renderActiveWorkout), so this only catches a stale click, but
+        // openProgramModal(null) would open a blank editor and look like a
+        // brand-new program.
+        if (programId == null) {
+            showToast('This quick workout is not based on a program.', 'info');
+            return;
+        }
 
         // Pause + save silently (same effect as the pause flow, no dialog).
         this.skipRest();
@@ -967,6 +1181,7 @@ case 'toggle-warmup':
 
     discardWorkout() {
         timerService.stopWorkoutTimer();
+        this.releaseWakeLock();
         this.skipRest();
         this.disarmBackGuard();
         this.flushPendingPersist();
@@ -1059,6 +1274,7 @@ case 'toggle-warmup':
         // Render workout
         this.renderActiveWorkout();
         this.armBackGuard();
+        this.acquireWakeLock();
         this.app.updateGlobalFab();
         // Resuming clears the paused flag; write that through so a second
         // interruption is still recognised as an interrupted (not paused) run.
@@ -1229,11 +1445,18 @@ case 'toggle-warmup':
         if (bannerHTML) html += bannerHTML;
 
         if (programs.length === 0) {
+            // The cold start. This used to dead-end at "Create Program",
+            // which meant you could not log what you actually did in the gym
+            // without first authoring a throwaway program that then lived in
+            // your Programs list forever.
             html += `
                 <div class="empty-state">
                     <i class="fas fa-folder-open"></i>
-                    <p>No programs yet. Create a program first.</p>
-                    <button type="button" class="btn btn-primary" data-home-action="create-program">Create Program</button>
+                    <p>No programs yet. Build one to follow a plan, or just start logging.</p>
+                    <div class="empty-state-actions">
+                        <button type="button" class="btn btn-primary" data-home-action="create-program">Create Program</button>
+                        <button type="button" class="btn btn-secondary" data-action="start-quick-workout"><i class="fas fa-bolt" aria-hidden="true"></i> Quick workout</button>
+                    </div>
                 </div>
             `;
             container.innerHTML = html;
@@ -1284,6 +1507,8 @@ case 'toggle-warmup':
                 }).join('')}
             </div>
         `;
+
+        html += this._renderQuickWorkoutCTA();
 
         container.innerHTML = html;
 
@@ -1350,7 +1575,9 @@ case 'toggle-warmup':
         // dialog for the SAME session keeps whatever the user typed.
         this.resetFinishWorkoutForm();
 
-        // Reset per-session state.
+        // Reset per-session state. The storage-failure banner belongs to the
+        // session that could not be written, not to this one.
+        this.setWorkoutStorageFailed(false);
         this.sessionPrSlots = {};
         this.collapsedExercises = {};
         this._prevCompleteState = {};
@@ -1376,7 +1603,201 @@ case 'toggle-warmup':
         // Render workout
         this.renderActiveWorkout();
         this.armBackGuard();
+        this.acquireWakeLock();
         this.app.updateGlobalFab();
+    }
+
+    /**
+     * The "no program" route, offered alongside the program cards as well as
+     * in the empty state: an unplanned session is not only a cold-start
+     * problem, it is any day you improvise.
+     */
+    _renderQuickWorkoutCTA() {
+        return `
+            <div class="quick-workout-cta">
+                <div class="quick-workout-cta-text">
+                    <h3>Not following a program today?</h3>
+                    <p>Start an empty workout and add exercises as you go. Nothing is added to your programs.</p>
+                </div>
+                <button type="button" class="btn btn-secondary" data-action="start-quick-workout">
+                    <i class="fas fa-bolt" aria-hidden="true"></i> Quick workout
+                </button>
+            </div>
+        `;
+    }
+
+    /**
+     * Start a workout with no program and no exercises.
+     *
+     * `programId` stays NULL and `isQuickWorkout` records that this is
+     * deliberate. No Program object is created, nothing is written to the
+     * programs store, and nothing appears in the Programs list - the whole
+     * point is that an improvised session should not leave a throwaway
+     * program behind.
+     *
+     * Everything downstream is the ordinary machinery: the same
+     * WorkoutExercise rows, the same set entry, prefill, warm-up, plate
+     * hints, rest timers, finish flow, history, analytics, PRs and
+     * achievements. The only things that do not apply are the ones that are
+     * genuinely program-derived (rep ranges, the uniform-rest header, "Edit
+     * program", and the finish summary's vs-last-time delta), and each of
+     * those already degrades on a missing program.
+     *
+     * Deliberately NOT shared with startWorkout(): that method is the one the
+     * owner uses every session, and duplicating twenty lines of session setup
+     * is a cheaper price than refactoring it.
+     */
+    startQuickWorkout() {
+        if (this._otherTabOwnsWorkout()) {
+            showToast('A workout is being logged in another tab. Finish or pause it there first.', 'error', 6000);
+            return;
+        }
+
+        this.currentWorkoutSession = new WorkoutSession({
+            programId: null,
+            isQuickWorkout: true,
+            workoutDayId: null,
+            workoutDayName: 'Quick Workout',
+            sessionUnit: normalizeWeightUnit(this.app.settings.weightUnit),
+            unitsCanonical: true,
+            exercises: [],
+        });
+
+        this.currentWorkoutSession.startWorkout();
+
+        // GT-07: a NEW workout gets a clean finish form.
+        this.resetFinishWorkoutForm();
+
+        // Reset per-session state. The storage-failure banner belongs to the
+        // session that could not be written, not to this one.
+        this.setWorkoutStorageFailed(false);
+        this.sessionPrSlots = {};
+        this.collapsedExercises = {};
+        this._prevCompleteState = {};
+        this._activeRestType = null;
+        this._feelPromptShown = {};
+        this.warmupDone = {};
+        this.warmupExpanded = {};
+
+        timerService.startWorkoutTimer((elapsed) => {
+            this.updateWorkoutTimer(elapsed);
+        });
+
+        // Recoverable from the moment it exists (GT-01), empty or not:
+        // readableActiveWorkout exempts a quick workout from its
+        // at-least-one-exercise rule for exactly this window.
+        this.claimWorkoutLock();
+        this.persistActiveWorkout();
+
+        document.getElementById('workout-selection').classList.remove('active');
+        document.getElementById('active-workout').classList.add('active');
+
+        this.renderActiveWorkout();
+        this.armBackGuard();
+        this.acquireWakeLock();
+        this.app.updateGlobalFab();
+
+        // There is nothing on screen yet, so go straight to picking the first
+        // exercise rather than making the lifter find the button.
+        this.openAddExercisePicker();
+    }
+
+    /**
+     * The "Add exercise" footer, rendered under the exercise stream. Quick
+     * workouts only: a programmed workout renders exactly the markup it
+     * rendered before this existed.
+     */
+    renderAddExerciseFooter() {
+        if (!this.currentWorkoutSession?.isQuickWorkout) return '';
+        const empty = this.currentWorkoutSession.exercises.length === 0;
+        return `
+            <div class="quick-workout-add">
+                ${empty ? '<p class="quick-workout-add-hint">Nothing logged yet. Add the first exercise you did.</p>' : ''}
+                <button type="button" class="btn btn-secondary btn-large quick-workout-add-btn" data-action="add-session-exercise">
+                    <i class="fas fa-plus" aria-hidden="true"></i> Add exercise
+                </button>
+            </div>
+        `;
+    }
+
+    /**
+     * Open the exercise picker in ADD mode. Same modal, same search,
+     * filters and cards as the in-workout swap picker (Item 3) - only the
+     * copy and what a pick does differ.
+     */
+    openAddExercisePicker() {
+        const modal = document.getElementById('swap-exercise-modal');
+        if (!this.currentWorkoutSession || !modal) return;
+
+        this.pickerMode = 'add';
+        this.swapTargetIndex = null;
+
+        const title = document.getElementById('swap-exercise-title');
+        if (title) title.textContent = 'Add Exercise';
+        const swapSubtitle = document.getElementById('swap-exercise-subtitle-swap');
+        if (swapSubtitle) swapSubtitle.hidden = true;
+        const addSubtitle = document.getElementById('swap-exercise-subtitle-add');
+        if (addSubtitle) addSubtitle.hidden = false;
+
+        const search = document.getElementById('swap-exercise-search');
+        const category = document.getElementById('swap-exercise-category-filter');
+        const equipment = document.getElementById('swap-exercise-equipment-filter');
+        // GT-26: one taxonomy, every surface.
+        populateSelect(category, EXERCISE_CATEGORIES, 'All Categories');
+        populateSelect(equipment, EXERCISE_EQUIPMENT, 'All Equipment');
+        if (search) search.value = '';
+        // No "like for like" to pre-filter to here: the lifter is choosing
+        // freely, so start on the whole catalog.
+        if (category) category.value = '';
+        if (equipment) equipment.value = '';
+
+        if (!modal.dataset.wired) {
+            const rerender = () => this.renderSwapPicker();
+            search?.addEventListener('input', rerender);
+            category?.addEventListener('change', rerender);
+            equipment?.addEventListener('change', rerender);
+            modal.dataset.wired = '1';
+        }
+
+        this.renderSwapPicker();
+        modal.classList.add('active');
+        trapModalFocus(modal);
+    }
+
+    /**
+     * Append one exercise to the LIVE session. Used by the quick-workout
+     * picker; it builds the same WorkoutExercise a programmed session gets,
+     * so every downstream reader (set rows, prefill, warm-up, rest, PRs) sees
+     * an ordinary exercise. It writes nothing to the programs store.
+     *
+     * Prefill needs no help here: getPreviousExerciseData joins on
+     * exerciseId alone, so an exercise added mid-session starts from the
+     * lifter's own last performance of it whatever program that was in.
+     */
+    addSessionExercise(exerciseId) {
+        const session = this.currentWorkoutSession;
+        if (!session) return;
+        // sameId: the id comes off a dataset attribute, so it is a string.
+        const catalogExercise = this.app.exerciseDatabase.find(e => sameId(e.id, exerciseId));
+        if (!catalogExercise) return;
+
+        session.exercises.push(new WorkoutExercise({
+            exerciseId: catalogExercise.id,
+            plannedExerciseId: catalogExercise.id,
+            exerciseName: this.app.getExerciseDisplayName(catalogExercise.id, catalogExercise.name),
+            // There is no plan to read these from, so they are the model's own
+            // defaults, spelled out. The lifter adds or removes set rows with
+            // the ordinary +/- controls.
+            targetSets: 3,
+            targetReps: 10,
+            restSeconds: 90,
+            order: session.exercises.length,
+            groupId: null,
+        }));
+
+        this.persistActiveWorkout();
+        this.renderActiveWorkout();
+        showToast(`Added ${catalogExercise.name}`, 'success');
     }
 
     adjustWorkoutTitleSize() {
@@ -1428,7 +1849,12 @@ case 'toggle-warmup':
             }
         }
 
-        container.innerHTML = this.renderExerciseList(this.currentWorkoutSession.exercises);
+        // A quick workout has no program to edit, so the menu item goes.
+        const editProgramBtn = document.getElementById('edit-program-btn');
+        if (editProgramBtn) editProgramBtn.hidden = !!this.currentWorkoutSession.isQuickWorkout;
+
+        container.innerHTML = this.renderExerciseList(this.currentWorkoutSession.exercises)
+            + this.renderAddExerciseFooter();
         this.currentWorkoutSession.exercises.forEach((_ex, i) => this.dedupePlateHints(i));
     }
 
@@ -2761,7 +3187,15 @@ case 'toggle-warmup':
         if (!exercise || !modal) return;
 
         this.swapTargetIndex = exerciseIndex;
+        this.pickerMode = 'swap';
         const current = this.app.getExerciseById(exercise.exerciseId);
+
+        const title = document.getElementById('swap-exercise-title');
+        if (title) title.textContent = 'Swap Exercise';
+        const swapSubtitle = document.getElementById('swap-exercise-subtitle-swap');
+        if (swapSubtitle) swapSubtitle.hidden = false;
+        const addSubtitle = document.getElementById('swap-exercise-subtitle-add');
+        if (addSubtitle) addSubtitle.hidden = true;
 
         const currentEl = document.getElementById('swap-exercise-current');
         if (currentEl) currentEl.textContent = this.app.getExerciseDisplayName(exercise.exerciseId, exercise.exerciseName);
@@ -2846,7 +3280,10 @@ case 'toggle-warmup':
         if (loggedSets > 0) {
             const confirmed = await showConfirmModal({
                 title: 'Swap exercise?',
-                message: `${loggedSets} logged set${loggedSets === 1 ? '' : 's'} will move under ${replacement.name}.`,
+                // escapeHtml: showConfirmModal renders its message with
+                // innerHTML, and an exercise name is user-authored text that
+                // survives an export/import round trip.
+                message: `${loggedSets} logged set${loggedSets === 1 ? '' : 's'} will move under ${escapeHtml(replacement.name)}.`,
                 warning: 'Your saved program is not changed - this swap applies to this workout only.',
                 confirmText: 'Swap',
                 isDangerous: false,
@@ -2889,7 +3326,12 @@ case 'toggle-warmup':
         // Collect the two most recent sessions that have this exercise with completed sets
         const recentSessions = [];
         for (const session of sortedSessions) {
-            const exercise = session.exercises.find(ex => ex.exerciseId === exerciseId);
+            // sameId, not ===: a stored exerciseId can be a string (an
+            // import round trip, a Firestore read, a dataset attribute) while
+            // the lookup is numeric. `===` silently returned no history and
+            // killed the prefill, the "same as last time" chip and the Last
+            // Time panel for a lifter whose history was intact.
+            const exercise = session.exercises.find(ex => sameId(ex.exerciseId, exerciseId));
             if (exercise && exercise.sets && exercise.sets.length > 0) {
                 const completedSets = exercise.sets.filter(set => set.completed);
                 if (completedSets.length > 0) {
@@ -3973,6 +4415,7 @@ case 'toggle-warmup':
 
         // Stop timer + rest bar
         timerService.stopWorkoutTimer();
+        this.releaseWakeLock();
         this.skipRest();
         this.disarmBackGuard();
 
@@ -4061,6 +4504,12 @@ case 'toggle-warmup':
      * or null if the program has never been completed.
      */
     _lastSessionForProgram(programId) {
+        // `sameId` stringifies both sides, so sameId(null, null) is
+        // "null" === "null" - TRUE. Without this guard a quick workout's
+        // finish summary compared its volume against the last UNRELATED
+        // session that also had no program, and every legacy session matched
+        // every other one.
+        if (programId == null) return null;
         const sessions = (this.app.workoutSessions || [])
             .filter(s => sameId(s.programId, programId) && s.completed)
             .sort((a, b) => new Date(b.sortTimestamp) - new Date(a.sortTimestamp));
@@ -4147,6 +4596,11 @@ case 'toggle-warmup':
 
         if (confirmed) {
             timerService.stopWorkoutTimer();
+            // This, not discardWorkout(), is what the "Discard workout" menu
+            // item runs; the two are near-duplicates and only this one is
+            // reachable from the UI. A browser probe caught the wake lock
+            // still held after a discard here.
+            this.releaseWakeLock();
             this.skipRest();
             this.disarmBackGuard();
             if (this._persistTimer) { clearTimeout(this._persistTimer); this._persistTimer = null; }

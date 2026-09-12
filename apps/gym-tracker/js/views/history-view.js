@@ -14,6 +14,28 @@ import { makePaginatorState, paginatorInfo, paginatorDualHTML } from '../utils/p
 
 const HISTORY_PAGE_SIZE = 15;
 
+/**
+ * Does one session belong to the program the filter is set to?
+ *
+ * Sessions started from a program record its id, so that is the identity to
+ * match on. Two kinds of session carry no id, and they are NOT the same:
+ *
+ *   - A quick workout, which has no program by design. It must never be
+ *     claimed by a program filter, not even by a program the user happened to
+ *     name "Quick Workout".
+ *   - A session saved before `programId` existed (or imported without one),
+ *     which falls back to the workout name it was saved under - the program's
+ *     name at the time.
+ *
+ * A pure function so the rule is testable without the view
+ * (tests/quick-workout.test.mjs).
+ */
+function sessionMatchesProgram(session, programFilter, programName) {
+    if (session.programId != null) return sameId(session.programId, programFilter);
+    if (session.isQuickWorkout) return false;
+    return programName !== null && session.workoutDayName === programName;
+}
+
 class HistoryView {
     constructor() {
         this.app = app;
@@ -217,18 +239,13 @@ class HistoryView {
         const container = document.getElementById('history-list');
         let sessions = [...this.app.workoutSessions];
 
-        // Program filter (Item 5). Sessions started from a program record its
-        // id, so that's the identity we match on. Sessions predating programId
-        // (or imported without one) fall back to the workout name they were
-        // saved under, which is the program name at the time.
+        // Program filter (Item 5). The rule lives in sessionMatchesProgram
+        // above, where it can be tested.
         if (this.programFilter) {
             const program = this.app.getProgramById(this.programFilter);
             const programName = program ? program.name : null;
-            sessions = sessions.filter(session => (
-                session.programId != null
-                    ? sameId(session.programId, this.programFilter)
-                    : (programName !== null && session.workoutDayName === programName)
-            ));
+            sessions = sessions.filter(
+                session => sessionMatchesProgram(session, this.programFilter, programName));
         }
 
         // Apply date filters

@@ -359,3 +359,179 @@ test('parseIcsToProposals: a truly empty calendar still reports zero events', ()
   assert.equal(r.stats.events, 0);
   assert.equal(r.stats.read, 0);
 });
+
+// ---------- .ics export: booking deadlines and DTSTART/DTEND ordering ----------
+// buildIcs is the only surface here that WRITES a calendar. Two things are
+// pinned: an item still waiting to be booked carries its Book-by date into the
+// calendar as something that actually notifies, and every VEVENT it writes
+// obeys RFC 5545 3.8.2.2 (DTEND never earlier than DTSTART), which strict
+// clients enforce by dropping the event outright.
+
+const icsItem = (over = {}) => ({
+  id: over.id || 'x1', type: 'activity', title: 'Thing', location: '',
+  status: 'booked', startDate: '2027-06-08', startTime: '', ...over,
+});
+const icsTrip = (items, name) => ({ id: 't1', name: name || 'Croatia', currency: 'USD', items });
+const STAMP = new Date('2027-01-02T03:04:05.678Z');
+// Every VEVENT block in a generated calendar, unfolded lines kept as written.
+const veventsOf = out => out.split('\r\n').reduce((acc, line) => {
+  if (line === 'BEGIN:VEVENT') acc.push([]);
+  else if (line === 'END:VEVENT') { /* block closed */ }
+  else if (acc.length && line !== 'END:VCALENDAR') acc[acc.length - 1].push(line);
+  return acc;
+}, []);
+const propOf = (block, name) => block.find(l => l === name || l.startsWith(name + ':') || l.startsWith(name + ';'));
+
+test('buildIcs writes a booking-deadline entry for a to-book item carrying a Book-by date', () => {
+  const out = L.buildIcs(icsTrip([
+    icsItem({ id: 'a1', title: 'Ferry to Hvar', location: 'Split', status: 'to-book', bookBy: '2027-06-01' }),
+  ]), STAMP);
+  const blocks = veventsOf(out);
+  // Two events: the ferry itself, and the deadline to book it.
+  assert.equal(blocks.length, 2);
+  const deadline = blocks[1];
+  // Its own UID, so a re-import cannot collide with the item's event.
+  assert.equal(propOf(deadline, 'UID'), 'UID:a1-bookby@trip-planner.shevato.com');
+  assert.equal(propOf(deadline, 'DTSTAMP'), 'DTSTAMP:20270102T030405Z');
+  // An all-day event ON the deadline date, exclusive end the next day: the one
+  // construct that says "this date, no clock time" in a way every client
+  // renders. See the RFC note in trip-logic.js.
+  assert.equal(propOf(deadline, 'DTSTART'), 'DTSTART;VALUE=DATE:20270601');
+  assert.equal(propOf(deadline, 'DTEND'), 'DTEND;VALUE=DATE:20270602');
+  assert.equal(propOf(deadline, 'SUMMARY'), 'SUMMARY:Book by: Ferry to Hvar');
+  assert.equal(propOf(deadline, 'LOCATION'), 'LOCATION:Split');
+  // ACTION:DISPLAY requires DESCRIPTION and TRIGGER (RFC 5545 3.6.6 dispprop).
+  const alarm = deadline.slice(deadline.indexOf('BEGIN:VALARM'), deadline.indexOf('END:VALARM') + 1);
+  assert.deepEqual(alarm, [
+    'BEGIN:VALARM',
+    'ACTION:DISPLAY',
+    'DESCRIPTION:Book by: Ferry to Hvar',
+    'TRIGGER;RELATED=START:PT0S',
+    'END:VALARM',
+  ]);
+});
+
+test('buildIcs never emits a date-valued TRIGGER, which RFC 5545 3.8.6.3 does not define', () => {
+  // TRIGGER is a DURATION, or a DATE-TIME that MUST be UTC. There is no
+  // TRIGGER;VALUE=DATE, and there is no bookBy clock time to build a UTC
+  // DATE-TIME out of, which is the whole reason the deadline gets its own
+  // all-day VEVENT instead of an alarm on the item's event.
+  const out = L.buildIcs(icsTrip([
+    icsItem({ id: 'a1', title: 'Ferry', status: 'to-book', bookBy: '2027-06-01' }),
+    icsItem({ id: 'a2', title: 'Bus', status: 'to-book', startTime: '23:55', bookBy: '2027-06-02' }),
+  ]), STAMP);
+  assert.ok(!/TRIGGER;VALUE=DATE:/.test(out));
+  assert.ok(!/TRIGGER;VALUE=DATE-TIME/.test(out));
+  // and the item's own event gains nothing: a relative alarm there would fire
+  // at 23:55, the item's clock, which is a time nobody entered for a deadline
+  const blocks = veventsOf(out);
+  assert.ok(!blocks[0].includes('BEGIN:VALARM'));
+  assert.ok(!blocks[2].includes('BEGIN:VALARM'));
+});
+
+test('buildIcs writes no deadline entry once the item is booked, cancelled or parked', () => {
+  // The exact rule the warnings panel applies: Booked is done, Decide later is
+  // a deliberate maybe, Cancelled is off the trip. A stored date on any of them
+  // is history, not a task.
+  for (const status of ['booked', 'decide-later']) {
+    const out = L.buildIcs(icsTrip([icsItem({ id: 'a1', status, bookBy: '2027-06-01' })]), STAMP);
+    assert.equal(veventsOf(out).length, 1, status);
+    assert.ok(!out.includes('BEGIN:VALARM'), status);
+  }
+  // cancelled items are dropped from the calendar entirely, deadline and all
+  const cancelled = L.buildIcs(icsTrip([icsItem({ id: 'a1', status: 'cancelled', bookBy: '2027-06-01' })]), STAMP);
+  assert.equal(veventsOf(cancelled).length, 0);
+});
+
+test('buildIcs deadline entries use the same predicate the warnings panel counts down', () => {
+  // Proven rather than described: whatever bookingDeadlines is willing to
+  // report is what the calendar is willing to write, so the two surfaces can
+  // never drift apart.
+  const items = [
+    icsItem({ id: 'a1', status: 'to-book', bookBy: '2027-06-01' }),
+    icsItem({ id: 'a2', status: 'booked', bookBy: '2027-06-01' }),
+    icsItem({ id: 'a3', status: 'to-book' }),
+    icsItem({ id: 'a4', status: 'to-book', bookBy: 'not-a-date' }),
+    icsItem({ id: 'a5', status: 'to-book', bookBy: '2027-06-01', startDate: '' }),
+  ];
+  assert.deepEqual(items.filter(L.openBookingDeadline).map(it => it.id), ['a1']);
+  const out = L.buildIcs(icsTrip(items), STAMP);
+  assert.deepEqual(out.match(/UID:\S+-bookby@/g), ['UID:a1-bookby@']);
+});
+
+test('buildIcs leaves a trip with no Book-by dates byte-for-byte as it was', () => {
+  const out = L.buildIcs(icsTrip([
+    icsItem({ id: 'f1', type: 'flight', title: 'London (LHR) to Split (SPU)', startDate: '2027-06-01', startTime: '11:00', endDate: '2027-06-01', endTime: '14:05' }),
+    icsItem({ id: 's1', type: 'stay', title: 'Hotel Park', location: 'Split', startDate: '2027-06-01', endDate: '2027-06-04' }),
+    icsItem({ id: 'a1', title: 'Ferry to Hvar', location: 'Split', status: 'to-book', startDate: '2027-06-04' }),
+  ]), STAMP);
+  assert.equal(out, [
+    'BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Shevato//Trip Planner//EN', 'X-WR-CALNAME:Croatia',
+    'BEGIN:VEVENT', 'UID:f1@trip-planner.shevato.com', 'DTSTAMP:20270102T030405Z',
+    'DTSTART:20270601T110000', 'DTEND:20270601T140500',
+    'SUMMARY:London (LHR) to Split (SPU)', 'DESCRIPTION:Status: Booked', 'END:VEVENT',
+    'BEGIN:VEVENT', 'UID:s1@trip-planner.shevato.com', 'DTSTAMP:20270102T030405Z',
+    'DTSTART;VALUE=DATE:20270601', 'DTEND;VALUE=DATE:20270604',
+    'SUMMARY:Hotel Park', 'LOCATION:Split', 'DESCRIPTION:Status: Booked', 'END:VEVENT',
+    'BEGIN:VEVENT', 'UID:a1@trip-planner.shevato.com', 'DTSTAMP:20270102T030405Z',
+    'DTSTART;VALUE=DATE:20270604', 'DTEND;VALUE=DATE:20270605',
+    'SUMMARY:Ferry to Hvar', 'LOCATION:Split', 'DESCRIPTION:Status: To book', 'END:VEVENT',
+    'END:VCALENDAR',
+  ].join('\r\n') + '\r\n');
+});
+
+test('buildIcs keeps a date-line flight as a point event rather than ending before it starts', () => {
+  // validateItem deliberately ACCEPTS a flight that lands the same day at an
+  // earlier local clock (eastbound across the date line, or any westbound hop
+  // that gains hours). RFC 5545 3.8.2.2 requires DTEND to be later than
+  // DTSTART, so composing one from those two fields wrote an event strict
+  // clients drop. The app holds no timezone data, so the honest rendering is
+  // the same zero-length point event an item with no end time already gets.
+  const out = L.buildIcs(icsTrip([
+    icsItem({ id: 'f1', type: 'flight', title: 'Tokyo (NRT) to Honolulu (HNL)', startDate: '2027-06-01', startTime: '19:30', endDate: '2027-06-01', endTime: '07:45' }),
+  ]), STAMP);
+  const ev = veventsOf(out)[0];
+  assert.equal(propOf(ev, 'DTSTART'), 'DTSTART:20270601T193000');
+  assert.equal(propOf(ev, 'DTEND'), 'DTEND:20270601T193000');
+});
+
+test('buildIcs treats an end that merely equals the start the same way', () => {
+  const out = L.buildIcs(icsTrip([
+    icsItem({ id: 'f1', type: 'transport', title: 'Airport shuttle', startDate: '2027-06-01', startTime: '08:00', endDate: '2027-06-01', endTime: '08:00' }),
+  ]), STAMP);
+  const ev = veventsOf(out)[0];
+  assert.equal(propOf(ev, 'DTEND'), 'DTEND:20270601T080000');
+});
+
+test('buildIcs still honours a genuine overnight leg, where the end really is later', () => {
+  const out = L.buildIcs(icsTrip([
+    icsItem({ id: 'f1', type: 'flight', title: 'Split (SPU) to Tokyo (HND)', startDate: '2027-06-01', startTime: '22:10', endDate: '2027-06-02', endTime: '06:35' }),
+  ]), STAMP);
+  const ev = veventsOf(out)[0];
+  assert.equal(propOf(ev, 'DTSTART'), 'DTSTART:20270601T221000');
+  assert.equal(propOf(ev, 'DTEND'), 'DTEND:20270602T063500');
+});
+
+test('every VEVENT buildIcs writes obeys the DTEND-not-before-DTSTART rule', () => {
+  const out = L.buildIcs(icsTrip([
+    icsItem({ id: 'f1', type: 'flight', title: 'Date line', startDate: '2027-06-01', startTime: '19:30', endDate: '2027-06-01', endTime: '07:45' }),
+    icsItem({ id: 's1', type: 'stay', title: 'Hotel Park', location: 'Split', startDate: '2027-06-02', endDate: '2027-06-05', status: 'to-book', bookBy: '2027-05-01' }),
+    icsItem({ id: 'a1', title: 'Ferry', status: 'to-book', startDate: '2027-06-06', startTime: '09:00', bookBy: '2027-05-20' }),
+    icsItem({ id: 'n1', type: 'note', title: 'Passport check', startDate: '2027-06-07' }),
+  ]), STAMP);
+  const blocks = veventsOf(out);
+  assert.equal(blocks.length, 6); // 4 items + 2 deadlines
+  for (const b of blocks) {
+    const st = propOf(b, 'DTSTART').split(':')[1];
+    const en = propOf(b, 'DTEND').split(':')[1];
+    assert.ok(en >= st, `DTEND ${en} must not precede DTSTART ${st}`);
+  }
+});
+
+test('buildIcs prints the meal wording in a deadline the same way it prints it in the event', () => {
+  const out = L.buildIcs(icsTrip([
+    icsItem({ id: 'a1', title: 'Narisawa', meal: 'dinner', status: 'to-book', startDate: '2027-06-08', startTime: '19:00', bookBy: '2027-05-08' }),
+  ]), STAMP);
+  assert.ok(out.includes('SUMMARY:Dinner: Narisawa\r\n'));
+  assert.ok(out.includes('SUMMARY:Book by: Dinner: Narisawa\r\n'));
+});

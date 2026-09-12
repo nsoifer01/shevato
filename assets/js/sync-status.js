@@ -28,8 +28,24 @@
     const POLL_MS = 2000;
     const RECOVERY_FLASH_MS = 2000;
 
+    // A PERMANENT FAILURE OUTRANKS EVERY HEALTHY STATE.
+    //
+    // The engine already told us, and nobody was listening: it dispatches
+    // `syncWriteRejected` when a flush is refused in a way retrying cannot fix
+    // (payload too large, an invalid document), and `appSyncFailed` when sync
+    // could not start at all. Both events existed, both had zero listeners, and
+    // the pill went on reporting "Synced" while the writes sat in localStorage
+    // with no path to Firestore. Saying "Synced" over a failed write is the
+    // one lie this widget must never tell.
+    //
+    // `failure` is checked after `offline` on purpose: when the connection is
+    // down, "Offline" is the more useful and more actionable truth, and the
+    // failure is still there when the connection comes back.
+    let failure = null;
+
     function classify(online, status, signedIn) {
         if (online === false) return { state: 'offline', label: 'Offline' };
+        if (failure) return { state: 'failed', label: failure.label };
         if (!status) return { state: 'connecting', label: 'Connecting…' };
         if (status.totalQueueSize > 0) return { state: 'syncing', label: 'Saving…' };
         if (status.activeNamespaces === 0) {
@@ -97,6 +113,17 @@
     function updateBanner(prev, next) {
         if (!bannerEl) return;
 
+        // Before anything that can hide the banner: a standing failure keeps
+        // its message up. Without this the 2s poll would wipe it on the very
+        // next tick, because the tail of this function hides the banner for
+        // every state it does not recognise.
+        if (next.state === 'failed') {
+            clearTimeout(recoveryTimer);
+            recoveryTimer = null;
+            showBanner('failed', failure.text);
+            return;
+        }
+
         if (next.state === 'offline') {
             clearTimeout(recoveryTimer);
             recoveryTimer = null;
@@ -159,7 +186,43 @@
             : 'This was edited in another session too. The newer version is in use, and a copy of the other one was saved on this device.');
     }
 
+    /**
+     * Record a sync failure and paint it immediately.
+     *
+     * Deliberately NOT auto-dismissed: the condition lasts until the user does
+     * something about it, and a message that fades is a message that was never
+     * delivered. The banner's own close button is the way out, matching the
+     * conflict banner.
+     */
+    function noteFailure(kind, detail) {
+        const app = detail && detail.namespace ? String(detail.namespace) : '';
+        const where = app ? ' in ' + app : '';
+        failure = kind === 'init'
+            ? {
+                kind,
+                label: 'Sync unavailable',
+                text: 'Sync could not start. Your changes are being saved on this device only.',
+            }
+            : {
+                kind,
+                label: 'Not saved to cloud',
+                text: 'Some changes' + where + ' could not be saved to the cloud. They are safe on this '
+                    + 'device, but they are not syncing to your other devices.',
+            };
+        lastRender = null;   // force the next render past its no-change guard
+        render();
+    }
+
     function render() {
+        // An init failure can fix itself: if any namespace is syncing now, the
+        // thing that failed is working, so stop saying otherwise. A rejected
+        // write cannot fix itself, so that one stands until dismissed.
+        if (failure && failure.kind === 'init') {
+            const s = typeof window.gymGetGlobalSyncStatus === 'function'
+                ? window.gymGetGlobalSyncStatus()
+                : null;
+            if (s && s.activeNamespaces > 0) failure = null;
+        }
         const next = readCurrent();
         const prev = lastRender;
         if (prev && prev.state === next.state && prev.label === next.label) return;
@@ -209,6 +272,17 @@
         document.addEventListener('shevato:include-loaded', placeBanner);
         window.addEventListener('syncConflict', function (e) {
             try { showConflictBanner(e && e.detail); } catch (err) { /* never break a page */ }
+        });
+        // A write the engine will not retry. It names the app whose data is
+        // affected, because on a site where eight apps share one account
+        // "sync failed" without a subject is not actionable.
+        window.addEventListener('syncWriteRejected', function (e) {
+            try { noteFailure('write', e && e.detail); } catch (err) { /* never break a page */ }
+        });
+        // Sync never started. Unlike a rejected write this one can genuinely
+        // recover on its own, so `render` clears it once any namespace is live.
+        window.addEventListener('appSyncFailed', function (e) {
+            try { noteFailure('init', e && e.detail); } catch (err) { /* never break a page */ }
         });
     }
 

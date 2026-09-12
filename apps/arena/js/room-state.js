@@ -444,6 +444,55 @@
         return (Array.isArray(players) ? players : []).filter((p) => isPlayerLive(p, nowMs));
     }
 
+    /** joinedAt as epoch ms, whether it arrives as a Timestamp or a number. */
+    function joinedAtMs(p) {
+        const j = p && p.joinedAt;
+        if (j && typeof j.toMillis === 'function') return j.toMillis();
+        return Number(j) || 0;
+    }
+
+    /**
+     * Should `myUid` claim `hostUid` for this room right now?
+     *
+     * A room used to lose its host for good whenever the host's tab simply
+     * went away: `hostUid` was only ever reassigned by the explicit "Leave
+     * room" button, and a closed tab, a discarded background tab or a dead
+     * phone leaves it naming somebody who is never coming back. Everything
+     * gated on being the host then stops for the rest of the session - early
+     * reveal, the Globe Drop Ready-to-skip advance, the stale-player sweep
+     * and, most visibly, the rematch.
+     *
+     * Two conditions, and both matter:
+     *  - the current host's player doc is GONE or NOT LIVE. This mirrors
+     *    `memberHostTakeover` / `playerGone` in firestore.rules, which is
+     *    what actually authorises the write. Asking while the host is live
+     *    is a guaranteed permission-denied, so the predicate must not.
+     *  - `myUid` is the deterministic pick among the LIVE players
+     *    (`pickNextHost`, earliest joiner). Every client runs this on its own
+     *    clock, so this is what keeps a single writer instead of a stampede
+     *    of racing claims that all but one of would be refused.
+     *
+     * Membership is implied: a client with no live player doc in the room is
+     * never the pick, and the rules require membership anyway.
+     *
+     * @param {{hostUid?:string}|null} room    the room doc
+     * @param {Array<object>} players          every player doc held locally
+     * @param {string|null} myUid
+     * @param {number} [nowMs]
+     * @returns {boolean}
+     */
+    function shouldTakeOverHost(room, players, myUid, nowMs) {
+        if (!room || !myUid) return false;
+        const hostUid = room.hostUid;
+        if (!hostUid || hostUid === myUid) return false;
+        const now = typeof nowMs === 'number' ? nowMs : Date.now();
+        const all = Array.isArray(players) ? players : [];
+        const hostDoc = all.find((p) => p && p.uid === hostUid);
+        if (hostDoc && isPlayerLive(hostDoc, now)) return false;
+        const order = livePlayers(all, now).map((p) => ({ uid: p.uid, joinedAt: joinedAtMs(p) }));
+        return pickNextHost(order) === myUid;
+    }
+
     /**
      * Compact, ordered final-ranking snapshot for the room doc when a game
      * finishes ({ uid, displayName, score, streak }, best first). `scoreOf`
@@ -513,6 +562,7 @@
         autoPickQuestion,
         isPlayerLive,
         livePlayers,
+        shouldTakeOverHost,
         finalRankingSnapshot,
         endOfGameStatsDelta
     };

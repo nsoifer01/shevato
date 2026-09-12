@@ -18,7 +18,9 @@ import { register } from 'node:module';
 import { test, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import handler, { ASSIST_UPSTREAM_TIMEOUT_MS } from '../tp-assist.mjs';
-import { DEFAULT_LIMITS } from '../lib/tp-assist-quota.mjs';
+import {
+  DEFAULT_LIMITS, MONTHLY_BUDGET, monthBucketOf, resetAtFor,
+} from '../lib/tp-assist-quota.mjs';
 
 let hooksOk = true;
 try {
@@ -29,6 +31,8 @@ try {
 const opts = hooksOk ? {} : { skip: 'node:module register() unavailable; steps 4-9 need the @netlify/blobs hook' };
 
 const STORE = 'trip-planner-assist';
+const HOUR = 3600000;
+const DAY = 86400000;
 
 function seedBlobs({ config, usage } = {}) {
   const map = new Map();
@@ -95,8 +99,22 @@ test('step 4: a missing config blob (never written) also answers 503', opts, asy
   assert.equal(res.status, 503);
 });
 
+test('step 4: a blob still holding the OLD geminiKey field configures nothing', opts, async () => {
+  // The version gate, end to end. `geminiKey` is what every deploy permalink
+  // published before this change reads; once the owner rewrites the blob to
+  // `geminiKeyV2` those permalinks resolve nothing forever. This asserts the
+  // other half - that the CURRENT function refuses the old name too, so the
+  // migration cannot be half-done and quietly keep working.
+  seedBlobs({ config: { geminiKey: 'old-key' } });
+  stubGemini(200, geminiJson([{ text: 'never reached' }]));
+  const res = await handler(req(goodBody()));
+  assert.equal(res.status, 503);
+  assert.equal((await res.json()).error, 'not_configured');
+  assert.equal(fetchCalls.length, 0, 'the old field never reaches Gemini');
+});
+
 test('steps 5-9: a configured key reaches Gemini and returns the reply', opts, async () => {
-  seedBlobs({ config: { geminiKey: 'test-key-123' } });
+  seedBlobs({ config: { geminiKeyV2: 'test-key-123' } });
   stubGemini(200, geminiJson([{ text: 'Here are two ideas.' }]));
   const res = await handler(req(goodBody()));
   assert.equal(res.status, 200);
@@ -115,7 +133,7 @@ test('steps 5-9: a configured key reaches Gemini and returns the reply', opts, a
 
 test('step 5: a spent global pool answers 429 and never calls upstream', opts, async () => {
   seedBlobs({
-    config: { geminiKey: 'k' },
+    config: { geminiKeyV2: 'k' },
     usage: liveUsage({ globalDay: DEFAULT_LIMITS.globalDay }),
   });
   stubGemini(200, geminiJson([{ text: 'never' }]));
@@ -129,9 +147,59 @@ test('step 5: a spent global pool answers 429 and never calls upstream', opts, a
   assert.equal(storedUsage().globalDay, DEFAULT_LIMITS.globalDay);
 });
 
+test('step 5: every 429 says WHEN, not just that it is full', opts, async () => {
+  // A bare scope leaves the UI with one sentence for every refusal ("at
+  // capacity today"), which is wrong for an hourly bucket that refills in
+  // minutes and wrong for a monthly one that does not refill this week.
+  // tp-places answers this shape already; this is the same contract.
+  const cases = [
+    ['global_day', liveUsage({ globalDay: DEFAULT_LIMITS.globalDay }), DAY],
+    ['client_hour', liveUsage({ clientHour: { 'client-1': DEFAULT_LIMITS.perClientHour } }), HOUR],
+    ['global_month', liveUsage({ monthBucket: monthBucketOf(Date.now()), globalMonth: MONTHLY_BUDGET }), DAY],
+  ];
+  for (const [scope, usage, atMost] of cases) {
+    seedBlobs({ config: { geminiKeyV2: 'k' }, usage });
+    stubGemini(200, geminiJson([{ text: 'never' }]));
+    const res = await handler(req(goodBody()));
+    assert.equal(res.status, 429, scope);
+    const body = await res.json();
+    assert.equal(body.scope, scope);
+    assert.equal(body.error, 'quota_exceeded');
+    const seconds = Number(res.headers.get('retry-after'));
+    assert.ok(Number.isInteger(seconds) && seconds > 0, `${scope}: Retry-After is whole seconds`);
+    assert.ok(Number.isFinite(Date.parse(body.resetAt)), `${scope}: resetAt is a real timestamp`);
+    assert.ok(Date.parse(body.resetAt) > Date.now(), `${scope}: resetAt is in the future`);
+    // The two must agree, or a client that trusts the header waits a different
+    // length of time from one that trusts the body.
+    assert.equal(Math.abs(Date.parse(body.resetAt) - (Date.now() + seconds * 1000)) < 2000, true,
+      `${scope}: Retry-After and resetAt describe the same moment`);
+    assert.ok(Math.abs(Date.parse(body.resetAt) - resetAtFor(scope, Date.now())) < 2000,
+      `${scope}: the bucket edge the server's own math names`);
+    if (scope !== 'global_month') {
+      assert.ok(seconds * 1000 <= atMost, `${scope}: never promises longer than its own window`);
+    }
+    assert.equal(fetchCalls.length, 0, `${scope}: refused before upstream`);
+  }
+});
+
+test('step 5: a month that is spent out refuses even on a fresh day', opts, async () => {
+  // The dimension hour and day caps cannot provide: 400 a day is 12,000 turns
+  // a month, and nothing below the month bucket bounds that.
+  seedBlobs({
+    config: { geminiKeyV2: 'k' },
+    usage: liveUsage({ monthBucket: monthBucketOf(Date.now()), globalMonth: MONTHLY_BUDGET }),
+  });
+  stubGemini(200, geminiJson([{ text: 'never' }]));
+  const res = await handler(req(goodBody()));
+  assert.equal(res.status, 429);
+  assert.equal((await res.json()).scope, 'global_month');
+  assert.equal(fetchCalls.length, 0);
+  assert.equal(storedUsage().globalMonth, MONTHLY_BUDGET, 'a rejection moves nothing');
+});
+
 test('step 5: a client at its hourly cap is rejected with its own scope', opts, async () => {
   seedBlobs({
-    config: { geminiKey: 'k' },
+    config: { geminiKeyV2: 'k' },
     usage: liveUsage({ clientHour: { 'client-1': DEFAULT_LIMITS.perClientHour }, clientDay: { 'client-1': DEFAULT_LIMITS.perClientHour }, globalDay: DEFAULT_LIMITS.perClientHour }),
   });
   stubGemini(200, geminiJson([{ text: 'never' }]));
@@ -144,7 +212,7 @@ test('step 5: a client at its hourly cap is rejected with its own scope', opts, 
 test('step 7: an upstream failure answers 502 and the reservation is NOT refunded', opts, async () => {
   // fails closed on purpose (FINDINGS "Server functions"): a failed call
   // still spends the slot, so retry storms cannot mint free capacity
-  seedBlobs({ config: { geminiKey: 'k' } });
+  seedBlobs({ config: { geminiKeyV2: 'k' } });
   stubGemini(500, 'internal');
   const res = await handler(req(goodBody()));
   assert.equal(res.status, 502);
@@ -153,7 +221,7 @@ test('step 7: an upstream failure answers 502 and the reservation is NOT refunde
 });
 
 test('step 7: an upstream 429 surfaces as quota_exceeded scope upstream', opts, async () => {
-  seedBlobs({ config: { geminiKey: 'k' } });
+  seedBlobs({ config: { geminiKeyV2: 'k' } });
   stubGemini(429, 'slow down');
   const res = await handler(req(goodBody()));
   assert.equal(res.status, 429);
@@ -163,7 +231,7 @@ test('step 7: an upstream 429 surfaces as quota_exceeded scope upstream', opts, 
 });
 
 test('step 8: an empty reply (safety block / all-thinking turn) answers 502, not a blank bubble', opts, async () => {
-  seedBlobs({ config: { geminiKey: 'k' } });
+  seedBlobs({ config: { geminiKeyV2: 'k' } });
   stubGemini(200, geminiJson([{ text: '' }, {}]));
   const res = await handler(req(goodBody()));
   assert.equal(res.status, 502);
@@ -174,7 +242,7 @@ test('step 7: an upstream abort (timeout) answers our JSON 502, not a crash', op
   // The plan-mode outage of 2026-08: the deadline fired mid-generation and the
   // resulting exception has to land as our {error:'upstream'} body, never as
   // an unhandled throw the platform turns into a gateway page.
-  seedBlobs({ config: { geminiKey: 'k' } });
+  seedBlobs({ config: { geminiKeyV2: 'k' } });
   fetchCalls = [];
   globalThis.fetch = async () => { throw new DOMException('The operation timed out', 'TimeoutError'); };
   const res = await handler(req(goodBody()));
@@ -183,7 +251,7 @@ test('step 7: an upstream abort (timeout) answers our JSON 502, not a crash', op
 });
 
 test('step 7: the 502 body never carries the key or the upstream response', opts, async () => {
-  seedBlobs({ config: { geminiKey: 'secret-key-xyz' } });
+  seedBlobs({ config: { geminiKeyV2: 'secret-key-xyz' } });
   stubGemini(500, 'INTERNAL: model overloaded at backend host abc123');
   const res = await handler(req(goodBody()));
   assert.equal(res.status, 502);
@@ -207,7 +275,7 @@ test('upstream deadline: covers a full plan turn and sits inside both 60s window
 });
 
 test('steps 5-9: the upstream call carries an abort deadline', opts, async () => {
-  seedBlobs({ config: { geminiKey: 'k' } });
+  seedBlobs({ config: { geminiKeyV2: 'k' } });
   stubGemini(200, geminiJson([{ text: 'ok' }]));
   const res = await handler(req(goodBody()));
   assert.equal(res.status, 200);
@@ -215,7 +283,7 @@ test('steps 5-9: the upstream call carries an abort deadline', opts, async () =>
 });
 
 test('step 9: a MAX_TOKENS reply still lands, carrying the visible truncation note', opts, async () => {
-  seedBlobs({ config: { geminiKey: 'k' } });
+  seedBlobs({ config: { geminiKeyV2: 'k' } });
   stubGemini(200, geminiJson([{ text: 'Half an answer' }], 'MAX_TOKENS'));
   const res = await handler(req(goodBody()));
   assert.equal(res.status, 200);

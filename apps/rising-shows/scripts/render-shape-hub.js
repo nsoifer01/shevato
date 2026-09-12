@@ -14,6 +14,17 @@ const {
 } = require('./render-show-page.js');
 const { renderMoreFooter } = require('./render-footer.js');
 
+// Both gap floors now live in finder-lib.js, so the app's "Outshines its
+// reputation" mood preset ranks the gap behind the same numbers this hub does.
+// The rationale for each is written there.
+//
+// GAP_MIN_VOTES floors the series rating; GAP_MIN_EPISODE_VOTES applies the
+// same floor to the show's TOTAL episode votes, because the gap subtracts two
+// ratings and guarding only one guards half the number. Together they drop 36
+// of the 100 visible rows and promote 36 well-sampled ones (Arrow, 715,744
+// episode votes; Doctor Who; 1899).
+const { GAP_MIN_VOTES, GAP_MIN_EPISODE_VOTES } = require('./finder-lib.js');
+
 // Every shape a season can carry, in the app's chip order (the last two are
 // series-level tags). One static hub page is generated per entry.
 const SHAPE_SLUGS = [
@@ -128,26 +139,6 @@ const HUB_SLUGS = [...SHAPE_SLUGS, GAP_HUB_SLUG];
 // structured-data payload stays small.
 const HUB_LIMIT = 100;
 const HUB_SCHEMA_LIMIT = 25;
-
-// Minimum IMDb votes to qualify for the gap hub. 15,000 is roughly where the
-// curated sitemap cuts off (top 2,000 shows by votes), so nearly every ranked
-// show is itself an indexable page, and it sits near the 94th percentile of
-// rated shows. Lower floors hand the top of the list to review-bombed titles:
-// with no floor the leader is a 451-vote show averaging 9.9 per episode
-// against a 1.3 series rating.
-const GAP_MIN_VOTES = 15000;
-
-// The gap subtracts TWO ratings, so a floor on only one of them guards only
-// half the number. The series rating had a 15,000-vote floor; the episode
-// average had none, and it is an unweighted mean over episodes, so an episode
-// rated by 30 people counted as much as one rated by 30,000. That put Kaamraj
-// at #1 (IMDb 3.6 from 19,239 series votes against a 7.1 episode average built
-// on 358 episode votes across 12 episodes, i.e. the review-bomb signature the
-// floor existed to exclude). Applying the SAME floor to the show's total
-// episode votes is the symmetric rule: both halves of the gap must rest on at
-// least 15,000 opinions. It drops 36 of the 100 visible rows and promotes 36
-// well-sampled ones (Arrow, 715,744 episode votes; Doctor Who; 1899).
-const GAP_MIN_EPISODE_VOTES = GAP_MIN_VOTES;
 
 function hubPath(slug) {
   return `/apps/rising-shows/shows/shape/${slug}/`;

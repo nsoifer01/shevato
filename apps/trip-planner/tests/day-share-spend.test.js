@@ -301,3 +301,98 @@ test('shareHostStay keeps dayHostStay date windows: night wins, checkout still a
   const cancelled = { ...stay, status: 'cancelled' };
   assert.equal(L.shareHostStay([cancelled], '2027-03-02'), null);
 });
+
+// ---------- tripShareText ----------
+// The whole trip as one message. It is composition only: every day is
+// dayShareText's output verbatim, in dayCards order, under a title and a date
+// range. Sending a ten-day itinerary to someone who will not open a web app
+// used to mean opening ten day menus and pasting ten fragments in order.
+
+const { tripShareText } = L;
+
+// A real multi-day trip: a flight out, three nights in a hotel, a day with
+// nothing at all in the middle, a couple of activities, a flight home.
+const CROATIA = () => ({
+  id: 't1', name: 'Croatia 2027', currency: 'EUR', items: [
+    item({ id: 'f1', type: 'flight', title: 'London (LHR) to Split (SPU)', location: '', startDate: '2027-06-01', startTime: '11:00' }),
+    item({ id: 's1', type: 'stay', title: 'Hotel Park', location: 'Split', startDate: '2027-06-01', endDate: '2027-06-04' }),
+    item({ id: 'a1', title: 'Diocletian’s Palace', location: 'Split', startDate: '2027-06-02', startTime: '10:00' }),
+    item({ id: 'm1', title: 'Konoba Hvaranin', meal: 'dinner', location: 'Split', startDate: '2027-06-02', startTime: '19:30' }),
+    item({ id: 'a2', title: 'Ferry to Hvar', location: 'Split', status: 'to-book', startDate: '2027-06-04', startTime: '' }),
+    item({ id: 'f2', type: 'flight', title: 'Split (SPU) to London (LHR)', startDate: '2027-06-06', startTime: '16:40' }),
+  ],
+});
+
+test('tripShareText opens with the trip name and its date range, then the days in order', () => {
+  const trip = CROATIA();
+  const text = tripShareText(trip, fmtDate, fmtTime(false));
+  const lines = text.split('\n');
+  assert.equal(lines[0], '\u{1F9F3} Croatia 2027');
+  assert.equal(lines[1], 'Jun 1, 2027 - Jun 6, 2027');
+  assert.equal(lines[2], '');
+  // Day headers appear once each, in calendar order, and nothing else does.
+  assert.deepEqual(text.match(/\u{1F4C5} .+/gu), [
+    '\u{1F4C5} Jun 1, 2027',
+    '\u{1F4C5} Jun 2, 2027',
+    '\u{1F4C5} Jun 3, 2027',
+    '\u{1F4C5} Jun 4, 2027',
+    '\u{1F4C5} Jun 6, 2027',
+  ]);
+});
+
+test('tripShareText skips a day with nothing on it rather than printing a bare header', () => {
+  const trip = CROATIA();
+  // Jun 5 has no item and no stay covering it: the hotel checked out on the
+  // 4th. Ten bare headers is exactly what makes a pasted itinerary unreadable.
+  assert.ok(!tripShareText(trip, fmtDate, fmtTime(false)).includes('Jun 5, 2027'));
+});
+
+test('tripShareText reuses dayShareText verbatim, so a day reads the same either way', () => {
+  const trip = CROATIA();
+  const whole = tripShareText(trip, fmtDate, fmtTime(false));
+  for (const date of ['2027-06-01', '2027-06-02', '2027-06-03', '2027-06-04', '2027-06-06']) {
+    const day = dayShareText(cardFor(trip.items, date), trip.items, fmtDate, fmtTime(false));
+    assert.ok(whole.includes(day), `day ${date} must appear exactly as the day card copies it`);
+  }
+});
+
+test('tripShareText keeps a day whose only content is the bed, the way the day menu does', () => {
+  const trip = CROATIA();
+  const text = tripShareText(trip, fmtDate, fmtTime(false));
+  // Jun 3 has no item at all, but a stay covers the night, and "where am I
+  // sleeping" is exactly what a pasted itinerary is for.
+  assert.ok(text.includes('\u{1F4C5} Jun 3, 2027\n\n\u{1F3E8} Staying at: Hotel Park'));
+});
+
+test('tripShareText follows the 12/24-hour preference the screen is using', () => {
+  const trip = CROATIA();
+  assert.ok(tripShareText(trip, fmtDate, fmtTime(false)).includes('7:30 PM'));
+  assert.ok(!tripShareText(trip, fmtDate, fmtTime(false)).includes('19:30'));
+  assert.ok(tripShareText(trip, fmtDate, fmtTime(true)).includes('19:30'));
+});
+
+test('tripShareText says so plainly when the trip holds no dated item at all', () => {
+  // tripStats has no span, dayCards has nothing to walk, and a title on its own
+  // would read like a truncated message.
+  const trip = { id: 't1', name: 'Someday: Patagonia', currency: 'USD', items: [
+    item({ id: 'n1', type: 'note', title: 'Research permits', startDate: '' }),
+  ] };
+  assert.equal(tripShareText(trip, fmtDate, fmtTime(false)), '\u{1F9F3} Someday: Patagonia\n\nNothing scheduled yet.');
+  assert.equal(tripShareText({ id: 't2', name: '', items: [] }, fmtDate, fmtTime(false)), '\u{1F9F3} Trip\n\nNothing scheduled yet.');
+});
+
+test('tripShareText prints one date, not a range, for a trip that lasts a day', () => {
+  const trip = { id: 't1', name: 'Day trip', currency: 'USD', items: [
+    item({ id: 'a1', title: 'Windsor Castle', startDate: '2027-06-01', startTime: '09:00' }),
+  ] };
+  assert.equal(tripShareText(trip, fmtDate, fmtTime(false)).split('\n')[1], 'Jun 1, 2027');
+});
+
+test('tripShareText leaks no trip essentials, for the same structural reason a day does not', () => {
+  const trip = CROATIA();
+  trip.essentials = { contactName: 'Ana', contactPhone: '+385 000', insurer: 'Aviva', policyPhone: '+44 000', medical: 'penicillin' };
+  const text = tripShareText(trip, fmtDate, fmtTime(false));
+  for (const secret of ['Ana', '+385 000', 'Aviva', '+44 000', 'penicillin']) {
+    assert.ok(!text.includes(secret), secret);
+  }
+});

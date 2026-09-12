@@ -1461,19 +1461,7 @@ function renderGamesTableWithData(gamesData) {
     
     gamesToDisplay.forEach(game => {
         const row = document.createElement('tr');
-        
-        // Determine winner for styling
-        let winner = '';
-        if (game.player1Goals > game.player2Goals) {
-            winner = 'player1';
-        } else if (game.player2Goals > game.player1Goals) {
-            winner = 'player2';
-        } else if (game.penaltyWinner) {
-            winner = game.penaltyWinner === 1 ? 'player1' : 'player2';
-        }
-        
-        if (winner) row.classList.add(`${winner}-win`);
-        
+
         const date = new Date(game.dateTime);
         const formattedDate = date.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
         const formattedTime = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
@@ -2090,17 +2078,15 @@ function updateMatchupResult() {
 
     let p1Wins = 0, p2Wins = 0, draws = 0;
     for (const g of filtered) {
-        if (g.player1Goals > g.player2Goals) {
-            p1Wins++;
-        } else if (g.player2Goals > g.player1Goals) {
-            p2Wins++;
-        } else if (g.penaltyWinner === 1) {
-            p1Wins++;
-        } else if (g.penaltyWinner === 2) {
-            p2Wins++;
-        } else {
-            draws++;
-        }
+        // Same missing-score guard as updateStatisticsWithData: a raw
+        // `player1Goals > player2Goals` compare treats an ungradeable row
+        // (undefined/null score) as a draw instead of skipping it, because
+        // `3 > undefined` and `undefined > 3` are both false.
+        const outcome = window.FootballPlayerStats.matchResult(g.player1Goals, g.player2Goals, g.penaltyWinner, 1);
+        if (outcome === null) continue;
+        if (outcome === 'W') p1Wins++;
+        else if (outcome === 'L') p2Wins++;
+        else draws++;
     }
 
     if (filtered.length === 0) {
@@ -2135,14 +2121,23 @@ function buildSessionSummaryText(gamesData) {
     // is arbitrary after imports and undo restores.
     const ordered = window.FootballMatchLogic.sortGames(gamesData, 'date', 'asc');
     for (const g of ordered) {
-        totalGoals += g.player1Goals + g.player2Goals;
+        // Same missing-score guard as updateStatisticsWithData: an
+        // ungradeable row (undefined/null score, e.g. a legacy row from an
+        // older device) is skipped instead of letting `player1Goals >
+        // player2Goals` silently misattribute the win and NaN-poison the
+        // running goal total.
+        const s1 = window.FootballPlayerStats.toScore(g.player1Goals);
+        const s2 = window.FootballPlayerStats.toScore(g.player2Goals);
+        if (s1 === null || s2 === null) continue;
+        totalGoals += s1 + s2;
         const scoreStr = `${g.player1Goals}–${g.player2Goals}`;
         let suffix = '';
-        if (g.player1Goals === g.player2Goals) {
-            if (g.penaltyWinner === 1) { p1Wins++; suffix = ` (${p1} wins pens)`; }
-            else if (g.penaltyWinner === 2) { p2Wins++; suffix = ` (${p2} wins pens)`; }
+        const outcome = window.FootballPlayerStats.matchResult(s1, s2, g.penaltyWinner, 1);
+        if (s1 === s2) {
+            if (outcome === 'W') { p1Wins++; suffix = ` (${p1} wins pens)`; }
+            else if (outcome === 'L') { p2Wins++; suffix = ` (${p2} wins pens)`; }
             else { draws++; suffix = ' (draw)'; }
-        } else if (g.player1Goals > g.player2Goals) {
+        } else if (outcome === 'W') {
             p1Wins++;
         } else {
             p2Wins++;

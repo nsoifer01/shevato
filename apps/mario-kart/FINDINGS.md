@@ -239,6 +239,73 @@ layers), never the element's own `backgroundColor`, which here is
   History is honest and reads well full size, but its position pills shrink
   into a field of anonymous coloured dots. The Stats panels are the only
   screen whose largest elements survive the shrink.
+## Per-course statistics (2026-09-11)
+
+Every race has always stored `courseId`/`course` (`dataManager.js` `addRace`),
+but `statistics.js`/`charts.js`/`achievements.js` never read it back: its only
+uses were display labels in the history table/cards. The Courses tab
+(`js/statistics.js` `calculateCourseStats`/`getCourseRankings`/
+`generateCourseStatsView`, wired in `js/main.js` `createCourseStatsView`)
+aggregates it: best/worst courses by average finish, per-course/per-player
+average, and wins/podiums per course (top-3, matching `calculateStats` -
+deliberately NOT scaled by `MAX_POSITIONS`).
+
+- **Minimum sample: 3 races.** `MIN_COURSE_RACES_FOR_RANKING` in
+  `statistics.js`. A course under 3 races is excluded from the best/worst
+  lists entirely (a course raced once can never top "best courses") but still
+  shows in the full "All Courses" table with its real race count, labelled
+  "not enough races yet (n/3)" - visible in the UI, not just enforced in
+  code. 3 was chosen as small enough to reach within a normal session or two,
+  large enough that one outlier result can't swing a course from best to
+  worst alone.
+- **Course-less races are excluded, not bucketed as "undefined".**
+  `calculateCourseStats` skips any race whose `course` is missing, not a
+  string, or blank after `.trim()` (this happens for real: the import
+  validator drops an unreadable course tag but keeps the race).
+- **Grouping key is `courseId || course`.** Handles older rows that predate
+  `courseId` (grouped by name) without merging two different ids that happen
+  to share a name.
+- **No cross-version leakage by construction.** `races` is swapped wholesale
+  on a game-version switch (`gameVersionManager.js`), so whatever raceData
+  `calculateCourseStats` receives is already scoped to one version - same
+  assumption `calculateStats` already makes. Average finishing position is
+  therefore only ever compared within one call.
+- Rendering reuses existing markup wholesale: best/worst cards are the
+  Analysis tab's `best-day-item`/`worst-day-item`, the breakdown table is the
+  Activity tab's `weekly-breakdown-table` skin. Only new CSS is
+  `.course-unranked-badge` (the visible "not enough races" flag) and
+  `.chart-unavailable-message` (see below). No charting library was added.
+
+## Chart.js CDN guard was missing on the Activity tab's doughnut chart
+
+`createTrendCharts` (~172) already guarded its `new Chart(...)` with
+`if (window.Chart)`; `createHeatmapView`'s doughnut chart (~336) did not, and
+it runs unconditionally from `updateDisplay()` on every data mutation while
+the Activity tab is open. Fixed by mirroring the same guard, plus a visible
+`.chart-unavailable-message` that replaces only the canvas's own
+`.activity-chart-wrapper`, leaving the weekly table (which needs no Chart.js
+at all) intact - an improvement over the pre-existing generic catch block,
+which replaced the entire tab's content on any chart error. Pinned in
+`tests/charts.test.js` with a small dedicated DOM harness
+(`loadChartsWithDom`), since the existing pure-function tests in that file
+load `charts.js` with no `document` at all.
+
+## Two bare position constants in charts.js did not scale with MAX_POSITIONS
+
+`calculateComebackAnalysis` (~610) and `generatePatternAnalysis`'s "close
+races" line (~789) both hardcoded `5` as a finish/spread threshold, tuned for
+MK8D's 12 positions. In Mario Kart World (24 positions) that silently
+tightened both definitions: "comeback" meant top-5-of-24 (~21%) instead of
+the intended top-5-of-12 (~42%), and "close race" meant an 11-place spread
+never counting as close even though it is proportionally as tight as a
+5-place spread in a 12-position game.
+
+Both now scale as `getGoodFinishThreshold() - 1` (one better than the
+top-half line): MK8D (threshold 6) reproduces the original hardcoded `5`
+exactly; MK World (threshold 12) scales to `11`. The close-races UI copy
+("position spread ≤ N places") now reads the same dynamic value instead of a
+hardcoded "5". Both game versions are pinned in `tests/charts.test.js`.
+
 - **The stat panel titles are `div.stat-title`, not headings.** A capture or
   test that locates a panel by looking for an `h2`/`h3` whose text is
   "Average Finish Position" finds nothing and reports the element missing.

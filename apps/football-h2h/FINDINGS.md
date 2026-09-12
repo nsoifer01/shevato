@@ -51,6 +51,33 @@ Total Games tile still shows every stored row, matching the history table.
 The drift guard in `statsAggregates.test.js` enforces the agreement; any
 new counter must use the same rule.
 
+`updateMatchupResult` (Team Matchup lookup) and `buildSessionSummaryText`
+(Session Summary) did NOT follow this rule until 2026-09-11: both compared
+`g.player1Goals > g.player2Goals` directly instead of going through
+`toScore`/`matchResult`. `3 > undefined` and `undefined > 3` are both
+`false`, so an ungradeable row (a score that is `undefined`/`null`, reachable
+via a legacy row or a sync delivery from an older device, not via any current
+write path) fell through to the trailing `else` branch: the matchup lookup
+silently counted it as a draw, and the session summary silently credited the
+OTHER player with a win they did not have, plus `totalGoals += g.player1Goals
++ g.player2Goals` turned the running total to `NaN` for the whole summary,
+not just the bad row. Both now call `window.FootballPlayerStats.matchResult`
+(and `toScore` for the summary's goal total) and skip a `null` result exactly
+like `updateStatisticsWithData` does; the row still counts toward the
+matchup's "from N games" line (matching the Total Games tile convention
+above) but toward none of the win/draw buckets. Regression tests: the new
+`matchup: ...` block in `statsAggregates.test.js` and the new
+`session summary: a game with a missing score is skipped...` test in
+`textAndSummary.test.js`.
+
+Separately, `renderGamesTableWithData`'s per-row `winner` computation added a
+`player1-win`/`player2-win` class to the `<tr>` that no stylesheet in the app
+ever selects (verified with `grep -rn "player1-win\|player2-win"` across
+`apps/football-h2h/`), and treated a truthy `penaltyWinner` (including the
+string `'draw'`) as `=== 1 ? 'player1' : 'player2'`, misclassifying a genuine
+penalty-shootout draw as a `player2-win`. Deleted the dead block outright
+rather than fixing logic nothing reads.
+
 Consequence: `js/football-h2h.js` now requires `playerStats.js` to be
 loaded first (index.html already did; the vm-harness test contexts must
 mirror that order, and `sidebar.js` similarly needs `match-logic.js` for

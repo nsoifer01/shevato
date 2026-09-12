@@ -567,3 +567,92 @@ test('renderShowPage never falls back to an em dash for a missing episode title'
   assert.ok(html.includes('<td>Untitled</td>'));
   assert.equal(html.includes('\u2014'), false);
 });
+
+// ---------------------------------------------------------------------------
+// The dominant shape is the one the show FITS BEST, not the one the classifier
+// happens to emit first.
+//
+// detectShapes pushes its tags in a fixed order (rising, consistent, slow-burn,
+// big-finale, rebound, front-loaded, declining, bad-finale, rollercoaster,
+// mid-peak, u-shaped). That order is an artefact of how the function is
+// written, and it decided both the badge a card shows and the hub a show is
+// filed under, because both read shapes[0].
+//
+// Game of Thrones is the case that proves the cost. Its season averages are
+// 8.98, 8.80, 8.93, 9.25, 8.70, 8.98, 9.00, 6.40: the classifier scores
+// bad-finale at 1.00 and front-loaded at 0.18, yet front-loaded is emitted
+// first, so the badge read "Front-loaded" and the highest-search-intent page on
+// the domain, /shows/shape/bad-finale/ ("TV Shows With a Bad Final Season"),
+// contained no Game of Thrones at all. shapeConfidence already existed and
+// already ranked these correctly - nothing consulted it above the season pills.
+// ---------------------------------------------------------------------------
+
+const { computeDominantShape } = require('../scripts/render-show-page.js');
+const { deriveShowShapes } = require('../scripts/finder-lib.js');
+const { detectShapes: realDetectShapes, shapeConfidence: realShapeConfidence } = require('../scripts/match.js');
+
+const GOT_SEASON_AVGS = [8.98, 8.80, 8.93, 9.25, 8.70, 8.98, 9.00, 6.40];
+
+function showOfSeasonAvgs(seriesId, title, avgs, extra = {}) {
+  return {
+    seriesId,
+    title,
+    year: 2011,
+    seasons: avgs.map((avgRating, i) => ({ season: i + 1, avgRating, shapes: [], ...extra })),
+  };
+}
+
+test('computeDominantShape files a show under the shape it fits best, not the first emitted', () => {
+  // Not vacuous: the fixture has to be a genuine two-shape contest, with the
+  // later-emitted shape scoring higher. Both halves are asserted from the
+  // classifier itself rather than assumed.
+  const shapes = deriveShowShapes(GOT_SEASON_AVGS, new Set(), realDetectShapes);
+  assert.ok(shapes.includes('bad-finale'), 'fixture must actually be a bad finale');
+  assert.ok(shapes.includes('front-loaded'), 'fixture must also carry the weaker shape');
+  assert.ok(shapes.indexOf('front-loaded') < shapes.indexOf('bad-finale'),
+    'fixture must reproduce the emission order that used to win');
+
+  const conf = realShapeConfidence(GOT_SEASON_AVGS.map((r) => ({ rating: r })));
+  assert.ok(conf['bad-finale'] > conf['front-loaded'],
+    `fixture must be a real contest: ${JSON.stringify(conf)}`);
+
+  const { dominantShape, dominantShapeSlug } = computeDominantShape(
+    showOfSeasonAvgs('tt0944947', 'Collapsing Finale', GOT_SEASON_AVGS),
+  );
+  assert.equal(dominantShape, 'bad-finale');
+  assert.equal(dominantShapeSlug, 'bad-finale');
+});
+
+test('computeDominantShape keeps categorical tags behind every trajectory shape', () => {
+  // saved-best-for-last and shape-drift carry no confidence, so a naive sort
+  // would float them to the front of a show whose trajectory scores low. They
+  // describe a season, not the run, and must stay the fallback.
+  const show = showOfSeasonAvgs('tt0000001', 'Drifter', GOT_SEASON_AVGS);
+  show.seasons[show.seasons.length - 1].shapes = ['shape-drift'];
+  assert.equal(computeDominantShape(show).dominantShape, 'bad-finale');
+
+  // A show with no cross-season trajectory at all still lands on its tag.
+  const tagOnly = showOfSeasonAvgs('tt0000002', 'Tagged', [7.2, 8.8, 8.9, 7.3]);
+  tagOnly.seasons[0].shapes = ['saved-best-for-last'];
+  assert.deepEqual(
+    deriveShowShapes([7.2, 8.8, 8.9, 7.3], new Set(), realDetectShapes), [],
+    'fixture must have no trajectory shape of its own',
+  );
+  assert.equal(computeDominantShape(tagOnly).dominantShape, 'saved-best-for-last');
+});
+
+test('computeDominantShape is unchanged for a show that fits exactly one shape', () => {
+  // The control: most of the catalogue carries one trajectory shape or none,
+  // and for those the reorder must be a no-op.
+  const avgs = [7.2, 7.0, 8.8, 8.6];
+  const shapes = deriveShowShapes(avgs, new Set(), realDetectShapes);
+  assert.deepEqual(shapes, ['slow-burn'], 'fixture must fit exactly one shape');
+  assert.equal(computeDominantShape(showOfSeasonAvgs('tt0000003', 'Late Bloomer', avgs)).dominantShape, 'slow-burn');
+
+  const none = [7.9, 8.0, 7.8, 7.9];
+  assert.deepEqual(deriveShowShapes(none, new Set(), realDetectShapes), []);
+  assert.deepEqual(
+    computeDominantShape(showOfSeasonAvgs('tt0000004', 'No Pattern', none)),
+    { dominantShape: null, dominantShapeSlug: null },
+  );
+});

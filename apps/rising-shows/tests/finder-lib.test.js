@@ -654,3 +654,99 @@ test('passesFinderFilters folds diacritics when the caller precomputes the folde
   // The IMDb id stays an unfolded, plain-lowercase match either way.
   assert.equal(passesFinderFilters(row, { ...base, search: 'TT0000040', searchFold: 'tt0000040' }), true);
 });
+
+// ---------------------------------------------------------------------------
+// Strongest-fit ordering (the shared half).
+//
+// shapeConfidence has scored every matched shape since the season pills
+// shipped, and nothing above those pills read it: the dominant shape - the
+// card badge, the static page's headline shape, the hub a show is filed under -
+// was shapes[0], i.e. whichever detector detectShapes happens to call first.
+// These two functions are the whole of the fix, and they are here rather than
+// inside deriveShowShapes on purpose: the emitted array is the classifier's
+// answer and stays in classifier order, while "which one of these is this
+// show's shape" is derived from it. The browser can therefore order a
+// shows-index.json built before this change, and it lands on the same shape
+// the freshly built static page does.
+// ---------------------------------------------------------------------------
+
+const { showShapeConfidence, orderShapesByConfidence } = require('../scripts/finder-lib.js');
+const { shapeConfidence: realShapeConfidence } = require('../scripts/match.js');
+
+// Game of Thrones: bad-finale 1.00, front-loaded 0.18, emitted front-loaded first.
+const GOT = [8.98, 8.80, 8.93, 9.25, 8.70, 8.98, 9.00, 6.40];
+
+test('showShapeConfidence scores a show from its per-season averages', () => {
+  const conf = showShapeConfidence(GOT, realShapeConfidence);
+  assert.equal(conf['bad-finale'], 1);
+  assert.equal(conf['front-loaded'], 0.18);
+});
+
+test('showShapeConfidence degrades to no scores rather than throwing', () => {
+  // A single season has no trajectory, and the browser may be running without
+  // match.js (the classifier is handed in, exactly as detectShapes is).
+  assert.deepEqual(showShapeConfidence([8.2], realShapeConfidence), {});
+  assert.deepEqual(showShapeConfidence([], realShapeConfidence), {});
+  assert.deepEqual(showShapeConfidence(GOT, null), {});
+  assert.deepEqual(showShapeConfidence(undefined, realShapeConfidence), {});
+});
+
+test('orderShapesByConfidence puts the best-fitting shape first', () => {
+  const shapes = deriveShowShapes(GOT, new Set(), realDetectShapes);
+  assert.deepEqual(shapes, ['front-loaded', 'bad-finale'], 'emission order, unchanged');
+  assert.deepEqual(
+    orderShapesByConfidence(shapes, showShapeConfidence(GOT, realShapeConfidence)),
+    ['bad-finale', 'front-loaded'],
+  );
+});
+
+test('orderShapesByConfidence keeps the emission order for a tie', () => {
+  // Ties are common (two shapes both capped at 1.00), and a build that reorders
+  // them run to run would churn hub membership for no reason. The sort is
+  // stable, so equal scores come out in the order the classifier emitted them.
+  const conf = { rising: 0.5, consistent: 0.5, 'slow-burn': 0.5 };
+  assert.deepEqual(
+    orderShapesByConfidence(['rising', 'consistent', 'slow-burn'], conf),
+    ['rising', 'consistent', 'slow-burn'],
+  );
+  assert.deepEqual(
+    orderShapesByConfidence(['consistent', 'rising', 'slow-burn'], conf),
+    ['consistent', 'rising', 'slow-burn'],
+  );
+});
+
+test('orderShapesByConfidence never promotes a categorical tag over a trajectory', () => {
+  // saved-best-for-last and shape-drift describe one season, not the run, and
+  // carry no confidence. Scored naively they would beat any trajectory below
+  // 0, and would tie with (and so outrank, by position) a trajectory at 0.
+  const shapes = ['front-loaded', 'bad-finale', 'shape-drift'];
+  const ordered = orderShapesByConfidence(shapes, showShapeConfidence(GOT, realShapeConfidence));
+  assert.deepEqual(ordered, ['bad-finale', 'front-loaded', 'shape-drift']);
+  // With no scores at all the order is exactly what came in.
+  assert.deepEqual(orderShapesByConfidence(shapes, {}), shapes);
+  assert.deepEqual(orderShapesByConfidence(shapes, null), shapes);
+  // A tag-only show still reports its tag.
+  assert.deepEqual(orderShapesByConfidence(['saved-best-for-last'], {}), ['saved-best-for-last']);
+});
+
+test('orderShapesByConfidence does not mutate the array it is given', () => {
+  const shapes = ['front-loaded', 'bad-finale'];
+  orderShapesByConfidence(shapes, showShapeConfidence(GOT, realShapeConfidence));
+  assert.deepEqual(shapes, ['front-loaded', 'bad-finale']);
+  assert.deepEqual(orderShapesByConfidence([], {}), []);
+  assert.deepEqual(orderShapesByConfidence(undefined, {}), []);
+});
+
+test('the ordering does not depend on knowing whether the newest season is airing', () => {
+  // The browser reads shows-index.json, whose rows carry no inProgress flag, so
+  // it scores every show as finished. That is safe by construction: inProgress
+  // only suppresses the three finale shapes, and a show whose newest season is
+  // airing was never emitted one, so the extra score has nothing to attach to.
+  // This pins it rather than trusting the argument.
+  const airing = deriveShowShapes(GOT, new Set(), realDetectShapes, { inProgress: true });
+  assert.equal(airing.includes('bad-finale'), false, 'fixture must exercise the suppression');
+  assert.deepEqual(
+    orderShapesByConfidence(airing, showShapeConfidence(GOT, realShapeConfidence, { inProgress: true })),
+    orderShapesByConfidence(airing, showShapeConfidence(GOT, realShapeConfidence)),
+  );
+});

@@ -242,7 +242,7 @@ async function resolveOne(entry, { cache, findPlaceId, now, claim, details, log 
 
   // (1) Category, not a venue: never worth a call, never a correct answer.
   if (isGenericQuery(query)) {
-    return { result: reply({ status: 'no_match', reason: 'generic_query' }), spent: 0 };
+    return { result: reply({ status: 'no_match', reason: 'generic_query' }), spent: 0, searched: 0 };
   }
 
   // (2) Place ID: cached indefinitely-eligible content, refreshed monthly so a
@@ -258,7 +258,7 @@ async function resolveOne(entry, { cache, findPlaceId, now, claim, details, log 
   let placeIdAt = now;
   if (fresh(cachedId, cachedId && cachedId.placeId ? PLACE_ID_TTL_MS : NO_MATCH_TTL_MS, now)) {
     if (!cachedId.placeId) {
-      return { result: reply({ status: 'no_match', reason: cachedId.reason || 'not_found' }), spent: 0 };
+      return { result: reply({ status: 'no_match', reason: cachedId.reason || 'not_found' }), spent: 0, searched: 0 };
     }
     placeId = cachedId.placeId;
     placeIdAt = cachedId.at;
@@ -267,7 +267,7 @@ async function resolveOne(entry, { cache, findPlaceId, now, claim, details, log 
     // answer - it can only cost $0.02 to reach the same one.
     const veto = readRejection(cachedId, sig, now);
     if (veto) {
-      return { result: reply({ status: 'no_match', reason: veto.reason || 'wrong_area' }), spent: 0 };
+      return { result: reply({ status: 'no_match', reason: veto.reason || 'wrong_area' }), spent: 0, searched: 0 };
     }
   } else {
     searched = true;
@@ -300,11 +300,11 @@ async function resolveOne(entry, { cache, findPlaceId, now, claim, details, log 
     try {
       found = await findPlaceId(query, biasFor(area));
     } catch {
-      return { result: reply({ status: 'unavailable', reason: 'upstream' }), spent: 0 };
+      return { result: reply({ status: 'unavailable', reason: 'upstream' }), spent: 0, searched: 1 };
     }
     if (!found) {
       await cache.set(idKey, { placeId: null, reason: 'not_found', at: now });
-      return { result: reply({ status: 'no_match', reason: 'not_found' }), spent: 0 };
+      return { result: reply({ status: 'no_match', reason: 'not_found' }), spent: 0, searched: 1 };
     }
     placeId = found;
     await cache.set(idKey, { placeId, at: now });
@@ -314,12 +314,12 @@ async function resolveOne(entry, { cache, findPlaceId, now, claim, details, log 
   // once per spelling of it (see `details` in resolveQueries).
   const first = await details(placeId, claim);
   if (first.denied) {
-    return { result: reply({ status: 'unavailable', reason: 'quota' }), spent: 0 };
+    return { result: reply({ status: 'unavailable', reason: 'quota' }), spent: 0, searched: searched ? 1 : 0 };
   }
   let spent = first.billed ? 1 : 0;
   const place = first.place;
   if (!place) {
-    return { result: reply({ status: 'unavailable', reason: 'upstream' }), spent };
+    return { result: reply({ status: 'unavailable', reason: 'upstream' }), spent, searched: searched ? 1 : 0 };
   }
   let judged = judge(query, place, placeId, area, meal);
   logDecision(log, { query, area, placeId, place, judged, attempt: 1 });
@@ -359,7 +359,7 @@ async function resolveOne(entry, { cache, findPlaceId, now, claim, details, log 
           if (second.result.status !== 'no_match') {
             // The refined lookup is the answer for this query from now on.
             await cache.set(idKey, { placeId: retryId, at: now });
-            return { result: reply(second.result), spent };
+            return { result: reply(second.result), spent, searched: searched ? 1 : 0 };
           }
           // The second look found a DIFFERENT place and refused that one too.
           // It is the more informative verdict (the restricted search is the
@@ -396,7 +396,7 @@ async function resolveOne(entry, { cache, findPlaceId, now, claim, details, log 
     });
   }
 
-  return { result: reply(judged.result), spent };
+  return { result: reply(judged.result), spent, searched: searched ? 1 : 0 };
 }
 
 // The upstream search hint. A bias steers ranking; a restriction excludes.
@@ -610,10 +610,27 @@ export async function resolveQueries({ queries, cache, findPlaceId, fetchDetails
   const settled = await Promise.all(entries.map(e =>
     resolveOne(e, { cache, findPlaceId, now, claim, details, log })));
 
-  // The caller reserved `budget` up front; `spent` is what was actually billed,
-  // and the difference is released so a cached itinerary costs no quota.
+  // The caller reserved `budget` up front. TWO numbers come back, because the
+  // reservation is really covering two different things.
+  //
+  //   `spent`    Place Details calls actually billed. This is the money, and
+  //              it is what the monthly budget and the shared pools track.
+  //   `searched` queries that ran an upstream Text Search. That search is the
+  //              $0.00 IDs-Only SKU, so it costs nothing to BILL - but it is
+  //              real upstream work against a Google quota this project has
+  //              already been rate-limited on, and each one can write a blob
+  //              that is never evicted. It is what the per-client and
+  //              per-network RATE limits have to count.
+  //
+  // Releasing on `spent` alone let a caller run unlimited searches for free:
+  // a query that resolves to nothing bills zero, so its whole reservation came
+  // back off every counter including the rate limits. The handler now refunds
+  // the two groups separately. A fully cached batch still refunds everything,
+  // which is the property that matters for a traveller scrolling an itinerary
+  // they have already looked up.
   const spent = settled.reduce((n, s) => n + s.spent, 0);
-  return { results: settled.map(s => s.result), spent };
+  const searched = settled.reduce((n, s) => n + (s.searched || 0), 0);
+  return { results: settled.map(s => s.result), spent, searched };
 }
 
 // A batch entry may arrive as a bare string (an old client, or any caller that

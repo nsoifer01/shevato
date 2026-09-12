@@ -162,6 +162,108 @@ Gotchas that cost time, so they are recorded:
   and exact score values (speed bonus depends on answer latency; the
   suite asserts positive AND identical across clients instead).
 
+## Host handoff: the rules allowed it, the client never asked (2026-09-11)
+
+`hostUid` was reassigned in exactly two places, and both were inside
+`leaveRoom`, which is only ever reached from the "Leave room" button.
+`beforeUnloadCleanup` writes `disconnectedAt` and `lastSeen` and hands nothing
+off, and a force-quit, a discarded background tab or a dead phone never fires
+`beforeunload` at all. So a host who closed the tab kept `hostUid` for the
+life of the room and took four host-gated behaviours with them:
+
+| Gate | Symptom for everyone else |
+| --- | --- |
+| early reveal (`isHost &&`) | every round burns the full timer even when all answers are in |
+| Globe Drop Ready-to-skip (`isGlobe && isHost &&`) | the Ready vote completes and nothing happens |
+| `sweepStalePlayers` (host-only) | the ghost that caused this can never be cleaned up either |
+| `playAgain` (host-only) | rematch is impossible: "Rematch - 2/2 players ready", forever |
+
+**Why it survived a green estate.** The e2e's host-handoff scenario (S2)
+drives the Leave BUTTON, which is the one path that worked. The rules suite
+tested the takeover rule itself and passed. Both halves were green and the
+thing between them did not exist. There is now an S10 that closes a
+client's tab instead of clicking Leave, and the rules suite's takeover test
+covers the STALE branch as well as the GONE one (a closed tab leaves a stale
+player doc behind, so "gone" was never the case that mattered in practice).
+
+**The fix uses the mechanism that was already there.** `memberHostTakeover`
+in `firestore.rules` has allowed a member to name THEMSELVES host since
+2026-08-23, whenever the current host's player doc is gone or stale. The
+client now asks: `RoomState.shouldTakeOverHost` (pure, tested) says whether
+this client is the one, and `maybeTakeOverHost` writes `{hostUid: me}` once
+per room from `progressRoomClock`. No second ownership model, no rules
+change.
+
+Three things about the shape that are load-bearing:
+
+- **One deterministic writer.** Every client runs the same clock, so the
+  predicate returns true for exactly one of them: `pickNextHost` over the LIVE
+  players, the same function `leaveRoom` uses. Without that, every survivor
+  races, all but one 403s against a now-live host, and they retry.
+- **It must not ask while the host is live.** The predicate mirrors
+  `playerGone`/`isStalePlayerData` from the rules. Asking early is a
+  guaranteed permission-denied, and a host who is merely REFRESHING must keep
+  their room: the handoff waits `DISCONNECT_GRACE_MS` after a clean unload
+  stamp and `PRESENCE_STALE_MS` after a crash that left no stamp.
+- **`joinedAt` is a Firestore Timestamp on a player doc, not a number.**
+  `pickNextHost` reads `Number(a.joinedAt) || 0`, so handing it raw docs
+  scores every player 0 and silently degrades the "earliest joiner" rule to a
+  uid-alphabetical one. `leaveRoom` already converted; the predicate does too,
+  and a unit test pins it with a player whose join order and uid order
+  disagree.
+
+It runs ABOVE the status guards in `progressRoomClock` on purpose. The lobby
+and the end screen are the two stages the guards skip, and the end screen is
+where the most visible symptom lives, because rematch is host-gated.
+
+**The stale sweep looks like the same bug and is NOT. Do not hoist it.**
+`sweepStalePlayers` is also called from `progressRoomClock`, but from BELOW
+the status guards, so the host only sweeps ghosts while a game is playing.
+That reads like the same oversight, and this round tried the same one-line
+hoist. The full e2e rejected it within one run: "past the grace the lobby
+shows the ghost as Disconnected" (D4) expects THREE tiles with one dimmed,
+and a sweeping host leaves two. The dimmed tile is the whole point - outside
+a live question it is the only way the others learn their friend dropped, and
+deleting the doc makes the player silently vanish from the grid instead. The
+gating is deliberate; the code now says so, and the S10 scenario asserts the
+vanished host stays visible as a ghost while no longer being the host.
+
+## Room chat froze permanently past 80 messages (2026-09-11)
+
+`query(chatRef, orderBy('sentAt', 'asc'), limit(80))`. Ascending plus `limit`
+is the FIRST 80 documents, so the moment a room had 81 messages the window was
+pinned on the oldest 80 and no new message rendered again, for anybody, for
+the life of the room. The panel's own comment claimed it kept "the latest
+~80". Eight one-tap emoji buttons at a 1.5 s rate limit means six players
+reach 80 in about a minute, so this was reachable in a single sitting.
+
+`limitToLast(80)` is the same window from the other end AND returns it in
+ascending order, so `renderChatMessages` needs no reversal. The alternative
+(`orderBy desc` + `limit` + reverse in the renderer) puts the ordering
+contract in two places instead of one.
+
+**Fixing the query alone would have traded a frozen chat for a silent one.**
+Both pieces of the unread bookkeeping were length-based, and a full window has
+a CONSTANT length:
+
+- the notify guard was `prevLen < chatState.messages.length`, which is false
+  forever once the window slides instead of grows, so no toast and no sound;
+- the badge was `messages.length - unreadSince`, which is 0 for the same
+  reason.
+
+Both are identity-based now: `chatState.lastReadMessageId` plus
+`Chat.unreadCount`, which treats a marker that has scrolled out of the window
+as "everything held is unread". The marker is also advanced on every snapshot
+while the panel is OPEN, not only when it is opened, because a marker standing
+still would itself scroll off and make the badge jump to a full window the
+moment the panel closed.
+
+The query now lives in `Chat.buildChatWindowQuery`, which takes the SDK
+helpers as an argument. That keeps `chat.js` dependency-free and makes the
+window testable with a fake Firestore that actually evaluates the constraints,
+so the test fails on oldest-80-vs-newest-80 rather than on the spelling of the
+call.
+
 ## Known modeled limitations (pinned by tests, not bugs introduced here)
 
 - **Host-handoff `isHost` flag write is dead**: `leaveRoom` tries to set
@@ -208,9 +310,11 @@ Gotchas that cost time, so they are recorded:
   re-renders when it changes; stale players render as "Disconnected" (dimmed
   tile plus badge, "(away)" in the live boards).
 - **The host sweeps stale player docs** (`sweepStalePlayers`, once per uid
-  per room). The rules allow a host to delete a player doc ONLY when it is
-  stale by the same definition, so a host cannot kick a live player. The old
-  comments promised a "host TTL sweep" that did not exist anywhere.
+  per room) while a game is PLAYING, and deliberately not outside it. The
+  rules allow a host to delete a player doc ONLY when it is stale by the same
+  definition, so a host cannot kick a live player. The old comments promised
+  a "host TTL sweep" that did not exist anywhere. For why the stage gating is
+  deliberate rather than an oversight, see "Host handoff" above.
 - **Teardown order is load-bearing**: room doc first, then chat, gate and
   leftover player docs (see the gate bullet above). Chat is append-only while
   the room lives - the rules only permit chat deletes once the room doc is
@@ -491,7 +595,10 @@ Two consequences worth keeping:
   takes a comma-separated list, but the scenarios are sequential: S1 opens the
   three browser pages and each scenario leaves the clients where the next
   expects them. `ARENA_E2E_ONLY=S1:,S5:` puts only two players in the lobby, so
-  the game never starts.
+  the game never starts. Any filter must therefore include `S1`, or the
+  scenario dies on a null page. **S10 must stay last**: it models a host tab
+  that simply disappears, and the only faithful way to do that is
+  `closePage`, after which that client is gone for the rest of the run.
 - **Assertions that compare a number against itself must state a
   precondition.** The idempotency checks ask "is this counter unchanged after a
   reload", which 0 -> 0 -> 0 satisfies perfectly. On a filtered run they went

@@ -374,6 +374,28 @@ and coordinate have different rules and must never be given one lifetime.
 
 ## Server functions
 
+- **A reservation covers two costs, and only one of them is money (fixed
+  2026-09-11).** `releaseQuota` used to hand an unspent slot back off every
+  counter, keyed on `spent` alone. `spent` counts BILLED Place Details calls,
+  so a query whose free Text Search ran and resolved to nothing reported zero
+  and got its whole reservation refunded - including the per-client and
+  per-network RATE counters, which are not a billing ledger. Measured against
+  the real modules before the fix: 40 batches of never-resolving queries were
+  all admitted, produced **480 upstream Text Searches and 480 blob keys, and
+  left every counter reading zero**. After: 5 batches admitted, 35 refused, 60
+  searches, 60 blob keys, rate counters at 60 and `billedMonth` correctly still
+  0. `resolveQueries` now returns `searched` alongside `spent`; the handler
+  refunds `granted - spent` from the billed dimensions and
+  `granted - max(spent, searched)` from the rate dimensions. The property that
+  had to survive, and did: a fully cached itinerary searches nothing, so both
+  numbers are the whole reservation and it still costs the traveller nothing.
+  The free-vs-billed SKU split itself was right and is unchanged - the bug was
+  treating "cost no money" as "did no work".
+  - Trap for anyone re-measuring this: a cached itinerary looks like it stops
+    billing after the first pass. That is the REJECTION cache, not a quota bug.
+    A refused candidate is remembered against its signature, and re-fetching
+    its Details cannot change the answer, so later passes short-circuit before
+    both the search and the billed call.
 - Quota counter maps are null-prototype objects (`bareMap`): clientId is
   attacker-minted and `"__proto__"` on a plain object bypassed every
   per-client cap (read coerces NaN, increment no-ops). Regression tests pin
@@ -486,6 +508,140 @@ and coordinate have different rules and must never be given one lifetime.
   stalls it mid-run (`timeout: Runtime.evaluate`, then `ECONNREFUSED`); the
   repo runner restarts nothing, so a local sweep should relaunch the browser
   between suites.
+
+## An optional field pair is two questions, not one (`legArrival`, fixed 2026-09-11)
+
+The item form makes a leg's two arrival fields independently optional: "Lands
+on (optional, for overnight legs)" and "Landing time (optional)". `legArrival`
+treated them as one question and fell back per-field, taking the DAY from
+`endDate` and the CLOCK from `startTime` whenever `endTime` was blank. On a
+same-day hop that fallback is free. On a leg known to cross midnight it
+composes two different days into one timestamp: a JFK-LHR leg departing 23:00
+on the 1st and landing on the 2nd read as arriving **23:00 on the 2nd**, a full
+day in the air, and the next morning's 08:00 train was then reported as an
+"Impossible connection ... before it arrives (Jun 2 at 11:00 PM)" against a
+number nobody entered. The function's own docstring already said it refuses to
+guess; this was the path where it did.
+
+The fix scopes the fallback rather than removing it: when `endDate > startDate`
+and no `endTime` was given, return null. Every consumer already handles null by
+raising no warning, which is the honest outcome for an unknown arrival.
+
+Why 1,398 green tests missed it: every existing connection fixture supplies an
+`endTime`, so the blank-time branch was never exercised on a date-crossing leg.
+The four tests added with the fix pin both directions - the two overnight cases
+AND the same-day fallback that must keep working - because deleting the
+fallback outright would have been the easy wrong fix.
+
+The generalisable lesson: when a form offers two optional fields that together
+describe one quantity, the per-field fallback is only safe while the fields
+cannot disagree. Check the case where one is present and the other is not.
+
+## A date-only field has no place in a calendar TRIGGER (`buildIcs`, 2026-09-11)
+
+`bookBy` is a DATE. The traveller typed "June 1", never "June 1 at 09:00", and
+putting that deadline into the exported `.ics` as something that actually
+notifies is therefore a question about what RFC 5545 will accept, not about
+what reads nicely.
+
+**RFC 5545 3.8.6.3 defines exactly two `TRIGGER` forms**: a `DURATION`
+(relative to `DTSTART`), or a `DATE-TIME` that "MUST specify a UTC-formatted
+DATE-TIME value". There is no `TRIGGER;VALUE=DATE` in the grammar. So the
+obvious-sounding "just use a date-valued trigger" is not an option that exists,
+and the UTC date-time form needs an instant this app does not have and must not
+invent.
+
+The relative `DURATION` form IS legal, and it is the trap. Hung off the item's
+own `VEVENT` it is measured from that event's `DTSTART`, so it inherits the
+ITEM's clock: a `-P7D` on a 23:55 flight fires at 23:55 on the deadline day.
+That is a hardcoded 09:00 by another route - a time nobody entered, derived
+from a field that has nothing to do with the deadline.
+
+**What ships**: the deadline gets its OWN all-day `VEVENT` on the `bookBy`
+date - `DTSTART;VALUE=DATE` with an exclusive `DTEND` the next day, which is
+the same construct the stay branch already writes and the one shape every
+client renders as "this whole day, no clock time". It carries one `VALARM`
+(`ACTION:DISPLAY` needs `DESCRIPTION` and `TRIGGER`, RFC 5545 3.6.6 dispprop)
+triggering at the relative `PT0S`: the start of the deadline day, the earliest
+instant the stored date justifies, and derived from the deadline itself.
+Google, Apple and Outlook additionally apply the READER's own all-day
+notification preference to such an event, which is a better answer than
+anything this app could pick for them.
+
+Two consequences worth knowing:
+
+- **The UID is `<id>-bookby@...`, not the item's.** Two `VEVENT`s sharing a UID
+  is a same-event update, and the deadline is not an update of the item.
+- **A round trip re-imports it.** `parseIcsToProposals` reads the deadline
+  event as a third proposal ("Book by: Ferry to Hvar", all-day, on the deadline
+  date). That is not a defect worth code: every proposal is approve-before-
+  adding, and the import dialog is deliberately a review surface. Do not "fix"
+  it by teaching the reader to recognise our own UIDs - that would make the
+  reader trust a string in a file a stranger can write.
+
+**Which items qualify is not re-derived.** `openBookingDeadline(it)` was
+extracted out of `bookingDeadlines` and is now the single rule both surfaces
+read: still `to-book`, a real `bookBy`, a real `startDate`. Booked is done,
+Decide later is a deliberate maybe, Cancelled is off the trip. A test asserts
+the export writes a deadline for exactly the items that predicate accepts, so
+the warnings panel and the calendar can never drift.
+
+### The nearby bug this uncovered: `DTEND` before `DTSTART`
+
+`icsEvent` composed `DTEND` from `endDate` + `endTime` whenever both were
+present, with no ordering check. `validateItem` deliberately ACCEPTS a flight
+landing the same day at an earlier local clock (a date-line crossing, or any
+westbound hop that gains hours), so a perfectly valid item wrote
+
+```
+DTSTART:20270601T193000
+DTEND:20270601T074500
+```
+
+RFC 5545 3.8.2.2 requires `DTEND` to be later than `DTSTART`, and strict
+clients do not warn about a violation - they DROP the event. The flight home
+simply was not in the calendar, silently, with a green test suite.
+
+The fix is the rendering the file already had for the no-end-time case: when
+the composed end is not strictly after the start, emit the zero-length point
+event. The app stores no timezone data and so cannot turn two wall clocks in
+two different zones into a real duration; a point event is the honest reading
+of "it leaves at 19:30 and the arrival clock is in another zone". The two
+strings are the same fixed-width `YYYYMMDDTHHMMSS` shape, so the comparison is
+a plain string compare.
+
+Why the tests missed it: every `.ics` export fixture used an end time later
+than its start. The generalisable lesson is the same one `legArrival` taught in
+the same branch - **when the validator deliberately accepts a "backwards" pair,
+every consumer that composes those two fields needs its own rule for it.**
+
+## Copying the trip is composition, never re-interpretation (`tripShareText`, 2026-09-11)
+
+`dayShareText` was good and had exactly one caller, the day card's `...` menu,
+so pasting a ten-day itinerary meant opening ten day menus and joining ten
+fragments in the right order. `tripShareText` is the whole-trip version and it
+is deliberately nothing but composition: trip title, the span, then
+`dayShareText`'s output verbatim for each `dayCards` entry. A test asserts each
+day's block appears in the trip text byte-for-byte, which is what stops the two
+surfaces ever describing the same day differently.
+
+Three decisions inside it:
+
+- **The span comes from `renderStart`/`renderEnd`, not `start`/`end`.** Same
+  reason every other per-day view walks those: one mistyped year must not print
+  a header claiming the trip runs to 2913 above days that stop at the cap.
+- **An empty day is dropped.** Ten bare `date` headers is precisely what makes
+  a pasted itinerary unreadable. A day whose only content is the bed still
+  prints, because "where am I sleeping" is half of what the paste is for -
+  which is the same wider gate the day card's own copy button uses
+  (`canClear || shareHostStay(...)`).
+- **No dated item at all reads "Nothing scheduled yet."** A title alone reads
+  like a truncated message.
+
+Trip essentials cannot leak into it, structurally rather than by a filter:
+`dayShareText` is handed ITEMS, and the emergency contact, the insurer and the
+medical note live on the trip. A test pins that too, because the structural
+argument stops being true the moment someone passes the trip down.
 
 ## The 2026-08-22 site-wide audit round (fixed)
 

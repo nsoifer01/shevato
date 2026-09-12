@@ -22,7 +22,7 @@ let sortDirection = 'asc';
 // browser back/forward navigation between views something to land on.
 // Matches the pattern gym-tracker and maptap-rivals already use.
 const MARIO_KART_VIEWS = new Set([
-    'achievements', 'stats', 'h2h', 'analysis',
+    'achievements', 'stats', 'h2h', 'courses', 'analysis',
     'activity', 'trends', 'help', 'guide'
 ]);
 
@@ -866,6 +866,48 @@ function createH2HView(raceData = null) {
     }
 }
 
+// Per-course statistics: best/worst courses, per-course/per-player average
+// finish, wins and podiums. Aggregation and HTML live in statistics.js
+// (calculateCourseStats/generateCourseStatsView), mirroring how createH2HView
+// above only wires calculateStats/generateH2HTable into the DOM.
+function createCourseStatsView(raceData = null) {
+    if (raceData === null) {
+        raceData = getFilteredRaces();
+    }
+
+    const statsDisplay = document.getElementById('stats-display');
+
+    if (raceData.length === 0) {
+        statsDisplay.innerHTML = emptyStateHtml('No race data available', 'Add some races to see course stats!');
+        return;
+    }
+
+    const courseStats = calculateCourseStats(raceData);
+
+    // Races exist, but none carry a course tag (never picked one, or an
+    // older import had it dropped). Distinct from the "no races at all"
+    // case above: adding a race would not fix this, picking a course would.
+    if (courseStats.length === 0) {
+        statsDisplay.innerHTML = `
+            <div class="no-data-message">
+                <div class="no-data-inner">
+                    <h3>No course data yet</h3>
+                    <p>Pick a course from the course picker next time you add a race to see per-course stats here.</p>
+                </div>
+            </div>
+        `;
+        return;
+    }
+
+    statsDisplay.innerHTML = generateCourseStatsView(courseStats);
+
+    if (window.updateAllPlayerIcons) {
+        setTimeout(() => {
+            window.updateAllPlayerIcons();
+        }, 100);
+    }
+}
+
 function createGuideView() {
     const statsDisplay = document.getElementById('stats-display');
 
@@ -1303,6 +1345,9 @@ function updateDisplay() {
         return;
     } else if (currentView === 'h2h') {
         createH2HView(filteredRaces);
+        return;
+    } else if (currentView === 'courses') {
+        createCourseStatsView(filteredRaces);
         return;
     } else if (currentView === 'guide') {
         createGuideView();

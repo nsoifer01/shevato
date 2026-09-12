@@ -333,6 +333,25 @@ function createHeatmapView(raceData = null) {
             }).filter(row => row !== '').join('');
         }
 
+        // Chart.js is a CDN script (index.html); if cdnjs is blocked, neither
+        // `window.Chart` nor the bare `Chart` global (classic scripts share
+        // one global scope with `window`) ever exists. createTrendCharts
+        // already guards its `new Chart(...)` at ~172; this call did not, so
+        // a blocked CDN threw a ReferenceError here on every render while the
+        // Activity tab was open - and since createHeatmapView runs
+        // unconditionally from updateDisplay() on every data mutation, that
+        // could abort the rest of updateDisplay() (including the success
+        // toast) with nothing visible to explain why. The weekly table above
+        // needs no Chart.js at all, so the fallback only replaces the
+        // canvas's own wrapper, leaving the table intact.
+        if (!window.Chart) {
+            const chartWrapper = document.querySelector('.activity-chart-wrapper');
+            if (chartWrapper) {
+                chartWrapper.innerHTML = '<p class="chart-unavailable-message">📊 Chart unavailable (Chart.js did not load)</p>';
+            }
+            return;
+        }
+
         new Chart(ctx, {
         type: 'doughnut',
         data: {
@@ -609,7 +628,15 @@ function calculateComebackAnalysis(raceData) {
 
             if (prevPosition >= (window.getGoodFinishThreshold ? window.getGoodFinishThreshold() + 1 : 13)) {
                 badPositions++;
-                if (currentPosition <= 5) {
+                // A "comeback" needs recovery to a position markedly better
+                // than merely "good" (getGoodFinishThreshold(), the top
+                // half): one better than that line. MK8D (max 12, threshold
+                // 6) keeps the original hardcoded value of 5; MK World (max
+                // 24, threshold 12) scales to 11 instead of staying pinned at
+                // a number calibrated only for a 12-position game, where it
+                // meant top-5-of-12 (~42%) but would otherwise mean
+                // top-5-of-24 (~21%) - a much stricter bar than intended.
+                if (currentPosition <= (window.getGoodFinishThreshold ? window.getGoodFinishThreshold() - 1 : 5)) {
                     comebacks++;
                 }
             }
@@ -780,16 +807,24 @@ function generatePatternAnalysis(raceData) {
         analysis += `<li>📊 Average finish spread: <strong>${formatDecimal(avgSpread)} positions</strong></li>`;
     }
 
-    // Most competitive races (only show for multiple players)
+    // Most competitive races (only show for multiple players). The spread
+    // that counts as "close" scales the same way as the comeback threshold
+    // above (one better than getGoodFinishThreshold(), the top-half line):
+    // MK8D (max 12, threshold 6) keeps the original hardcoded value of 5;
+    // MK World (max 24, threshold 12) scales to 11. A bare "5" would mean a
+    // proportionally tight 24-way finish (say, an 11-place spread) never
+    // counted as close just because the number 5 was calibrated for a
+    // 12-position game.
     if (playerCount > 1) {
+        const closeRaceThreshold = window.getGoodFinishThreshold ? window.getGoodFinishThreshold() - 1 : 5;
         const competitiveRaces = raceData.filter(race => {
             const positions = players.map(player => race[player]).filter(p => isFinitePosition(p));
             if (positions.length < 2) return false;
             const range = Math.max(...positions) - Math.min(...positions);
-            return range <= 5; // Close races
+            return range <= closeRaceThreshold; // Close races
         });
 
-        analysis += `<li>🤏 Close races: <strong>${formatDecimal((competitiveRaces.length / raceData.length) * 100)}%</strong> - races where position spread ≤ 5 places</li>`;
+        analysis += `<li>🤏 Close races: <strong>${formatDecimal((competitiveRaces.length / raceData.length) * 100)}%</strong> - races where position spread ≤ ${closeRaceThreshold} places</li>`;
     }
 
     // Sweet Spot Frequency

@@ -3829,6 +3829,14 @@ body.advanced-drawer-open {
     position: sticky;
     top: 0;
     align-self: flex-end;
+    /* Sticky puts the button back IN the flex flow, so it becomes a flex item
+       of the scrolling `.modal-panel` column and `height: 36px` stops being a
+       floor: with the default `flex-shrink: 1` and ~2,300 px of show-modal
+       content in an ~828 px box, it was squashed to 36x2 px at every width
+       this block covers (measured at 360/390/414/600/760; 761+ keeps the
+       absolute rule and stayed 36x36). Same failure, and the same cure, as
+       `.modal-curve` above. */
+    flex-shrink: 0;
   }
   .modal-header { gap: 0.85rem; }
   .modal-heading h2 { font-size: 1.35rem; line-height: 1.2; }

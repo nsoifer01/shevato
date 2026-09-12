@@ -36,6 +36,7 @@ Mario Kart Race Tracker is a feature-rich web application that allows you to:
 - **Comprehensive Stats**: Win rates, average positions, streaks, and more
 - **Achievement System**: 5 achievement categories with progress tracking; records show the live active streak count alongside the best, e.g. "10 (3)"
 - **Head-to-Head Analysis**: Detailed matchup statistics between players, including when each longest win streak ended (or that it is still active)
+- **Per-Course Statistics**: Best/worst courses by average finishing position, per-course/per-player average finish, and wins/podiums per course, all from the course tag already recorded on each race. A course needs at least 3 races before it is ranked (shown in the UI, not just enforced in code); races with no course recorded are excluded rather than lumped into an "undefined" course
 - **Performance Trends**: Visual charts showing improvement over time
 - **Activity Heatmaps**: Calendar view of racing activity and performance
 - **Position Analysis**: Heat maps and sweet spot visualizations
@@ -44,7 +45,7 @@ Mario Kart Race Tracker is a feature-rich web application that allows you to:
 - **Theme**: Single cohesive dark theme
 - **Responsive Design**: Works on desktop, tablet, and mobile devices
 - **Modern UI**: Card-based layouts with smooth animations
-- **Multiple Views**: 8 tabs - six statistics/analysis views plus Help and Guide. With no races yet, Help and every empty panel show an "Add your first race" button that opens the sidebar form
+- **Multiple Views**: 9 tabs - seven statistics/analysis views plus Help and Guide. With no races yet, Help and every empty panel show an "Add your first race" button that opens the sidebar form
 - **Accessible dialogs**: Edit, delete, clear and restore modals use `role="dialog"`, trap Tab, open on a sensible control and return focus to the button that opened them; the tab strip handles Left/Right/Home/End
 
 ## 📱 Browser Compatibility
@@ -172,10 +173,10 @@ npm run test:browser     # browser estate, including apps/mario-kart/e2e/audit-2
 - **audit-2026-08.test.js** - the 2026-08 audit regressions through the real functions: clear -> undo -> add -> reload, player-count decrease, escaping in every renderer (H2H tables, history table/cards, headers, stat cards, edit/delete modals), the shared import/restore validator with a real legacy export, widened-roster cells, per-version names/count, default order and sort direction, whole-number positions.
 - **core.test.js** - roster union (`rosterForCount`, `highestPlayerWithRaces`), date-filter plumbing, undo/redo including the `MAX_HISTORY` bound, H2H statistics, import validation, and version-scoped backup/restore keys.
 - **dataManager.test.js** - `addRace` (min-player rule, position range, duplicate positions, course tagging, timestamp build, localStorage write, undo entry), `editRace` (revalidation, timestamp preserve/rebuild/clear, undo and redo, untouched fields), `migrateRaceData` (legacy `slav`/`mike`/`nikita` keys).
-- **statistics.test.js** - `calculateStats` when a player key is absent rather than null (roster widening) and chronological ordering across every timestamp shape, including legacy "24:MM:SS" stamps.
+- **statistics.test.js** - `calculateStats` when a player key is absent rather than null (roster widening) and chronological ordering across every timestamp shape, including legacy "24:MM:SS" stamps; `calculateCourseStats`/`getCourseRankings`/`generateCourseStatsView` (course-less races excluded, per-course/per-player aggregation, the 3-race ranking minimum, and escaping).
 - **utils.test.js** - the shared helpers in `js/utils.js`: `isFinitePosition` (the guard every stat/chart/achievement uses to decide whether a player raced) and `raceDateTimeValue` / `compareRacesChronologically` (the tolerant race-datetime parser behind every chronological sort).
 - **dateFilter.test.js** - the week/month filters as local calendar windows (today plus 6 / 29 days), pinned with a frozen clock under `TZ=America/Chicago` so the old UTC-midnight bug cannot hide.
-- **charts.test.js** - the pure aggregation helpers in `charts.js`: weekly activity buckets, comeback analysis, best/worst racing day, pattern analysis.
+- **charts.test.js** - the pure aggregation helpers in `charts.js`: weekly activity buckets, comeback analysis, best/worst racing day, pattern analysis (comeback and close-race thresholds scale with `MAX_POSITIONS`, pinned for both MK8D and MK World), plus the Activity tab's Chart.js CDN guard (falls back to a visible message instead of throwing when Chart.js never loaded).
 - **courses.test.js** - course dataset integrity and search ranking.
 
 ### How the harness works

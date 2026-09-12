@@ -17,8 +17,9 @@
 //   D8     the hash carries a trimmed search term
 //   D9     axe on the open show modal and season modal (list / nested-interactive)
 //   D10    footer meta contrast
-//   U2/U3/U5/U6/U7/U11 confidence pills, sticky mobile close, collapsed shape
-//          rail, chip-row scroll affordance, pager landing, plain "+"
+//   U2/U3/U5/U6/U7/U11 confidence pills, sticky mobile close (still on screen
+//          AND still 36x36 - see U3b), collapsed shape rail, chip-row scroll
+//          affordance, pager landing, plain "+"
 //   plus seeded axe scans of the finder, both modals and the Kometa builder at
 //   1280 and 390, and a built SEO page smoke when shows/ exists.
 import { readFile, access } from 'node:fs/promises';
@@ -356,10 +357,20 @@ export async function run({ base, cdpPort }) {
       const close = await evaluate(s, `(()=>{ const b = document.querySelector('#showModal .modal-close'); const r = b.getBoundingClientRect();
         const p = document.querySelector('#showModal .modal-panel');
         const hit = document.elementFromPoint(r.left + r.width/2, r.top + r.height/2);
-        return JSON.stringify({ scrolled: p.scrollTop, top: Math.round(r.top), hitIsClose: !!(hit && (hit === b || b.contains(hit))) }); })()`);
+        return JSON.stringify({ scrolled: p.scrollTop, top: Math.round(r.top), w: Math.round(r.width), h: Math.round(r.height),
+          hitIsClose: !!(hit && (hit === b || b.contains(hit))) }); })()`);
       t('U3: the close button stays on screen after scrolling the panel and is the element under its own centre',
         close.scrolled > 600 && close.top >= 0 && close.top < 120 && close.hitIsClose, JSON.stringify(close));
-      if (!close.hitIsClose) await shot(s, 'u3-sticky-close-390');
+      // U3b: the sticky rule puts the button back IN the panel's flex flow, so
+      // `height: 36px` is only a flex BASIS unless flex-shrink is pinned. It was
+      // not, and a ~2,300 px panel in an ~828 px box squashed the button to
+      // 36x2 px at every width the mobile block covers. A centre hit-test
+      // cannot see that (the centre of a 2 px strip is still the button), which
+      // is why the check above passed for the whole time it was broken. Measure
+      // the box.
+      t('U3b: the close button keeps its full 36x36 box on a phone',
+        close.w >= 36 && close.h >= 36, `${close.w}x${close.h}`);
+      if (!close.hitIsClose || close.h < 36) await shot(s, 'u3-sticky-close-390');
     } catch (e) {
       t('rising-shows audit: section completed', false, String(e && e.message || e));
     } finally { await closePage(cdpPort, s); }

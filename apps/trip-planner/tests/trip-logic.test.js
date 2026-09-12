@@ -4864,6 +4864,49 @@ test('connectionWarnings reports the gap in minutes under the tight cutoff', () 
   assert.equal(out[0].minutes, 15);
 });
 
+// A red-eye is the one leg where BOTH optional arrival fields matter, and the
+// form makes them independently optional ("Lands on (optional, for overnight
+// legs)" and "Landing time (optional)"). Filling in only the date used to
+// compose the arrival DAY with the DEPARTURE clock, so a 23:00 departure
+// landing the next morning was reported as arriving 23:00 the next night, a
+// full day later, and then judged against the following leg. That invented a
+// number the traveller never entered and raised an impossible-connection
+// warning off the back of it. legArrival's own docstring says it refuses to
+// guess; these pin the path where it did.
+test('legArrival returns null for an overnight leg with no landing time, rather than reusing the departure clock', () => {
+  const redEye = cLeg('a', 'JFK to LHR', '2026-06-01', '23:00', '2026-06-02', '');
+  assert.equal(L.legArrival(redEye), null);
+});
+
+test('connectionWarnings stays silent when an overnight leg has no landing time', () => {
+  const out = L.connectionWarnings([
+    cLeg('a', 'JFK to LHR', '2026-06-01', '23:00', '2026-06-02', ''),
+    cLeg('b', 'London to Paris', '2026-06-02', '08:00'),
+  ]);
+  assert.deepEqual(out, []);
+});
+
+// The fallback itself is deliberate and must survive: a short hop saved with a
+// departure clock and nothing else still lands on its departure day, and the
+// same-day case is what the fallback was written for.
+test('legArrival still falls back to the departure clock on a same-day leg', () => {
+  const sameDay = L.legArrival(cLeg('a', 'CDG to FCO', '2026-09-02', '07:30', '2026-09-02', ''));
+  assert.deepEqual([sameDay.date, sameDay.time], ['2026-09-02', '07:30']);
+  const noEndDate = L.legArrival(cLeg('b', 'CDG to FCO', '2026-09-02', '07:30', '', ''));
+  assert.deepEqual([noEndDate.date, noEndDate.time], ['2026-09-02', '07:30']);
+});
+
+// And a red-eye that DOES carry a landing time is unaffected: this is the
+// contrast case, and it must still be judged.
+test('connectionWarnings still flags an overnight leg that carries a real landing time', () => {
+  const out = L.connectionWarnings([
+    cLeg('a', 'JFK to LHR', '2026-06-01', '23:00', '2026-06-02', '11:00'),
+    cLeg('b', 'London to Paris', '2026-06-02', '08:00'),
+  ]);
+  assert.equal(out.length, 1);
+  assert.equal(out[0].kind, 'impossible');
+});
+
 test('connectionWarnings goes quiet at exactly the tight cutoff', () => {
   const at = L.connectionWarnings([
     cLeg('a', 'BOS to CDG', '2026-09-02', '05:00', '', '07:30'),

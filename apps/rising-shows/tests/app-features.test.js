@@ -26,6 +26,8 @@ test('vm harness: app.js exports every helper these tests drive', () => {
     // its "reference" implementation disagree with the app.
     'RELATED_VOTES_BAND',
     'weightedAvgEpisode', 'isAnimated', 'isUnscripted',
+    // Strongest-fit dominant shape and the confidence that dims its badge.
+    'dominantShapeOf', 'dominantShapeConfidenceOf', 'makeShowShapeBadge',
   ];
   const missing = expected.filter((name) => helpers[name] == null);
   assert.deepEqual(missing, [], `js/app.js stopped exporting: ${missing.join(', ')}`);
@@ -1012,12 +1014,63 @@ test('computeShowRelated: a shared shape still breaks a genre tie', () => {
   assert.equal(out[0]._sharedShape, 'rising');
 });
 
-// U2: the dominant shape shown on cards and rows must be the same first entry
-// the hubs and the static pages file a show under.
-test('dominantShapeOf: first shape, or null when a show has none', () => {
-  assert.equal(helpers.dominantShapeOf({ shapes: ['rebound', 'rising'] }), 'rebound');
+// U2: the dominant shape shown on cards and rows must be the same shape the
+// hubs and the static pages file a show under.
+//
+// Until 2026-09-11 that was shapes[0], the first tag detectShapes emitted, and
+// the emission order is fixed rather than fitted. Game of Thrones scores
+// bad-finale at 1.00 and front-loaded at 0.18 and was badged "Front-loaded",
+// the same reason it was missing from /shows/shape/bad-finale/. The order is
+// now derived from the confidence the season pills have always used.
+//
+// The browser derives it from the row's own seasonAvgs, so a shows-index.json
+// built before this change still badges correctly - the ordering never went
+// into the index.
+const GOT_ROW = {
+  shapes: ['front-loaded', 'bad-finale', 'shape-drift'],
+  seasonAvgs: [8.98, 8.80, 8.93, 9.25, 8.70, 8.98, 9.00, 6.40]
+    .map((avg, i) => ({ season: i + 1, avg })),
+};
+
+test('dominantShapeOf: the best-fitting shape, or null when a show has none', () => {
+  assert.equal(helpers.dominantShapeOf(GOT_ROW), 'bad-finale');
   assert.equal(helpers.dominantShapeOf({ shapes: [] }), null);
   assert.equal(helpers.dominantShapeOf({}), null);
+  // No season averages to score with (and no classifier in a degraded page):
+  // fall back to the order the index shipped rather than to nothing.
+  assert.equal(helpers.dominantShapeOf({ shapes: ['rebound', 'rising'] }), 'rebound');
+});
+
+test('dominantShapeConfidenceOf: the number that decides whether the badge is dimmed', () => {
+  assert.equal(helpers.dominantShapeConfidenceOf(GOT_ROW), 1);
+  // A show whose strongest shape is still a technicality. Mindhunter: two
+  // seasons, 8.28 then 8.40, "Rising" on a 0.12 climb (0.06) against
+  // "Consistent" (0.52).
+  const mindhunter = {
+    shapes: ['rising', 'consistent'],
+    seasonAvgs: [{ season: 1, avg: 8.28 }, { season: 2, avg: 8.40 }],
+  };
+  assert.equal(helpers.dominantShapeOf(mindhunter), 'consistent');
+  assert.equal(helpers.dominantShapeConfidenceOf(mindhunter), 0.52);
+  // Categorical tags carry no confidence, and neither does an unscorable row.
+  assert.equal(helpers.dominantShapeConfidenceOf({ shapes: ['shape-drift'] }), null);
+  assert.equal(helpers.dominantShapeConfidenceOf({ shapes: [] }), null);
+});
+
+test('makeShowShapeBadge: a low-confidence badge says so, exactly as a season pill does', () => {
+  // The floor is the same LOW_CONFIDENCE_BELOW the season pills use. Below it
+  // the pattern is a technicality and the badge must not assert it flatly:
+  // 72% of trajectory badges scored under it before the reorder.
+  const low = helpers.makeShowShapeBadge('front-loaded', 0.18);
+  assert.match(low.title, /^Low confidence \(0\.18\)/);
+  assert.equal(low.dataset.shape, 'front-loaded');
+
+  const strong = helpers.makeShowShapeBadge('bad-finale', 1);
+  assert.equal(/Low confidence/.test(strong.title), false);
+
+  // A categorical tag has no confidence and is not a weak claim.
+  assert.equal(/Low confidence/.test(helpers.makeShowShapeBadge('shape-drift', null).title), false);
+  assert.equal(/Low confidence/.test(helpers.makeShowShapeBadge('shape-drift').title), false);
 });
 
 test('format classifiers read the genre list, not the title', () => {

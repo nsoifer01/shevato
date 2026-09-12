@@ -117,7 +117,7 @@
     bytesToBase64url, base64urlToBytes,
     transportGaps, connectionWarnings, sameTimeCollisions, TIGHT_CONNECTION_MIN, tripPhase, isPastRow,
     bookingDeadlines, paceAdvisory,
-    dayShareText, shareHostStay, weekStart, spendByWeek,
+    dayShareText, tripShareText, shareHostStay, weekStart, spendByWeek,
     dayCards, dayMorningCity, dayHostStay, emptyDayNote, departureOrigin, suggestedPassport, passportAssumptionParts, defaultPlanDay, planDayGroups, overnightTransit, arrivalConflicts,
     timelineGroups, isLongDetails, itemMapsQuery, displayTitle,
     // Food & Drink is a structured field now (`meal`), so app.js asks
@@ -5416,7 +5416,7 @@
   // The 12/24-hour toggle IS on it. It is a device display preference written
   // to its own TIMEFMT_KEY, never to a trip; blocking it would make the one
   // harmless row in the menu look broken for no gain.
-  const SHARED_MENU_ACTS = ['export-trip', 'export-csv', 'export-ics', 'export-gpx', 'share-trip', 'timefmt', 'distunit', 'tempunit'];
+  const SHARED_MENU_ACTS = ['export-trip', 'export-csv', 'export-ics', 'export-gpx', 'copy-trip-text', 'share-trip', 'timefmt', 'distunit', 'tempunit'];
   function syncTripMenuShared() {
     for (const b of $('#tripMenu').querySelectorAll('.tp-menu-panel button[data-act]')) {
       b.disabled = sharedMode && !SHARED_MENU_ACTS.includes(b.dataset.act);
@@ -5843,7 +5843,27 @@
     return local ? location.href.split('#')[0] : 'https://shevato.com/apps/trip-planner/';
   }
 
-  async function streamThrough(Ctor, bytes) {
+  // The send side refuses a URL over 30,000 characters. The RECEIVE side used
+  // to cap nothing: not the fragment, not the decompressed size, not the item
+  // count - and `enterSharedMode()` runs automatically from the hash on boot.
+  // Measured through this very function: a 64,898-character fragment expands to
+  // 50 MB of JSON, and 41,264 characters yields 200,000 items, each of which
+  // then runs the sanitiser and builds a row. Both fit inside any normal URL.
+  // A link from a stranger could therefore hang or OOM the tab.
+  //
+  // Three bounds, each mirroring a limit the sender already respects:
+  const MAX_SHARE_FRAGMENT = 30000;     // what the sender refuses to produce
+  const MAX_SHARE_BYTES = 2 * 1024 * 1024;
+  const MAX_SHARE_ITEMS = 2000;         // ~5x the largest realistic trip
+
+  /**
+   * Inflate, refusing to buffer more than `limit` bytes.
+   *
+   * `new Response(stream).arrayBuffer()` reads to completion, so the cap has to
+   * live inside the read loop rather than after it: by the time you can measure
+   * the result you have already allocated it.
+   */
+  async function streamThrough(Ctor, bytes, limit = MAX_SHARE_BYTES) {
     const s = new Ctor('deflate');
     const writer = s.writable.getWriter();
     // Both reject on a payload that is not valid deflate - a truncated or
@@ -5854,8 +5874,26 @@
     // a write before anything reads the other end can park on a full queue.
     writer.write(bytes).catch(() => {});
     writer.close().catch(() => {});
-    const ab = await new Response(s.readable).arrayBuffer();
-    return new Uint8Array(ab);
+    const reader = s.readable.getReader();
+    const chunks = [];
+    let total = 0;
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      total += value.byteLength;
+      if (total > limit) {
+        // Stop pulling: cancelling the reader lets the decompressor and its
+        // buffers go, instead of running the expansion to completion and
+        // throwing away the result afterwards.
+        try { await reader.cancel(); } catch { /* already closed */ }
+        throw new Error('share payload too large');
+      }
+      chunks.push(value);
+    }
+    const out = new Uint8Array(total);
+    let at = 0;
+    for (const c of chunks) { out.set(c, at); at += c.byteLength; }
+    return out;
   }
 
   // ---------- import from a booking confirmation ----------
@@ -6213,6 +6251,30 @@
     renderProposals(res.proposals.map(p => ({ op: 'add', item: p.item, source: 'document' })), container);
   }
 
+  // The whole trip as message-ready text, the day menu's "Copy day as text"
+  // grown to the whole itinerary. Composition lives in trip-logic
+  // (tripShareText); this end owns the clipboard and the toast only.
+  //
+  // The formatters are the app's own, so the message prints the very date and
+  // clock format the screen beside it is printing - the 12/24-hour preference
+  // included. The fallback chain is shareTrip's and shareDay's: clipboard,
+  // then window.prompt, so a browser that refuses clipboard access (denied
+  // permission, plain http) still hands the text over rather than silently
+  // doing nothing.
+  //
+  // No confirm dialog, unlike the share LINK: this copies the itinerary a
+  // person can read, not an encoded payload whose contents are a surprise.
+  // Whatever is in it, the traveller is about to look at it in the paste.
+  async function copyTripText() {
+    const text = tripShareText(activeTrip(), fmtDate, fmtTime);
+    try {
+      await navigator.clipboard.writeText(text);
+      toast('Trip copied as text');
+    } catch {
+      window.prompt('Copy this trip:', text);
+    }
+  }
+
   async function shareTrip() {
     if (typeof CompressionStream === 'undefined') { toastError('Sharing is not supported in this browser'); return; }
     const t = activeTrip();
@@ -6256,11 +6318,13 @@
   async function decodeShare(hash) {
     if (typeof DecompressionStream === 'undefined') { toastError('Sharing is not supported in this browser'); return null; }
     try {
+      if (hash.length - SHARE_PREFIX.length > MAX_SHARE_FRAGMENT) throw new Error('share fragment too long');
       const bytes = base64urlToBytes(hash.slice(SHARE_PREFIX.length));
       const out = await streamThrough(DecompressionStream, bytes);
       const parsed = JSON.parse(new TextDecoder().decode(out));
       const trip = parsed && parsed.trip;
       if (!trip || !Array.isArray(trip.items)) throw new Error('bad payload');
+      if (trip.items.length > MAX_SHARE_ITEMS) throw new Error('share item count too high');
       return trip;
     } catch { toastError('This share link could not be opened'); return null; }
   }
@@ -13095,6 +13159,7 @@
     else if (act === 'export-ics') exportIcs();
     else if (act === 'export-gpx') exportGpx();
     else if (act === 'export-all') exportAll();
+    else if (act === 'copy-trip-text') copyTripText();
     else if (act === 'share-trip') shareTrip();
     else if (act === 'import') $('#importFile').click();
     else if (act === 'timefmt') {
@@ -13390,6 +13455,14 @@
     if (typeof key !== 'string' || !key.startsWith('trip-planner:')) return;
     if (!e.detail || e.detail.source !== 'remote') return;
     if (key === LS_KEY) {
+      // What the ACTIVE trip looked like a moment ago. Captured before the
+      // reload so the notice below can tell a real change from a no-op, and
+      // read off the active trip rather than the whole db: another device
+      // editing a different trip is not something to interrupt anyone about.
+      const beforeId = (db && db.activeTripId) || null;
+      const findTrip = (id) => (db && Array.isArray(db.trips) ? db.trips.find(t => t.id === id) : null) || null;
+      const beforeTrip = beforeId ? JSON.stringify(findTrip(beforeId)) : null;
+
       db = loadDb();
       repairDb();
       ensureTrip();
@@ -13400,6 +13473,22 @@
       undoPast.length = 0;
       undoFuture.length = 0;
       markSaved();
+
+      // SAY SO. Sync is whole-db last-writer-wins with no structural merge, so
+      // this handler can replace the itinerary under the traveller's cursor -
+      // and it clears the undo stack in the same tick, which is the only thing
+      // that could have recovered it. It used to do all of that in total
+      // silence: there was not one sync-related message among the 35 toast()
+      // calls in this file, so items simply vanished with no explanation.
+      //
+      // Structural merge is the real fix and it is a much larger job. Making
+      // the event VISIBLE is the honest thing to do meanwhile, and it is four
+      // lines. Compared on bytes, so a byte-identical echo says nothing, and
+      // only for the trip actually on screen.
+      const afterTrip = beforeId ? JSON.stringify(findTrip(beforeId)) : null;
+      if (beforeTrip !== null && afterTrip !== beforeTrip) {
+        toast('Updated from another device');
+      }
       // A trip deleted on ANOTHER device never went through this device's
       // delete flow, so its chat thread was orphaned in localStorage forever.
       // Local deletes are untouched: takeChat already removed their key and

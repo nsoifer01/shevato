@@ -46,20 +46,26 @@ function makeShow(seriesId, title, seriesVotes, shapes, avgRating = 8.0, seriesR
 
 // Season-average trajectories that produce a known dominant shape under the
 // shared classifier (finder-lib's deriveShowShapes over match.js's
-// detectShapes). Hub membership is decided by shapes[0] of the WHOLE SHOW's
-// trajectory across its seasons, so a fixture needs real per-season averages;
-// a single season has no trajectory and therefore no dominant shape at all.
+// detectShapes). Hub membership is decided by the WHOLE SHOW's dominant shape
+// across its seasons, so a fixture needs real per-season averages; a single
+// season has no trajectory and therefore no dominant shape at all.
 //
-// Every sequence below was verified against detectShapes rather than assumed.
-// Worth knowing: detectShapes emits trajectory shapes in a fixed order, so
-// some shapes can never be dominant - 'rebound' always trails 'slow-burn' and
-// 'big-finale' in the output, which is why the cap tests below use slow-burn.
+// Every sequence below was verified against detectShapes AND shapeConfidence
+// rather than assumed. Since 2026-09-11 the dominant shape is the best-fitting
+// one, not the first one detectShapes emits, so a fixture that carries two
+// shapes has to win on CONFIDENCE, not on emission order. The slow-burn
+// sequence below was [7.5, 7.6, 7.5, 9.2] and had to change: a 1.7-point jump
+// in the final season scores big-finale 0.85 against slow-burn 0.23, so under
+// the old rule that show was filed under slow-burn only because slow-burn is
+// emitted first. The replacement lifts in the second half without a finale
+// spike, which is what slow-burn actually means.
 const TRAJECTORIES = {
-  // -> ['slow-burn', 'big-finale']
-  'slow-burn': [7.5, 7.6, 7.5, 9.2],
-  // -> ['rising', 'slow-burn', 'big-finale']: dominant rising, and it carries
-  // slow-burn as a SECONDARY shape, which is what proves a secondary shape
-  // does not pull a show onto a second hub.
+  // -> ['slow-burn', 'big-finale'], slow-burn 0.73 vs big-finale 0.10
+  'slow-burn': [7.0, 6.8, 8.4, 8.5],
+  // -> ['rising', 'slow-burn', 'big-finale'], rising 0.90 vs slow-burn 0.50 vs
+  // big-finale 0.35: dominant rising, and it carries slow-burn as a SECONDARY
+  // shape, which is what proves a secondary shape does not pull a show onto a
+  // second hub.
   rising: [7.0, 7.6, 8.2, 8.8],
   // -> [] : peaks in the middle, matches no detector.
   none: [7.2, 8.8, 8.9, 7.3],
@@ -98,9 +104,9 @@ const SERIES = [
   makeShapedShow('tt0002', 'Slow Two', 90000, 'slow-burn'),
   makeShapedShow('tt0003', 'Riser', 40000, 'rising'),
   makeShapedShow('tt0004', 'Shapeless', 70000, 'none'),
-  // Dominant shape is shapes[0] of the whole-show trajectory, so this show
-  // belongs to the rising hub only, never to slow-burn, even though its
-  // trajectory also carries slow-burn as a secondary shape.
+  // A show belongs to the hub of its dominant (best-fitting) shape only, so
+  // this one is on the rising hub and never on slow-burn, even though its
+  // trajectory also carries slow-burn as a lower-confidence secondary shape.
   makeShapedShow('tt0005', 'Multi Shape', 60000, 'rising'),
 ];
 
@@ -127,8 +133,8 @@ test('selectHubShows orders by IMDb votes descending', () => {
 });
 
 test('selectHubShows caps the list at 100 shows', () => {
-  // slow-burn, not rebound: detectShapes never emits 'rebound' first, so no
-  // show can have it as a DOMINANT shape and the hub would always be empty.
+  // Any shape with a fixture would do; slow-burn is the one TRAJECTORIES
+  // provides a verified multi-shape sequence for.
   const many = Array.from({ length: 250 }, (_, i) => makeShapedShow(`tt9${i}`, `Show ${i}`, i, 'slow-burn'));
   const picked = selectHubShows(many, 'slow-burn');
   assert.equal(picked.length, HUB_LIMIT);
@@ -456,4 +462,70 @@ test('SHAPE_DESCS is verbatim identical to FINDER_SHAPE_DESCS in js/app.js', () 
   }
   assert.ok(Object.keys(appDescs).length >= 13, `parsed only ${Object.keys(appDescs).length} entries`);
   assert.deepEqual(SHAPE_DESCS, appDescs);
+});
+
+// ---------------------------------------------------------------------------
+// Hub membership follows the strongest-fit shape.
+//
+// selectHubShows files a show by computeDominantShape, which used to read the
+// first shape detectShapes emitted rather than the best-fitting one. The
+// visible cost was on the highest-search-intent page here: Game of Thrones and
+// The Boys both score bad-finale far above front-loaded, both were emitted as
+// front-loaded first, and both were therefore absent from
+// /shows/shape/bad-finale/ - the page titled "TV Shows With a Bad Final
+// Season" - while sitting on /shows/shape/front-loaded/ instead.
+// ---------------------------------------------------------------------------
+
+const { shapeConfidence: hubShapeConfidence } = require('../scripts/match.js');
+
+// Real season averages, so this test fails the moment the classifier or the
+// ordering stops agreeing with the catalogue it ships against.
+const COLLAPSE_TRAJECTORIES = {
+  // Game of Thrones: bad-finale 1.00, front-loaded 0.18.
+  got: [8.98, 8.80, 8.93, 9.25, 8.70, 8.98, 9.00, 6.40],
+  // The Boys: bad-finale 0.34, front-loaded 0.33 - a narrow win, kept because
+  // a rule that only survives on blowouts is not a rule.
+  boys: [8.55, 8.54, 8.63, 7.88, 7.33],
+};
+
+function collapseShow(seriesId, title, seriesVotes, key) {
+  const avgs = COLLAPSE_TRAJECTORIES[key];
+  return {
+    seriesId,
+    title,
+    year: 2011,
+    seriesVotes,
+    seriesRating: 9.2,
+    seasons: avgs.map((avgRating, i) => ({
+      season: i + 1,
+      avgRating,
+      shapes: [],
+      episodes: [{ episode: 1, rating: avgRating, votes: 5000 }, { episode: 2, rating: avgRating, votes: 5000 }],
+    })),
+  };
+}
+
+test('a show whose finale collapses lands on the bad-finale hub, not front-loaded', () => {
+  const shows = [
+    collapseShow('tt0944947', 'Collapsing Finale', 2658794, 'got'),
+    collapseShow('tt1190634', 'Narrow Collapse', 1024359, 'boys'),
+  ];
+  // The fixture is a genuine contest in both directions, asserted from the
+  // classifier rather than assumed.
+  for (const [key, avgs] of Object.entries(COLLAPSE_TRAJECTORIES)) {
+    const conf = hubShapeConfidence(avgs.map((r) => ({ rating: r })));
+    assert.ok(conf['bad-finale'] > conf['front-loaded'],
+      `${key}: fixture must score bad-finale above front-loaded (${JSON.stringify(conf)})`);
+  }
+
+  const badFinale = selectHubShows(shows, 'bad-finale');
+  assert.deepEqual(badFinale.map((s) => s.seriesId), ['tt0944947', 'tt1190634']);
+  assert.deepEqual(selectHubShows(shows, 'front-loaded').map((s) => s.seriesId), []);
+
+  // And the page actually lists them, rather than the selection being right
+  // while the render drops them.
+  const html = renderShapeHub('bad-finale', badFinale, '2026-09-11T00:00:00.000Z');
+  assert.ok(html.includes('Collapsing Finale'));
+  assert.ok(html.includes('Narrow Collapse'));
+  assert.ok(html.includes('(2)'), 'the hub states its own count');
 });

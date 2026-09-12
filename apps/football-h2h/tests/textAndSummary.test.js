@@ -46,3 +46,27 @@ test('session summary: matches are listed chronologically regardless of storage 
     assert.deepEqual(lines.map((l) => l.slice(0, 3)), ['1–0', '2–2', '3–0']);
     assert.ok(lines[1].includes('Sam wins pens') && lines[1].endsWith(', pens'));
 });
+
+// Regression: buildSessionSummaryText compared g.player1Goals > g.player2Goals
+// directly. `3 > undefined` is false, so a row with a missing score fell to
+// the trailing `else { p2Wins++ }`, crediting player 2 with a win they did
+// not have, and `totalGoals += g.player1Goals + g.player2Goals` turned the
+// running total into NaN for every game in the summary, not just the bad
+// row. Fixed by skipping ungradeable rows the same way updateStatisticsWithData
+// does (window.FootballPlayerStats.toScore / matchResult).
+test('session summary: a game with a missing score is skipped, not credited to either player', () => {
+    const ctx = appCtx();
+    runIn(ctx, "player1Name = 'Alex'; player2Name = 'Sam';");
+    const games = [
+        // player1 outscored player2, but player2Goals is missing: must not
+        // become a Sam win, and must not poison the goal total.
+        { id: 1, player1Goals: 3, dateTime: '2026-08-01T10:00:00.000Z' },
+        { id: 2, player1Goals: 1, player2Goals: 2, dateTime: '2026-08-02T10:00:00.000Z' },
+    ];
+    const text = runIn(ctx, `buildSessionSummaryText(${JSON.stringify(games)})`);
+    assert.match(text, /Alex: 0W {2}Sam: 1W {2}Draws: 0/, 'only the gradeable game counts toward the record');
+    assert.match(text, /Total goals: 3/, 'the ungradeable row must not NaN-poison the total');
+    assert.ok(!text.includes('NaN'));
+    const lines = text.split('\n').slice(5);
+    assert.equal(lines.length, 1, 'the ungradeable row is skipped, not printed as a match line');
+});

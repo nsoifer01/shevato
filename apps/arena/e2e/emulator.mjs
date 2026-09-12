@@ -9,7 +9,9 @@
 // the audit's regressions: a first-time guest creating a room with NO
 // sync-modal seed (D2), the gate-deletion exploit from a third client
 // (D1), a ghost player (D4), a hidden host tab (D3), an answer while
-// offline (D9), the chat rate limit at the call site (D11), a coordinate
+// offline (D9), the chat rate limit at the call site (D11), the sliding
+// chat window past its 80-message cap (S9) and the host takeover when a
+// host tab simply disappears (S10), a coordinate
 // double-click on Start (D12), a stale rematch prompt (D13), the end
 // screen after a leaver (D5), chat/gate/ghost cleanup after the last
 // leaver (D6), leaderboard == profile for a registered player (D8), the
@@ -117,7 +119,8 @@ async function ownerList(path) {
 }
 // Owner-bypass field patch (simple scalar values only).
 async function ownerPatch(path, fields) {
-  const enc = (v) => v === null ? { nullValue: null } : typeof v === 'string' ? { stringValue: v }
+  const enc = (v) => v === null ? { nullValue: null } : v instanceof Date ? { timestampValue: v.toISOString() }
+    : typeof v === 'string' ? { stringValue: v }
     : typeof v === 'boolean' ? { booleanValue: v } : Number.isInteger(v) ? { integerValue: String(v) } : { doubleValue: v };
   const mask = Object.keys(fields).map((k) => `updateMask.fieldPaths=${encodeURIComponent(k)}`).join('&');
   const res = await fetch(`${EMU_DOCS}/${path}?${mask}`, {
@@ -1593,6 +1596,162 @@ export async function run({ base, cdpPort, base2 = null }) {
         doc8.status === 200 && !doc8.doc?.fields?.disconnectedAt,
         `status=${doc8.status} stamp=${JSON.stringify(doc8.doc?.fields?.disconnectedAt || 'absent')}`);
       await resetToLobby([A, B]);
+    });
+
+    await guard('S9: the chat window follows the newest messages', async () => {
+      /* ---------- S9: the chat window follows the newest messages ---------- */
+      /*
+       * The room chat froze permanently once a room passed 80 messages:
+       * `orderBy('sentAt','asc')` with a plain `limit(80)` is the OLDEST 80,
+       * so the subscribed window was pinned and no new message ever rendered
+       * again, for anybody in the room. Eight one-tap emoji buttons at a
+       * 1.5 s rate limit means six players reach 80 in about a minute.
+       *
+       * Nothing here could have caught it before: the only chat assertion
+       * (D11, in S1) counts STORED documents, and storing was never the
+       * broken half.
+       */
+      await resetToLobby([A, B]);
+      await clickSel(A, '.game-type-btn[data-game-type="trivia"]', { settle: 300 });
+      await clickSel(A, '#create-room-btn', { settle: 700 });
+      if (await evaluate(A, visible('name-prompt-modal'))) {
+        await setValue(A, '#name-prompt-input', 'Chatty Host');
+        await clickSel(A, '#name-prompt-confirm', { settle: 500 });
+      }
+      await waitForExpr(A, visible('room-panel'), { timeout: 15000 });
+      const codeC = await roomCodeOf(A);
+      const aUidC = await evaluate(A, 'window.firebaseAuth.getCurrentUser().uid');
+      await setValue(B, '#join-code', codeC);
+      await clickSel(B, '#join-room-btn', { settle: 700 });
+      await waitForExpr(B, visible('room-panel'), { timeout: 15000 });
+
+      // Past the cap on purpose: 85 seeded messages means the oldest 5 must
+      // fall out of the window. Owner-seeded because sending 85 messages
+      // through the UI would take two minutes of rate limit.
+      const SEEDED = 85;
+      const base0 = Date.now() - SEEDED * 1000;
+      for (let i = 0; i < SEEDED; i += 10) {
+        await Promise.all(Array.from({ length: Math.min(10, SEEDED - i) }, (_, k) => {
+          const n = i + k + 1;
+          return ownerPatch(`triviaRooms/${codeC}/chat/seed${String(n).padStart(3, '0')}`, {
+            uid: aUidC, displayName: 'Chatty Host', text: `seeded-${n}`,
+            sentAt: new Date(base0 + n * 1000),
+          });
+        }));
+      }
+      await clickSel(B, '#room-chat-toggle', { settle: 600 });
+      const bodies = "(()=>[...document.querySelectorAll('#room-chat-list .room-chat-body')].map(e=>e.textContent))()";
+      const filled = await waitForExpr(B, `${bodies}.length === 80`, { timeout: 15000 });
+      const shown = await evaluate(B, bodies);
+      t('emulator (S9): the panel holds exactly the 80-message window',
+        filled && Array.isArray(shown) && shown.length === 80, `count=${shown && shown.length}`);
+      t('emulator (S9): the window is the NEWEST 80, not the oldest (the freeze)',
+        Array.isArray(shown) && shown[shown.length - 1] === `seeded-${SEEDED}` && shown[0] === `seeded-${SEEDED - 79}`
+          && !shown.includes('seeded-1'),
+        `first=${shown && shown[0]} last=${shown && shown[shown.length - 1]}`);
+      t('emulator (S9): the window is still rendered oldest-first',
+        Array.isArray(shown) && shown.every((v, i) => v === `seeded-${SEEDED - 79 + i}`),
+        `head=${JSON.stringify((shown || []).slice(0, 3))}`);
+
+      // The freeze itself: a room past the cap must still deliver new
+      // messages to everyone. This is the assertion the bug fails.
+      await clickSel(A, '#room-chat-toggle', { settle: 400 });
+      await evalAsync(A, `(async()=>{
+        const f=document.getElementById('room-chat-form');
+        const i=document.getElementById('room-chat-input');
+        i.value='after-the-cap'; i.dispatchEvent(new Event('input',{bubbles:true})); f.requestSubmit();
+        await new Promise(r=>setTimeout(r,600)); return 1; })()`);
+      const arrived = await waitForExpr(B, `${bodies}.includes('after-the-cap')`, { timeout: 15000 });
+      t('emulator (S9): a message sent past the 80-message cap still reaches the other player',
+        arrived, `tail=${JSON.stringify((await evaluate(B, bodies) || []).slice(-2))}`);
+      const slid = await evaluate(B, bodies);
+      t('emulator (S9): the window slid instead of growing (the oldest message dropped out)',
+        Array.isArray(slid) && slid.length === 80 && !slid.includes(`seeded-${SEEDED - 79}`),
+        `count=${slid && slid.length} first=${slid && slid[0]}`);
+
+      await clickSel(A, '#room-chat-close', { settle: 300 });
+      await clickSel(B, '#room-chat-close', { settle: 300 });
+      await leaveRoom(B);
+      await leaveRoom(A);
+    });
+
+    await guard('S10: the host tab goes away without leaving (clock-driven takeover)', async () => {
+      /* ---------- S10: the host tab goes away without leaving ---------- */
+      /*
+       * `hostUid` used to be reassigned ONLY inside leaveRoom, which is the
+       * explicit "Leave room" button - exactly what S2 covers, and exactly
+       * why this gap survived a green suite. A closed tab, a discarded
+       * background tab or a dead phone never reaches that path, so the room
+       * kept naming a host who was never coming back and four host-gated
+       * behaviours stopped for the rest of the session: early reveal (every
+       * round then burns the full timer), the Globe Drop Ready-to-skip
+       * advance, sweepStalePlayers (so the ghost that caused it could not be
+       * cleaned up either) and playAgain, which left the end screen stuck on
+       * "Rematch - 2/2 players ready" forever.
+       *
+       * firestore.rules already allowed the repair; the client simply never
+       * asked outside the Leave button. It now asks from the room clock, in
+       * every stage.
+       *
+       * Last scenario on purpose: it closes one of the clients for good.
+       */
+      await resetToLobby([A, B]);
+      await clickSel(A, '.game-type-btn[data-game-type="trivia"]', { settle: 300 });
+      await clickSel(A, '#create-room-btn', { settle: 700 });
+      if (await evaluate(A, visible('name-prompt-modal'))) {
+        await setValue(A, '#name-prompt-input', 'Vanishing Host');
+        await clickSel(A, '#name-prompt-confirm', { settle: 500 });
+      }
+      const hostUp9 = await waitForExpr(A, visible('room-panel'), { timeout: 15000 });
+      const code9 = await roomCodeOf(A);
+      const aUid9 = await evaluate(A, 'window.firebaseAuth.getCurrentUser().uid');
+      await setValue(B, '#join-code', code9);
+      await clickSel(B, '#join-room-btn', { settle: 700 });
+      const bIn9 = await waitForExpr(B, visible('room-panel'), { timeout: 15000 });
+      const bUid9 = await evaluate(B, 'window.firebaseAuth.getCurrentUser().uid');
+      const hostControls = "(()=>{const c=document.getElementById('lobby-host-controls');return !!c && !c.hidden})()";
+      const room9Before = await ownerGetDocRaw(`triviaRooms/${code9}`, PAGE_PROJECT);
+      const bControlsBefore = await evaluate(B, hostControls);
+      t('emulator (S10): PRECONDITION, A hosts the room and B does not',
+        hostUp9 && bIn9 && room9Before.doc?.fields?.hostUid?.stringValue === aUid9 && bControlsBefore === false,
+        `hostUid=${room9Before.doc?.fields?.hostUid?.stringValue} a=${aUid9} b=${bUid9} bControls=${bControlsBefore}`);
+
+      // The tab simply goes away. Close it FIRST, then stand in for the
+      // unload stamp with the owner bypass, exactly as the ghost and
+      // refresh scenarios do: a browser may cancel an unload-time write, and
+      // a page still open would clear the stamp on its own next heartbeat.
+      await closePage(cdpPort, A);
+      A = null;
+      await sleep(500);
+      await ownerPatch(`triviaRooms/${code9}/players/${aUid9}`, { disconnectedAt: Date.now() - 40000 });
+
+      const tookOver = await (async () => {
+        for (let i = 0; i < 60; i++) {
+          const d = await ownerGetDocRaw(`triviaRooms/${code9}`, PAGE_PROJECT);
+          if (d.doc?.fields?.hostUid?.stringValue === bUid9) return true;
+          await sleep(250);
+        }
+        return (await ownerGetDocRaw(`triviaRooms/${code9}`, PAGE_PROJECT))
+          .doc?.fields?.hostUid?.stringValue || 'absent';
+      })();
+      t('emulator (S10): the surviving player adopts the room when the host tab just disappears',
+        tookOver === true, `hostUid=${tookOver} expected=${bUid9}`);
+
+      const controls9 = await waitForExpr(B, hostControls, { timeout: 12000 });
+      t('emulator (S10): the host-gated controls come back for the new host', controls9);
+
+      // The vanished host stays VISIBLE as a ghost rather than silently
+      // disappearing: the stale sweep is deliberately confined to a playing
+      // game (see progressRoomClock), because that dimmed tile is how the
+      // others learn their friend dropped. What must not happen is the room
+      // still treating them as its host.
+      const ghostShown = await waitForExpr(B, `(()=>{
+        const li=[...document.querySelectorAll('#lobby-player-grid li')];
+        return li.length===2 && li.some(l=>l.classList.contains('is-disconnected')); })()`, { timeout: 12000 });
+      t('emulator (S10): the vanished host still renders as Disconnected, it is only no longer the host',
+        ghostShown);
+
+      await leaveRoom(B);
     });
 
   } catch (e) {

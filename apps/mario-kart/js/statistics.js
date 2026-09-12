@@ -532,3 +532,219 @@ function getStatClass(value, values, isHigherBetter = false) {
         return 'worst';                     // Red for 3rd+ place
     }
 }
+
+// --- Per-course statistics ---------------------------------------------------
+// Every race already carries `courseId`/`course` (dataManager.js addRace),
+// but nothing aggregated it: history/cards only ever used it as a display
+// label. This section answers "which track do I always win on" from data the
+// app was already collecting.
+//
+// A course needs at least this many logged races before it is eligible for
+// the best/worst rankings. Below this, one lucky (or unlucky) result would
+// BE the "average": a course raced once shows a "1.0 average" or a "12.0
+// average" with nothing behind it to say whether that reflects anything
+// real. 3 is small enough that an actively-used tracker reaches it within a
+// normal session or two, but large enough that a single outlier result can
+// no longer swing a course from best to worst on its own. A course under the
+// minimum still appears in the full breakdown table with its real race
+// count (nothing is hidden), just labelled "not enough races yet" instead of
+// being ranked - showing that beats silently ranking a single race, or
+// silently dropping the row.
+const MIN_COURSE_RACES_FOR_RANKING = 3;
+
+// Aggregates `raceData` per course. The caller is expected to have already
+// scoped raceData to one game version and one date filter (the same
+// `getFilteredRaces()` / `calculateStats` convention this file already
+// follows) - `races` itself is swapped wholesale on a game-version switch,
+// so this never has to reconcile MK8D and MK World rows itself. Average
+// finishing position is only ever compared within that one call, which is
+// what keeps it meaningful across MK8D's 12 positions and MK World's 24.
+//
+// Races with no course recorded (never picked one, or the tag was dropped by
+// the import validator) are excluded entirely rather than bucketed under a
+// course literally named "undefined".
+function calculateCourseStats(raceData = null) {
+    if (raceData === null) {
+        raceData = getFilteredRaces();
+    }
+
+    const courses = {}; // key -> aggregate bucket
+    const order = [];   // first-seen key order, for a stable base ordering
+
+    raceData.forEach(race => {
+        if (!race || typeof race.course !== 'string' || !race.course.trim()) return;
+
+        // Prefer the stable id; fall back to the name for older rows that
+        // predate courseId (or had it dropped while the name survived).
+        const key = race.courseId || race.course;
+        if (!courses[key]) {
+            const bucket = { id: race.courseId || null, name: race.course, totalRaces: 0, perPlayer: {} };
+            players.forEach(player => {
+                bucket.perPlayer[player] = { races: 0, sum: 0, wins: 0, podiums: 0 };
+            });
+            courses[key] = bucket;
+            order.push(key);
+        }
+
+        const bucket = courses[key];
+        bucket.totalRaces++;
+
+        players.forEach(player => {
+            if (isFinitePosition(race[player])) {
+                const p = bucket.perPlayer[player];
+                p.races++;
+                p.sum += race[player];
+                if (race[player] === 1) p.wins++;
+                // Podium is top-3 in both game versions, deliberately: it is
+                // not scaled by MAX_POSITIONS, matching calculateStats above.
+                if (race[player] <= 3) p.podiums++;
+            }
+        });
+    });
+
+    return order.map(key => {
+        const c = courses[key];
+        const perPlayer = {};
+        let combinedSum = 0, combinedCount = 0, wins = 0, podiums = 0;
+
+        players.forEach(player => {
+            const p = c.perPlayer[player];
+            perPlayer[player] = {
+                races: p.races,
+                average: p.races > 0 ? formatDecimal(p.sum / p.races) : '-'
+            };
+            combinedSum += p.sum;
+            combinedCount += p.races;
+            wins += p.wins;
+            podiums += p.podiums;
+        });
+
+        return {
+            id: c.id,
+            name: c.name,
+            totalRaces: c.totalRaces,
+            averageFinish: combinedCount > 0 ? formatDecimal(combinedSum / combinedCount) : '-',
+            averageFinishNumeric: combinedCount > 0 ? combinedSum / combinedCount : null,
+            wins,
+            podiums,
+            perPlayer,
+            qualifiesForRanking: c.totalRaces >= MIN_COURSE_RACES_FOR_RANKING
+        };
+    }).sort((a, b) => a.name.localeCompare(b.name));
+}
+
+// Best/worst courses by combined average finishing position, restricted to
+// courses that meet MIN_COURSE_RACES_FOR_RANKING (see above: this is the
+// rule that keeps a once-raced course off the "best courses" list). `limit`
+// caps each list's length, matching the "top few" convention the Analysis
+// tab's best/worst-day cards already use.
+function getCourseRankings(courseStats, limit = 3) {
+    const ranked = courseStats.filter(c => c.qualifiesForRanking && c.averageFinishNumeric !== null);
+    const byName = (a, b) => a.name.localeCompare(b.name);
+
+    const best = [...ranked]
+        .sort((a, b) => (a.averageFinishNumeric - b.averageFinishNumeric) || byName(a, b))
+        .slice(0, limit);
+    const worst = [...ranked]
+        .sort((a, b) => (b.averageFinishNumeric - a.averageFinishNumeric) || byName(a, b))
+        .slice(0, limit);
+
+    return { best, worst };
+}
+
+function courseEsc(value) {
+    return typeof escapeHtml === 'function' ? escapeHtml(value) : String(value == null ? '' : value);
+}
+
+// Pure HTML generator (mirrors generateH2HTable above): best/worst cards
+// reusing the Analysis tab's existing best-day-item/worst-day-item markup,
+// plus a full per-course breakdown table reusing the Activity tab's
+// weekly-breakdown-table skin. No new visual language, no charting library.
+function generateCourseStatsView(courseStats) {
+    const { best, worst } = getCourseRankings(courseStats);
+
+    const rankItem = (course, scoreClass) => `
+        <div class="best-day-item">
+            <span>${courseEsc(course.name)}</span>
+            <div>
+                <div class="${scoreClass}">Avg ${course.averageFinish}</div>
+                <small>${course.totalRaces} races</small>
+            </div>
+        </div>
+    `;
+
+    const noRankedYetHtml = `
+        <div class="no-data-message">
+            <div class="no-data-inner">
+                <p>No course has ${MIN_COURSE_RACES_FOR_RANKING}+ races yet.</p>
+            </div>
+        </div>
+    `;
+
+    const bestList = best.length > 0 ? best.map(c => rankItem(c, 'best-day-score')).join('') : noRankedYetHtml;
+    const worstList = worst.length > 0 ? worst.map(c => rankItem(c, 'worst-day-score')).join('') : noRankedYetHtml;
+
+    const playerHeaders = players.map(player => {
+        const name = courseEsc(window.PlayerNameManager ? window.PlayerNameManager.get(player) : getPlayerName(player));
+        return `<th>${name}<span class="subtitle">Avg Pos</span></th>`;
+    }).join('');
+
+    const rows = courseStats.map(course => {
+        const rankBadge = course.qualifiesForRanking
+            ? ''
+            : ` <span class="course-unranked-badge">not enough races yet (${course.totalRaces}/${MIN_COURSE_RACES_FOR_RANKING})</span>`;
+        const playerCells = players.map(player => `<td>${course.perPlayer[player].average}</td>`).join('');
+        return `
+            <tr>
+                <td>${courseEsc(course.name)}${rankBadge}</td>
+                <td>${course.totalRaces}</td>
+                <td>${course.averageFinish}</td>
+                <td>${course.wins}</td>
+                <td>${course.podiums}</td>
+                ${playerCells}
+            </tr>
+        `;
+    }).join('');
+
+    return `
+        <div class="analysis-container">
+            <div class="analysis-card">
+                <div class="analysis-title">🗺️ Course Stats</div>
+                <div class="analysis-description">
+                    Ranked by average finishing position. A course needs at least ${MIN_COURSE_RACES_FOR_RANKING} races before it is ranked, so one lucky (or unlucky) result can never top the list; courses under that show as "not enough races yet" in the table below instead.
+                </div>
+            </div>
+
+            <div class="analysis-card">
+                <div class="analysis-title">🏆 Best Courses</div>
+                <div class="best-day-list">${bestList}</div>
+            </div>
+
+            <div class="analysis-card">
+                <div class="analysis-title">📉 Worst Courses</div>
+                <div class="worst-day-list">${worstList}</div>
+            </div>
+
+            <div class="analysis-card">
+                <div class="analysis-title">📋 All Courses</div>
+                <div class="weekly-table-container">
+                    <table id="course-stats-table" class="weekly-breakdown-table">
+                        <thead>
+                            <tr>
+                                <th>Course</th>
+                                <th>Races</th>
+                                <th>Avg Finish</th>
+                                <th>Wins</th>
+                                <th>Podiums</th>
+                                ${playerHeaders}
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${rows}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    `;
+}

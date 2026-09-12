@@ -3,6 +3,144 @@
 A living document: best current understanding, not a diary. See the
 repo-root `CLAUDE.md` for the convention.
 
+## The phone close button was 36x2 px for as long as it was sticky (2026-09-11)
+
+`.modal-close` is a 36 px circle. At 760 px and below it was not: it measured
+**36x2 px** at 360, 390, 414, 600 and 760, and a correct 36x36 at 761 and up.
+
+The mobile block (`css/styles.css`, in the `@media (max-width: 760px)` rule)
+swaps the desktop `position: absolute` for `position: sticky; align-self:
+flex-end` so the button rides at the top-right of the sheet instead of
+scrolling away with the header. Sticky is **in flow**, so that swap also turns
+the button into a flex item of `.modal-panel`, which is `display: flex;
+flex-direction: column; overflow-y: auto`. For a flex item, a specified
+`height` is a flex *basis*, not a floor, and the default `flex-shrink: 1`
+applies: a show modal is roughly 2,300 px of content in an ~828 px box, so the
+button absorbed its share of the overflow and collapsed to two pixels.
+
+The cure is one line, `flex-shrink: 0`, and the file already contained the
+identical diagnosis a few hundred lines above it: `.modal-curve` carries
+`flex-shrink: 0` with a comment explaining that the SVG "collapses when the
+modal's other content pushes the panel past its max-height". The close button
+simply never got the same treatment when it went sticky.
+
+**Why the existing e2e check could not see it.** `e2e/audit-2026-08.mjs` has
+had a U3 check on this button since the sticky rule landed. It asserted the
+button was on screen after scrolling and that `document.elementFromPoint` at
+the button's own centre returned the button. Both are true of a 36x2 px strip:
+the centre of a 2 px box is still inside it. A hit test answers "is anything
+covering this?", never "is this the size it claims to be". The check now also
+measures the box (`U3b`), which is the assertion that actually fails when this
+regresses.
+
+Two general lessons, both already bitten into elsewhere in this repo:
+
+- When a rule changes an element's `position`, check what else that changes.
+  `absolute` and `fixed` take an element OUT of flow; `static`, `relative` and
+  `sticky` leave it in. Turning an out-of-flow element sticky hands it to the
+  parent's layout algorithm, and inside a flex or grid container that is a
+  different set of rules than the one the element's own properties were written
+  for.
+- A hit test and a geometry check are not substitutes for each other. Measure
+  the box when the claim is about size.
+
+## The mood presets had no vote floors (2026-09-11)
+
+"Explore by mood" is one tap that replaces every filter, so whatever a preset
+returns IS the answer for a visitor who never opens the advanced drawer. Until
+2026-09-11 four of the six presets carried no vote floor at all, and the fifth
+carried one that made things worse. Measured against the shipped catalogue
+(34,615 shows), page 1 of each preset opened on:
+
+| Preset | Led with | Thinnest row on page 1 |
+|---|---|---|
+| Modern prestige | Khadpanch, 1,053 votes, episode avg 9.96 vs IMDb 8.4 | 1,053 |
+| Kept climbing | Star Wars: The Clone Wars, but "Les aventures de Lola" at #4 | **8** |
+| Marathon-worthy | The Bill, but a 37-vote ROBLOX channel at #6 | **37** |
+| Comeback stories | Have I Got News for You | 302 |
+| Outshines its reputation | Baby Geniuses Television Series, IMDb 1.3 on 450 votes, episode avg 9.89 | 14 |
+
+Every preset now carries a floor, and they are `finder-lib.js`'s own constants
+rather than new numbers:
+
+- `RATING_SORT_VOTE_FLOOR` (1,000) for the four presets ranked by popularity or
+  size. It is the number this app already uses everywhere it asserts a rating
+  claim (the rating-sort ranking floor, `ABOVE_IMDB_MIN_VOTES`), and its stated
+  rationale - below it a handful of fans rating every episode 10.0 wins any
+  ranking - is exactly the failure above.
+- `GAP_MIN_VOTES` (15,000) for the two whose ORDER is decided by a rating or a
+  gap: Modern prestige (sort `avgEpisode`) and Outshines its reputation (sort
+  `gap`).
+
+After: Modern prestige 559 -> 63 shows and opens on Sapne Vs Everyone, Takopi's
+Original Sin, Arcane, Dexter: Resurrection; Kept climbing 442 -> 286 with a
+1,011-vote thinnest row; Marathon-worthy 1,495 -> 1,184 at 1,741; Comeback
+stories 179 -> 117 at 1,316; Outshines its reputation 7,969 -> 351, led by
+Walker (16,977 votes, episode avg 8.31 against an IMDb 6.2).
+
+### The trap: raising `minVotes` can switch a floor OFF
+
+`ratingSortFloorActive(f)` is `RATING_SORT_KEYS.includes(f.sort) &&
+!(f.minVotes > 0)`. The 1,000-vote rating-sort floor is a RANKING aid that
+deliberately stands down the moment the visitor sets a votes filter, on the
+reasoning that they have taken over.
+
+A preset sets one on the visitor's behalf. Modern prestige set `minVotes: 1000`
+- exactly the ranking floor - and so switched the ranking floor off and
+replaced it with a filter that admits every row the ranking floor had been
+banking below the fold. It was strictly worse than setting no votes filter at
+all, which is how a 1,053-vote show reached number one of a preset whose own
+copy says "actually watched". Any preset that sorts by a rating must floor
+**strictly above** `RATING_SORT_VOTE_FLOOR`; `tests/finder-moods.test.js` pins
+that as an invariant rather than as a value.
+
+### One definition of the gap floors
+
+`GAP_MIN_VOTES` / `GAP_MIN_EPISODE_VOTES` used to live in
+`scripts/render-shape-hub.js`, which is a Node build script the browser never
+loads. That is why the static gap hub had been floored since 2026-08 while the
+in-app preset ranking the identical metric had not: the fix was not reachable
+from the app. Both constants moved to `scripts/finder-lib.js`, the module the
+browser and the build both read, and the hub now imports them from there.
+
+**`GAP_MIN_EPISODE_VOTES` still applies only on the build side, and this is a
+real residual gap.** It floors a show's TOTAL episode votes, because `gap`
+subtracts two ratings and guarding only the series side guards half the number.
+The hub can compute it, because it reads `data.json`, which carries per-episode
+votes. The browser cannot: `shows-index.json` carries `votes` (series votes),
+`episodes` (a count) and `meanSeasonVotes`, and that last one is the mean of
+each season's LOWEST episode vote count, not a sum - a floor on it would be a
+different constant wearing the same name. Measured on the new preset's page 1,
+**8 of 24 rows are still under 15,000 episode votes**, the worst being
+Kursadzije (22,684 series votes but 1,071 episode votes across 26 episodes),
+which is the Kaamraj signature the hub's second floor exists to remove.
+
+Unblocking it needs one field: `scripts/split-data.js` folding a per-show
+episode-vote total into `shows-index.json` (it already walks the full records,
+so it is one accumulator), the app applying `GAP_MIN_EPISODE_VOTES` when the
+field is present, and `tests/shows-index-parity.test.js` extended to cover it.
+It was left out of the 2026-09-11 round deliberately: the shipped index is a
+gitignored release artifact, so the field only exists after a full rebuild, and
+shipping a filter that cannot be verified against the real catalogue in the
+same round is how a preset gets a floor nobody has ever seen working.
+
+### What the tests pin
+
+`tests/finder-moods.test.js` asserts the SHIPPED presets - `FINDER_MOODS` and
+the pure `moodFinderFilters` reached through the vm harness, never a
+transcribed copy - through the SHIPPED pipeline (`filterAndSortRows`). It has
+the two halves `shows-index-parity.test.js` uses: a synthetic catalogue that
+runs in the dependency-free CI, and a real-catalogue half that SKIPS with a
+named reason when the release data is absent. Every real-catalogue assertion
+checks the page is POPULATED before it checks the floors, because a floor
+assertion over an empty list is vacuously true and is precisely the bug being
+guarded against.
+
+`applyFinderMood` was reduced to `resetFinderState()` plus
+`Object.assign(finderState, moodFinderFilters(mood))` so there is one
+definition of what a preset means. `moodFinderFilters` deliberately omits
+`view`: grid/list is the visitor's, not the preset's.
+
 ## The modal action row, moved down and then back up (2026-09-07)
 
 The show and season modals now carry **one** action row, in the heading beside
@@ -1155,3 +1293,140 @@ identical order). A 0.01 change to one show's `gap` fails it. The pre-split
 reads `RELATED_VOTES_BAND` from `app.js` rather than carrying a copy - the copy
 had already drifted to 40 against the app's 20 and made the "reference"
 disagree with the app it was meant to reference.
+
+## The dominant shape was emission order, not fit (2026-09-11)
+
+`detectShapes` pushes its tags in a fixed order (rising, consistent, slow-burn,
+big-finale, rebound, front-loaded, declining, bad-finale, rollercoaster,
+mid-peak, u-shaped). That order is an artefact of how the function is written.
+Everything that needed "the show's shape" read `shapes[0]`: the card badge
+(`dominantShapeOf`), the static page's headline shape and its CTA, and which
+hub a show is filed under (`computeDominantShape`).
+
+So a show was labelled with whichever of its shapes the classifier happened to
+test first. Measured over the 2026-09-08 catalogue (34,846 series):
+
+- 874 of 1,535 multi-trajectory shows (57%) were badged with something other
+  than their strongest-margin shape.
+- 72.2% of trajectory badges scored below `LOW_CONFIDENCE_BELOW` (0.35), and
+  none of them said so: `makeShapeTag` dims a low-confidence SEASON pill,
+  `makeShowShapeBadge` took no confidence at all.
+- Game of Thrones (season averages 8.98, 8.80, 8.93, 9.25, 8.70, 8.98, 9.00,
+  6.40) scores `bad-finale` 1.00 and `front-loaded` 0.18, was emitted
+  front-loaded first, and was therefore ABSENT from
+  `/shows/shape/bad-finale/` - "TV Shows With a Bad Final Season", one of the
+  highest search-intent pages on the domain - while listed on front-loaded.
+  The Boys, True Detective, House of Cards and The Flash the same way.
+
+The classifier was never wrong; only the presentation order was. `shapeConfidence`
+had scored every matched shape since the season pills shipped and nothing above
+those pills read it.
+
+### The ordering is DERIVED, not stored, and that is deliberate
+
+`finder-lib.js` gained `showShapeConfidence` (score a show from its per-season
+averages) and `orderShapesByConfidence` (sort by that score, categorical tags
+last, ties keeping emission order via a stable sort). Neither is called from
+inside `deriveShowShapes`, for three reasons:
+
+1. The emitted array is the classifier's answer. `passesShapeAnd` and the
+   index header's `shapeCounts` read it as a SET, and reordering it would change
+   nothing for them while invalidating the shipped artifact.
+2. `shows-index.json` is built by `split-data.js` once per deploy, and
+   `tests/shows-index-parity.test.js` holds the shipped index to exactly what
+   `buildShowAgg` produces from `data-index.json`. Sorting inside
+   `deriveShowShapes` would break that test the moment the ordering changed,
+   and it could only be cleared by a full data rebuild.
+3. Deriving it at read time means the BROWSER reorders an index built before
+   this change and lands on the same shape the freshly built static page does.
+   Verified: against the 2026-08-22 `shows-index.json`, `dominantShapeOf`
+   returns bad-finale for Game of Thrones whose stored `shapes[0]` is still
+   `front-loaded`.
+
+The row the browser reads carries no `inProgress` flag, so the app scores every
+show as finished. That is safe by construction: `inProgress` only suppresses the
+three finale-dependent shapes at CLASSIFICATION time, so a show whose newest
+season was airing never had one emitted and the extra score has nothing in
+`shapes` to attach to. Pinned in `tests/finder-lib.test.js` rather than trusted.
+
+### match.js needed a namespace
+
+`js/app.js` is `type="module"` specifically so its ~500 top-level names cannot
+collide with the classic scripts', and it already declares its own
+`shapeConfidence` (a two-argument lookup into a season's stored scores). Reading
+match.js's bare global would have meant app.js shadowing the classifier it was
+calling - silently, because the shadow returns `null` rather than throwing.
+match.js now also attaches `window.RisingShowsMatch`, the same way finder-lib
+attaches `window.RisingShowsFinder`, and `tests/app-harness.js` injects it so the
+vm sandbox stops exercising the degraded "no classifier" path.
+
+### Effect on the hubs
+
+Per-shape dominant pools, before -> after (the page itself is capped at
+`HUB_LIMIT` = 100):
+
+| hub | pool before | pool after | rows before | rows after |
+|---|---|---|---|---|
+| rising | 3,180 | 2,662 | 100 | 100 |
+| consistent | 685 | 1,170 | 100 | 100 |
+| slow-burn | 238 | 145 | 100 | 100 |
+| big-finale | 331 | 322 | 100 | 100 |
+| rebound | 68 | 143 | 68 | 100 |
+| front-loaded | 354 | 198 | 100 | 100 |
+| declining | 2,436 | 2,498 | 100 | 100 |
+| bad-finale | 223 | 312 | 100 | 100 |
+| rollercoaster | 50 | 75 | 50 | 75 |
+| mid-peak | 47 | 62 | 47 | 62 |
+| u-shaped | 303 | 328 | 100 | 100 |
+| saved-best-for-last | 232 | 232 | 100 | 100 |
+| shape-drift | 635 | 635 | 100 | 100 |
+
+No hub empties, none overflows (the builder slices at 100), and the two
+categorical hubs are untouched because categorical tags carry no confidence and
+stay last. Three hubs that used to be short (rebound 68, rollercoaster 50,
+mid-peak 47) grew: the old README claimed `rebound` "can never be dominant"
+because it trails `slow-burn` and `big-finale` in emission order, which was true
+and is exactly the bug. That sentence is now gone.
+
+**No redirects are needed.** A show's own page URL is
+`/apps/rising-shows/shows/<title-slug>-<seriesId>/` (`showPath`), keyed by slug
+and IMDb id and independent of shape; the hub URLs are the fixed `SHAPE_SLUGS`
+list. Verified against the rebuilt tree: Game of Thrones' canonical is byte
+identical before and after, only its `#shape=` CTA and its "See all ... shows"
+link moved from front-loaded to bad-finale. Only hub MEMBERSHIP moved, and a hub
+is a ranked list, not an addressable identity.
+
+### Low confidence is now visible on a badge
+
+`makeShowShapeBadge(shape, confidence)` adds `is-low-confidence` and the same
+"Low confidence (0.34): the ... pattern is only just there" title `makeShapeTag`
+uses for season pills; the existing `.shape-tag.is-low-confidence` rule (opacity
+0.6, dashed border) already covered it, so no CSS changed. The confidence is
+computed in the browser from the row's own `seasonAvgs`, NOT shipped in the
+index - putting it in the index would have needed a `split-data.js` rebuild.
+After the reorder 64.9% of trajectory badges are still under the floor (down
+from 72.2%), and all of them now say so instead of asserting the pattern flatly.
+
+### Named examples
+
+| show | before | after | confidence |
+|---|---|---|---|
+| Game of Thrones | Front-loaded | Bad finale | 1.00 |
+| The Boys | Front-loaded | Bad finale | 0.34 (dimmed) |
+| Arcane | Rising | Consistent | 0.81 |
+| Westworld | Front-loaded | Declining | 0.48 |
+| 13 Reasons Why | Front-loaded | Declining | 1.00 |
+| Mindhunter | Rising | Consistent | 0.52 |
+
+Arcane and Mindhunter are the ones worth reading twice. Both are two-season
+shows that climb by 0.19 and 0.12 points, which scores `rising` at 0.09 and 0.06
+against `consistent` at 0.81 and 0.52. "Consistent" is the honest reading of two
+near-identical seasons; the old badge was a 0.1-point technicality asserted flatly.
+
+### Fixtures that encoded the bug
+
+`tests/render-shape-hub.test.js` used `[7.5, 7.6, 7.5, 9.2]` as its "slow-burn"
+trajectory. A 1.7-point jump in the final season scores `big-finale` 0.85 against
+`slow-burn` 0.23, so that fixture was only slow-burn-dominant because slow-burn is
+emitted first. It is now `[7.0, 6.8, 8.4, 8.5]` (slow-burn 0.73, big-finale 0.10),
+which lifts in the second half without a finale spike - what slow-burn means.

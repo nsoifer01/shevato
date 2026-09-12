@@ -103,6 +103,12 @@ REJECT, whichever way it goes.
   the config gives no globals to). When a genuinely cross-file global is added
   to mario-kart or football-h2h (classic multi-script apps), declare it in
   `eslint.config.mjs`; that is bookkeeping, not suppression.
+  **Check COVERAGE with `eslint --print-config <file>` and count `rules`, never
+  by whether `npx eslint .` passes.** A file matching no config block is not an
+  error, it is silently skipped with zero rules. That is how
+  `sync-system/*.mjs` (a `**/*.js` glob), both service workers (a block with
+  globals and no `rules` key) and `apps/gym-tracker/data/*.js` sat outside the
+  gate until 2026-09-11. A covered file reports 28.
 - `npm run test:all` is the local merge gate and now runs lint first, so the
   cheapest check fails fastest.
 - `.features/` holds each app's living test-plan pair (gitignored,

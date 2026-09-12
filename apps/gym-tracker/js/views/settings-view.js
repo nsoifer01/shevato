@@ -177,6 +177,12 @@ class SettingsView {
             countdownInput.addEventListener('input', () => this.checkDirty());
         }
 
+        // Screen Wake Lock during a workout.
+        const wakeLockToggle = document.getElementById('keep-screen-awake');
+        if (wakeLockToggle) {
+            wakeLockToggle.addEventListener('change', () => this.checkDirty());
+        }
+
         // Calendar: first-day-of-week select (Item R2-5).
         const firstDaySelect = document.getElementById('first-day-of-week');
         if (firstDaySelect && !firstDaySelect.dataset.darkSelectInit) {
@@ -436,6 +442,9 @@ class SettingsView {
             countdownInput.value = String(settings.timerCountdownSeconds ?? 5);
         }
 
+        const wakeLockToggle = document.getElementById('keep-screen-awake');
+        if (wakeLockToggle) wakeLockToggle.checked = settings.keepScreenAwake !== false;
+
         const firstDaySelect = document.getElementById('first-day-of-week');
         if (firstDaySelect) {
             firstDaySelect.value = String(settings.firstDayOfWeek === 1 ? 1 : 0);
@@ -504,6 +513,7 @@ class SettingsView {
             vibrationAlerts: document.getElementById('vibration-alerts')?.checked ? '1' : '0',
             timerFirstWarning: document.getElementById('timer-first-warning')?.value ?? '',
             timerCountdownStart: document.getElementById('timer-countdown-start')?.value ?? '',
+            keepScreenAwake: document.getElementById('keep-screen-awake')?.checked ? '1' : '0',
             firstDayOfWeek: document.getElementById('first-day-of-week')?.value ?? '',
             showProgramSchedule: document.getElementById('show-program-schedule')?.checked ? '1' : '0',
             barWeight: document.getElementById('bar-weight')?.value ?? '',
@@ -640,6 +650,9 @@ class SettingsView {
                 countdownInput.value);
         }
 
+        const wakeLockToggle = document.getElementById('keep-screen-awake');
+        if (wakeLockToggle) settings.keepScreenAwake = wakeLockToggle.checked;
+
         const firstDaySelect = document.getElementById('first-day-of-week');
         if (firstDaySelect) settings.firstDayOfWeek = firstDaySelect.value === '1' ? 1 : 0;
 
@@ -664,6 +677,9 @@ class SettingsView {
         }
 
         this.app.saveSettings();
+        // Apply the wake-lock choice to a workout that is running right now,
+        // rather than making the lifter finish it first.
+        this.app.viewControllers.workout?.syncWakeLock?.();
         showToast('Settings saved successfully', 'success');
 
         // Item R2-1: reflect the normalized (clamped / defaulted) marker values

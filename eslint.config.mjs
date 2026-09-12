@@ -43,11 +43,13 @@ const footballH2hGlobals = [
 
 const marioKartGlobals = [
   'MAX_POSITIONS', 'MIN_POSITIONS', 'actionHistory', 'addRace',
-  'autoBackupToLocalStorage', 'calculateStats', 'clearAllVisualizationBars',
+  'autoBackupToLocalStorage', 'calculateCourseStats', 'calculateStats',
+  'clearAllVisualizationBars',
   'closeSidebarPlayerSettings', 'compareRacesChronologically', 'createAllBars',
   'createAnalysisView', 'createHeatmapView', 'createTrendCharts',
   'currentDateFilter', 'currentView', 'escapeHtml', 'exportData',
-  'formatDateForDisplay', 'formatDecimal', 'generateDailyH2HTable',
+  'formatDateForDisplay', 'formatDecimal', 'generateCourseStatsView',
+  'generateDailyH2HTable',
   'generateH2HTable', 'getFilteredRaces', 'getPlayerName', 'getStatClass',
   'highestPlayerWithRaces', 'importData', 'initializeAutoBackup', 'isFinitePosition',
   'loadData', 'openSidebar', 'openSidebarIconPicker', 'openSidebarPlayerSettings',
@@ -167,7 +169,22 @@ export default [
   // Classic scripts by default, because that is what the older apps and all of
   // assets/js still are.
   {
-    files: ['assets/**/*.js', 'apps/*/js/**/*.js', 'sync-system/**/*.js', 'firebase-config.js'],
+    // `sync-system/**/*.mjs` is spelled separately from the `.js` glob on
+    // purpose: the three non-test modules there (sync-helpers, cross-tab-channel,
+    // firebase-emulator-flag) carry the .mjs extension, and a `**/*.js` pattern
+    // does not match it. That single missing letter left sync-helpers.mjs -
+    // decideRemoteChange, mergeValues, pickConflictWinner, planFlushBatches, the
+    // whole conflict-resolution core, loaded on every app page - with ZERO rules
+    // applied, not even no-undef. Verified with `eslint --print-config`, which is
+    // the only honest way to check this: 0 rules there against 28 for
+    // assets/js/main.js. Run that command, not a mental model of the globs, after
+    // any edit to this block.
+    // `apps/*/data/**/*.js` is here for the same reason: gym-tracker's exercise
+    // catalogue loader sits outside `js/` and matched nothing.
+    files: [
+      'assets/**/*.js', 'apps/*/js/**/*.js', 'apps/*/data/**/*.js',
+      'sync-system/**/*.js', 'sync-system/**/*.mjs', 'firebase-config.js',
+    ],
     languageOptions: {
       ecmaVersion: 'latest',
       sourceType: 'script',
@@ -190,6 +207,10 @@ export default [
       'firebase-config.js',
       'sync-system/app-sync-init.js',
       'sync-system/storage-sync-robust.js',
+      // The three standalone sync modules, and gym-tracker's catalogue loader.
+      // All four use import/export.
+      'sync-system/**/*.mjs',
+      'apps/*/data/**/*.js',
     ],
     languageOptions: { sourceType: 'module' },
   },
@@ -199,9 +220,17 @@ export default [
   { files: ['apps/trip-planner/js/**/*.js'], languageOptions: { globals: asReadonly(tripPlannerGlobals) } },
 
   // Service workers get their own globals (self, clients, caches).
+  //
+  // This block carried globals and no `rules` key, which in flat config means
+  // it contributed nothing: both shipped workers resolved to 0 rules. They are
+  // classic scripts (neither uses import/export), they run on every visit to an
+  // installed PWA, and a throw inside one is invisible to the page, so they are
+  // a worse place to lose no-undef than most. sourceType is pinned here too so
+  // the pairing stays explicit rather than inherited.
   {
     files: ['**/sw.js', '**/service-worker.js'],
-    languageOptions: { globals: { ...globals.serviceworker } },
+    languageOptions: { sourceType: 'script', globals: { ...globals.serviceworker } },
+    rules: CORRECTNESS_RULES,
   },
 
   // Node code: build scripts, netlify functions, and every test layer.

@@ -31,6 +31,9 @@
 
     const MAX_LEN = 280;
     const RATE_LIMIT_MS = 1500;
+    // How many messages the in-room panel subscribes to and holds. A room
+    // lives for one sitting, so this is scrollback, not history.
+    const CHAT_WINDOW_SIZE = 80;
 
     // Curated profanity list. Kept short on purpose: a huge list in a
     // game full of place names and player handles generates more false
@@ -100,6 +103,46 @@
         return (nowMs - lastSentAtMs) < RATE_LIMIT_MS;
     }
 
+    /**
+     * Build the room-chat subscription query: the LATEST CHAT_WINDOW_SIZE
+     * messages, still delivered oldest-first so the rendered list reads
+     * chronologically and `renderChatMessages` can paint the array as-is.
+     *
+     * This lives here, away from the DOM, because getting it wrong is
+     * invisible until a room is busy: `orderBy('sentAt','asc')` with a plain
+     * `limit(n)` is the FIRST n documents, so past n messages the window is
+     * pinned on the oldest n and the chat freezes for everyone in the room,
+     * permanently. `limitToLast` is the same window from the other end and
+     * returns it in ascending order, which is why no reversal is needed.
+     *
+     * @param {*} chatRef  the chat collection reference
+     * @param {{query:Function, orderBy:Function, limitToLast:Function}} fns
+     *        the Firestore SDK helpers, passed in so this stays dependency-free
+     */
+    function buildChatWindowQuery(chatRef, fns) {
+        return fns.query(chatRef, fns.orderBy('sentAt', 'asc'), fns.limitToLast(CHAT_WINDOW_SIZE));
+    }
+
+    /**
+     * How many of `messages` arrived after the one the reader last saw.
+     *
+     * Identity, not arithmetic, on purpose: the window above SLIDES once a
+     * room passes CHAT_WINDOW_SIZE, so its length stops changing and any
+     * count-based bookkeeping ("length minus what I had read") silently
+     * reports 0 unread forever. If the marker itself has scrolled out of the
+     * window, everything still held is unread.
+     *
+     * @param {Array<{id:string}>} messages oldest-first window
+     * @param {string|null} lastReadId  id of the newest message already seen
+     */
+    function unreadCount(messages, lastReadId) {
+        if (!Array.isArray(messages) || !messages.length) return 0;
+        if (!lastReadId) return messages.length;
+        const idx = messages.findIndex(function (m) { return m && m.id === lastReadId; });
+        if (idx === -1) return messages.length;
+        return messages.length - 1 - idx;
+    }
+
     function formatTimestamp(ms) {
         const d = new Date(ms);
         if (isNaN(d.getTime())) return '';
@@ -111,9 +154,12 @@
     return {
         MAX_LEN,
         RATE_LIMIT_MS,
+        CHAT_WINDOW_SIZE,
         sanitizeText,
         checkProfanity,
         shouldRateLimit,
+        buildChatWindowQuery,
+        unreadCount,
         formatTimestamp
     };
 }));

@@ -207,7 +207,7 @@ export function sanitizeImportData(input) {
             if (key in st && (typeof st[key] !== 'number' || !Number.isFinite(st[key]) || st[key] < 0)) dropKey(key, 'was not a non-negative number');
         }
         if ('plates' in st && !Array.isArray(st.plates)) dropKey('plates', 'was not a list');
-        for (const key of ['soundAlerts', 'vibrationAlerts', 'plateHintsEnabled', 'showProgramSchedule']) {
+        for (const key of ['soundAlerts', 'vibrationAlerts', 'plateHintsEnabled', 'showProgramSchedule', 'keepScreenAwake']) {
             if (key in st && typeof st[key] !== 'boolean') dropKey(key, 'was not on/off');
         }
     } else if ('settings' in data && data.settings !== undefined) {
