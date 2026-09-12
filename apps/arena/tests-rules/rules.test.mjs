@@ -672,6 +672,27 @@ if (!setup.ok) {
         assert.equal(await updateDoc('triviaRooms/PUBAA', { hostUid: 'bob' }, BOB), 403,
             'the new host is live (has a fresh player doc), so bob cannot take over');
         assert.equal(await updateDoc('triviaRooms/PUBAA', { hostUid: 'host1' }, GUEST), 200, 'host hands back');
+        // The STALE branch, which is the one a closed tab actually produces:
+        // beforeunload stamps disconnectedAt and leaves the player doc in
+        // place, so the host is never "gone", only stale. Until 2026-09-11
+        // no client ever asked for this takeover outside the explicit Leave
+        // button, so a host who closed the tab kept hostUid forever and took
+        // early reveal, the Globe Drop skip, the stale sweep and the rematch
+        // with them.
+        assert.equal(await createDoc('triviaRooms/PUBAA/players/host1',
+            { uid: 'host1', score: 0, lastSeen: new Date(), disconnectedAt: ago(5000) }, OWNER), 200);
+        assert.equal(await updateDoc('triviaRooms/PUBAA', { hostUid: 'bob' }, BOB), 403,
+            'inside the disconnect grace the host may still be refreshing');
+        assert.equal(await updateDoc('triviaRooms/PUBAA/players/host1', { disconnectedAt: ago(40000) }, OWNER), 200);
+        // 'playing' so the write is a REAL diff: affectedKeys() is computed
+        // against the stored doc, and re-writing the value already there
+        // (status is 'lobby' here) would not register as a touched key at all.
+        assert.equal(await updateDoc('triviaRooms/PUBAA', { hostUid: 'bob', status: 'playing' }, BOB), 403,
+            'hostUid is the only key a takeover may touch');
+        assert.equal(await updateDoc('triviaRooms/PUBAA', { hostUid: 'bob' }, BOB), 200,
+            'past the grace a member adopts the room from a host whose doc is merely STALE');
+        assert.equal(await updateDoc('triviaRooms/PUBAA', { hostUid: 'host1' }, BOB), 200, 'host hands back');
+        assert.equal(await deleteDoc('triviaRooms/PUBAA/players/host1', HOST), 200);
         assert.equal(await deleteDoc('triviaRooms/PUBAA/players/bob', BOB), 200);
     });
 

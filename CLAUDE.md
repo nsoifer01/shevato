@@ -62,6 +62,17 @@ REJECT, whichever way it goes.
   chore/docs/seo edits, before reporting done. Cross-cutting invariant tests
   under `sync-system/tests/` catch tiny edits (sitemap forms, A-Z ordering,
   shared-UI scoping).
+- **`npm run test:browser:parallel` must be green BEFORE `gh pr create`, not
+  after.** About twelve minutes, four shards at once; budget it into the round.
+  `npm test` structurally cannot see browser-only breakage: 71 of 187 source
+  files are never imported by the unit estate, and every one of them loads
+  cleanly on its own under `node --test` even when it is dead in a browser. On
+  PR #530, 6,331 unit tests and a clean lint gate were all green while the
+  Rising Shows app rendered nothing, because `match.js` had gained a top-level
+  `const API` that collided with `finder-lib.js`'s in the shared classic-script
+  scope. If sub-agents are running, tell them NOT to start browser suites (they
+  contend over CDP 9222), then run it yourself once they have all finished;
+  that handoff is where it gets skipped.
 - **Apps are listed A-Z on every surface**, no exceptions; enforced by tests.
   Adding an app touches ~20 surfaces: follow "Adding a new app" in the root
   README.
@@ -103,8 +114,27 @@ REJECT, whichever way it goes.
   the config gives no globals to). When a genuinely cross-file global is added
   to mario-kart or football-h2h (classic multi-script apps), declare it in
   `eslint.config.mjs`; that is bookkeeping, not suppression.
+  **Check COVERAGE with `eslint --print-config <file>` and count `rules`, never
+  by whether `npx eslint .` passes.** A file matching no config block is not an
+  error, it is silently skipped with zero rules. That is how
+  `sync-system/*.mjs` (a `**/*.js` glob), both service workers (a block with
+  globals and no `rules` key) and `apps/gym-tracker/data/*.js` sat outside the
+  gate until 2026-09-11. A covered file reports 28.
 - `npm run test:all` is the local merge gate and now runs lint first, so the
   cheapest check fails fastest.
+- **Debug a slow/flaky e2e with the narrowest run and a unit test, never by
+  re-running the suite.** The Arena emulator suite takes 5-11 minutes; one
+  scenario takes about 70 seconds (`ARENA_E2E_ONLY=S6:`, which works standalone
+  since 2026-09-12 because `guard()` opens the client pages). Read the code and
+  form the hypothesis first, add every probe you might want in ONE pass
+  (re-arming costs a whole run), reproduce ONCE, then pin the logic with a
+  `node:test` unit test in milliseconds and run the full suite ONCE at the end.
+  Never run other work on the box while a timing-sensitive run is going, and
+  check the emulator ports are free first: a leftover emulator makes the run
+  SKIP, and a skipped batch looks like a finished one. Chasing one timing bug
+  by re-running the whole suite eleven times cost 70 wasted minutes on
+  2026-09-12; the reasoning is in `apps/arena/FINDINGS.md`, "One scenario should
+  cost one scenario".
 - `.features/` holds each app's living test-plan pair (gitignored,
   owner-reviewed); plans are archived, never deleted.
 

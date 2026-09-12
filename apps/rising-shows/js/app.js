@@ -1920,7 +1920,15 @@ function makeShapeTag(shape, confidence = null) {
 // Static (a span, not a button) on purpose: the card itself is the click
 // target, and a button inside a role=button tile is both a nested-interactive
 // accessibility violation and a tap that steals the card's own.
-function makeShowShapeBadge(shape) {
+//
+// `confidence` is how well the show fits this shape, on the same 0..1 scale
+// and against the same LOW_CONFIDENCE_BELOW floor makeShapeTag uses for the
+// season pills. A badge is the app's flattest possible claim ("this show is
+// Front-loaded"), and 72% of them scored below that floor before the shapes
+// were reordered by fit, so an undimmed badge was routinely asserting a
+// pattern that is barely there. Pass null for a categorical tag, which has no
+// confidence and is not a weak claim.
+function makeShowShapeBadge(shape, confidence = null) {
   const label = SHAPE_LABELS[shape] || shape;
   const icon = FINDER_SHAPE_ICONS[shape] || '';
   const el = document.createElement('span');
@@ -1935,14 +1943,52 @@ function makeShowShapeBadge(shape) {
   }
   el.appendChild(document.createTextNode(label));
   el.title = FINDER_SHAPE_DESCS[shape] || SHAPE_DESCS[shape] || label;
+  if (confidence != null && confidence < LOW_CONFIDENCE_BELOW) {
+    el.classList.add('is-low-confidence');
+    el.title = `Low confidence (${confidence.toFixed(2)}): the ${label} pattern is only just there. ${el.title}`;
+  }
   return el;
 }
 
-// The dominant shape is the first entry of the show's whole-run shape list -
-// the same rule computeDominantShape uses for the static pages and the hubs,
-// so a card, its page and its hub can never disagree.
+// How well this show fits each of the shapes it carries, scored from its own
+// season averages at render time.
+//
+// It is not read out of the row: shows-index.json carries the shape SET and
+// the season averages, never the scores, and rebuilding that index is a
+// deploy-time job. Scoring here costs a dozen arithmetic ops over at most a
+// few dozen season averages, needs nothing the boot payload does not already
+// ship, and makes the app agree with a freshly built static page immediately
+// rather than at the next data refresh.
+//
+// The row carries no inProgress flag, so every show is scored as finished.
+// That is safe by construction: inProgress only suppresses the three
+// finale-dependent shapes at CLASSIFICATION time, and a show whose newest
+// season was airing never had one emitted, so the extra score has nothing in
+// `shapes` to attach to. Pinned in tests/finder-lib.test.js.
+function showShapeConfidencesOf(row) {
+  return RisingShowsFinder.showShapeConfidence(
+    (row.seasonAvgs || []).map((a) => a.avg),
+    window.RisingShowsMatch && window.RisingShowsMatch.shapeConfidence,
+  );
+}
+
+// The dominant shape is the one the show FITS BEST, not the first tag the
+// classifier emitted - the same rule computeDominantShape uses for the static
+// pages and the hubs, so a card, its page and its hub can never disagree. See
+// orderShapesByConfidence in scripts/finder-lib.js for why the ordering is
+// derived here rather than stored.
 function dominantShapeOf(row) {
-  return (row.shapes && row.shapes.length) ? row.shapes[0] : null;
+  if (!row.shapes || !row.shapes.length) return null;
+  const ordered = RisingShowsFinder.orderShapesByConfidence(row.shapes, showShapeConfidencesOf(row));
+  return ordered.length ? ordered[0] : null;
+}
+
+// The dominant shape's own confidence, which is what decides whether its badge
+// is dimmed. Null when the show has no shape, or when the dominant one is a
+// categorical tag (those are not scored).
+function dominantShapeConfidenceOf(row) {
+  const shape = dominantShapeOf(row);
+  return shape ? shapeConfidence(showShapeConfidencesOf(row), shape) : null;
 }
 
 // One streaming chip on a tile: enough to answer "can I watch this tonight"
@@ -4134,32 +4180,60 @@ function toggleFinderShape(shape) {
 // reference per-episode climb / mini-series, which don't map to show stats).
 // Each preset is an absolute filter set: applying it replaces the current
 // filters. A couple lean on the new show-level shapes (rising / rebound).
+//
+// EVERY preset carries a vote floor, and they are finder-lib's own numbers so
+// the app and the static hubs rank on one set of constants:
+//
+//   MOOD_MIN_VOTES (RATING_SORT_VOTE_FLOOR, 1,000) - the floor this app already
+//     uses everywhere it asserts a rating claim (the rating-sort ranking floor,
+//     the Above-IMDb badge). Below it a handful of fans rating every episode
+//     10.0 wins any ranking, which is exactly what the unfloored presets did:
+//     "Kept climbing" opened on an 8-vote show, "Marathon-worthy" on a 37-vote
+//     one, "Comeback stories" on a 302-vote one.
+//   MOOD_GAP_MIN_VOTES (GAP_MIN_VOTES, 15,000) - the floor the gap hub already
+//     ranks behind, for the two presets whose ORDER is decided by a rating or a
+//     gap rather than by popularity or size.
+//
+// The 1,000-vote rating-sort floor is a RANKING aid and it switches itself off
+// as soon as any votes filter is set (ratingSortFloorActive in finder-lib), so
+// a preset that sets minVotes has to carry a floor that does the job on its
+// own. "Modern prestige" set exactly 1,000 and therefore turned the ranking
+// floor off while gaining nothing, and opened on Khadpanch (1,053 votes,
+// episode average 9.96 against an IMDb 8.4).
+const { RATING_SORT_VOTE_FLOOR: MOOD_MIN_VOTES, GAP_MIN_VOTES: MOOD_GAP_MIN_VOTES } = RisingShowsFinder;
+
 const FINDER_MOODS = [
   // The vote floor is what makes this "prestige" rather than "obscure": without
-  // it the preset returned 2,073 shows, most of them titles with a handful of
-  // ratings that happen to average 8.5. 1,000 series votes keeps 559.
+  // any floor the preset returned 2,073 shows, most of them titles with a
+  // handful of ratings that happen to average 8.5. 1,000 kept 559 and still
+  // opened on four-figure-vote soap operas at 9.9; 15,000 keeps 63 and opens on
+  // Sapne Vs Everyone, Takopi's Original Sin, Arcane, Dexter: Resurrection.
   { id: 'modern-prestige', icon: '★', label: 'Modern prestige',
     desc: 'Recent, highly rated, and actually watched',
-    filters: { minYear: 2020, minAvgEpisode: 8.5, minVotes: 1000, sort: 'avgEpisode' } },
+    filters: { minYear: 2020, minAvgEpisode: 8.5, minVotes: MOOD_GAP_MIN_VOTES, sort: 'avgEpisode' } },
   { id: 'crowd-favorites', icon: '◉', label: 'Crowd favorites',
     desc: 'Hugely popular and still highly rated',
     filters: { minVotes: 100000, minAvgEpisode: 8, sort: 'votes' } },
   // Three seasons minimum, for the reason the Min seasons filter exists at all:
   // a two-season "rising" show is one season beating another, which is close to
   // a coin flip, and 79% of rising shows are two-season shows. With the floor
-  // the chip means what it says. 1,922 shows -> 442.
+  // the chip means what it says. 1,922 shows -> 442, and 286 with the votes
+  // floor that keeps an 8-vote show off page one.
   { id: 'kept-climbing', icon: '↗', label: 'Kept climbing',
     desc: 'Three or more seasons, each at least as good as the last',
-    filters: { shapes: ['rising'], minAvgEpisode: 7.5, minSeasons: 3, sort: 'seasonsCount' } },
+    filters: { shapes: ['rising'], minAvgEpisode: 7.5, minSeasons: 3, minVotes: MOOD_MIN_VOTES, sort: 'seasonsCount' } },
   { id: 'comeback-stories', icon: '∪', label: 'Comeback stories',
     desc: 'Dipped, then bounced back stronger',
-    filters: { shapes: ['rebound'], sort: 'seasonsCount' } },
+    filters: { shapes: ['rebound'], minVotes: MOOD_MIN_VOTES, sort: 'seasonsCount' } },
   { id: 'marathon-worthy', icon: '❯❯❯', label: 'Marathon-worthy',
     desc: '60+ episodes averaging 7.5 or better',
-    filters: { minEpisodes: 60, minAvgEpisode: 7.5, sort: 'episodes' } },
+    filters: { minEpisodes: 60, minAvgEpisode: 7.5, minVotes: MOOD_MIN_VOTES, sort: 'episodes' } },
+  // Ranked by gap, so it gets the gap hub's own floor. Unfloored it opened on
+  // "Baby Geniuses Television Series": IMDb 1.3 on 450 votes against a 9.89
+  // episode average, i.e. the review-bomb signature GAP_MIN_VOTES exists for.
   { id: 'outshines-reputation', icon: '⇈', label: 'Outshines its reputation',
     desc: 'Episodes rate higher than the show overall',
-    filters: { gapDir: 'up', minAvgEpisode: 8, sort: 'gap' } },
+    filters: { gapDir: 'up', minAvgEpisode: 8, minVotes: MOOD_GAP_MIN_VOTES, sort: 'gap' } },
 ];
 
 // Canonical comparison of a filter set, defaults filled in, so a mood reads as
@@ -4246,23 +4320,39 @@ function updateFinderMoodActive() {
   }
 }
 
+// The finder filter state a preset produces: the Finder defaults with the
+// preset's own fields laid over them. Pure, and the ONLY definition of what a
+// preset means, so the preset-floor tests assert the same state a tap produces.
+function moodFinderFilters(mood) {
+  const ff = (mood && mood.filters) || {};
+  return {
+    search: '',
+    minEpisodes: ff.minEpisodes || 0,
+    minSeasons: ff.minSeasons || 0,
+    minVotes: ff.minVotes || 0,
+    minShowRating: ff.minShowRating || 0,
+    minAvgEpisode: ff.minAvgEpisode || 0,
+    gapDir: ff.gapDir || 'any',
+    minGap: ff.minGap || 0,
+    minYear: ff.minYear ?? null,
+    maxYear: ff.maxYear ?? null,
+    hiddenGems: false,
+    genres: new Set(),
+    genresExclude: new Set(),
+    languages: new Set(),
+    shapes: new Set(ff.shapes || []),
+    sort: ff.sort || 'votes',
+    sortDir: ff.sortDir || 'desc',
+    page: 1,
+  };
+}
+
 // Apply a preset by resetting to defaults then overlaying the preset's filters.
-// Does not render — the caller follows with onFinderFilterChange().
+// Does not render - the caller follows with onFinderFilterChange(). The view
+// (grid / list) is deliberately NOT part of a preset, so it survives the tap.
 function applyFinderMood(mood) {
   resetFinderState();
-  const ff = mood.filters;
-  if (ff.minEpisodes) finderState.minEpisodes = ff.minEpisodes;
-  if (ff.minSeasons) finderState.minSeasons = ff.minSeasons;
-  if (ff.minVotes) finderState.minVotes = ff.minVotes;
-  if (ff.minShowRating) finderState.minShowRating = ff.minShowRating;
-  if (ff.minAvgEpisode) finderState.minAvgEpisode = ff.minAvgEpisode;
-  if (ff.gapDir) finderState.gapDir = ff.gapDir;
-  if (ff.minGap) finderState.minGap = ff.minGap;
-  if (ff.minYear != null) finderState.minYear = ff.minYear;
-  if (ff.maxYear != null) finderState.maxYear = ff.maxYear;
-  if (ff.shapes) finderState.shapes = new Set(ff.shapes);
-  if (ff.sort) finderState.sort = ff.sort;
-  if (ff.sortDir) finderState.sortDir = ff.sortDir;
+  Object.assign(finderState, moodFinderFilters(mood));
   syncFinderControls();
   syncFinderSortControls();
 }
@@ -4539,7 +4629,7 @@ function buildFinderTable(page) {
     if (rowShape) {
       const badgeWrap = document.createElement('span');
       badgeWrap.className = 'finder-row-badges';
-      badgeWrap.appendChild(makeShowShapeBadge(rowShape));
+      badgeWrap.appendChild(makeShowShapeBadge(rowShape, dominantShapeConfidenceOf(s)));
       const rowProv = firstMainstreamProvider(s);
       if (rowProv) {
         const tag = document.createElement('span');
@@ -4666,7 +4756,7 @@ function buildFinderCard(s) {
   const badges = node.querySelector('.finder-card-badges');
   badges.replaceChildren();
   const domShape = dominantShapeOf(s);
-  if (domShape) badges.appendChild(makeShowShapeBadge(domShape));
+  if (domShape) badges.appendChild(makeShowShapeBadge(domShape, dominantShapeConfidenceOf(s)));
   const prov = firstMainstreamProvider(s);
   if (prov) {
     const tag = document.createElement('span');
@@ -6969,6 +7059,10 @@ if (typeof window !== 'undefined') {
     normalizeSearch,
     avgVotesPerEpisode,
     dominantShapeOf,
+    // The strongest-fit reorder (2026-09-11): the number that decides whether
+    // a card's shape badge is dimmed, and the badge builder that dims it.
+    dominantShapeConfidenceOf,
+    makeShowShapeBadge,
     isAnimated,
     isUnscripted,
     // Best / worst / most-rated highlights, shared by the season list and the
@@ -6985,6 +7079,11 @@ if (typeof window !== 'undefined') {
     validateDataset,
     seasonEpisodeCount,
     shapeConfidence,
+    // The mood presets and the pure filter state each one produces. Exported
+    // so tests assert the shipped presets themselves rather than a transcribed
+    // copy: every preset's first page has to clear its own stated floors.
+    FINDER_MOODS,
+    moodFinderFilters,
   };
 }
 

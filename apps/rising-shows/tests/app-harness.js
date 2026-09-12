@@ -123,6 +123,12 @@ function makeContext(extra = {}) {
     // index with the same function the finder searches with). Without this
     // the sandbox exercises app.js's degraded fallback instead of the page.
     RisingShowsFinder: require('../scripts/finder-lib.js'),
+    // scripts/match.js loads before app.js too, and attaches the classifiers
+    // under this namespace (see its export block for why the bare globals are
+    // not what app.js reads). Without it the sandbox exercises the degraded
+    // "no classifier" path, where every shape scores 0 and the strongest-fit
+    // ordering silently becomes the emission order it replaced.
+    RisingShowsMatch: require('../scripts/match.js'),
     ...extra,
   };
   // window self-reference

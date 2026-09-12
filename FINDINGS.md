@@ -251,6 +251,61 @@ bounded: 100 attempts, and it stops immediately when the page has no
 10 Hz timer on a landing page built for phones. A header that arrives late is
 still covered by `onHeaderLoaded()` from the include callback.
 
+## A lint glob that says `.js` does not cover `.mjs`, and nothing tells you
+
+`eslint.config.mjs` matched browser code with `sync-system/**/*.js`. The three
+standalone modules in that directory carry the `.mjs` extension, so they matched
+nothing, and a flat-config block that matches nothing contributes nothing: they
+resolved to **zero rules**, not even `no-undef`. One of them is
+`sync-helpers.mjs`, which holds `decideRemoteChange`, `mergeValues`,
+`pickConflictWinner` and `planFlushBatches` - the conflict-resolution core,
+loaded on every app page. The same shape hid two more classes: both service
+workers (the `**/sw.js` block had globals and no `rules` key, which also
+contributes nothing) and `apps/gym-tracker/data/exercises-db.js`, which sits
+outside `apps/*/js/**`.
+
+Six shipped files, including the ones with the worst bug history in the repo,
+were outside the gate that exists BECAUSE a `ReferenceError` shipped for 12
+days. Fixed 2026-09-11; all six were clean once linted, so this was pure
+coverage, not a backlog.
+
+**The only honest way to check this is `eslint --print-config <file>` and
+counting `rules`.** A passing `npx eslint .` proves nothing here: a file that
+matches no block is not an error, it is silently skipped. Run that command
+against a representative file from each class after any edit to the `files`
+lists, and compare against a file you know is covered (28 rules today). The
+same trap applies to any future `.mjs`, `.cjs`, or `data/` addition.
+
+## An event with no listener is not a feature (sync failure surfacing)
+
+The sync engine dispatches `syncWriteRejected` when a flush is refused in a way
+retrying cannot fix (`storage-sync-robust.js`, the `payload-too-large` /
+`invalid-argument` path) and `app-sync-init.js` dispatches `appSyncFailed` when
+sync could not start. Both carried comments saying the banner would render
+them. Neither had a listener anywhere in the repo: a grep across `apps/`,
+`assets/` and `sync-system/` returned the two dispatch sites and nothing else.
+
+The visible consequence was the worst kind: a user's writes stopped reaching
+Firestore, stayed in localStorage, and the pill went on reading **Synced**.
+Fixed 2026-09-11 in `assets/js/sync-status.js`.
+
+Two rules came out of wiring it up, and both are load-bearing:
+
+- **The failure has to outrank the poll.** `render()` runs every 2s and the
+  tail of `updateBanner` hides the banner for any state it does not recognise,
+  so a failure banner painted once would be wiped on the next tick. `failed` is
+  handled before that tail, and `classify` returns it ahead of every healthy
+  state.
+- **The two failures expire differently, because only one of them can come
+  good.** A rejected write is permanent by definition, so it stands until the
+  user dismisses it; a healthy namespace elsewhere is NOT evidence that it
+  landed. A failed init can genuinely recover, so it is cleared the moment
+  `activeNamespaces > 0` - retired by evidence, never by a timer. Both
+  directions are pinned in `assets/js/tests/sync-status.test.js`.
+
+`offline` still outranks a standing failure: when the connection is down that
+is the more actionable truth, and the failure is still there when it returns.
+
 ## Shared sync banner stacking
 
 `#sync-banner` (`assets/css/sync-status.css`, `assets/js/sync-status.js`) sits

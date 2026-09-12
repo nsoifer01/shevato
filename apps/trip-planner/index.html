@@ -135,6 +135,10 @@
                view's cache and nothing here geocodes (see syncGpxMenuRow) -->
           <button data-act="export-gpx">⬇️ Export route (GPX)</button>
           <button data-act="export-all">⬇️ Backup all trips</button>
+          <!-- the itinerary a person can read, not a file: the same text the
+               day cards copy, for the whole trip. Read-only, so it stays live
+               on a shared trip like the other export rows (SHARED_MENU_ACTS) -->
+          <button data-act="copy-trip-text">📋 Copy trip as text</button>
           <button data-act="share-trip">🔗 Share itinerary</button>
           <button data-act="import">⬆️ Import JSON</button>
           <button data-act="import-booking">📄 Read a booking PDF</button>
@@ -930,7 +934,7 @@
         <h3>What it checks while you plan</h3>
         <ul>
           <li><strong>Night coverage</strong> - every night of the trip is either covered by a stay or an overnight flight, or it is flagged. This is the mistake that actually costs money.</li>
-          <li><strong>Date collisions</strong> - two stays claiming the same night, or an activity during a flight</li>
+          <li><strong>Date collisions</strong> - two stays claiming the same night, two items booked at the exact same date and time, or something booked in a city you have not reached yet</li>
           <li><strong>Gaps</strong> - a stretch of the trip with nothing in it, so you notice before you land</li>
           <li><strong>Costs</strong> - running totals per item, per day and per trip, including refunds and credits as negative amounts</li>
           <li><strong>Overnight arrivals</strong> - a flight landing the next day is handled properly rather than silently mis-dated</li>

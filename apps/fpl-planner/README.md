@@ -106,7 +106,12 @@ prices unchanged.
 
 ### Pre-season
 
-The 2026/27 season has not started. No event carries `is_current`, and `entry/{id}/event/{gw}/picks` returns 404 for every gameweek, so **no real squad can be imported yet**. That is a normal state, not an error: `buildGameState` reports `seasonStarted: false` and `currentEvent: null`, `buildSquadState` returns a `source: 'draft'` squad state with the full 100.0m budget, and the app routes to the pre-season squad builder. When GW1 goes live the normal import path takes over with no code change.
+The 2026/27 season kicked off on 2026-08-21 and GW1 was finalised on 2026-08-25
+(see `GW1-RUNBOOK.md`), so the normal in-season import path is what runs today.
+What follows describes the pre-season state the app still has to handle, both
+between seasons and for anyone loading the app before a new season's GW1.
+
+Before a season starts, no event carries `is_current` and `entry/{id}/event/{gw}/picks` returns 404 for every gameweek, so **no real squad can be imported**. That is a normal state, not an error: `buildGameState` reports `seasonStarted: false` and `currentEvent: null`, `buildSquadState` returns a `source: 'draft'` squad state with the full 100.0m budget, and the app routes to the pre-season squad builder. When GW1 goes live the normal import path takes over with no code change.
 
 A pre-season squad exists in two encodings: the optimizer's draft (`source: 'draft'`, no picks, the budget in the bank) and a typed or snapshot-restored squad (`source: 'manual'`, the fifteen held as picks with the change in the bank). Everything that shows pre-season money reads it through `openingSquadMoney` in `engine/squad.js`, and every "is this a draft?" question outside the transfer search treats both sources as the opening squad, so the two encodings can never tell different stories on screen (FINDINGS, "The two pre-season encodings").
 
@@ -267,10 +272,27 @@ than the whole cache.
 `scripts/train-model.mjs` writes a versioned artifact into `models/` and records
 it in `models/index.json`. **Superseded artifacts stay in `models/` and stay
 registered in the index on purpose.** Only the highest version is ever loaded,
-so `models/fpl-planner-v1.json` never reaches the engine, but it is the evidence
-behind the REJECT verdict recorded in `experiments/registry.md` section 2 and
-the comparison baseline `scripts/evaluate-model.mjs --model` takes: deleting it
-would make that verdict un-retestable. It is retained history, not a stale file.
+so `models/fpl-planner-v1.json` never reaches the engine. It is kept as the
+dated record of the first trained artifact and the metrics it was accepted or
+rejected on, which `models/index.json` still carries beside it.
+
+Two things this file is NOT, both of which an earlier version of this paragraph
+claimed and neither of which survives testing (checked 2026-09-11):
+
+- It is not the evidence behind the REJECT in `experiments/registry.md`
+  section 2. That section never mentions v1; its evidence is v2's own
+  calibrator metrics plus the two leakage-free season replays, whose artifacts
+  live in the gitignored `.data/experiments/`.
+- It is not a re-scorable comparison baseline. v1 carries feature version
+  `fv1`, `scripts/train-model.mjs` now builds `fv2`, and
+  `scripts/evaluate-model.mjs` refuses the mismatch by design. Run
+  `node apps/fpl-planner/scripts/evaluate-model.mjs --model fpl-planner-v1.json`
+  and it explains that clearly rather than failing obscurely, which is the
+  correct behaviour: keep the refusal, do not "fix" it into a silent re-score
+  against features the artifact was never trained on.
+
+So: retained history, and only history. Deleting it loses a record; it does not
+make any verdict un-retestable.
 
 `js/data/model.js` loads that index at boot, takes the
 highest version in it, and passes on only the parts the artifact names in its own

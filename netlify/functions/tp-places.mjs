@@ -322,9 +322,9 @@ export default async function handler(req) {
   // Failing the batch as `unavailable` keeps the client's quiet-degrade path
   // (it treats the response like any other transient miss) and step (7) then
   // hands every reserved slot back.
-  let results, spent;
+  let results, spent, searched;
   try {
-    ({ results, spent } = await resolveQueries({
+    ({ results, spent, searched } = await resolveQueries({
       queries: clamped.queries,
       cache: blobCache(store),
       findPlaceId: (q, bias) => findPlaceId(placesKey, q, bias),
@@ -340,6 +340,7 @@ export default async function handler(req) {
     // know how many, so the conservative answer is to keep the reservation
     // (never under-count spend against the monthly cap that protects the card).
     spent = granted;
+    searched = granted;
   }
 
   // (7) Give back the reservations the caches made unnecessary. The CAS loop
@@ -347,10 +348,20 @@ export default async function handler(req) {
   // unspent slots from the latest counters. If it stays contended past the
   // retry cap the slots simply remain reserved until the bucket rolls over,
   // which can never mint free calls, so the failure is ignored.
+  //
+  // TWO REFUNDS, and the difference is the point. `unspent` is the money: a
+  // reservation that produced no billed Place Details call is owed back to the
+  // pools and to billedMonth. `unusedRate` is narrower, because a query whose
+  // free Text Search ran and resolved to nothing still did real upstream work
+  // and still wrote a blob. Refunding that against the per-client and
+  // per-network caps was what let a caller send never-resolving queries
+  // forever at zero quota cost. A fully cached batch searches nothing, so both
+  // numbers are the whole reservation and it still costs the traveller nothing.
   const unspent = granted - spent;
-  if (unspent > 0) {
+  const unusedRate = granted - Math.max(spent, searched || 0);
+  if (unspent > 0 || unusedRate > 0) {
     await updateUsage(store, USAGE_KEY, latest =>
-      ({ write: releaseQuota(latest, clamped.clientId, now, unspent, tier, networkId) }));
+      ({ write: releaseQuota(latest, clamped.clientId, now, unspent, tier, networkId, unusedRate) }));
   }
 
   return json({ results, attribution: ATTRIBUTION }, 200);

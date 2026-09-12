@@ -59,6 +59,21 @@ async function stopAll() {
   if (emu && emu.ok) await emu.stop();
 }
 
+// Ctrl-C, a killed CI step or a stopped background task used to leave the
+// emulator, both static servers and a headless Chrome running, and the next
+// run then SKIPPED on the busy port - which reads exactly like a finished
+// run. startEmulator reaps our own leftovers now, but not leaking them is
+// better: tear everything down on the way out, whatever the exit path.
+let tearingDown = false;
+const bail = (signal) => {
+  if (tearingDown) return;
+  tearingDown = true;
+  console.log(`\n[run-emulator] ${signal}: tearing down emulators, servers and Chrome`);
+  stopAll().then(() => process.exit(signal === 'SIGINT' ? 130 : 143),
+    () => process.exit(143));
+};
+for (const sig of ['SIGINT', 'SIGTERM', 'SIGHUP']) process.on(sig, () => bail(sig));
+
 let exitCode = 0;
 try {
   // Emulators first: they are the slowest to come up and the suite skips

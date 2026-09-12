@@ -42,6 +42,10 @@
 .sync-status-pill[data-state="connecting"] { background: rgba(245, 158, 11, 0.6); }
 .sync-status-pill[data-state="offline"]    { background: rgba(148, 163, 184, 0.85); }
 .sync-status-pill[data-state="idle"]       { background: rgba(100, 116, 139, 0.7); }
+/* A write the engine will not retry, or a sync that never started. Red rather
+   than the amber used for "saving" and "conflict": those two are in-progress
+   states that resolve themselves, this one needs the user to act. */
+.sync-status-pill[data-state="failed"]     { background: rgba(220, 38, 38, 0.9); }
 
 .sync-banner {
     position: fixed;
@@ -70,6 +74,7 @@
    and one of them is now sitting in a recovery copy. Amber, and it stays up
    until dismissed - a message nobody reads is the same as no message. */
 .sync-banner[data-state="conflict"] { background: rgba(217, 119, 6, 0.95); }
+.sync-banner[data-state="failed"]   { background: rgba(185, 28, 28, 0.97); }
 .sync-banner[data-fading="true"]   { opacity: 0; transform: translateY(-4px); }
 .sync-banner__close {
     flex: none;

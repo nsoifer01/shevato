@@ -21,6 +21,14 @@
  * contains at least one exercise. Explicitly NOT recoverable: a completed
  * session (finish clears the key, but a crash between save and clear must
  * not resurrect it), and a corrupt or empty blob.
+ *
+ * The one exemption is a QUICK workout, which starts with an empty exercise
+ * list on purpose and fills up as the lifter goes. The empty-exercises
+ * rejection exists to refuse junk, and junk does not carry
+ * `isQuickWorkout: true`; without the exemption, starting a quick workout and
+ * locking the phone before adding the first exercise lost the running clock
+ * and broke the app's promise that an unfinished workout is ALWAYS
+ * recoverable.
  */
 
 /**
@@ -30,7 +38,8 @@
 export function readableActiveWorkout(raw) {
     if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
     if (raw.completed === true) return null;
-    if (!Array.isArray(raw.exercises) || raw.exercises.length === 0) return null;
+    if (!Array.isArray(raw.exercises)) return null;
+    if (raw.exercises.length === 0 && raw.isQuickWorkout !== true) return null;
     if (!raw.id) return null;
     return raw;
 }

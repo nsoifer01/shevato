@@ -1918,9 +1918,22 @@ const TripLogic = (() => {
       .replace(/\r\n?|\n/g, '\\n');
   }
 
+  // The words a calendar entry shows for an item. A calendar has no icon to
+  // say what kind of stop this is, so the meal label goes back into the words
+  // there ("Dinner: Saba") - the one surface where the textual category
+  // genuinely carries the meaning. Shared by the item's own event and by the
+  // booking-deadline event below, so the two can never name the same item
+  // differently.
+  function icsSummaryText(it) {
+    const mk = itemMealKind(it);
+    return mk && isMealKind(it.meal) ? `${mealLabel(mk)}: ${it.title}` : it.title;
+  }
+
+  const icsCompact = d => d.replace(/-/g, '');
+
   function icsEvent(it, stamp) {
     if (!isIsoDate(it.startDate)) return null;
-    const compact = d => d.replace(/-/g, '');
+    const compact = icsCompact;
     const lines = ['BEGIN:VEVENT', `UID:${it.id}@trip-planner.shevato.com`];
     if (stamp) lines.push(`DTSTAMP:${stamp}`);
     // ANY item with a clock time is a timed event. Restricting this to the
@@ -1939,21 +1952,25 @@ const TripLogic = (() => {
       // timed floating event (no Z, no TZID): the traveller's local wall clock
       const st = `${compact(it.startDate)}T${it.startTime.replace(':', '')}00`;
       lines.push(`DTSTART:${st}`);
-      if (isIsoDate(it.endDate) && /^\d{2}:\d{2}$/.test(it.endTime || '')) {
-        lines.push(`DTEND:${compact(it.endDate)}T${it.endTime.replace(':', '')}00`);
-      } else {
-        lines.push(`DTEND:${st}`);
-      }
+      // RFC 5545 3.8.2.2: DTEND MUST be later than DTSTART, and a strict client
+      // DROPS an event that breaks it. validateItem deliberately accepts a
+      // flight landing the same day at an EARLIER local clock (a date-line
+      // crossing, or any westbound hop that gains hours), so composing the two
+      // stored fields used to write exactly such an event. The app holds no
+      // timezone data and so cannot turn those two wall clocks into a real
+      // duration; the honest rendering is the zero-length point event the
+      // no-end-time branch below already writes. Compared as strings because
+      // both are the same fixed-width YYYYMMDDTHHMMSS shape.
+      const en = isIsoDate(it.endDate) && /^\d{2}:\d{2}$/.test(it.endTime || '')
+        ? `${compact(it.endDate)}T${it.endTime.replace(':', '')}00`
+        : '';
+      lines.push(`DTEND:${en && en > st ? en : st}`);
     } else {
       // untimed: single all-day event
       lines.push(`DTSTART;VALUE=DATE:${compact(it.startDate)}`);
       lines.push(`DTEND;VALUE=DATE:${compact(addDays(it.startDate, 1))}`);
     }
-    // A calendar entry has no icon to say what kind of stop this is, so the
-    // meal label goes back into the words there ("Dinner: Saba") - the one
-    // surface where the textual category genuinely carries the meaning.
-    const mk = itemMealKind(it);
-    lines.push(`SUMMARY:${icsEscapeText(mk && isMealKind(it.meal) ? `${mealLabel(mk)}: ${it.title}` : it.title)}`);
+    lines.push(`SUMMARY:${icsEscapeText(icsSummaryText(it))}`);
     if (it.location) lines.push(`LOCATION:${icsEscapeText(it.location)}`);
     const descParts = [];
     if (it.details) descParts.push(it.details);
@@ -1971,6 +1988,62 @@ const TripLogic = (() => {
     if (PAYMENT_LABEL[it.payment]) descParts.push('Payment: ' + PAYMENT_LABEL[it.payment]);
     if (it.costNote) descParts.push(it.costNote);
     lines.push(`DESCRIPTION:${icsEscapeText(descParts.join('\n'))}`);
+    lines.push('END:VEVENT');
+    return lines;
+  }
+
+  /**
+   * The Book-by date as something that actually notifies, rather than the
+   * `Book by:` line of prose it has always been inside the item's own
+   * DESCRIPTION. The whole point of a booking deadline is that it matters when
+   * you are away from this app, and until now honouring one meant hand-making a
+   * separate calendar reminder for every to-book item.
+   *
+   * WHY A SEPARATE ALL-DAY VEVENT AND NOT A VALARM ON THE ITEM'S EVENT.
+   * `bookBy` is a DATE. The traveller typed "June 1", never "June 1 at 09:00",
+   * and nothing in the stored data justifies a clock time. Two shapes were on
+   * the table:
+   *
+   *   1. An alarm on the item's own VEVENT. RFC 5545 3.8.6.3 defines TRIGGER as
+   *      a DURATION, or a DATE-TIME that "MUST specify a UTC-formatted
+   *      DATE-TIME value". There is no TRIGGER;VALUE=DATE in the grammar at
+   *      all, so an absolute date-valued trigger is simply not emittable, and
+   *      the UTC DATE-TIME form needs an instant this app does not have. The
+   *      relative DURATION form IS legal, but it is measured from DTSTART and
+   *      therefore inherits the ITEM's clock: a 23:55 flight would ping at
+   *      23:55 on the deadline day, and a fixed offset would silently invent a
+   *      time exactly the way a hardcoded 09:00 would.
+   *
+   *   2. An all-day VEVENT on the bookBy date. DTSTART;VALUE=DATE with an
+   *      exclusive DTEND the next day is how every calendar expresses "this
+   *      whole day, no clock time"; it is what the stay branch of icsEvent
+   *      already writes, and Google, Apple and Outlook all render it in the
+   *      day's all-day band and apply the READER's own all-day notification
+   *      preference to it.
+   *
+   * So: shape 2, carrying one VALARM. ACTION:DISPLAY requires DESCRIPTION and
+   * TRIGGER (RFC 5545 3.6.6, dispprop), and the trigger is the relative PT0S -
+   * the start of the deadline day, which is the earliest instant the stored
+   * date actually justifies and is derived from the deadline itself rather than
+   * picked out of the air.
+   *
+   * A distinct UID (`<id>-bookby@...`) keeps it from colliding with the item's
+   * own event if the file is ever re-imported.
+   */
+  function icsDeadlineEvent(it, stamp) {
+    if (!openBookingDeadline(it)) return null;
+    const summary = icsEscapeText('Book by: ' + icsSummaryText(it));
+    const lines = ['BEGIN:VEVENT', `UID:${it.id}-bookby@trip-planner.shevato.com`];
+    if (stamp) lines.push(`DTSTAMP:${stamp}`);
+    lines.push(`DTSTART;VALUE=DATE:${icsCompact(it.bookBy)}`);
+    lines.push(`DTEND;VALUE=DATE:${icsCompact(addDays(it.bookBy, 1))}`);
+    lines.push(`SUMMARY:${summary}`);
+    if (it.location) lines.push(`LOCATION:${icsEscapeText(it.location)}`);
+    // Why this day matters, in the one place the traveller will be reading it.
+    const desc = [`Still to book: ${icsSummaryText(it)}.`, `The item itself is on ${icsDate(it.startDate)}.`];
+    if (it.confirmation) desc.push('Ref: ' + it.confirmation);
+    lines.push(`DESCRIPTION:${icsEscapeText(desc.join('\n'))}`);
+    lines.push('BEGIN:VALARM', 'ACTION:DISPLAY', `DESCRIPTION:${summary}`, 'TRIGGER;RELATED=START:PT0S', 'END:VALARM');
     lines.push('END:VEVENT');
     return lines;
   }
@@ -2012,6 +2085,11 @@ const TripLogic = (() => {
       if (!it || it.status === 'cancelled') continue;
       const ev = icsEvent(it, now);
       if (ev) out.push(...ev);
+      // Immediately after the item it belongs to, so the pairing is obvious to
+      // anyone reading the file, and so a client that lists by insertion order
+      // keeps them together.
+      const due = icsDeadlineEvent(it, now);
+      if (due) out.push(...due);
     }
     out.push('END:VCALENDAR');
     return out.map(icsFold).join('\r\n') + '\r\n';
@@ -2584,7 +2662,24 @@ const TripLogic = (() => {
   // date/time for a leg saved with only one clock value (a short hop where the
   // traveller filled in departure alone). Returns null when no time at all was
   // entered, because guessing one would invent the very number being judged.
+  //
+  // THE OVERNIGHT CASE, and why the fallback is scoped rather than general.
+  // The form makes the two arrival fields independently optional: "Lands on
+  // (optional, for overnight legs)" and "Landing time (optional)". Fill in only
+  // the date and the old code took the DAY from endDate and the CLOCK from
+  // startTime, composing an arrival that was never entered. A JFK-LHR leg
+  // departing 23:00 on the 1st and landing on the 2nd was read as arriving
+  // 23:00 on the 2nd - a full day in the air - and the next morning's train was
+  // then reported as an "Impossible connection" against that invented number.
+  // The fallback is right for a same-day hop, where reusing the departure clock
+  // costs nothing and the leg is over within the day. It is wrong the moment
+  // the leg is known to cross midnight, because then the two fields describe
+  // different days and the clock cannot be carried between them. Unknown is the
+  // honest answer there, and every consumer already handles null: an arrival
+  // that cannot be computed simply raises no connection warning.
   function legArrival(it) {
+    const crossesMidnight = isIsoDate(it.endDate) && isIsoDate(it.startDate) && it.endDate > it.startDate;
+    if (crossesMidnight && !TIME_RE.test(it.endTime || '')) return null;
     const date = isIsoDate(it.endDate) ? it.endDate : it.startDate;
     const time = TIME_RE.test(it.endTime || '') ? it.endTime : (TIME_RE.test(it.startTime || '') ? it.startTime : '');
     if (!isIsoDate(date) || !time) return null;
@@ -2714,12 +2809,23 @@ const TripLogic = (() => {
   // 'passed' (deadline behind us, daysLeft negative) or 'due' (inside the
   // window, daysLeft 0..BOOKING_LEAD_DAYS). Sorted by deadline, soonest first.
   const BOOKING_LEAD_DAYS = 7;
+
+  /**
+   * "This deadline is still a task", the single rule behind every surface that
+   * acts on a Book-by date. The warnings panel counts these down and the .ics
+   * export writes a reminder for exactly these, so the two can never disagree
+   * about which items are still to book. Everything above about Booked /
+   * Decide later / Cancelled and about needing a real item date lives here.
+   */
+  function openBookingDeadline(it) {
+    return !!it && it.status === 'to-book' && isIsoDate(it.bookBy) && isIsoDate(it.startDate);
+  }
+
   function bookingDeadlines(items, todayStr) {
     if (!isIsoDate(todayStr)) return [];
     const out = [];
     for (const it of (items || [])) {
-      if (!it || it.status !== 'to-book') continue;
-      if (!isIsoDate(it.bookBy) || !isIsoDate(it.startDate)) continue;
+      if (!openBookingDeadline(it)) continue;
       const daysLeft = diffDays(todayStr, it.bookBy);
       if (daysLeft > BOOKING_LEAD_DAYS) continue;
       out.push({
@@ -10787,6 +10893,53 @@ const TripLogic = (() => {
     return sections.map(s => s.join('\n')).join('\n\n');
   }
 
+  /**
+   * The WHOLE trip as one message. Sending a ten-day itinerary to someone who
+   * will not open a web app used to mean opening ten day menus and pasting ten
+   * fragments together in the right order.
+   *
+   * This is COMPOSITION and nothing else: every day is dayShareText's output
+   * verbatim, in dayCards order, under a title and the span the day cards
+   * themselves cover. Nothing here re-reads an itinerary, so the pasted trip
+   * and the pasted day can never describe the same day differently.
+   *
+   * The span comes from renderStart/renderEnd rather than start/end for the
+   * same reason every other per-day view walks those: one mistyped year must
+   * not print a header claiming the trip runs to 2913 while the days below it
+   * stop at the cap.
+   *
+   * A day with nothing on it is DROPPED. Ten bare date headers is precisely
+   * what makes a pasted itinerary unreadable, and the three things dayShareText
+   * can print under one - timed rows, untimed rows, the night's bed - are the
+   * three things checked here.
+   *
+   * Trip essentials cannot reach this text for the same structural reason they
+   * cannot reach a day's: dayShareText is handed ITEMS, and the emergency
+   * contact, the insurer and the medical note live on the trip.
+   */
+  function tripShareText(trip, fmtDate, fmtTime) {
+    const safe = Object.assign({}, trip || {}, { items: Array.isArray(trip && trip.items) ? trip.items : [] });
+    const items = safe.items;
+    const stats = tripStats(safe);
+    const head = ['🧳 ' + (String(safe.name == null ? '' : safe.name).trim() || 'Trip')];
+    if (isIsoDate(stats.renderStart) && isIsoDate(stats.renderEnd)) {
+      head.push(stats.renderStart === stats.renderEnd
+        ? fmtDate(stats.renderStart)
+        : `${fmtDate(stats.renderStart)} - ${fmtDate(stats.renderEnd)}`);
+    }
+    const sections = [head.join('\n')];
+    for (const card of dayCards(safe)) {
+      const has = card.events.some(ev => ev.kind === 'item') || card.untimed.length > 0
+        || !!shareHostStay(items, card.date);
+      if (!has) continue;
+      sections.push(dayShareText(card, items, fmtDate, fmtTime));
+    }
+    // A title on its own reads like a truncated message, so a plan with no
+    // dated item says what it is rather than trailing off.
+    if (sections.length === 1) sections.push('Nothing scheduled yet.');
+    return sections.join('\n\n');
+  }
+
   // ---------- spend over time ----------
   // Monday on or before this date. ISO weeks run Monday..Sunday and
   // getUTCDay() calls Sunday 0, so Sunday walks back six days, not none.
@@ -10870,10 +11023,10 @@ const TripLogic = (() => {
     normalizeTravelers, travelerTotals,
     assignedTravelers, evenSplitAmounts, splitAmountsSum, splitAmountsMatch, customSplitShares,
     settlements, costsByType, typeBarShares, cashNeeded,
-    dayShareText, shareHostStay, weekStart, spendByWeek, MAX_SPEND_WEEKS,
+    dayShareText, tripShareText, shareHostStay, weekStart, spendByWeek, MAX_SPEND_WEEKS,
     bytesToBase64url, base64urlToBytes,
-    transportGaps, connectionWarnings, sameTimeCollisions, TIGHT_CONNECTION_MIN, tripPhase, isPastRow,
-    bookingDeadlines, BOOKING_LEAD_DAYS,
+    transportGaps, connectionWarnings, legArrival, sameTimeCollisions, TIGHT_CONNECTION_MIN, tripPhase, isPastRow,
+    bookingDeadlines, openBookingDeadline, BOOKING_LEAD_DAYS,
     paceAdvisory, PACE_MIN_STAYS, PACE_FAST_AVG_NIGHTS,
     dayCards, dayHostStay, dayMorningStay, dayItemsInOrder, emptyDayNote, stripPlaceCode, parseTravelOrigin, dayMorningCity,
     departureOrigin, suggestedPassport, passportAssumptionParts,

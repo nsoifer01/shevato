@@ -44,7 +44,7 @@
 import { db, firestore } from '../../../firebase-config.js';
 const {
     doc, collection, getDoc, getDocs, setDoc, updateDoc, deleteDoc, addDoc,
-    onSnapshot, query, orderBy, limit, serverTimestamp, runTransaction,
+    onSnapshot, query, orderBy, limit, limitToLast, serverTimestamp, runTransaction,
     increment, deleteField
 } = firestore;
 
@@ -108,6 +108,9 @@ const state = {
     earlyRevealForQuestion: null,
     earlyAdvanceForQuestion: null,
     autoPickForQuestion: null,
+    // The host takeover is keyed by ROOM, not by question: it happens at
+    // most once per room per client, whatever stage the room is in.
+    hostTakeoverForRoom: null,
     // Presence heartbeat + host-independent clock (audit D3/D4).
     heartbeatTimer: null,
     clockTimer: null,
@@ -2264,6 +2267,7 @@ function stopPresenceAndClock() {
     if (state.onVisibility) { document.removeEventListener('visibilitychange', state.onVisibility); state.onVisibility = null; }
     state.sweptUids = {};
     state.liveSignature = null;
+    state.hostTakeoverForRoom = null;
 }
 
 async function beforeUnloadCleanup() {
@@ -2543,14 +2547,22 @@ const chatState = {
     messages: [],
     unsub: null,
     lastSentAt: null,
-    unreadSince: 0
+    // The read marker is the ID of the newest message already seen, never a
+    // count: the subscribed window SLIDES once a room passes
+    // Chat.CHAT_WINDOW_SIZE, so its length stops growing and anything
+    // length-based reports 0 unread from then on. Chat.unreadCount owns the
+    // arithmetic, including the case where the marker itself has scrolled
+    // out of the window.
+    lastReadMessageId: null,
+    initialFillDone: false,
+    lastNotifiedMessageId: null
 };
 
 function openChatPanel() {
     chatState.open = true;
     const panel = $('#room-chat-panel');
     if (panel) panel.hidden = false;
-    chatState.unreadSince = chatState.messages.length;
+    markChatRead();
     updateChatBadge();
     // Show "Game in progress" banner when a game is actively running.
     const liveBanner = document.getElementById('room-chat-game-live');
@@ -2567,10 +2579,22 @@ function closeChatPanel() {
     if (panel) panel.hidden = true;
 }
 
+/**
+ * Mark everything currently in the window as read. The marker is the newest
+ * message's ID; Chat.unreadCount counts forward from it. Called on open, on
+ * the first fill, and on every snapshot while the panel is open - a marker
+ * that stood still would scroll out of the sliding window and make the badge
+ * jump to a full window the moment the panel closed.
+ */
+function markChatRead() {
+    const newest = chatState.messages[chatState.messages.length - 1];
+    chatState.lastReadMessageId = newest ? newest.id : null;
+}
+
 function updateChatBadge() {
     const badge = $('#room-chat-badge');
     if (!badge) return;
-    const unread = Math.max(0, chatState.messages.length - chatState.unreadSince);
+    const unread = Chat.unreadCount(chatState.messages, chatState.lastReadMessageId);
     if (chatState.open || unread === 0) {
         badge.hidden = true;
         return;
@@ -2588,23 +2612,30 @@ function scrollChatToBottom() {
 function startChatListener(code) {
     stopChatListener();
     chatState.messages = [];
-    chatState.unreadSince = 0;
+    chatState.lastReadMessageId = null;
     const chatRef = collection(db, 'triviaRooms', code, 'chat');
-    const q = query(chatRef, orderBy('sentAt', 'asc'), limit(80));
+    // The LATEST window, oldest-first. See Chat.buildChatWindowQuery: an
+    // ascending order with a plain limit is the OLDEST n, which froze the
+    // panel permanently once a room passed the cap.
+    const q = Chat.buildChatWindowQuery(chatRef, { query, orderBy, limitToLast });
     chatState.initialFillDone = false;
     chatState.lastNotifiedMessageId = null;
     chatState.unsub = onSnapshot(q, (snap) => {
-        const prevLen = chatState.messages.length;
+        // Identity, not length. A full window has a constant length, so
+        // "did it grow" cannot answer "is there a new message" once the
+        // window slides. This also keeps a SHRINKING window quiet: the
+        // orphan sweep deletes chat as the room closes, which exposes an
+        // older message as the newest one, and that must not toast.
+        const prevIds = new Set(chatState.messages.map((m) => m.id));
         chatState.messages = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
         renderChatMessages();
         const wasInitialFill = !chatState.initialFillDone;
         // First fill is treated as "all read" so the badge doesn't show
-        // 50 unread on first render. After that, growth = unread.
+        // 50 unread on first render.
         if (wasInitialFill) {
-            chatState.unreadSince = chatState.messages.length;
             chatState.initialFillDone = true;
-            const newest0 = chatState.messages[chatState.messages.length - 1];
-            chatState.lastNotifiedMessageId = newest0 ? newest0.id : null;
+            markChatRead();
+            chatState.lastNotifiedMessageId = chatState.lastReadMessageId;
         }
         // Toast preview + sound for any genuinely-new message from another
         // player when the panel is closed. Works for both text and emoji
@@ -2616,11 +2647,12 @@ function startChatListener(code) {
             && state.user
             && newest.uid !== state.user.uid
             && newest.id !== chatState.lastNotifiedMessageId
-            && prevLen < chatState.messages.length) {
+            && !prevIds.has(newest.id)) {
             chatState.lastNotifiedMessageId = newest.id;
             showToast(`${newest.displayName || 'Player'}: ${newest.text}`, { icon: '💬', key: 'chat:' + newest.id });
             try { Feedback.chatMessage(); } catch (_) {}
         }
+        if (chatState.open) markChatRead();
         updateChatBadge();
     }, (err) => {
         console.warn('Chat listener error:', err);
@@ -2633,7 +2665,7 @@ function stopChatListener() {
         chatState.unsub = null;
     }
     chatState.messages = [];
-    chatState.unreadSince = 0;
+    chatState.lastReadMessageId = null;
     chatState.initialFillDone = false;
     chatState.lastNotifiedMessageId = null;
     updateChatBadge();
@@ -4712,7 +4744,10 @@ function renderReadyBar(phase) {
     bar.hidden = !visible;
     if (!visible) { lastReadyBarSignature = null; return; }
 
-    const players = state.roomPlayers || [];
+    // LIVE players only, the same set progressRoomClock gates the Ready-skip
+    // advance on. Counting ghosts here made the bar read "2/3 ready" after
+    // the round had already skipped on the live 2 of 2.
+    const players = livePlayers();
     const allSubmitted = players.length > 0
         && players.every((p) => p && p.currentAnsweredFor === loc.id);
     const meReady = !!(me && me.readyAfterQId === loc.id);
@@ -5971,6 +6006,37 @@ function currentFinalRanking() {
 }
 
 /**
+ * Adopt the room when its host's tab is gone.
+ *
+ * `hostUid` used to be reassigned in exactly one place, `leaveRoom`, which is
+ * the explicit "Leave room" button. `beforeUnloadCleanup` stamps
+ * `disconnectedAt` and hands nothing off, and a force-quit, a discarded
+ * background tab or a dead phone never fires `beforeunload` at all - so
+ * closing the tab left `hostUid` naming a player who was never coming back,
+ * and early reveal, the Globe Drop Ready-to-skip advance, sweepStalePlayers
+ * and playAgain (the rematch) were all dead for the rest of the session.
+ *
+ * firestore.rules already allowed the repair (`memberHostTakeover`): a member
+ * may name THEMSELVES host once the current host's player doc is gone or
+ * stale. RoomState.shouldTakeOverHost is the matching client-side decision
+ * and names a single deterministic writer, so this is one write per room, not
+ * a race. Keyed like the other clock writes, and re-armed if the write is
+ * refused (the host came back inside the grace, or another client won).
+ */
+function maybeTakeOverHost(room) {
+    if (!state.roomCode || !state.user) return;
+    const code = state.roomCode;
+    if (state.hostTakeoverForRoom === code) return;
+    if (!RoomState.shouldTakeOverHost(room, state.roomPlayers, state.user.uid, Date.now())) return;
+    state.hostTakeoverForRoom = code;
+    updateDoc(doc(db, 'triviaRooms', code), { hostUid: state.user.uid })
+        .catch((err) => {
+            console.warn('host takeover failed:', err);
+            if (state.hostTakeoverForRoom === code) state.hostTakeoverForRoom = null;
+        });
+}
+
+/**
  * Host-independent game clock (audit D3). Runs from the rAF render loops,
  * from a 500 ms setInterval and from visibilitychange (startPresenceAndClock).
  * Decides, from the room doc + server-anchored timestamps, whether this
@@ -5985,6 +6051,10 @@ function currentFinalRanking() {
 function progressRoomClock() {
     const room = state.roomData;
     if (!room || !state.user || !state.roomCode) return;
+    // Before any stage guard: a room whose host closed the tab needs a new
+    // host in EVERY stage, and the lobby and the end screen (where the
+    // rematch lives) are the two the guards below would skip.
+    maybeTakeOverHost(room);
     // The picking stage has its own deadline: without one, a decider who
     // locked their phone or closed the tab stalled the room for everyone
     // with no way out (the same failure mode the playing stage had).
@@ -6006,6 +6076,12 @@ function progressRoomClock() {
     const isHost = room.hostUid === state.user.uid;
     const live = livePlayers();
 
+    // Deliberately BELOW the status guards, so it only runs while a game is
+    // playing. A ghost in the lobby has to stay visible as "Disconnected":
+    // that dimmed tile is how the others learn their friend dropped, and
+    // deleting the doc makes the player silently vanish from the grid
+    // instead. The e2e pins it ("past the grace the lobby shows the ghost as
+    // Disconnected"), so do not hoist this.
     if (isHost) sweepStalePlayers();
 
     // Early reveal once every LIVE player has answered (ghosts past the
@@ -6023,9 +6099,9 @@ function progressRoomClock() {
         });
     }
 
-    const fireAdvance = () => {
+    const fireAdvance = (opts) => {
         state.earlyAdvanceForQuestion = key;
-        advanceQuestionOrFinish().catch((err) => {
+        advanceQuestionOrFinish(opts).catch((err) => {
             console.warn('advance failed:', err);
             // Retry about once a second instead of every frame.
             setTimeout(() => {
@@ -6039,7 +6115,10 @@ function progressRoomClock() {
         && state.earlyAdvanceForQuestion !== key
         && live.length > 0
         && live.every((p) => p.readyAfterQId === currentQId)) {
-        fireAdvance();
+        // Single write, not a transaction: nothing else may advance the room
+        // before the deadline, and the two-phase version misses the window it
+        // exists to beat when the SDK's queue stalls. See the function.
+        fireAdvance({ unanimous: true });
         return;
     }
 
@@ -6115,84 +6194,73 @@ async function maybeAutoPickCategory(room) {
 
 /**
  * Move the room past the current question: next location (Globe Drop),
- * the next picking stage (Trivia) or the finished state. A transaction
- * with an idempotent precondition (still playing, same question id and
- * index) so the host and a member's fallback can race without a
- * double-advance; a no-op when someone else already moved the room.
+ * the next picking stage (Trivia) or the finished state.
+ *
+ * TWO WRITE PATHS, and which one is correct is decided by firestore.rules,
+ * not by preference:
+ *
+ *   `{ unanimous: true }` is the Globe Drop Ready-skip, which fires strictly
+ *   BEFORE questionOverMs(). The rules let a MEMBER advance the room only at
+ *   or after that moment (memberTimedAdvance re-checks the deadline on the
+ *   server clock), so at this instant the host is the only client that can
+ *   write an advance at all, and it has already serialised itself on
+ *   state.earlyAdvanceForQuestion. A transactional re-read therefore defends
+ *   against a race that cannot happen, and it costs the feature the thing it
+ *   is made of - see below. The precondition is still checked, against the
+ *   host's own listener copy, which is the same document the Ready gate just
+ *   read.
+ *
+ *   Everything else is the timed advance, where the host and any member's
+ *   fallback genuinely do race, and the transaction's idempotent precondition
+ *   is what stops a double-advance. That path is unchanged.
+ *
+ * WHY THE SPLIT EXISTS (2026-09-12). runTransaction is two DEPENDENT RPCs on
+ * the SDK's single serialised async queue: BatchGetDocuments, then Commit
+ * issued from the read's continuation. Measured on a starved two-core runner
+ * with the RPCs timed in the page, the read answered in 0.1-0.2 s and the
+ * commit was issued 4.2 s AFTER it, with the main thread never blocked
+ * (longest frame gap 0.24 s) and no transaction retry: the stall is the queue
+ * between the phases, not the network, not the emulator and not contention.
+ * The advance then landed 1.5 s past the deadline it exists to beat, so the
+ * room sat out the whole ten-second reveal that every player had just voted
+ * to skip. The Ready-skip's entire budget is the remainder of that window
+ * after collecting the votes, which is about five seconds; a stall between
+ * two phases eats it, a stall before one write does not.
  */
-async function advanceQuestionOrFinish() {
+async function advanceQuestionOrFinish({ unanimous = false } = {}) {
     if (!state.roomCode || !state.roomData) return;
-    const expectedQId = state.roomData.currentQuestionId;
-    const expectedIdx = state.roomData.currentQuestionIndex || 0;
     const roomRef = doc(db, 'triviaRooms', state.roomCode);
     // Ranking and rotation come from the player docs we hold now; they are
     // not part of the transaction (different documents), which is fine: the
     // asking window is closed, so scores are final.
-    const finalRanking = currentFinalRanking();
-    const currentPlayers = sortPlayersForRotation(livePlayers())
-        .map((p) => p.uid)
-        .filter((uid) => typeof uid === 'string' && uid.length > 0);
+    //
+    // No per-player reset write here either. The rules (correctly) forbid the
+    // host from writing other players' docs, so resetting their per-question
+    // fields would 403. `currentAnsweredFor` (written by the player
+    // themselves on submit) is the per-question marker.
+    const opts = {
+        expectedQuestionId: state.roomData.currentQuestionId,
+        expectedIndex: state.roomData.currentQuestionIndex || 0,
+        finalRanking: currentFinalRanking(),
+        players: sortPlayersForRotation(livePlayers())
+            .map((p) => p.uid)
+            .filter((uid) => typeof uid === 'string' && uid.length > 0),
+        stamp: serverTimestamp()
+    };
+
+    if (unanimous) {
+        const payload = RoomState.nextRoomStateAfterQuestion(state.roomData, opts);
+        if (!payload) return;
+        await updateDoc(roomRef, payload);
+        return;
+    }
 
     await runTransaction(db, async (tx) => {
         const snap = await tx.get(roomRef);
         if (!snap.exists()) return;
-        const room = snap.data() || {};
-        if (room.status !== 'playing') return;
-        if (room.currentQuestionId !== expectedQId) return;
-        if ((room.currentQuestionIndex || 0) !== expectedIdx) return;
-
-        const idx = room.currentQuestionIndex || 0;
-        const total = room.totalQuestions;
-        const nextIdx = idx + 1;
-        const playedIds = Array.isArray(room.playedQuestionIds) ? room.playedQuestionIds.slice() : [];
-        if (expectedQId && !playedIds.includes(expectedQId)) playedIds.push(expectedQId);
-
-        // No per-player reset write here. The rules (correctly) forbid the
-        // host from writing other players' docs, so resetting their
-        // per-question fields would 403. `currentAnsweredFor` (written by
-        // the player themselves on submit) is the per-question marker.
-
-        if (nextIdx >= total) {
-            tx.update(roomRef, {
-                status: 'finished',
-                finishedAt: serverTimestamp(),
-                playedQuestionIds: playedIds,
-                finalRanking
-            });
-            return;
-        }
-
-        if (room.gameType === 'globe-drop') {
-            const pool = Array.isArray(room.questions) ? room.questions : [];
-            const nextLoc = pool[nextIdx];
-            if (!nextLoc) return;
-            tx.update(roomRef, {
-                status: 'playing',
-                currentQuestionIndex: nextIdx,
-                currentQuestionId: nextLoc.id,
-                questionStartedAt: serverTimestamp(),
-                revealStartedAt: null,
-                playedQuestionIds: playedIds
-            });
-            return;
-        }
-
-        // Trivia: rotate the decider over the CURRENT live players (late
-        // joiners enter the rotation, ghosts are skipped) and re-enter the
-        // picking stage.
-        const nextDecider = RoomState.pickDecider(currentPlayers, nextIdx);
-        tx.update(roomRef, {
-            status: 'picking',
-            currentQuestionIndex: nextIdx,
-            currentQuestionId: null,
-            selectedCategory: null,
-            questionStartedAt: null,
-            revealStartedAt: null,
-            pickingStartedAt: serverTimestamp(),
-            playerOrder: currentPlayers,
-            deciderUid: nextDecider,
-            playedQuestionIds: playedIds
-        });
+        const payload = RoomState.nextRoomStateAfterQuestion(snap.data() || {}, opts);
+        if (!payload) return;
+        tx.update(roomRef, payload);
     });
 }
 

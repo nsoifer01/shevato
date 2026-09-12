@@ -9,6 +9,12 @@ export class WorkoutSession {
     constructor(data = {}) {
         this.id = data.id || generateNumericId();
         this.programId = data.programId || null;
+        // A quick workout has no program BY DESIGN, and that is a different
+        // fact from "this session predates programId" - which is all a bare
+        // null can tell you. The history filter's legacy name fallback has to
+        // tell the two apart, so the deliberate case says so explicitly
+        // instead of being inferred from the absence of an id.
+        this.isQuickWorkout = data.isQuickWorkout === true;
         this.workoutDayId = data.workoutDayId || null;
         this.workoutDayName = data.workoutDayName || '';
         this.date = data.date || getTodayDateString();
@@ -140,6 +146,7 @@ export class WorkoutSession {
         return {
             id: this.id,
             programId: this.programId,
+            isQuickWorkout: this.isQuickWorkout,
             workoutDayId: this.workoutDayId,
             workoutDayName: this.workoutDayName,
             date: this.date,

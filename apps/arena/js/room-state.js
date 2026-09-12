@@ -444,6 +444,55 @@
         return (Array.isArray(players) ? players : []).filter((p) => isPlayerLive(p, nowMs));
     }
 
+    /** joinedAt as epoch ms, whether it arrives as a Timestamp or a number. */
+    function joinedAtMs(p) {
+        const j = p && p.joinedAt;
+        if (j && typeof j.toMillis === 'function') return j.toMillis();
+        return Number(j) || 0;
+    }
+
+    /**
+     * Should `myUid` claim `hostUid` for this room right now?
+     *
+     * A room used to lose its host for good whenever the host's tab simply
+     * went away: `hostUid` was only ever reassigned by the explicit "Leave
+     * room" button, and a closed tab, a discarded background tab or a dead
+     * phone leaves it naming somebody who is never coming back. Everything
+     * gated on being the host then stops for the rest of the session - early
+     * reveal, the Globe Drop Ready-to-skip advance, the stale-player sweep
+     * and, most visibly, the rematch.
+     *
+     * Two conditions, and both matter:
+     *  - the current host's player doc is GONE or NOT LIVE. This mirrors
+     *    `memberHostTakeover` / `playerGone` in firestore.rules, which is
+     *    what actually authorises the write. Asking while the host is live
+     *    is a guaranteed permission-denied, so the predicate must not.
+     *  - `myUid` is the deterministic pick among the LIVE players
+     *    (`pickNextHost`, earliest joiner). Every client runs this on its own
+     *    clock, so this is what keeps a single writer instead of a stampede
+     *    of racing claims that all but one of would be refused.
+     *
+     * Membership is implied: a client with no live player doc in the room is
+     * never the pick, and the rules require membership anyway.
+     *
+     * @param {{hostUid?:string}|null} room    the room doc
+     * @param {Array<object>} players          every player doc held locally
+     * @param {string|null} myUid
+     * @param {number} [nowMs]
+     * @returns {boolean}
+     */
+    function shouldTakeOverHost(room, players, myUid, nowMs) {
+        if (!room || !myUid) return false;
+        const hostUid = room.hostUid;
+        if (!hostUid || hostUid === myUid) return false;
+        const now = typeof nowMs === 'number' ? nowMs : Date.now();
+        const all = Array.isArray(players) ? players : [];
+        const hostDoc = all.find((p) => p && p.uid === hostUid);
+        if (hostDoc && isPlayerLive(hostDoc, now)) return false;
+        const order = livePlayers(all, now).map((p) => ({ uid: p.uid, joinedAt: joinedAtMs(p) }));
+        return pickNextHost(order) === myUid;
+    }
+
     /**
      * Compact, ordered final-ranking snapshot for the room doc when a game
      * finishes ({ uid, displayName, score, streak }, best first). `scoreOf`
@@ -496,6 +545,90 @@
         };
     }
 
+    /**
+     * The room-doc update that moves a room past its current question, or
+     * null when the room is not in a state that can advance.
+     *
+     * Pure, and deliberately shared by BOTH advance paths in app.js (the
+     * single-write Ready-skip and the transactional timed advance), so the
+     * two can never drift apart on what "the next question" means. The
+     * caller supplies what is NOT in the room document: the server-timestamp
+     * sentinel, and the ranking / rotation it derived from the player docs.
+     *
+     * `expectedQuestionId` and `expectedIndex` are the idempotent
+     * precondition. Inside a transaction they are checked against the
+     * freshly-read document; on the single-write path they are checked
+     * against the host's own listener copy, which is the same value the
+     * caller just gated on.
+     *
+     * @param {object} room - the room document
+     * @param {object} opts - { stamp, finalRanking, players, expectedQuestionId, expectedIndex }
+     * @returns {object|null}
+     */
+    function nextRoomStateAfterQuestion(room, opts) {
+        const o = opts || {};
+        const r = room || {};
+        // `stamp` is the server-timestamp sentinel every branch writes. A
+        // payload built without it would send `undefined` for the clock the
+        // whole round is measured from, so a caller that forgot it gets a
+        // no-op rather than a room with no deadline.
+        if (o.stamp === undefined || o.stamp === null) return null;
+        if (r.status !== 'playing') return null;
+        if (o.expectedQuestionId !== undefined && r.currentQuestionId !== o.expectedQuestionId) return null;
+        const idx = r.currentQuestionIndex || 0;
+        if (o.expectedIndex !== undefined && idx !== o.expectedIndex) return null;
+
+        const nextIdx = idx + 1;
+        const playedIds = Array.isArray(r.playedQuestionIds) ? r.playedQuestionIds.slice() : [];
+        if (r.currentQuestionId && !playedIds.includes(r.currentQuestionId)) {
+            playedIds.push(r.currentQuestionId);
+        }
+
+        // Last question: the game ends, and the index deliberately does NOT
+        // move (firestore.rules reads an unchanged index plus status
+        // 'finished' as the finish shape).
+        if (nextIdx >= r.totalQuestions) {
+            return {
+                status: 'finished',
+                finishedAt: o.stamp,
+                playedQuestionIds: playedIds,
+                finalRanking: Array.isArray(o.finalRanking) ? o.finalRanking : []
+            };
+        }
+
+        // Globe Drop plays its locations in order: no picking stage, no decider.
+        if (r.gameType === 'globe-drop') {
+            const pool = Array.isArray(r.questions) ? r.questions : [];
+            const nextLoc = pool[nextIdx];
+            if (!nextLoc) return null;
+            return {
+                status: 'playing',
+                currentQuestionIndex: nextIdx,
+                currentQuestionId: nextLoc.id,
+                questionStartedAt: o.stamp,
+                revealStartedAt: null,
+                playedQuestionIds: playedIds
+            };
+        }
+
+        // Trivia: rotate the decider over the CURRENT live players (late
+        // joiners enter the rotation, ghosts are skipped) and re-enter the
+        // picking stage.
+        const players = Array.isArray(o.players) ? o.players : [];
+        return {
+            status: 'picking',
+            currentQuestionIndex: nextIdx,
+            currentQuestionId: null,
+            selectedCategory: null,
+            questionStartedAt: null,
+            revealStartedAt: null,
+            pickingStartedAt: o.stamp,
+            playerOrder: players,
+            deciderUid: pickDecider(players, nextIdx),
+            playedQuestionIds: playedIds
+        };
+    }
+
     return {
         generateRoomCode,
         normalizeRoomCode,
@@ -513,7 +646,9 @@
         autoPickQuestion,
         isPlayerLive,
         livePlayers,
+        shouldTakeOverHost,
         finalRankingSnapshot,
+        nextRoomStateAfterQuestion,
         endOfGameStatsDelta
     };
 }));

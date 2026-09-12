@@ -247,6 +247,34 @@ body.theme #trends-chart-container {
     display: block;
 }
 
+/* Shown instead of the canvas when Chart.js (a CDN script) never loaded. */
+.chart-unavailable-message {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    margin: 0;
+    padding: 16px;
+    text-align: center;
+    color: var(--activity-text-secondary);
+    font-size: 0.9375rem;
+}
+
+/* Course Stats: flags a course below MIN_COURSE_RACES_FOR_RANKING (statistics.js)
+   in the All Courses table, so the minimum-sample rule is visible, not just
+   enforced silently in code. */
+.course-unranked-badge {
+    display: inline-block;
+    margin-left: 6px;
+    padding: 2px 8px;
+    border-radius: 999px;
+    font-size: 0.75rem;
+    font-weight: 500;
+    white-space: nowrap;
+    color: var(--activity-text-secondary);
+    background: rgba(148, 163, 184, 0.18);
+}
+
 /* Modern Table Styling */
 .weekly-breakdown-table {
     width: 100%;

@@ -24,11 +24,11 @@ The pure game logic (scoring, room state, location/question normalization) is sp
 | Host controls | Host-only, and lobby-only: switch the game type and edit the round settings inline. |
 | Mid-game controls (any player) | Once the room is playing, every player (not just the host) can pause/resume the timer, propose a restart (all players must accept), or end the game. Each action has a per-player allowance for the room (pause 2, restart 3, end 3) so it can't be used to grief, and the button grays out once the allowance is spent. |
 | Spectator / latecomer flow | A friend who joins mid-round spectates and is folded into the next round automatically. |
-| Host handoff | If the host disconnects, the earliest remaining joiner deterministically becomes the new host (`pickNextHost`). |
+| Host handoff | If the host goes away, the earliest remaining joiner deterministically becomes the new host (`pickNextHost`), whether they left through the Leave button or their tab simply disappeared. See "Host handoff" below. |
 | Solo + Daily challenge | Globe Drop can be played solo (a private room of one that auto-starts) or as a Daily challenge that gives every player worldwide the same locations for the UTC calendar day. |
 | Ready to skip (Globe Drop) | During the reveal, any player can hit "Ready" to vote to skip the between-round countdown; once everyone is ready the next round (or the end stage) fires early instead of waiting the window out. |
 | Custom Trivia packs | Save your own JSON question pack on your profile; it then appears as a question-source option when you create a Trivia room. |
-| In-room chat | Per-room chat (subscribed to `triviaRooms/{code}/chat`) with input sanitization, a client-side rate limit, and local profanity moderation (a word-boundary wordlist, so nothing leaves the browser; fail-open if the filter errors), plus a quick-tap bar of 8 one-click emoji reactions for players who don't want to type. |
+| In-room chat | Per-room chat (subscribed to `triviaRooms/{code}/chat`) with input sanitization, a client-side rate limit, and local profanity moderation (a word-boundary wordlist, so nothing leaves the browser; fail-open if the filter errors), plus a quick-tap bar of 8 one-click emoji reactions for players who don't want to type. The panel holds a SLIDING window of the newest `Chat.CHAT_WINDOW_SIZE` (80) messages, built in one place (`Chat.buildChatWindowQuery`) and never rebuilt at the call site. |
 | Leaderboard | Global score leaderboard, filterable by time period and sortable on any column (click a header to toggle direction; the default is avg score, descending), plus a separate Daily challenge board scoped to the current UTC day. A finished game is counted exactly once: the profile, the leaderboard row, the room's session tally and the head-to-head pair each carry the game's key (`{roomCode}:{round}`) and skip a repeat, so reloading the recap or reopening its share link adds nothing. |
 | Leaderboard moderation | A user with a doc at `/leaderboardAdmins/{uid}` sees a per-row delete control on the global board for removing junk entries. |
 | Display names | You choose a display name before your first published game; the default is a neutral `Player XXXX` derived from your uid, never from your email address. Whatever you choose is written to the shared leaderboard, head-to-head and daily records that any signed-in visitor can read. |
@@ -146,6 +146,11 @@ Progression is not the host's private business:
 - Every client runs `progressRoomClock` from a 500 ms `setTimeout`-style
   interval, from `visibilitychange`, and from the render loops. The rAF loops
   only render.
+- **The host takeover runs in EVERY stage**, above the status guards, because
+  it is about the room rather than about the current question (see "Host
+  handoff"). The lobby and the end screen are the two stages the guards skip,
+  and the end screen is where the worst symptom lived, since the rematch is
+  host-gated.
 - The host writes the early reveal (all live players answered), the
   Ready-to-skip advance, and the timed advance as soon as the window closes.
 - Any other member performs the timed advance once the window has elapsed
@@ -162,6 +167,34 @@ Progression is not the host's private business:
   playing, same question id and index), so the host and a member's fallback
   can race without ever double-advancing.
 
+## Host handoff
+
+The room keeps a `hostUid`, and four things are gated on it: the early
+reveal, the Globe Drop Ready-to-skip advance, the stale-player sweep and the
+rematch (`playAgain`). A room that keeps naming a host who is never coming
+back therefore burns the full timer on every round, never cleans up its
+ghosts, and sits on "Rematch - 2/2 players ready" forever.
+
+Two paths reassign it, and until 2026-09-11 only the first existed:
+
+- **The player leaves deliberately** (`leaveRoom`, the "Leave room" button).
+  The leaving host hands the room to `RoomState.pickNextHost` over the live
+  survivors, or deletes the room if there are none.
+- **The player's tab simply goes away** - closed, discarded by the browser in
+  the background, or a dead phone. No code runs on the way out, and a
+  force-quit never fires `beforeunload` at all, so this cannot be a write the
+  leaver makes. It is a write the SURVIVORS make: every client runs
+  `RoomState.shouldTakeOverHost` from the room clock (see "Game clock"), in
+  every stage, and the one client that is `pickNextHost` over the live
+  players claims `hostUid` for itself. `firestore.rules` has allowed exactly
+  this write since 2026-08-23 (`memberHostTakeover`): a member may name
+  THEMSELVES host once the current host's player doc is gone or stale.
+
+The takeover deliberately waits for the same liveness definition the rules
+enforce (`RoomState.isPlayerLive`), so a host who is merely refreshing keeps
+the room: the handoff happens `DISCONNECT_GRACE_MS` after a clean unload
+stamp, and `PRESENCE_STALE_MS` after a crash that left no stamp at all.
+
 ## Liveness and cleanup
 
 - Each client stamps `lastSeen` on its own player doc every 30 s, and writes
@@ -175,10 +208,13 @@ Progression is not the host's private business:
   racing rejoin write self-healing. Until 2026-09-03 the URL-rejoin path wrote
   `lastSeen` alone, so refreshing during a game left the stamp in place and the
   host swept the player 30 s later, mid-game.
-- Stale players are excluded from early reveal, the Ready vote, the rematch
-  unanimity count, the Start-button minimum and the last-leaver check, and
-  they render as "Disconnected" instead of looking like a slow player. The
-  host sweeps their docs.
+- Stale players are excluded from early reveal, the Ready vote, the Globe
+  Drop Ready-bar counter, the rematch unanimity count, the Start-button
+  minimum and the last-leaver check, and they render as "Disconnected"
+  instead of looking like a slow player. The host sweeps their docs, but only
+  while a game is PLAYING: outside that, the dimmed tile is the only way the
+  others learn their friend dropped, so deleting the doc would just make the
+  player vanish from the grid.
 - **Teardown order matters**: the last leaver takes over `hostUid` if the
   host is already stale, deletes the ROOM DOC first, then sweeps the gate,
   the chat messages and any leftover player docs. That order is what the
@@ -259,11 +295,45 @@ Arena has three suites at three depths:
 npm run test:arena           # pure-module unit tests (part of `npm test`)
 npm run test:arena:rules     # Firestore security-rules suite (emulator; needs Java)
 npm run test:arena:emulator  # two-client multiplayer e2e (emulator + headless Chromium)
+
+# ONE scenario, for iterating on a bug. Comma-separated, matched as a
+# substring of the scenario label, so `S6` and `S6:` both work:
+ARENA_E2E_ONLY=S6 npm run test:arena:emulator          # about 70 seconds
+ARENA_E2E_ONLY=S2,S10 npm run test:arena:emulator      # host handoff, both paths
+ARENA_E2E_ONLY=S6 ARENA_E2E_VERBOSE=1 npm run test:arena:emulator   # detail on passes too
 ```
 
-- **Unit** (`node --test apps/arena/tests/`): trivia scoring and streaks, Globe Drop distance/multiplier/difficulty scoring, room-code generation and alphabet validation, daily-challenge determinism, Wikidata/Trivia normalization, chat sanitization/moderation, and the room-gate hash derivation (pinned against independently computed SHA-256 vectors).
+Every scenario runs standalone: the three client pages are opened by `guard()`,
+not inside S1, so a filtered run pays for nothing it filtered out (before
+2026-09-12 the pages lived in S1, which meant every "focused" run replayed a
+full five-round three-client game first and cost 5 to 11 minutes). The
+skipped scenarios are still REPORTED, with the filter that excluded them, so a
+filtered run can never be mistaken for a full one. Read the preconditions in
+the output before believing a filtered pass: the scenarios share one live
+multi-client session and some leave the clients where the next one expects
+them.
+
+**The validation ladder** for a failure here, cheapest rung first. Do not start
+at the bottom:
+
+1. A `node --test` unit test that reproduces the logic (milliseconds; run it
+   forty times if it is a race).
+2. `ARENA_E2E_ONLY=<scenario>` (about 70 seconds).
+3. `npm run test:arena:emulator` in full, ONCE (5 to 11 minutes).
+4. The repository gates: `npm test`, `npm run lint`,
+   `npm run test:browser:parallel`, ONCE at the end.
+
+**Stale emulators.** An interrupted run used to leave the emulator holding
+port 8085, and the next run then SKIPPED, which reads exactly like a finished
+run. Two guards now: `run-emulator.mjs` tears down emulators, both static
+servers and Chrome on `SIGINT`/`SIGTERM`/`SIGHUP`, and `startEmulator` reaps
+leftovers of its own (matched on `emulators:start` plus the throwaway project
+id, so a real Firebase emulator for another project is never touched) and says
+so with the PIDs. A busy port owned by anything else is reported, not killed.
+
+- **Unit** (`node --test apps/arena/tests/`): trivia scoring and streaks, Globe Drop distance/multiplier/difficulty scoring, room-code generation and alphabet validation, daily-challenge determinism, Wikidata/Trivia normalization, chat sanitization/moderation, the sliding chat window and its unread bookkeeping, the host-takeover predicate, and the room-gate hash derivation (pinned against independently computed SHA-256 vectors).
 - **Rules** (`apps/arena/tests-rules/`): runs the real `firestore.rules` inside the Firestore emulator via plain REST - player-doc ownership, the hashed password gate, chat caps and append-only, guest exclusions, admin deletes, plus no-regression pins for the shared non-arena sections. Deliberately NOT part of `npm test`: it needs Java plus a one-time firebase-tools/emulator download (pinned version, cached afterwards), which the dependency-free push/PR CI does not have. Skips cleanly when the environment is missing; CI runs it with `ARENA_RULES_REQUIRE=1`, which turns that skip into a hard failure (`.github/workflows/arena-rules.yml`). Rules are loaded through the emulator's `PUT :securityRules` endpoint with a deny-all negative control, because `emulators:start/exec` does not reliably compile updated rules.
-- **Multiplayer e2e** (`apps/arena/e2e/`): three real app instances (three origins = three Firebase users) against the Firestore + Auth + RTDB emulators, connected through the opt-in emulator seam in the shared `firebase-config.js` (loopback hostname AND `localStorage['shevato:firebase-emulators'] = '1'` - inert in production by construction, see `sync-system/firebase-emulator-flag.mjs`). Covers the full room lifecycle: create, join by code, start, lockstep question propagation, simultaneous answers with early reveal, score propagation, rematch, host handoff, the password gate end-to-end, and invalid-code rejection. It also pins the 2026-08-22 audit's regressions: a first-time guest creating a room with no sync-modal seed, the gate-deletion exploit attempted from a third client's own SDK, a ghost player past the grace, a hidden host tab (trivia and Globe Drop), an answer clicked while offline, the chat rate limit at the call site, a coordinate double-click on Start, a stale rematch prompt, the end screen after the winner leaves, chat/gate/player cleanup after the last leaver, a registered user's leaderboard row matching their profile, and seeded axe scans of the in-room states and modals at 1280 and 360. Production Firebase hosts are intercept-failed on every page as a second line of defense.
+- **Multiplayer e2e** (`apps/arena/e2e/`): three real app instances (three origins = three Firebase users) against the Firestore + Auth + RTDB emulators, connected through the opt-in emulator seam in the shared `firebase-config.js` (loopback hostname AND `localStorage['shevato:firebase-emulators'] = '1'` - inert in production by construction, see `sync-system/firebase-emulator-flag.mjs`). Covers the full room lifecycle: create, join by code, start, lockstep question propagation, simultaneous answers with early reveal, score propagation, rematch, host handoff on BOTH paths (the Leave button in S2, and a host tab that simply disappears in S10), the sliding chat window past its 80-message cap (S9), the password gate end-to-end, and invalid-code rejection. It also pins the 2026-08-22 audit's regressions: a first-time guest creating a room with no sync-modal seed, the gate-deletion exploit attempted from a third client's own SDK, a ghost player past the grace, a hidden host tab (trivia and Globe Drop), an answer clicked while offline, the chat rate limit at the call site, a coordinate double-click on Start, a stale rematch prompt, the end screen after the winner leaves, chat/gate/player cleanup after the last leaver, a registered user's leaderboard row matching their profile, and seeded axe scans of the in-room states and modals at 1280 and 360. Production Firebase hosts are intercept-failed on every page as a second line of defense.
 
 **When CI runs the two emulator suites.** `.github/workflows/arena-rules.yml`
 starts on every pull request, every push to master, and weekly, but a "Scope"

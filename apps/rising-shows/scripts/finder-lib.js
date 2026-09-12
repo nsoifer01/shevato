@@ -55,6 +55,28 @@ const RATING_SORT_VOTE_FLOOR = 1000;
 // every episode 10.0 on ~50 votes), so the badge is not asserted below it.
 const ABOVE_IMDB_MIN_VOTES = 1000;
 
+// The gap floors. `gap` subtracts a show's own IMDb rating from its
+// episode-weighted episode average, so an unfloored gap ranking is owned by
+// review-bombed titles: with no floor the leader is a 451-vote show averaging
+// 9.9 per episode against a 1.3 series rating. 15,000 votes is roughly where
+// the curated sitemap cuts off (top 2,000 shows by votes) and sits near the
+// 94th percentile of rated shows.
+//
+// The gap has TWO sides, so a floor on one guards half the number:
+// GAP_MIN_EPISODE_VOTES is the symmetric floor on the show's TOTAL episode
+// votes (Kaamraj: IMDb 3.6 from 19,239 series votes against a 7.1 episode
+// average built on 358 episode votes).
+//
+// They live here, not in the hub builder, because the Finder's
+// "Outshines its reputation" mood preset ranks by the same metric and used to
+// carry no floor at all, which put a 450-vote show with an IMDb 1.3 at number
+// one of a preset the static hub had already fixed. The app can apply
+// GAP_MIN_VOTES (series votes ride on every index row); it cannot yet apply
+// GAP_MIN_EPISODE_VOTES, because the boot payload carries no episode-vote
+// total - see FINDINGS.md, "The mood presets had no vote floors".
+const GAP_MIN_VOTES = 15000;
+const GAP_MIN_EPISODE_VOTES = GAP_MIN_VOTES;
+
 /**
  * The single definition of "what shape is this show".
  *
@@ -99,6 +121,75 @@ function deriveShowShapes(seasonAvgs, categoricalTags, detectShapes, options) {
   return trajectoryShapes.concat(
     CATEGORICAL_SHAPES.filter((t) => categoricalTags.has(t) && !trajectoryShapes.includes(t)),
   );
+}
+
+/**
+ * How well a SHOW fits each of its shapes, in [0,1], from its per-season
+ * averages. The same scoring the season pills have used since they shipped,
+ * applied one level up: match.js's shapeConfidence over season averages rather
+ * than over episodes, exactly as deriveShowShapes applies detectShapes.
+ *
+ * @param {number[]} seasonAvgs per-season average ratings, ORDERED by season
+ * @param {Function} shapeConfidence match.js's scorer, passed in for the same
+ *   reason detectShapes is: the browser hands over its global, and a missing
+ *   one degrades to "no scores" instead of throwing
+ * @param {{inProgress?: boolean}} [options] see deriveShowShapes
+ * @returns {Object<string, number>} shape -> confidence, matched shapes only
+ */
+function showShapeConfidence(seasonAvgs, shapeConfidence, options) {
+  if (!Array.isArray(seasonAvgs) || seasonAvgs.length < 2) return {};
+  if (typeof shapeConfidence !== 'function') return {};
+  return shapeConfidence(
+    seasonAvgs.map((avg) => ({ rating: avg })),
+    (options && options.inProgress) ? { inProgress: true } : undefined,
+  );
+}
+
+/**
+ * Order a show's shapes strongest-fit first, so shapes[0] is the shape the
+ * show actually fits best.
+ *
+ * WHY THIS IS NOT INSIDE deriveShowShapes
+ * ---------------------------------------
+ * detectShapes pushes its tags in a FIXED order (rising, consistent,
+ * slow-burn, big-finale, rebound, front-loaded, declining, bad-finale,
+ * rollercoaster, mid-peak, u-shaped) - an artefact of how the function is
+ * written, not a ranking. Everything that needs "the show's shape" read
+ * shapes[0], so that artefact decided the card badge, the static page's
+ * headline shape, and which hub a show was filed under. Across the catalogue
+ * 874 of 1,535 multi-shape shows (57%) were badged with something other than
+ * their strongest-margin shape. Game of Thrones scores bad-finale 1.00 and
+ * front-loaded 0.18, is emitted front-loaded first, and was therefore absent
+ * from /shows/shape/bad-finale/ - the page titled "TV Shows With a Bad Final
+ * Season" - while listed on /shows/shape/front-loaded/ instead.
+ *
+ * The emitted array stays in classifier order: it is the classifier's answer,
+ * it is what shows-index.json has already shipped, and membership filters
+ * (passesShapeAnd) and the header's shapeCounts read it as a set. Ranking is
+ * DERIVED from it here, at the point something has to pick one. That also
+ * means the browser can order an index built before this change and land on
+ * the same shape the freshly built static page does, with no rebuild.
+ *
+ * Ties keep the classifier's emission order: Array#sort is stable, so equal
+ * scores come out in input order and a rebuild cannot churn hub membership for
+ * no reason.
+ *
+ * Categorical tags (saved-best-for-last, shape-drift) describe ONE season, not
+ * the run, and carry no confidence. They stay behind every trajectory shape,
+ * so a show only lands on a categorical hub when it has no trajectory at all.
+ *
+ * @param {string[]} shapes as emitted by deriveShowShapes
+ * @param {Object<string, number>} confidence from showShapeConfidence
+ * @returns {string[]} a new array, strongest fit first
+ */
+function orderShapesByConfidence(shapes, confidence) {
+  if (!Array.isArray(shapes) || shapes.length < 2) return Array.isArray(shapes) ? shapes.slice() : [];
+  const conf = confidence || {};
+  const score = (s) => (typeof conf[s] === 'number' ? conf[s] : 0);
+  const trajectory = shapes.filter((s) => !CATEGORICAL_SHAPES.includes(s));
+  const categorical = shapes.filter((s) => CATEGORICAL_SHAPES.includes(s));
+  trajectory.sort((a, b) => score(b) - score(a));
+  return trajectory.concat(categorical);
 }
 
 // Aggregate per-season records (data.json `matches`) into one row per series.
@@ -500,7 +591,11 @@ const API = {
   RATING_SORT_KEYS,
   RATING_SORT_VOTE_FLOOR,
   ABOVE_IMDB_MIN_VOTES,
+  GAP_MIN_VOTES,
+  GAP_MIN_EPISODE_VOTES,
   deriveShowShapes,
+  showShapeConfidence,
+  orderShapesByConfidence,
   buildShowAgg,
   parseFinderQuery,
   serializeFinderQuery,

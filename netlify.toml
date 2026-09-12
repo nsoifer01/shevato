@@ -311,6 +311,45 @@
     Content-Security-Policy = "object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
     Content-Security-Policy-Report-Only = "default-src 'self'; script-src 'self' 'unsafe-inline' https://www.gstatic.com https://cdnjs.cloudflare.com https://www.googletagmanager.com https://apis.google.com; style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://fonts.googleapis.com; font-src 'self' data: https://cdnjs.cloudflare.com https://fonts.gstatic.com; img-src 'self' data: blob: https:; connect-src 'self' https://*.googleapis.com https://*.firebaseio.com https://*.firebasedatabase.app https://*.firebaseapp.com https://*.google-analytics.com https://*.analytics.google.com https://us-central1-jjexperiment-12af6.cloudfunctions.net https://maptap.gg https://nominatim.openstreetmap.org https://photon.komoot.io https://archive-api.open-meteo.com https://api.open-meteo.com https://geocoding-api.open-meteo.com https://api.frankfurter.dev https://api.openai.com https://raw.githubusercontent.com https://the-trivia-api.com https://query.wikidata.org https://en.wikipedia.org wss://*.firebaseio.com; frame-src 'self' https://shevato-site.firebaseapp.com https://apis.google.com; object-src 'none'; base-uri 'self'; form-action 'self'; report-uri /.netlify/functions/csp-report"
 
+# ---------------------------------------------------------------------------
+# STATIC ASSET CACHING.
+#
+# Production served `public, max-age=0, must-revalidate` for EVERYTHING,
+# including `/assets/css/main.css`, jQuery and every app bundle (verified with
+# curl against shevato.com). Nothing on the site uses a cache-busting query
+# string and there is no filename hashing, so every navigation issued roughly
+# 18 conditional GETs, six of them render-blocking stylesheets that had to come
+# back 304 before first paint. The bytes were not re-sent (brotli plus ETags
+# were already working); the round trips were the cost.
+#
+# WHY A ONE-HOUR TTL AND NOT `immutable`.
+#
+# `max-age=31536000, immutable` is the textbook answer, and it is only safe
+# when the URL changes with the bytes. Making that true here means rewriting
+# every asset reference at deploy time across 24 hand-written pages AND the
+# ~35,000 generated ones - and if that rewrite misses a single page, its
+# visitors hold a year-long cache entry that nothing can invalidate. The
+# failure is unrecoverable and it cannot be verified from a local checkout,
+# only from a real deploy. A one-hour TTL with stale-while-revalidate removes
+# the per-navigation round trips, which was the measured problem, and its worst
+# case is that a returning visitor runs an hour-old asset once. That is a
+# recoverable failure, so it is the one to ship first. Revisit `immutable` only
+# together with deploy-time versioning, and only with a verified deploy.
+#
+# Not applied to HTML: pages must stay revalidated so a deploy is visible
+# immediately. Not applied to /apps/gym-tracker/{js,css,data}/*, which pin
+# max-age=0 deliberately - see the block below, which is the reason this one
+# names /assets and /images explicitly rather than globbing the whole site.
+[[headers]]
+  for = "/assets/*"
+  [headers.values]
+    Cache-Control = "public, max-age=3600, stale-while-revalidate=86400"
+
+[[headers]]
+  for = "/images/*"
+  [headers.values]
+    Cache-Control = "public, max-age=86400, stale-while-revalidate=604800"
+
 # Gym Tracker is a service-worker PWA: its worker precaches the shell and
 # serves everything stale-while-revalidate out of CacheStorage, so the SW is
 # the performance layer and the HTTP layer only has to be correct.

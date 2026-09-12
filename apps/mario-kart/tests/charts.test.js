@@ -68,11 +68,14 @@ test('weekly activity: dates are read as local calendar days, so no UTC off-by-o
 });
 
 // --- calculateComebackAnalysis ---------------------------------------------
-// A "comeback" is a top-5 finish immediately after a bad one, counted per
-// player over that player's own chronological sequence of races.
+// A "comeback" is a recovery to one better than getGoodFinishThreshold() (the
+// top-half line) immediately after a bad one, counted per player over that
+// player's own chronological sequence of races. In MK8D (max 12, threshold 6)
+// that line is 5, same as the app's original hardcoded constant; it scales
+// for other game sizes (see the dedicated scaling test below).
 
 test('comeback: counts a top-5 finish after a bad one, per bad finish', () => {
-  const ctx = loadCharts({ goodFinishThreshold: 12 }); // bad finish = 13th or worse
+  const ctx = loadCharts({ goodFinishThreshold: 6 }); // MK8D: bad finish = 7th or worse
   const analysis = ctx.calculateComebackAnalysis([
     { date: '2026-03-01', player1: 13, player2: 1 },
     { date: '2026-03-02', player1: 3, player2: 2 },
@@ -100,6 +103,49 @@ test('comeback: the bad-finish threshold follows the game size', () => {
   const worldAnalysis = world.calculateComebackAnalysis(races);
   assert.equal(worldAnalysis.player1.comebacks, 0);
   assert.equal(worldAnalysis.player1.recoveryRate, 0);
+});
+
+test('comeback: how good the recovery must be also follows the game size, not just how bad the prior finish was', () => {
+  // MK8D: max 12, good-finish threshold 6, so the comeback line is 5th.
+  const mk8d = loadCharts({ maxPositions: 12, goodFinishThreshold: 6 });
+  assert.equal(
+    mk8d.calculateComebackAnalysis([
+      { date: '2026-03-01', player1: 9 }, // bad (>= 7)
+      { date: '2026-03-02', player1: 5 }, // recovers to the MK8D line
+    ]).player1.comebacks,
+    1,
+    '5th counts as a comeback in a 12-position game'
+  );
+  assert.equal(
+    mk8d.calculateComebackAnalysis([
+      { date: '2026-03-01', player1: 9 },
+      { date: '2026-03-02', player1: 6 }, // one worse than the line
+    ]).player1.comebacks,
+    0,
+    '6th misses the MK8D comeback line by one'
+  );
+
+  // MK World: max 24, good-finish threshold 12, so the comeback line scales
+  // to 11th. Under the old bare "<= 5" constant, an 11th-place recovery in a
+  // 24-position race (a real comeback, proportionally) would never have
+  // counted.
+  const world = loadCharts({ maxPositions: 24, goodFinishThreshold: 12 });
+  assert.equal(
+    world.calculateComebackAnalysis([
+      { date: '2026-03-01', player1: 20 }, // bad (>= 13)
+      { date: '2026-03-02', player1: 11 }, // recovers to the MK World-scaled line
+    ]).player1.comebacks,
+    1,
+    '11th counts as a comeback in a 24-position game'
+  );
+  assert.equal(
+    world.calculateComebackAnalysis([
+      { date: '2026-03-01', player1: 20 },
+      { date: '2026-03-02', player1: 12 }, // merely "good" (the threshold itself), not a comeback
+    ]).player1.comebacks,
+    0,
+    '12th misses the MK World-scaled comeback line by one'
+  );
 });
 
 test('comeback: races the player sat out do not break the sequence', () => {
@@ -254,4 +300,102 @@ test('patterns: the sweet-spot buckets follow the game size', () => {
 
   // Buckets run 1-4, 5-8, ... 21-24; only the last one has finishes in it.
   assert.ok(html.includes('Sweet spot frequency: <strong>100%</strong> of finishes in positions 21-24'), html);
+});
+
+test('patterns: the close-race threshold follows the game size', () => {
+  // MK8D: max 12, good-finish threshold 6, close-race line at 5.
+  const mk8d = loadCharts({ maxPositions: 12, goodFinishThreshold: 6 });
+  const closeMk8d = mk8d.generatePatternAnalysis([
+    { date: '2026-03-01', player1: 1, player2: 6 }, // spread 5: close
+    { date: '2026-03-02', player1: 1, player2: 7 }, // spread 6: not close
+  ]);
+  assert.ok(closeMk8d.includes('Close races: <strong>50%</strong>'), closeMk8d);
+  assert.ok(closeMk8d.includes('spread ≤ 5 places'), closeMk8d);
+
+  // MK World: max 24, good-finish threshold 12, close-race line scales to 11.
+  // Under the old bare "<= 5" constant, an 11-place spread in a 24-position
+  // field (proportionally as tight as a 5-place spread in a 12-position one)
+  // would have been misjudged "not close".
+  const world = loadCharts({ maxPositions: 24, goodFinishThreshold: 12 });
+  const closeWorld = world.generatePatternAnalysis([
+    { date: '2026-03-01', player1: 1, player2: 12 }, // spread 11: close in MK World
+    { date: '2026-03-02', player1: 1, player2: 13 }, // spread 12: not close
+  ]);
+  assert.ok(closeWorld.includes('Close races: <strong>50%</strong>'), closeWorld);
+  assert.ok(closeWorld.includes('spread ≤ 11 places'), closeWorld);
+});
+
+// --- createHeatmapView: Chart.js CDN guard -----------------------------------
+// Chart.js loads from a CDN (index.html); if cdnjs is blocked, neither
+// `window.Chart` nor the bare `Chart` global (classic scripts share one
+// global scope with `window`) ever exists. createTrendCharts already guards
+// its `new Chart(...)` (~172); createHeatmapView's doughnut chart did not, so
+// a blocked CDN threw a ReferenceError here on every render while the
+// Activity tab was open - and since createHeatmapView runs unconditionally
+// from updateDisplay() on every data mutation, that could abort the rest of
+// updateDisplay() (including the success toast).
+//
+// This needs a working `document` (the pure-function tests above load
+// charts.js with no DOM at all), so it gets its own small harness: element
+// stubs good enough for getElementById/querySelector, a synchronous
+// setTimeout (createHeatmapView defers its chart-building work), and a
+// stand-in `Chart` constructor to simulate the CDN script having loaded.
+function loadChartsWithDom({ players = ['player1', 'player2'], maxPositions = 12, chartAvailable = true } = {}) {
+  const elements = {};
+  const makeEl = () => ({
+    innerHTML: '',
+    style: {},
+    getContext: () => ({}),
+    querySelector: () => null,
+    querySelectorAll: () => [],
+  });
+  const el = (id) => {
+    if (!elements[id]) elements[id] = makeEl();
+    return elements[id];
+  };
+  const ctx = makeContext({
+    players,
+    playerCount: players.length,
+    escapeHtml: (v) => String(v == null ? '' : v),
+    getPlayerName: (p) => p,
+    setTimeout: (fn) => { fn(); return 0; }, // run the deferred chart-building work inline
+    document: {
+      getElementById: el,
+      querySelector: (sel) => (sel === '.activity-chart-wrapper' ? el('activity-chart-wrapper') : null),
+      querySelectorAll: () => [],
+      createElement: makeEl,
+      body: { appendChild() {}, removeChild() {} },
+      addEventListener() {},
+      removeEventListener() {},
+    },
+  });
+  ctx.window.MAX_POSITIONS = maxPositions;
+  if (chartAvailable) {
+    // A classic <script> global is the same binding as window.<name>; both
+    // must be set to faithfully simulate "Chart.js loaded" in the sandbox.
+    const ChartStub = function ChartStub() { /* records nothing; just must not throw */ };
+    ctx.Chart = ChartStub;
+    ctx.window.Chart = ChartStub;
+  }
+  loadInto(ctx, 'utils.js');
+  loadInto(ctx, 'charts.js');
+  return { ctx, elements, el };
+}
+
+const ONE_RACE = [{ date: '2026-03-02', player1: 1, player2: 2 }]; // a Monday
+
+test('activity chart: falls back to a visible message instead of throwing when Chart.js never loaded', () => {
+  const { ctx, elements, el } = loadChartsWithDom({ chartAvailable: false });
+  el('activity-chart-wrapper'); // pre-create so it exists even though nothing else touches it yet
+
+  assert.doesNotThrow(() => ctx.createHeatmapView(ONE_RACE));
+  assert.match(elements['activity-chart-wrapper'].innerHTML, /chart unavailable/i);
+});
+
+test('activity chart: leaves the canvas alone and builds the real chart when Chart.js is available', () => {
+  const { ctx, elements, el } = loadChartsWithDom({ chartAvailable: true });
+  el('activity-chart-wrapper');
+
+  assert.doesNotThrow(() => ctx.createHeatmapView(ONE_RACE));
+  assert.equal(elements['activity-chart-wrapper'].innerHTML, '', 'the guard only replaces content when Chart.js is missing');
 });

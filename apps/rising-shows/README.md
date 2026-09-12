@@ -123,7 +123,7 @@ for how the rule was derived and what it deliberately does not catch.
 | Show Finder (main view)  | The app's single view: one result per show, aggregated across all of a show's seasons (total rated episodes, episode-weighted average episode rating, the gap vs the show's IMDb rating, votes, and total runtime). A row of **show-shape chips** and **mood presets** (see below), a search box with autocomplete suggestions (matching show title or IMDb ID, with typo-tolerant "Did you mean?" results, picking one opens that show), grid/list view toggle, tri-state genre chips (require / exclude in red / clear), decade buttons and a year range, a language filter, quick vote-threshold chips, gap-direction segments, and advanced numeric thresholds plus a sort dropdown. List view is a sortable table whose column headers are real buttons (the table itself lives in a horizontal scroll region, so every column stays reachable between 641 px and the ~1,130 px the full table needs, with the show name pinned as a sticky first column); grid view shows show cards with a color-coded gap badge. **Every card and row carries the show's dominant shape** as a badge, plus one streaming chip where we know one: the app ranks shows by the shape of their ratings, and until 2026-08 that label was invisible while browsing. Results are paginated (24 per page) with an active-filter chip bar, a "Clear filters" button, and a "Copy link" button; paging scrolls to the result-count line so the page you landed on stays readable under the fixed header. All filters live in the URL hash, so a shared or refreshed link reopens the same view (the search term is trimmed on the way in and out, so `#q=++breaking++` and a whitespace-only query never become part of a shared link). **Arriving on a filtered link** - a shape hub's "Filter Declining shows in the explorer →" CTA, a shared permalink, a search result - lands on that same count line rather than the top of the page, because everything above it looks identical whatever the filter says. A refresh or a Back is not an arrival: those get back the offset they left, and the offset is now recorded with the view it was taken in so the bottom of one view is never reinstated over another (see FINDINGS.md). Click a card or row to open the show modal. |
 | Loading state            | The index is a ~34 MB JSON file, so the first paint is skeleton cards plus a live status in the result-count line ("Loading show index (12 of 33 MB)..."), which is the page's `aria-live="polite"` region. The search box stays usable and is marked `aria-busy`: **anything typed while the index downloads is kept**, merged into the finder state when the data lands, and written to the hash (a URL that already carries `q=` wins). A malformed index (not just a 404 or truncated JSON) reaches the same "Couldn't load show data - Retry" panel instead of leaving the skeletons up: `validateDataset` drops records missing an id/title/season and errors when nothing usable is left. |
 | Show-shape filter        | Toggle one or more shape chips to filter shows by the **shape of their per-season averages** (not per episode): a "rising" show is one whose season averages keep climbing, "rebound" dips then recovers, "declining" never improves, and so on. Classified by the same eleven detectors `scripts/match.js` runs per episode, loaded in the browser so there's one source of truth, plus two categorical season tags (Saved best for last, Shape drift) that a show carries whenever any of its seasons does. A show needs ≥ 2 seasons to have a cross-season trajectory shape, so single-season shows are excluded while a trajectory-shape filter is active (the two categorical chips still match them). AND across selected shapes. Each chip's count updates as you pick shapes: an inactive chip shows how many current results would remain if you added it, and a shape that would drop results to zero is greyed/disabled rather than hidden so the row stays stable. Selected shapes show as removable chips in the active-filter bar and serialize to the hash (`shape=`). |
-| Mood presets             | One-tap "Explore by mood" chips tuned to whole-show stats (Modern prestige, Crowd favorites, Kept climbing, Comeback stories, Marathon-worthy, Outshines its reputation), each with a count of how many shows it yields. Each applies an absolute filter combination - a couple lean on the show-level shapes (Kept climbing = rising over 3+ seasons, Comeback stories = rebound). Two presets carry floors that make their copy true: Kept climbing requires 3 seasons (a two-season "rising" show is one season beating another, close to a coin flip, and 79% of rising shows are two-season shows) and Modern prestige requires 1,000 votes (without it, "prestige" returned 2,073 shows, most with a handful of ratings). Clicking the active preset clears it. The `.mood-collapsible` rail centers and collapses behind an "Explore by mood" toggle pill on mobile - the shape-chip rail above it uses the same `<details>` and collapses behind a "Filter by shape" pill on phones, because thirteen chips wrap to thirteen rows at 360 px and pushed the first result off the screen. |
+| Mood presets             | One-tap "Explore by mood" chips tuned to whole-show stats (Modern prestige, Crowd favorites, Kept climbing, Comeback stories, Marathon-worthy, Outshines its reputation), each with a count of how many shows it yields. Each applies an absolute filter combination - a couple lean on the show-level shapes (Kept climbing = rising over 3+ seasons, Comeback stories = rebound). **Every preset carries a vote floor**, and they are finder-lib's own constants so the presets and the static hubs rank on one set of numbers: the four popularity/size-ranked presets floor at `RATING_SORT_VOTE_FLOOR` (1,000, the number this app already uses everywhere it asserts a rating claim), and the two whose ORDER is decided by a rating or a gap - Modern prestige and Outshines its reputation - floor at `GAP_MIN_VOTES` (15,000, the gap hub's own floor). Without them a preset is a one-tap route to the thinnest data in the catalogue: Kept climbing opened on an 8-vote show, Marathon-worthy on a 37-vote one and Outshines its reputation on a 450-vote show rated IMDb 1.3 whose episodes average 9.89. Kept climbing also requires 3 seasons (a two-season "rising" show is one season beating another, close to a coin flip, and 79% of rising shows are two-season shows). Note the interaction that made Modern prestige worse than no filter at all: `ratingSortFloorActive` switches the 1,000-vote RANKING floor off as soon as any votes filter is set, so a preset that sorts by a rating and floors at exactly 1,000 loses the ranking floor and gains nothing - it opened on Khadpanch, 1,053 votes at an episode average of 9.96 against an IMDb 8.4. `tests/finder-moods.test.js` holds each shipped preset's first page to its own stated floors. Clicking the active preset clears it. The `.mood-collapsible` rail centers and collapses behind an "Explore by mood" toggle pill on mobile - the shape-chip rail above it uses the same `<details>` and collapses behind a "Filter by shape" pill on phones, because thirteen chips wrap to thirteen rows at 360 px and pushed the first result off the screen. |
 | Genre filter (tri-state) | Click a chip to **require** that genre; click again to **exclude** it (red strike); third click clears. AND across required genres. Every genre in the catalogue renders as a chip, alphabetically, in the quick-filters panel (the advanced drawer no longer duplicates them). |
 | Decade filter            | "80s / 90s / 00s / 10s / 20s" quick chips set the year range in one tap (synced with the advanced-drawer year inputs); "All" clears it. |
 | Language filter          | Multi-select chips for the top original languages (TMDB `original_language`).                      |
@@ -201,11 +201,12 @@ Each page (`scripts/render-show-page.js`) emits:
 `apps/rising-shows/shows/shape/<slug>/` (13 of them: `rising`, `consistent`, `slow-burn`,
 `big-finale`, `rebound`, `front-loaded`, `declining`, `bad-finale`, `rollercoaster`,
 `mid-peak`, `u-shaped`, `saved-best-for-last`, `shape-drift`). A show appears on exactly
-one hub, the one matching its **dominant shape**: the first entry of the show's whole-run
-trajectory, computed by `computeDominantShape` in `render-show-page.js`, which delegates to
-finder-lib's `deriveShowShapes` - the same derivation `buildShowAgg` runs for the browser
-Finder, so a page's badge and the app's shape chips cannot disagree. Ranked by IMDb vote
-count and capped at the top 100; the `CollectionPage` JSON-LD `ItemList` carries the first 25.
+one hub, the one matching its **dominant shape**: the shape the show FITS BEST across its
+whole run, computed by `computeDominantShape` in `render-show-page.js`, which delegates to
+finder-lib's `deriveShowShapes` (the shape set) and `orderShapesByConfidence` (which of them
+leads) - the same derivation the browser Finder runs, so a page's badge and the app's shape
+chips cannot disagree. Ranked by IMDb vote count and capped at the top 100; the
+`CollectionPage` JSON-LD `ItemList` carries the first 25.
 
 Until 2026-08-08 the dominant shape was instead the first shape tag of the show's single
 highest-rated season, which describes the EPISODES inside that one season rather than the
@@ -216,10 +217,18 @@ Things read "big finale" against the app's "bad-finale". Because the same functi
 hub membership, `/shows/shape/big-finale/` was listing 1,915 of 5,411 shows that the app's
 own big-finale filter would reject. Expect some hubs to be smaller than before (rebound
 and rollercoaster especially): they are no longer padded with shows whose best season
-merely happened to have that internal shape. Note that a few shapes can never be dominant,
-because `detectShapes` emits trajectory shapes in a fixed order and `rebound` always trails
-`slow-burn` and `big-finale`; those hubs fill only from shows where the earlier shapes do
-not apply.
+merely happened to have that internal shape.
+
+Until 2026-09-11 the dominant shape was then `shapes[0]`, the first tag `detectShapes`
+emitted. That order is fixed by how the classifier is written, not by fit, so a show was
+filed under whichever of its shapes the code happened to test first: 874 of the 1,535
+multi-shape shows (57%) were badged with something other than their strongest-margin shape,
+and 72% of trajectory badges scored below the app's own `LOW_CONFIDENCE_BELOW`. Game of
+Thrones scores `bad-finale` 1.00 and `front-loaded` 0.18 and was badged Front-loaded, which
+also kept it off `/shows/shape/bad-finale/` ("TV Shows With a Bad Final Season") entirely.
+The shapes are now ordered by the `shapeConfidence` the season pills have always used, so
+every shape can be dominant and each hub holds the shows that genuinely fit it. See
+FINDINGS.md, "The dominant shape was emission order, not fit".
 Each hub cross-links the others, the A-Z index, and the shape-filtered explorer view
 (`/apps/rising-shows/#shape=<slug>`). The per-season shape badges on show pages and the
 "See all X shows" link under the recommendations point at these hubs, the A-Z index carries
@@ -237,7 +246,9 @@ title is never folded).
 `apps/rising-shows/shows/shape/outshines-reputation/`, built by the same
 `renderHubPage` shell so it is structurally identical to the shape hubs, but selected and
 ranked by **gap** (`avgEpisode - showRating`) rather than by shape membership:
-the 100 biggest gaps, floored at 15,000 IMDb votes (`GAP_MIN_VOTES`). The floor exists
+the 100 biggest gaps, floored at 15,000 IMDb votes (`GAP_MIN_VOTES`, defined in
+`scripts/finder-lib.js` and re-exported here so the in-app preset that ranks the
+same metric uses the same number). The floor exists
 because an unfloored gap sort is owned by brigaded titles - the top result was a 451-vote
 show averaging 9.9 per episode against a 1.3 series rating - and 15,000 is where the
 existing `SITEMAP_LIMIT` curation already cuts off, so nearly every linked page is itself
@@ -348,12 +359,27 @@ through `filterAndSortRows`:
 | `RATING_SORT_KEYS` | `avgEpisode`, `showRating` | the sorts the floor applies to |
 | `RATING_SORT_VOTE_FLOOR` | `1000` | with the votes filter at "Any", shows under this many IMDb votes rank **after** every show at or above it, in both directions |
 | `ABOVE_IMDB_MIN_VOTES` | `1000` | the "Above IMDb" badge is not asserted below this |
+| `GAP_MIN_VOTES` | `15000` | the gap floor, shared by the static gap hub and the two rating/gap-ranked mood presets |
+| `GAP_MIN_EPISODE_VOTES` | `15000` | the symmetric floor on a show's TOTAL episode votes; build-side only, see below |
 
 The floor ranks, it never filters: the result count is unchanged and the
 thinly voted shows are still there, further down. Setting any votes filter
 hands ranking back to the raw rating (`ratingSortFloorActive` returns false),
 and while the floor is doing something the active-filter bar carries a
 "Ranking: 1,000+ votes first" note explaining it.
+
+That hand-back is the trap the mood presets fell into, because a preset sets a
+votes filter on the visitor's behalf: a preset that sorts by a rating must
+floor **above** 1,000, or it switches the ranking floor off and replaces it
+with a filter that admits everything the ranking floor was banking. See the
+Mood presets row above.
+
+`GAP_MIN_VOTES` and `GAP_MIN_EPISODE_VOTES` live in `finder-lib.js` too, so the
+"Outshines its reputation" preset and the static gap hub rank the same metric
+behind the same numbers. Only the hub can apply `GAP_MIN_EPISODE_VOTES`: it
+reads `data.json`, which still carries per-episode votes, while the browser's
+boot payload carries no episode-vote total (`meanSeasonVotes` is the mean of
+each season's LOWEST episode vote count, not a sum). See FINDINGS.
 
 ## Viewing locally
 
@@ -404,6 +430,7 @@ dataset is checked now".
 | `tests/integrations-lib.test.js` | Kometa collection + overlay YAML, MDBList id lists, and the compare-export naming |
 | `tests/render-show-page.test.js`, `render-shape-hub.test.js`, `render-curve.test.js`, `render-sitemap.test.js`, `slugify.test.js` | the static page builders, their JSON-LD, and slug/permalink stability |
 | `tests/app-features.test.js` | browser helpers reached through a `node:vm` sandbox (see below): the canonical weighted `avgEpisode`, diacritic folding, the related-show gates and ranking, the NaN guards, the scroll/watched/compare stores, the index schema guard, the episode-count fallback and the shape-confidence read |
+| `tests/finder-moods.test.js` | the six shipped mood presets, reached through the vm harness rather than transcribed: that every one carries a vote floor, that a rating-sorted preset floors above the ranking floor it switches off, that the gap preset uses the gap hub's own constant, and that each preset's real first page is POPULATED and clears its own floors. Skips with a named reason when the release data is absent |
 | `tests/script-args.test.js` | that `split-data.js`, `export-integrations.js` and `build-show-pages.js` print usage and write nothing for `--help` / an unknown flag, and still run normally with no arguments |
 
 `build-data.js` and `split-data.js` hardcode their input and output paths off
@@ -416,8 +443,10 @@ Browser-level regressions live in `e2e/audit-2026-08.mjs`, run by
 `node tests/browser/run.mjs` (`npm run test:browser`) like the trip-planner and
 fpl-planner suites: a throttled boot that types during the load, the rating-sort
 floor, the pager focus ring, a malformed index, Esc nesting, a 404 detail file,
-hash trimming, seeded axe scans (finder, show modal, season modal, Kometa
-builder at 1280 and 390) and a built SEO page smoke. Every check needs the
+hash trimming, the phone close button's MEASURED box (it is sticky, so it is a
+flex item of the scrolling panel and its height is only a basis), seeded axe
+scans (finder, show modal, season modal, Kometa builder at 1280 and 390) and a
+built SEO page smoke. Every check needs the
 gitignored dataset; without it the suite records skips naming the fetch command.
 
 `app-features.test.js` loads `js/app.js` into a `node:vm` context with stubbed

@@ -4,9 +4,18 @@
 // state in memory and writes whole arrays/blobs back to localStorage. Two
 // tabs on the same origin therefore clobber each other: the later writer
 // silently drops whatever the other tab added, and a stale tab can even
-// resurrect data the user deleted elsewhere. The sync engine
-// (storage-sync-robust.js) listens to the native `storage` event only to
-// queue cloud writes; nothing told the APP that its in-memory copy is stale.
+// resurrect data the user deleted elsewhere. Nothing told the APP that its
+// in-memory copy is stale, so this module is what does.
+//
+// CORRECTION (2026-09-11): this header used to say the sync engine "listens to
+// the native `storage` event only to queue cloud writes". On an app page it
+// does not listen to it at all. `storage-sync-robust.js` branches in its
+// constructor on `window.immediateDebug`, which `sync-immediate.js` - a
+// non-deferred `<head>` script on every app page - has already set by the time
+// that deferred module runs. Production therefore always takes
+// `useImmediateOverride()`, and the `storage` listener lives in the other
+// branch, `installGlobalOverride()`. Worth knowing before relying on it: this
+// module is the ONLY cross-tab mechanism an app actually gets.
 //
 // Contract:
 //   ShevatoTabSync.watch(keys, handler)

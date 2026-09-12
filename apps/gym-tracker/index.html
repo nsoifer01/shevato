@@ -352,6 +352,12 @@
                     </div>
 
                     <div class="workout-content">
+                        <!-- Live-workout storage failure. Persistent by design:
+                             the condition lasts until the lifter frees space,
+                             and workout-view.js retires it on the next write
+                             that succeeds. In flow, never fixed, so it cannot
+                             land on top of the rest dial or the set controls. -->
+                        <div id="workout-storage-banner" class="workout-storage-banner" role="alert" hidden></div>
                         <div id="workout-exercises-list">
                             <!-- Exercises will be populated dynamically -->
                         </div>
@@ -391,8 +397,11 @@
                                 <button class="modal-close" aria-label="Close">&times;</button>
                             </div>
                             <div class="modal-body">
-                                <p class="swap-exercise-subtitle">
+                                <p class="swap-exercise-subtitle" id="swap-exercise-subtitle-swap">
                                     Replacing <strong id="swap-exercise-current"></strong> for this workout only.
+                                </p>
+                                <p class="swap-exercise-subtitle" id="swap-exercise-subtitle-add" hidden>
+                                    Pick an exercise to add to this workout. It is logged in this session only, and no program is created.
                                 </p>
                                 <div class="exercise-picker-search">
                                     <div class="search-input-wrapper">
@@ -1034,6 +1043,14 @@
                             <label for="timer-countdown-start">Countdown start <small>(seconds left)</small></label>
                             <input type="number" id="timer-countdown-start" min="1" max="60" step="1" inputmode="numeric" placeholder="5">
                         </div>
+                        <div class="setting-item setting-item-toggle">
+                            <label for="keep-screen-awake" class="setting-toggle-label">Keep screen awake</label>
+                            <label class="toggle-switch" aria-label="Keep screen awake toggle">
+                                <input type="checkbox" id="keep-screen-awake">
+                                <span class="toggle-slider" aria-hidden="true"></span>
+                            </label>
+                        </div>
+                        <p class="settings-help-text">Stops your phone sleeping during a workout, so the rest cues above can actually fire. Turn it off if you would rather the screen behaved normally. Not available on every browser.</p>
                     </section>
 
                     <section class="settings-section">

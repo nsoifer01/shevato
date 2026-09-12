@@ -114,6 +114,15 @@ export class Settings {
             ? { ...data.exercisePlateHints }
             : {};
 
+        // Keep the screen awake for the duration of an active workout
+        // (Screen Wake Lock API). Defaults ON: a phone screen sleeps after
+        // ~30 s while programmed rests are 60-180 s, so without it the screen
+        // dies during every rest and the backgrounded tab's throttled rest
+        // tick never fires the warning ping or the countdown pips at all.
+        // Opt-out rather than opt-in, because the cues are useless otherwise,
+        // but some people do not want their screen pinned on.
+        this.keepScreenAwake = data.keepScreenAwake !== false;
+
         // Whether the calendar overlays each program's scheduled weekdays.
         // Defaults to true (on) so the planned split is visible out of the box;
         // legacy settings without this key load with the default.
@@ -266,6 +275,7 @@ export class Settings {
             plateHintsEnabled: this.plateHintsEnabled,
             exercisePlateHints: this.exercisePlateHints,
             showProgramSchedule: this.showProgramSchedule,
+            keepScreenAwake: this.keepScreenAwake,
             defaultsVersion: this.defaultsVersion,
         };
     }

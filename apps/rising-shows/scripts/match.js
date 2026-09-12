@@ -674,32 +674,45 @@ function tagShapeDrift(matches) {
   }
 }
 
-// CommonJS export for the build scripts and the test suite. Guarded so this
-// same file can also be loaded as a classic <script> in the browser (where
-// `module` is undefined) without throwing — the top-level function
-// declarations are then available as globals to app.js. This keeps one source
-// of truth for the shape classifiers across build, tests, and the runtime
-// Show Finder (which classifies whole shows by their per-season averages).
+// One source of truth for the shape classifiers across build, tests, and the
+// runtime Show Finder (which classifies whole shows by their per-season
+// averages). Exported three ways because three consumers need it:
+//
+//   - `module.exports` for the build scripts and the test suite.
+//   - the top-level function declarations, which a classic <script> in the
+//     browser leaves on the global object.
+//   - `window.RisingShowsMatch`, the namespaced handle js/app.js reads.
+//
+// The namespace is not decoration. app.js is a type="module" precisely so its
+// ~500 top-level names cannot collide with this file's globals, and it already
+// declares its own `shapeConfidence` (a two-argument lookup into a season's
+// stored scores). Reading the bare global would have meant app.js shadowing the
+// classifier it was trying to call - silently, because the shadow returns null
+// rather than throwing. RisingShowsFinder solved the same problem the same way.
+const MATCH_API = {
+  isRising,
+  isConsistent,
+  isSlowBurn,
+  isBigFinale,
+  isRebound,
+  isFrontLoaded,
+  isDeclining,
+  isBadFinale,
+  isRollercoaster,
+  isMidPeak,
+  isUShaped,
+  detectShapes,
+  findMatches,
+  tagInProgress,
+  tagSavedBestForLast,
+  tagShapeDrift,
+  shapeConfidence,
+  // Back-compat with earlier API name.
+  isNonDecreasing: isRising,
+};
+
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = {
-    isRising,
-    isConsistent,
-    isSlowBurn,
-    isBigFinale,
-    isRebound,
-    isFrontLoaded,
-    isDeclining,
-    isBadFinale,
-    isRollercoaster,
-    isMidPeak,
-    isUShaped,
-    detectShapes,
-    findMatches,
-    tagInProgress,
-    tagSavedBestForLast,
-    tagShapeDrift,
-    shapeConfidence,
-    // Back-compat with earlier API name.
-    isNonDecreasing: isRising,
-  };
+  module.exports = MATCH_API;
+} else if (typeof window !== 'undefined') {
+  window.RisingShowsMatch = MATCH_API;
 }

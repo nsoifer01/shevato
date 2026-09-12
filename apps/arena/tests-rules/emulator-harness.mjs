@@ -31,7 +31,7 @@
 // the suite; the CI workflow sets ARENA_RULES_REQUIRE=1 to turn that
 // skip into a loud failure instead.
 import { spawn, execFileSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 
 // Pinned so a firebase-tools release can never silently change emulator
 // behavior under the suite. Bump deliberately.
@@ -73,6 +73,30 @@ async function portUp(port) {
 
 const EMULATOR_PORTS = { firestore: 8085, database: 9000, auth: 9099 }; // firebase.json
 
+/**
+ * PIDs of emulators THIS harness started and then lost: the command line has
+ * to carry both `emulators:start` and our throwaway project id, which nothing
+ * else on a developer's machine does. Deliberately narrow - a real Firebase
+ * emulator for another project must never be killed by a test run. The jars
+ * are children of these and die with the group.
+ * @returns {number[]}
+ */
+function staleHarnessEmulators() {
+    const out = [];
+    let pids = [];
+    try { pids = readdirSync('/proc'); } catch { return out; }   // non-Linux: no reaping
+    for (const entry of pids) {
+        if (!/^\d+$/.test(entry)) continue;
+        const pid = Number(entry);
+        if (pid === process.pid) continue;
+        let cmd = '';
+        try { cmd = readFileSync(`/proc/${entry}/cmdline`, 'utf8'); } catch { continue; }
+        cmd = cmd.replace(/\0/g, ' ');
+        if (cmd.includes('emulators:start') && cmd.includes(PROJECT_ID)) out.push(pid);
+    }
+    return out;
+}
+
 function emulatorUp() {
     return portUp(EMULATOR_PORTS.firestore);
 }
@@ -88,7 +112,30 @@ export async function startEmulator({ repoRoot, timeoutMs = 180000, only = ['fir
         return { ok: false, reason: 'Java not installed (the Firestore emulator is a jar)' };
     }
     if (await emulatorUp()) {
-        return { ok: false, reason: `something already listens on ${EMULATOR_HOST}; refusing to share it` };
+        // A run that was interrupted (Ctrl-C, a killed CI step, a stopped
+        // background task) leaves its emulator holding the port, and the next
+        // run then SKIPS - which looks exactly like a finished run and is how
+        // a whole verification batch silently produced nothing on 2026-09-12.
+        // Reap our OWN leftovers and carry on; anything else is somebody
+        // else's process and gets named, not killed.
+        const stale = staleHarnessEmulators();
+        if (!stale.length) {
+            return { ok: false, reason: `${EMULATOR_HOST} is busy and no stale ${PROJECT_ID} emulator owns it; `
+                + 'find the owner (`ss -ltnp | grep 8085`) before rerunning' };
+        }
+        for (const sig of ['SIGTERM', 'SIGKILL']) {
+            for (const pid of stale) {
+                try { process.kill(-pid, sig); } catch { /* not a group leader */ }
+                try { process.kill(pid, sig); } catch { /* already gone */ }
+            }
+            for (let i = 0; i < 24 && await emulatorUp(); i++) await sleep(250);
+            if (!(await emulatorUp())) break;
+        }
+        if (await emulatorUp()) {
+            return { ok: false, reason: `${EMULATOR_HOST} still busy after reaping stale `
+                + `${PROJECT_ID} emulators (${stale.join(', ')})` };
+        }
+        console.log(`[emulator-harness] reaped a stale emulator (pid ${stale.join(', ')}) that was holding ${EMULATOR_HOST}`);
     }
     const child = spawn('npx', [
         '-y', `firebase-tools@${FIREBASE_TOOLS_VERSION}`,

@@ -17,8 +17,9 @@
 //   D8     the hash carries a trimmed search term
 //   D9     axe on the open show modal and season modal (list / nested-interactive)
 //   D10    footer meta contrast
-//   U2/U3/U5/U6/U7/U11 confidence pills, sticky mobile close, collapsed shape
-//          rail, chip-row scroll affordance, pager landing, plain "+"
+//   U2/U3/U5/U6/U7/U11 confidence pills, sticky mobile close (still on screen
+//          AND still 36x36 - see U3b), collapsed shape rail, chip-row scroll
+//          affordance, pager landing, plain "+"
 //   plus seeded axe scans of the finder, both modals and the Kometa builder at
 //   1280 and 390, and a built SEO page smoke when shows/ exists.
 import { readFile, access } from 'node:fs/promises';
@@ -240,13 +241,66 @@ export async function run({ base, cdpPort }) {
         return JSON.stringify({ n: lis.length, roleButtons: lis.filter(l => l.getAttribute('role') === 'button').length,
           openButtons: lis.filter(l => l.querySelector('button.ss-num')).length,
           eps: lis.map(l => (l.querySelector('.ss-eps')||{}).textContent || ''),
-          low: [...document.querySelectorAll('.shape-tag.is-low-confidence')].map(b => ({ t: b.textContent, title: b.title, op: getComputedStyle(b).opacity })),
+          low: (() => {
+            // Inside a template literal an unrecognised \\d loses its
+            // backslash, so the class has to be escaped or this matches "d".
+            const parse = (c) => (c.match(/[\\d.]+/g) || []).map(Number);
+            const lin = (v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); };
+            const lum = (r) => 0.2126 * lin(r[0]) + 0.7152 * lin(r[1]) + 0.0722 * lin(r[2]);
+            // The ground a chip's TEXT actually paints on: collect every
+            // background from the chip up to the first opaque one, then
+            // composite them bottom-up. A chip with a 12% wash over a card is
+            // the case that matters; reading backgroundColor alone lies there.
+            const ground = (el) => {
+              const layers = [];
+              for (let n = el; n; n = n.parentElement) {
+                const c = parse(getComputedStyle(n).backgroundColor);
+                if (c.length < 3) continue;
+                const a = c.length > 3 ? c[3] : 1;
+                if (a === 0) continue;
+                layers.push({ rgb: c.slice(0, 3), a });
+                if (a === 1) break;
+              }
+              let out = layers.length && layers[layers.length - 1].a === 1
+                ? layers.pop().rgb : [0, 0, 0];
+              for (let i = layers.length - 1; i >= 0; i -= 1) {
+                const l = layers[i];
+                out = out.map((v, k) => v * (1 - l.a) + l.rgb[k] * l.a);
+              }
+              return out;
+            };
+            const ratio = (fg, bg) => { const a = lum(fg), b = lum(bg);
+              return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05); };
+            return [...document.querySelectorAll('.shape-tag.is-low-confidence')].map((b) => {
+              const cs = getComputedStyle(b);
+              const bg = ground(b);
+              return { t: b.textContent, title: b.title, op: cs.opacity,
+                border: cs.borderTopStyle, color: cs.color,
+                contrast: Math.round(ratio(parse(cs.color).slice(0, 3), bg) * 100) / 100 };
+            });
+          })(),
+          full: [...document.querySelectorAll('.shape-tag:not(.is-low-confidence)')]
+            .map(b => getComputedStyle(b).color).slice(0, 4),
           compare: document.getElementById('showModalCompare').textContent }); })()`);
       t('D9: season rows are plain list items with a real button to open them',
         rows.n > 0 && rows.roleButtons === 0 && rows.openButtons === rows.n, JSON.stringify(rows).slice(0, 160));
       t('D7: season rows show their episode counts', rows.eps.length > 0 && rows.eps.every((e) => /^[1-9]\d* eps/.test(e)), rows.eps.join(' | '));
-      t('U2: a low-confidence shape pill is dimmed and says so',
-        rows.low.length > 0 && rows.low.every((p) => parseFloat(p.op) < 1 && /Low confidence \(0\.\d\d\)/.test(p.title)), JSON.stringify(rows.low[0] || null));
+      // U2 pins the PROPERTY, not the mechanism. It used to assert
+      // `opacity < 1`, and that pinned exactly the bug: fading the element as
+      // a group drags its text down with its fill, which took the accent-
+      // tinted card badge to 4.12:1 and cost eight serious axe violations.
+      // A quieter chip has to stay readable, so the measured contrast is the
+      // assertion now, and opacity is pinned OFF as the thing not to reach for.
+      t('U2: a low-confidence shape pill reads as a weaker claim and says so',
+        rows.low.length > 0 && rows.low.every((p) => p.border === 'dashed'
+          && /Low confidence \(0\.\d\d\)/.test(p.title)), JSON.stringify(rows.low[0] || null));
+      t('U2: and it is quieter than a full-confidence pill without being dimmed by opacity',
+        rows.low.length > 0 && rows.low.every((p) => p.op === '1'
+          && !rows.full.includes(p.color)),
+        JSON.stringify({ low: rows.low[0] || null, full: rows.full }));
+      t('U2: and it still clears the 4.5:1 WCAG AA floor for small text',
+        rows.low.length > 0 && rows.low.every((p) => p.contrast >= 4.5),
+        JSON.stringify(rows.low.map((p) => ({ t: p.t, contrast: p.contrast }))));
       t('U11: the compare button uses a plain "+"', /^\+ Add to compare/.test(rows.compare), rows.compare);
       await axeCheck(s, 'open show modal at 1280');
 
@@ -356,10 +410,20 @@ export async function run({ base, cdpPort }) {
       const close = await evaluate(s, `(()=>{ const b = document.querySelector('#showModal .modal-close'); const r = b.getBoundingClientRect();
         const p = document.querySelector('#showModal .modal-panel');
         const hit = document.elementFromPoint(r.left + r.width/2, r.top + r.height/2);
-        return JSON.stringify({ scrolled: p.scrollTop, top: Math.round(r.top), hitIsClose: !!(hit && (hit === b || b.contains(hit))) }); })()`);
+        return JSON.stringify({ scrolled: p.scrollTop, top: Math.round(r.top), w: Math.round(r.width), h: Math.round(r.height),
+          hitIsClose: !!(hit && (hit === b || b.contains(hit))) }); })()`);
       t('U3: the close button stays on screen after scrolling the panel and is the element under its own centre',
         close.scrolled > 600 && close.top >= 0 && close.top < 120 && close.hitIsClose, JSON.stringify(close));
-      if (!close.hitIsClose) await shot(s, 'u3-sticky-close-390');
+      // U3b: the sticky rule puts the button back IN the panel's flex flow, so
+      // `height: 36px` is only a flex BASIS unless flex-shrink is pinned. It was
+      // not, and a ~2,300 px panel in an ~828 px box squashed the button to
+      // 36x2 px at every width the mobile block covers. A centre hit-test
+      // cannot see that (the centre of a 2 px strip is still the button), which
+      // is why the check above passed for the whole time it was broken. Measure
+      // the box.
+      t('U3b: the close button keeps its full 36x36 box on a phone',
+        close.w >= 36 && close.h >= 36, `${close.w}x${close.h}`);
+      if (!close.hitIsClose || close.h < 36) await shot(s, 'u3-sticky-close-390');
     } catch (e) {
       t('rising-shows audit: section completed', false, String(e && e.message || e));
     } finally { await closePage(cdpPort, s); }

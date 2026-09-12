@@ -2120,6 +2120,18 @@ body.gym-tracker .paused-workout-info h3 {
     color: #fbbf24;
 }
 
+/* The refresh layer pins the amber recovery-banner treatment at a specificity
+   the plain modifier class cannot beat, so the storage-failure state restates
+   it in danger red here. */
+body.gym-tracker .paused-workout-banner--storage {
+    border-color: rgba(248,113,113,0.55);
+    box-shadow: 0 4px 20px rgba(248,113,113,0.14), var(--gt-shadow-card);
+}
+
+body.gym-tracker .paused-workout-banner--storage .paused-workout-info h3 {
+    color: var(--gt-danger, #f87171);
+}
+
 /* ============================================================
    15. REDUCED MOTION — honor existing app preference
    ============================================================ */

@@ -225,3 +225,72 @@ test('drift guard: rows with a missing score are skipped by both counters', () =
         { id: 3, dateTime: '2026-05-03T12:00:00Z' },
     ]);
 });
+
+// --- updateMatchupResult: the Team Matchup lookup must use the same
+// missing-score guard as updateStatisticsWithData, not a raw `>` compare ---
+//
+// Regression: updateMatchupResult compared g.player1Goals > g.player2Goals
+// directly. `3 > undefined` and `undefined > 3` are both false, so an
+// ungradeable row fell all the way to the trailing `else { draws++ }`
+// instead of being skipped, silently counting a real result (or a missing
+// one) as a draw. Fixed by routing through window.FootballPlayerStats.matchResult,
+// same as the drift guard above.
+
+function matchupCounts(games, t1Value, t2Value = '') {
+    const sel1 = makeElement({ value: t1Value });
+    const sel2 = makeElement({ value: t2Value });
+    const result = makeElement();
+    const grid = makeElement();
+    const elements = {
+        matchupTeam1: sel1,
+        matchupTeam2: sel2,
+        matchupResult: result,
+        matchupResultGrid: grid,
+    };
+    const ctx = makeContext({ elements, console: quietConsole });
+    loadInto(ctx, 'playerStats.js');
+    loadInto(ctx, 'football-h2h.js');
+    ctx.window.games = games;
+    ctx.updateMatchupResult();
+
+    const values = [...grid.innerHTML.matchAll(/matchup-stat-value">(\d+)</g)].map((m) => Number(m[1]));
+    const playedMatch = grid.innerHTML.match(/from (\d+) game/);
+    return {
+        p1Wins: values[0],
+        draws: values[1],
+        p2Wins: values[2],
+        gamesPlayed: playedMatch ? Number(playedMatch[1]) : 0,
+    };
+}
+
+test('matchup: a game with a missing score is skipped, not counted as a draw or a win', () => {
+    const counts = matchupCounts([
+        { id: 1, player1Team: 'X', dateTime: '2026-05-01T12:00:00Z', player1Goals: 3 }, // player2Goals missing
+    ], 'X');
+    assert.equal(counts.p1Wins, 0);
+    assert.equal(counts.p2Wins, 0);
+    assert.equal(counts.draws, 0, 'an ungradeable row is not a draw');
+    assert.equal(counts.gamesPlayed, 1, 'the row still counts toward "from N games", matching the history table');
+});
+
+test('matchup: the reverse missing side is skipped the same way', () => {
+    const counts = matchupCounts([
+        { id: 1, player1Team: 'X', dateTime: '2026-05-01T12:00:00Z', player2Goals: 5 }, // player1Goals missing
+    ], 'X');
+    assert.equal(counts.p1Wins, 0);
+    assert.equal(counts.p2Wins, 0);
+    assert.equal(counts.draws, 0);
+});
+
+test('matchup: regulation and shootout results still count correctly alongside a skipped row', () => {
+    const counts = matchupCounts([
+        game(1, 3, 1),
+        game(2, 1, 1, 1),
+        { id: 3, player1Team: 'X', dateTime: '2026-05-03T12:00:00Z', player1Goals: 2 },
+        game(4, 0, 0),
+    ].map((g) => ({ ...g, player1Team: 'X' })), 'X');
+    assert.equal(counts.p1Wins, 2, 'the 3-1 regulation win and the 1-1 shootout win');
+    assert.equal(counts.p2Wins, 0);
+    assert.equal(counts.draws, 1, 'the 0-0 with no shootout');
+    assert.equal(counts.gamesPlayed, 4);
+});

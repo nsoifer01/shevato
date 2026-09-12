@@ -7,8 +7,8 @@ const { renderMoreFooter } = require('./render-footer.js');
 // and the app can never label the same show differently. deriveShowShapes owns
 // the definition; detectShapes is the per-episode classifier it runs over the
 // per-season averages. Neither module requires this one, so no cycle.
-const { deriveShowShapes } = require('./finder-lib.js');
-const { detectShapes } = require('./match.js');
+const { deriveShowShapes, showShapeConfidence, orderShapesByConfidence } = require('./finder-lib.js');
+const { detectShapes, shapeConfidence } = require('./match.js');
 // Streaming-provider vocabulary is shared with the browser app for the same
 // reason shapes are: a page must never name a service the app spells
 // differently for the same show.
@@ -108,10 +108,17 @@ const normalizeProviders = providersLib.normalizeProviders;
 // big-finale filter would reject, so visitors arriving from search hit a
 // filtered view missing a third of what they had just been shown.
 //
-// `shapes[0]` is the dominant one: deriveShowShapes returns trajectory shapes
-// before categorical tags, so a show with a real trajectory is filed under it
-// and only tag-only shows (a single season that saved its best for last) land
-// on a categorical hub.
+// The dominant shape is the one the show FITS BEST, not the one detectShapes
+// happens to emit first. It used to be `shapes[0]` straight out of the
+// classifier, whose emission order is fixed rather than fitted, and that
+// mislabelled 874 of 1,535 multi-shape shows - Game of Thrones among them,
+// badged "Front-loaded" (confidence 0.18) rather than "Bad finale" (1.00), and
+// so absent from the bad-finale hub entirely. orderShapesByConfidence sorts by
+// the confidence the season pills already use and keeps categorical tags last,
+// so a show with a real trajectory is still filed under it and only tag-only
+// shows (a single season that saved its best for last) land on a categorical
+// hub. See finder-lib.js for why the ordering is derived here rather than
+// baked into deriveShowShapes.
 function computeDominantShape(show) {
   const seasons = show.seasons || [];
   const seasonAvgs = seasons
@@ -126,10 +133,12 @@ function computeDominantShape(show) {
   // last word. Found by season number rather than array position so the caller
   // does not have to have sorted.
   const newest = seasons.reduce((best, s) => (best && best.season > s.season ? best : s), null);
-  const shapes = deriveShowShapes(seasonAvgs, categoricalTags, detectShapes, {
-    inProgress: !!(newest && newest.inProgress),
-  });
-  const shape = shapes[0];
+  const options = { inProgress: !!(newest && newest.inProgress) };
+  const shapes = deriveShowShapes(seasonAvgs, categoricalTags, detectShapes, options);
+  const shape = orderShapesByConfidence(
+    shapes,
+    showShapeConfidence(seasonAvgs, shapeConfidence, options),
+  )[0];
   if (!shape) return { dominantShape: null, dominantShapeSlug: null };
   return { dominantShape: shape, dominantShapeSlug: shapeToSlug(shape) };
 }

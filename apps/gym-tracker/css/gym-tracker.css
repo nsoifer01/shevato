@@ -6954,6 +6954,13 @@ button.calendar-day {
     gap: var(--spacing-md);
 }
 
+/* Writes are being refused mid-workout: the strongest state this banner has. */
+.paused-workout-banner--storage {
+    border-color: var(--accent-error);
+}
+.paused-workout-banner--storage .paused-workout-icon { color: var(--accent-error); }
+.paused-workout-banner--storage .paused-workout-info h3 { color: var(--accent-error); }
+
 /* Another tab drives the workout: informational, no Resume/Discard (D2). */
 .paused-workout-banner--elsewhere {
     border-color: var(--accent-primary);
@@ -9318,6 +9325,70 @@ body.gym-tracker #finish-workout-modal .finish-workout-submit:focus-visible {
 .gt-warmup-done:focus-visible {
     outline: none;
     box-shadow: 0 0 0 3px rgba(52, 211, 153, 0.35) !important;
+}
+
+/* ---- Quick workout: log a session with no program ---------------------- */
+/* The two routes in (the program picker's empty state and the CTA under the
+   program grid) and the "Add exercise" footer inside a live quick workout.
+   Scoped to classes this app owns; the buttons use .btn-secondary, which
+   already pins its own colour past main.css's `button { color:#555 }`. */
+.empty-state-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--spacing-sm);
+    justify-content: center;
+}
+
+.quick-workout-cta {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--spacing-md);
+    margin-top: var(--spacing-lg);
+    padding: var(--spacing-md);
+    background: var(--bg-card);
+    border: 1px dashed var(--border-color);
+    border-radius: var(--radius-md);
+}
+
+.quick-workout-cta-text { min-width: 0; }
+
+.quick-workout-cta-text h3 {
+    margin: 0 0 0.25rem 0;
+    font-size: 1rem;
+}
+
+.quick-workout-cta-text p {
+    margin: 0;
+    color: var(--text-secondary);
+    font-size: 0.85rem;
+}
+
+.quick-workout-cta .btn { flex: 0 0 auto; }
+
+.quick-workout-add {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--spacing-sm);
+    /* Clear of the floating rest dial, same reasoning as the exercise list's
+       own bottom reserve. */
+    margin: var(--spacing-md) 0 var(--spacing-xl);
+}
+
+.quick-workout-add-hint {
+    margin: 0;
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+    text-align: center;
+}
+
+.quick-workout-add-btn { width: 100%; max-width: 320px; }
+
+@media (max-width: 480px) {
+    .quick-workout-cta { flex-direction: column; align-items: stretch; }
+    .quick-workout-cta .btn { width: 100%; }
 }
 
 /* ---- Item 3: in-workout exercise swap ---------------------------------- */

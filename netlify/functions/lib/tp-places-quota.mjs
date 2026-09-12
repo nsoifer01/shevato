@@ -285,24 +285,47 @@ export function checkQuota(usage, clientId, now, cost = 1, limits = DEFAULT_LIMI
 // call so parallel batches cannot overrun a cap; without a release, a traveller
 // scrolling a cached itinerary would burn a quota that costs nothing to serve.
 // Never drops below zero, so a double release cannot mint free calls.
-export function releaseQuota(usage, clientId, now, amount, tier = 'public', networkId = '') {
+// TWO REFUNDS, because a reservation covers two different costs.
+//
+// `amount` is the MONEY refund: reservations that produced no billed Place
+// Details call. It comes off the shared pools and `billedMonth`.
+//
+// `rateAmount` is the RATE refund: reservations that produced no upstream work
+// AT ALL. It comes off the per-client and per-network counters, which are not
+// a billing ledger - they exist to bound how much work one caller can make
+// this function do. It defaults to `amount`, so every call site that has only
+// one kind of unspent reservation (and every existing test) behaves exactly as
+// it did before.
+//
+// The two differ for exactly one outcome: a query whose free Text Search ran
+// and resolved to nothing. It bills zero, so the money comes back - but a real
+// upstream search happened and a blob was written, so the rate allowance does
+// not. Refunding both was what let an attacker run unbounded searches at zero
+// quota cost, against a Google search quota this project has already been
+// 429'd on, and into a blob store with no eviction.
+//
+// Never drops below zero, so a double release (or a nonsense rateAmount larger
+// than what was reserved) cannot mint free calls.
+export function releaseQuota(usage, clientId, now, amount, tier = 'public', networkId = '', rateAmount = amount) {
   const u = pruneUsage(usage, hourBucket(now), dayBucket(now), monthBucket(now));
   const id = String(clientId);
   const n = Math.max(0, Math.floor(amount));
-  if (!n) return u;
+  const rate = Math.max(0, Math.floor(rateAmount));
+  if (!n && !rate) return u;
   const pool = poolKeys(tier);
-  // A reservation that was never spent must come back off EVERY counter it
-  // moved, or a traveller scrolling a cached itinerary would burn a network
-  // allowance that cost nothing to serve.
   const net = tier === 'owner' ? '' : String(networkId || '');
-  if (net) {
-    u.networkHour[net] = Math.max(0, (u.networkHour[net] || 0) - n);
-    u.networkDay[net] = Math.max(0, (u.networkDay[net] || 0) - n);
+  if (rate) {
+    if (net) {
+      u.networkHour[net] = Math.max(0, (u.networkHour[net] || 0) - rate);
+      u.networkDay[net] = Math.max(0, (u.networkDay[net] || 0) - rate);
+    }
+    u.clientHour[id] = Math.max(0, (u.clientHour[id] || 0) - rate);
+    u.clientDay[id] = Math.max(0, (u.clientDay[id] || 0) - rate);
   }
-  u.clientHour[id] = Math.max(0, (u.clientHour[id] || 0) - n);
-  u.clientDay[id] = Math.max(0, (u.clientDay[id] || 0) - n);
-  u[pool.day] = Math.max(0, u[pool.day] - n);
-  u[pool.month] = Math.max(0, u[pool.month] - n);
-  u.billedMonth = Math.max(0, u.billedMonth - n);
+  if (n) {
+    u[pool.day] = Math.max(0, u[pool.day] - n);
+    u[pool.month] = Math.max(0, u[pool.month] - n);
+    u.billedMonth = Math.max(0, u.billedMonth - n);
+  }
   return u;
 }

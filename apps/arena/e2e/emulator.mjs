@@ -9,7 +9,9 @@
 // the audit's regressions: a first-time guest creating a room with NO
 // sync-modal seed (D2), the gate-deletion exploit from a third client
 // (D1), a ghost player (D4), a hidden host tab (D3), an answer while
-// offline (D9), the chat rate limit at the call site (D11), a coordinate
+// offline (D9), the chat rate limit at the call site (D11), the sliding
+// chat window past its 80-message cap (S9) and the host takeover when a
+// host tab simply disappears (S10), a coordinate
 // double-click on Start (D12), a stale rematch prompt (D13), the end
 // screen after a leaver (D5), chat/gate/ghost cleanup after the last
 // leaver (D6), leaderboard == profile for a registered player (D8), the
@@ -117,7 +119,8 @@ async function ownerList(path) {
 }
 // Owner-bypass field patch (simple scalar values only).
 async function ownerPatch(path, fields) {
-  const enc = (v) => v === null ? { nullValue: null } : typeof v === 'string' ? { stringValue: v }
+  const enc = (v) => v === null ? { nullValue: null } : v instanceof Date ? { timestampValue: v.toISOString() }
+    : typeof v === 'string' ? { stringValue: v }
     : typeof v === 'boolean' ? { booleanValue: v } : Number.isInteger(v) ? { integerValue: String(v) } : { doubleValue: v };
   const mask = Object.keys(fields).map((k) => `updateMask.fieldPaths=${encodeURIComponent(k)}`).join('&');
   const res = await fetch(`${EMU_DOCS}/${path}?${mask}`, {
@@ -515,21 +518,38 @@ export async function run({ base, cdpPort, base2 = null }) {
     const onlyFilter = process.env.ARENA_E2E_ONLY
       ? process.env.ARENA_E2E_ONLY.split(',').map((x) => x.trim()).filter(Boolean)
       : null;
+    // The three client pages are opened ONCE and inherited by every scenario.
+    // They used to be opened inside S1, which made every filtered run drag S1
+    // along: `ARENA_E2E_ONLY=S6:` still paid for a whole five-round trivia
+    // game before reaching the scenario under test, so iterating on one
+    // timing bug cost ten minutes a go (2026-09-12; see FINDINGS, "One
+    // scenario should cost one scenario"). Opening them here instead makes a
+    // filtered run cost only what it filtered to, and costs a full run
+    // nothing: S1 now inherits exactly the pages it used to create, with the
+    // same options, so its first-time-guest assertions are unchanged.
+    const ensurePages = async () => {
+      if (!A) A = await arenaPage(baseA);
+      if (!B) B = await arenaPage(baseB, { width: 360, height: 740, mobile: true });
+      if (!C && baseC) C = await arenaPage(baseC);
+    };
     const guard = async (label, fn) => {
       if (onlyFilter && !onlyFilter.some((f) => label.includes(f))) {
         skip(`arena-emulator: ${label}`, `skipped by ARENA_E2E_ONLY=${onlyFilter.join(',')}`);
         return;
       }
-      try { await fn(); } catch (e) {
+      try {
+        await ensurePages();
+        await fn();
+      } catch (e) {
         t(`arena-emulator: ${label} ran to completion`, false, String(e && e.message || e).slice(0, 200));
       }
     };
 
     await guard('S1: fresh guest create (D2) + full three-client game', async () => {
       /* ---------- S1: fresh guest create (D2) + full three-client game ---------- */
-      A = await arenaPage(baseA);
-      B = await arenaPage(baseB, { width: 360, height: 740, mobile: true });
-      if (baseC) C = await arenaPage(baseC);
+      // Pages are opened by guard()'s ensurePages, so a filtered run that
+      // skips this scenario still has them. They are as fresh here as when
+      // this block opened them itself: nothing has touched them yet.
       await front(A);
 
       // Host: switch to trivia, shortest game, fastest timer, create - as a
@@ -1298,6 +1318,65 @@ export async function run({ base, cdpPort, base2 = null }) {
         const w = (await evaluate(s, 'window.__warns||[]')) || [];
         return `${w.length}${w.length ? '@' + (Math.round((w[0][0] - naturalEnd) / 100) / 10) + ':' + String(w[0][1]).slice(0, 60) : ''}`;
       };
+      // WHEN DID THE HOST KNOW? The single fact every earlier investigation
+      // of this check was missing. The Ready-skip gate in progressRoomClock
+      // reads the same live set renderReadyBar paints, so the moment the
+      // host's own status line first reads "N/N ready" IS the moment the
+      // host's snapshot carried unanimity. Splitting the delay there turns
+      // one opaque number into two answerable ones: the host did not know
+      // yet (snapshot/propagation), or the host knew and could not act
+      // (the advance write). A MutationObserver, not a poll: the bar is
+      // painted from the same rAF loop the gate runs on, so a poll would
+      // measure the poll.
+      const armReadyBar = (s) => evaluate(s, `(()=>{window.__rb={at:0,seen:[]};
+        const el=document.getElementById('globe-drop-ready-status');if(!el)return false;
+        const look=()=>{const txt=(el.textContent||'').trim();
+          const prev=window.__rb.seen[window.__rb.seen.length-1];
+          if(txt&&(!prev||prev[1]!==txt))window.__rb.seen.push([Date.now(),txt]);
+          if(!window.__rb.at){const m=txt.match(/(\\d+)\\/(\\d+)\\s+(?:ready|finishing)/);
+            if(m&&m[1]===m[2]&&Number(m[2])>0)window.__rb.at=Date.now();}};
+        look();new MutationObserver(look).observe(el,{childList:true,subtree:true,characterData:true});return true})()`);
+      // Every Firestore RPC the host issues, start and finish, so a slow
+      // advance names the call it is waiting on instead of being one opaque
+      // number. This is what identified the 2026-09-12 defect: the Ready-skip
+      // transaction's BatchGetDocuments answered in 0.1-0.2 s and its Commit
+      // left 4.2 s later, which ruled out the network, the emulator, a retry
+      // and a blocked main thread in one reading, and pointed at the SDK's
+      // serialised queue between the two phases. The fix made the early
+      // advance a single Write, so a healthy trail here now reads
+      // `Write@..(0.3s)` with no batchGet/commit pair at all.
+      // Every hook is defensive: instrumentation must never be able to break
+      // the page it is measuring.
+      const armRpc = (s) => evaluate(s, `(()=>{window.__rpc=[];
+        const kind=(u)=>{try{const m=String(u).match(/Firestore\\/(\\w+)/)||String(u).match(/documents:(\\w+)/);
+          return m?m[1]:String(u).slice(-30);}catch(e){return '?';}};
+        const mark=(u)=>{try{const rec=[Date.now(),kind(u),0];window.__rpc.push(rec);return rec;}catch(e){return null;}};
+        const ox=XMLHttpRequest.prototype.open;
+        XMLHttpRequest.prototype.open=function(m,u){
+          const rec=mark(u);
+          try{if(rec)this.addEventListener('loadend',()=>{rec[2]=Date.now();});}catch(e){}
+          return ox.apply(this,arguments);};
+        const of=window.fetch;window.fetch=function(u,o){
+          const rec=mark(u&&u.url?u.url:u);
+          const done=()=>{try{if(rec)rec[2]=Date.now();}catch(e){}};
+          return of.apply(this,arguments).then((r)=>{done();return r;},(e)=>{done();throw e;});};
+        return 1})()`);
+      const rpcOn = async (s) => {
+        const r = (await evaluate(s, 'window.__rpc||[]')) || [];
+        const rel = (ms) => Math.round((ms - naturalEnd) / 100) / 10;
+        return r.filter(([, k]) => /batchGet|commit|Write|Listen/i.test(k))
+          .map(([t0, k, t1]) => `${k}@${rel(t0)}${t1 ? `..${rel(t1)}(${Math.round((t1 - t0) / 100) / 10}s)` : '..OPEN'}`)
+          .join(' ');
+      };
+      const readyBarOn = async (s) => {
+        const r = await evaluate(s, 'window.__rb||null');
+        if (!r) return 'n/a';
+        const when = r.at ? String(Math.round((r.at - naturalEnd) / 100) / 10) : 'never';
+        const trail = (r.seen || []).slice(-3)
+          .map(([ts, txt]) => `${Math.round((ts - naturalEnd) / 100) / 10}:${txt.replace(/\s+/g, ' ')}`)
+          .join(' -> ');
+        return `${when}${trail ? ' [' + trail.slice(0, 120) + ']' : ''}`;
+      };
       // The host's clock runs from its rAF loop; a stall of the main thread
       // (a texture re-upload under software GL, a long task) is a gap in
       // that loop, and this records the longest one seen since arming.
@@ -1382,6 +1461,8 @@ export async function run({ base, cdpPort, base2 = null }) {
       // check measures.
       await armWarns(A);
       await armWarns(B);
+      await armReadyBar(A);
+      await armRpc(A);
       const readyB = await waitForExpr(B, readyBtnLive, { timeout: REVEAL_LEAD_MS + 8000 });
       const tBtnB = at();
       await armClicks(B);
@@ -1421,6 +1502,8 @@ export async function run({ base, cdpPort, base2 = null }) {
         + (clickA.misses.length || clickB.misses.length
           ? ` | misses A=[${clickA.misses.join('; ')}] B=[${clickB.misses.join('; ')}]` : '')
         + ` | flags=${readyFlags.join(',')}`
+        + ` | hostSawAllReady ${await readyBarOn(A)}`
+        + ` | RPC ${await rpcOn(A)}`
         + ` | warns A=${await warnsOn(A)} B=${await warnsOn(B)} | hostFrameGap=${await frameGapOn(A)}`;
       // Split into two checks. "Both players registered Ready" and "that made
       // the round advance early" are different claims, and folding them into
@@ -1593,6 +1676,162 @@ export async function run({ base, cdpPort, base2 = null }) {
         doc8.status === 200 && !doc8.doc?.fields?.disconnectedAt,
         `status=${doc8.status} stamp=${JSON.stringify(doc8.doc?.fields?.disconnectedAt || 'absent')}`);
       await resetToLobby([A, B]);
+    });
+
+    await guard('S9: the chat window follows the newest messages', async () => {
+      /* ---------- S9: the chat window follows the newest messages ---------- */
+      /*
+       * The room chat froze permanently once a room passed 80 messages:
+       * `orderBy('sentAt','asc')` with a plain `limit(80)` is the OLDEST 80,
+       * so the subscribed window was pinned and no new message ever rendered
+       * again, for anybody in the room. Eight one-tap emoji buttons at a
+       * 1.5 s rate limit means six players reach 80 in about a minute.
+       *
+       * Nothing here could have caught it before: the only chat assertion
+       * (D11, in S1) counts STORED documents, and storing was never the
+       * broken half.
+       */
+      await resetToLobby([A, B]);
+      await clickSel(A, '.game-type-btn[data-game-type="trivia"]', { settle: 300 });
+      await clickSel(A, '#create-room-btn', { settle: 700 });
+      if (await evaluate(A, visible('name-prompt-modal'))) {
+        await setValue(A, '#name-prompt-input', 'Chatty Host');
+        await clickSel(A, '#name-prompt-confirm', { settle: 500 });
+      }
+      await waitForExpr(A, visible('room-panel'), { timeout: 15000 });
+      const codeC = await roomCodeOf(A);
+      const aUidC = await evaluate(A, 'window.firebaseAuth.getCurrentUser().uid');
+      await setValue(B, '#join-code', codeC);
+      await clickSel(B, '#join-room-btn', { settle: 700 });
+      await waitForExpr(B, visible('room-panel'), { timeout: 15000 });
+
+      // Past the cap on purpose: 85 seeded messages means the oldest 5 must
+      // fall out of the window. Owner-seeded because sending 85 messages
+      // through the UI would take two minutes of rate limit.
+      const SEEDED = 85;
+      const base0 = Date.now() - SEEDED * 1000;
+      for (let i = 0; i < SEEDED; i += 10) {
+        await Promise.all(Array.from({ length: Math.min(10, SEEDED - i) }, (_, k) => {
+          const n = i + k + 1;
+          return ownerPatch(`triviaRooms/${codeC}/chat/seed${String(n).padStart(3, '0')}`, {
+            uid: aUidC, displayName: 'Chatty Host', text: `seeded-${n}`,
+            sentAt: new Date(base0 + n * 1000),
+          });
+        }));
+      }
+      await clickSel(B, '#room-chat-toggle', { settle: 600 });
+      const bodies = "(()=>[...document.querySelectorAll('#room-chat-list .room-chat-body')].map(e=>e.textContent))()";
+      const filled = await waitForExpr(B, `${bodies}.length === 80`, { timeout: 15000 });
+      const shown = await evaluate(B, bodies);
+      t('emulator (S9): the panel holds exactly the 80-message window',
+        filled && Array.isArray(shown) && shown.length === 80, `count=${shown && shown.length}`);
+      t('emulator (S9): the window is the NEWEST 80, not the oldest (the freeze)',
+        Array.isArray(shown) && shown[shown.length - 1] === `seeded-${SEEDED}` && shown[0] === `seeded-${SEEDED - 79}`
+          && !shown.includes('seeded-1'),
+        `first=${shown && shown[0]} last=${shown && shown[shown.length - 1]}`);
+      t('emulator (S9): the window is still rendered oldest-first',
+        Array.isArray(shown) && shown.every((v, i) => v === `seeded-${SEEDED - 79 + i}`),
+        `head=${JSON.stringify((shown || []).slice(0, 3))}`);
+
+      // The freeze itself: a room past the cap must still deliver new
+      // messages to everyone. This is the assertion the bug fails.
+      await clickSel(A, '#room-chat-toggle', { settle: 400 });
+      await evalAsync(A, `(async()=>{
+        const f=document.getElementById('room-chat-form');
+        const i=document.getElementById('room-chat-input');
+        i.value='after-the-cap'; i.dispatchEvent(new Event('input',{bubbles:true})); f.requestSubmit();
+        await new Promise(r=>setTimeout(r,600)); return 1; })()`);
+      const arrived = await waitForExpr(B, `${bodies}.includes('after-the-cap')`, { timeout: 15000 });
+      t('emulator (S9): a message sent past the 80-message cap still reaches the other player',
+        arrived, `tail=${JSON.stringify((await evaluate(B, bodies) || []).slice(-2))}`);
+      const slid = await evaluate(B, bodies);
+      t('emulator (S9): the window slid instead of growing (the oldest message dropped out)',
+        Array.isArray(slid) && slid.length === 80 && !slid.includes(`seeded-${SEEDED - 79}`),
+        `count=${slid && slid.length} first=${slid && slid[0]}`);
+
+      await clickSel(A, '#room-chat-close', { settle: 300 });
+      await clickSel(B, '#room-chat-close', { settle: 300 });
+      await leaveRoom(B);
+      await leaveRoom(A);
+    });
+
+    await guard('S10: the host tab goes away without leaving (clock-driven takeover)', async () => {
+      /* ---------- S10: the host tab goes away without leaving ---------- */
+      /*
+       * `hostUid` used to be reassigned ONLY inside leaveRoom, which is the
+       * explicit "Leave room" button - exactly what S2 covers, and exactly
+       * why this gap survived a green suite. A closed tab, a discarded
+       * background tab or a dead phone never reaches that path, so the room
+       * kept naming a host who was never coming back and four host-gated
+       * behaviours stopped for the rest of the session: early reveal (every
+       * round then burns the full timer), the Globe Drop Ready-to-skip
+       * advance, sweepStalePlayers (so the ghost that caused it could not be
+       * cleaned up either) and playAgain, which left the end screen stuck on
+       * "Rematch - 2/2 players ready" forever.
+       *
+       * firestore.rules already allowed the repair; the client simply never
+       * asked outside the Leave button. It now asks from the room clock, in
+       * every stage.
+       *
+       * Last scenario on purpose: it closes one of the clients for good.
+       */
+      await resetToLobby([A, B]);
+      await clickSel(A, '.game-type-btn[data-game-type="trivia"]', { settle: 300 });
+      await clickSel(A, '#create-room-btn', { settle: 700 });
+      if (await evaluate(A, visible('name-prompt-modal'))) {
+        await setValue(A, '#name-prompt-input', 'Vanishing Host');
+        await clickSel(A, '#name-prompt-confirm', { settle: 500 });
+      }
+      const hostUp9 = await waitForExpr(A, visible('room-panel'), { timeout: 15000 });
+      const code9 = await roomCodeOf(A);
+      const aUid9 = await evaluate(A, 'window.firebaseAuth.getCurrentUser().uid');
+      await setValue(B, '#join-code', code9);
+      await clickSel(B, '#join-room-btn', { settle: 700 });
+      const bIn9 = await waitForExpr(B, visible('room-panel'), { timeout: 15000 });
+      const bUid9 = await evaluate(B, 'window.firebaseAuth.getCurrentUser().uid');
+      const hostControls = "(()=>{const c=document.getElementById('lobby-host-controls');return !!c && !c.hidden})()";
+      const room9Before = await ownerGetDocRaw(`triviaRooms/${code9}`, PAGE_PROJECT);
+      const bControlsBefore = await evaluate(B, hostControls);
+      t('emulator (S10): PRECONDITION, A hosts the room and B does not',
+        hostUp9 && bIn9 && room9Before.doc?.fields?.hostUid?.stringValue === aUid9 && bControlsBefore === false,
+        `hostUid=${room9Before.doc?.fields?.hostUid?.stringValue} a=${aUid9} b=${bUid9} bControls=${bControlsBefore}`);
+
+      // The tab simply goes away. Close it FIRST, then stand in for the
+      // unload stamp with the owner bypass, exactly as the ghost and
+      // refresh scenarios do: a browser may cancel an unload-time write, and
+      // a page still open would clear the stamp on its own next heartbeat.
+      await closePage(cdpPort, A);
+      A = null;
+      await sleep(500);
+      await ownerPatch(`triviaRooms/${code9}/players/${aUid9}`, { disconnectedAt: Date.now() - 40000 });
+
+      const tookOver = await (async () => {
+        for (let i = 0; i < 60; i++) {
+          const d = await ownerGetDocRaw(`triviaRooms/${code9}`, PAGE_PROJECT);
+          if (d.doc?.fields?.hostUid?.stringValue === bUid9) return true;
+          await sleep(250);
+        }
+        return (await ownerGetDocRaw(`triviaRooms/${code9}`, PAGE_PROJECT))
+          .doc?.fields?.hostUid?.stringValue || 'absent';
+      })();
+      t('emulator (S10): the surviving player adopts the room when the host tab just disappears',
+        tookOver === true, `hostUid=${tookOver} expected=${bUid9}`);
+
+      const controls9 = await waitForExpr(B, hostControls, { timeout: 12000 });
+      t('emulator (S10): the host-gated controls come back for the new host', controls9);
+
+      // The vanished host stays VISIBLE as a ghost rather than silently
+      // disappearing: the stale sweep is deliberately confined to a playing
+      // game (see progressRoomClock), because that dimmed tile is how the
+      // others learn their friend dropped. What must not happen is the room
+      // still treating them as its host.
+      const ghostShown = await waitForExpr(B, `(()=>{
+        const li=[...document.querySelectorAll('#lobby-player-grid li')];
+        return li.length===2 && li.some(l=>l.classList.contains('is-disconnected')); })()`, { timeout: 12000 });
+      t('emulator (S10): the vanished host still renders as Disconnected, it is only no longer the host',
+        ghostShown);
+
+      await leaveRoom(B);
     });
 
   } catch (e) {

@@ -232,12 +232,67 @@ lifter had already beaten could be celebrated again.
 lookup went the same way. Any NEW code path that mixes a DOM-sourced or
 imported id with stored data must go through `sameId`.
 
+One holdout survived all of that and was found on 2026-09-11:
+`workout-view.js` `getPreviousExerciseData` still did
+`session.exercises.find(ex => ex.exerciseId === exerciseId)`, in a file that
+uses `sameId` nine times elsewhere. It is the join behind PREVIOUS-SESSION
+PREFILL, so a stored string id (an export/import round trip, a Firestore read)
+meant no prefilled weight or reps, no "same as last time" chip, and an empty
+Last Time panel, for a lifter whose history was perfectly intact and whose
+history screens all rendered it correctly. `import-sanitize.js` deliberately
+never coerces `exerciseId` - it repairs dates, out-of-range numbers and missing
+RECORD ids, not join keys - so the id type that arrives is the id type you get.
+Pinned by `tests/previous-exercise-prefill-id.test.mjs`, which extracts the
+real method and asserts both directions plus the negative case (37 must not
+match 371).
+
+`AnalyticsService.getMuscleGroupDistribution` still compares with `===`
+(`e.id === exercise.exerciseId`). It was left alone on purpose: a repo-wide
+grep finds ZERO callers, so it is dead code, and converting dead code would
+have been an unverifiable change. If it is ever revived, convert it first.
+
 Import hardening landed the same day: `validateImportData` now type-checks
 every present store (arrays for the list stores, object for settings) so a
 mistyped payload can no longer overwrite a real store with junk
 (TESTING-AUDIT.md defect 13), and `migrateImport` clones its input before the
 in-place migrators run, making its documented purity real (defect 14). Both
 pinned in `import-validation.test.mjs`.
+
+## `showConfirmModal` renders its message as HTML
+
+`helpers.js` does `messageEl.innerHTML = message.replace(/\n/g, '<br>')`, and
+that is deliberate: every confirmation in the app emphasises the thing being
+deleted with `<strong>` and separates paragraphs with `<br><br>`. The price is
+that any string interpolated into a confirm message is MARKUP, so every
+user-authored value in one has to go through `escapeHtml()` at the call site.
+
+Nine call sites did. The tenth, the in-workout swap confirmation, interpolated
+`replacement.name` raw (found 2026-09-11). Exercise names are user-authored and
+they survive an export/import round trip untouched - `import-sanitize.js` only
+checks that a custom exercise name is a non-empty string - so a shared backup
+file was a stored-XSS carrier into the confirm modal.
+
+The fix is one `escapeHtml()`. The guard is
+`tests/confirm-modal-escaping.test.mjs`, which works on the SHAPE rather than
+per-screen, because per-screen is exactly how the tenth site was missed:
+
+- It walks each view's source, finds the template literal behind every
+  `showConfirmModal` message (following `message: someLocal` back to its
+  `const` declaration), and fails if an interpolation reads a name-like
+  property (`.name`, `.exerciseName`, `.workoutDayName`, `.programName`,
+  `.title`, `.label`, `.notes`) without `escapeHtml(` in it.
+- The rule is narrow on purpose. Counts, dates and formatter calls are not
+  user text and are not checked, and a bare `${name}` is not checked either,
+  because this codebase escapes those at assignment
+  (`const name = escapeHtml(...)` in `programs-view.js`). A future local
+  holding unescaped user text would slip past it; the tradeoff bought zero
+  false positives on the eleven views as they stand, which is what makes the
+  rule survivable.
+- A companion test runs `pickSwapExercise` for real (source-extracted) with a
+  `<img src=x onerror=...>` exercise name and asserts the message arrives
+  escaped, so the guard does not rest on the source scan alone.
+
+`showToast` is NOT a sink: it sets `textContent`. Do not "fix" it into one.
 
 ## Supersets
 
@@ -386,6 +441,24 @@ ordering problem, not just a code problem.**
   trip-planner's shell).
 - `css/exercise-page.css` is intentionally NOT precached: it styles only the
   generated `/exercises/` pages, which are not part of the offline app shell.
+- **The version bump rule was not enforced by anything, and it was already
+  broken** (found 2026-09-11). `CACHE_VERSION` was set to 1.15.0 on 2026-08-23
+  and five later commits edited precached `js/`, `css/` and `index.html`
+  without touching it. The consequences are all silent, which is why nobody
+  noticed: the first load after each deploy serves the PREVIOUS generation to
+  every returning user, the offline floor stays frozen at the old build, and
+  because no new worker ever reaches `installed`, the app's
+  "Update available / Reload now" prompt never fires either. A green test
+  estate proves nothing about this - the version is what the caches are NAMED
+  after, and nothing else in the repo reads it.
+  `tests/sw-precache-content-version.test.mjs` now hashes the CONTENT of every
+  `PRECACHE_URLS` entry into `tests/fixtures/sw-precache-manifest.json` and
+  fails when the content moves without the version moving with it, naming the
+  exact files. Refresh the fixture with
+  `node apps/gym-tracker/scripts/update-precache-manifest.mjs` AFTER bumping
+  (the updater refuses to paper over a missing bump; `--force` is only for the
+  second and later edits within a round that already bumped). Content hashes,
+  not mtimes, so a no-op reformat does not demand a bump.
 - **Freshness after a deploy needs THREE things, and two of them are not in
   `sw.js`** (2026-08-22 audit D5, fixed; `CACHE_VERSION` 1.15.0):
   1. `cache: 'no-cache'` on every request the worker makes for itself - the
@@ -830,6 +903,88 @@ Pinned by `tests/active-workout-lock.test.mjs` (lock semantics, storage
 accessors, `restState` round trip) and `e2e/audit-2026-08.mjs` block G (two
 real tabs).
 
+## The rest cues only ever worked while you were watching the phone
+
+`README` advertised "rest timer cues via audio pings and vibration". That was
+true only with the tab foregrounded. Two facts compose badly:
+
+- A phone screen sleeps after ~30 s; programmed rests are 60-180 s
+  (`WorkoutExercise.restSeconds` defaults to 90). So the screen died during
+  EVERY rest.
+- Nothing is pre-scheduled. `playSound` (`js/utils/helpers.js`) schedules
+  against `ctx.currentTime` at tick time, and `restTickCues` fires on the
+  250 ms tick in `TimerService`. A backgrounded tab throttles that timer to
+  roughly once a minute, so `remaining === timerFirstWarningSeconds` is never
+  observed and neither the warning ping nor the countdown pips fire at all.
+
+The fix is a Screen Wake Lock held for the duration of an active workout, not
+a change to the timer or the cue logic (both are correct; they were simply
+never running). What makes it non-trivial:
+
+- **The platform drops the sentinel every time the page is hidden.** Without a
+  `visibilitychange` re-acquire it works exactly once - which passes a desk
+  test and fails in a gym, because locking the phone is the entire point.
+  `acquireWakeLock` also listens for the sentinel's own `release` event and
+  forgets it, otherwise the re-acquire is a no-op against a stale reference.
+- **Every call is wrapped.** The API does not exist on Firefox or Safari
+  < 16.4, and `request()` REJECTS on a hidden page or a denied permission. An
+  unhandled rejection there would have taken `startWorkout` down with it.
+  Starting a workout must never depend on it.
+- **`endWorkout()`, not `discardWorkout()`, is the discard path the UI runs.**
+  The two are near-duplicates and only `endWorkout` is reachable from the
+  "Discard workout" menu item. Wiring the release into `discardWorkout` alone
+  left the screen pinned on after a discard; a real-browser probe (an
+  instrumented `navigator.wakeLock` installed before app boot, then a
+  simulated screen-off) caught it and the node suite did not, because the node
+  layer can only assert that the call sites exist. Both are wired now.
+
+Settings: `keepScreenAwake`, default ON, in the Alerts section. Changing it
+applies to the workout running right now (`settings-view.saveSettings` calls
+`workout.syncWakeLock()`), not just the next one.
+
+## A quick workout has NO program, and null programId is a live trap
+
+`startWorkout` refused without a saved program, so logging an improvised
+session meant authoring a throwaway program that then lived in the Programs
+list forever. `startQuickWorkout` builds a `WorkoutSession` with
+`programId: null`, `exercises: []` and `isQuickWorkout: true`, and writes
+nothing to the programs store.
+
+`isQuickWorkout` is not redundant with the null. "No program by design" and
+"this session predates `programId`" are different facts, and the history
+program filter has to tell them apart: its legacy fallback matches a session
+by `workoutDayName`, so without the flag a program a user happened to name
+"Quick Workout" would have swallowed every quick session. That rule now lives
+in the pure `sessionMatchesProgram` in `history-view.js`, where it is testable.
+
+**The trap: `sameId` stringifies, so `sameId(null, null)` is
+`"null" === "null"` - TRUE.** Every `programId` comparison in the app is
+therefore live for a session that has none. `_lastSessionForProgram` walked
+straight into it: the finish summary's "vs last time" delta would have
+compared a quick workout against the last unrelated session that also had no
+program (and every legacy session against every other legacy session). It now
+returns null for a null id. The other readers were already safe:
+`getProgramById(null)` returns undefined and every caller uses `program?.`,
+`programRowFor` returns null, and `history-view`'s filter already guarded
+`programId != null`. Nothing in `AnalyticsService` or `AchievementService`
+reads `programId` at all, which is why a quick session contributes to volume,
+week stats, PRs and achievements with no changes there.
+
+`readableActiveWorkout` gained one exemption: its at-least-one-exercise rule
+exists to refuse corrupt blobs, and junk does not carry `isQuickWorkout: true`.
+Without the exemption, starting a quick workout and locking the phone before
+adding the first exercise lost the running clock and broke the app's promise
+that an unfinished workout is always recoverable.
+
+Prefill needed no work: `getPreviousExerciseData` joins on `exerciseId` alone,
+so an exercise added mid-session starts from the lifter's own last performance
+of it whatever program that was in.
+
+`startQuickWorkout` deliberately DUPLICATES ~20 lines of session setup from
+`startWorkout` rather than sharing a helper. `startWorkout` is the path the
+owner uses every session, and two existing guard suites assert against its
+method body; duplication is the cheaper risk.
+
 ## What counts as a workout (GT-14, GT-23)
 
 - A session with **zero completed sets is not a workout**. It holds no logged
@@ -1250,6 +1405,40 @@ workouts".
 session, restores its live shape (`endTime` and `completed` both cleared, so
 `readableActiveWorkout` will restore it) and toasts that storage is full,
 leaving the workout running so the lifter can free space and finish again.
+
+The LIVE persist path was still throwing the boolean away (found 2026-09-11).
+`persistActiveWorkout` is the app's promise that every change to the live
+workout reaches storage as it happens, and it called
+`storageService.saveActiveWorkout(...)` for effect only. Once the origin's
+quota was exhausted mid-workout every subsequent set commit failed silently
+while the screen kept counting sets, and the workout was gone on the next
+reload with no warning at any point in between - the exact failure
+`finishWorkout` had already been hardened against, one layer lower.
+
+It now reads the return value, and a throw (Safari private mode throws rather
+than returning false) counts the same way. The surfacing is a PERSISTENT
+banner, not a toast: the condition lasts until the lifter frees space, and a
+toast is gone in seconds. It reuses the app's own `.paused-workout-banner`
+component with a `--storage` modifier in danger red, lives in
+`#workout-storage-banner` inside `.workout-content`, and is in flow rather
+than fixed so it cannot land on top of the rest dial or the set controls (see
+"Touch targets and the rest dial"). It retires itself on the next write that
+succeeds, and `startWorkout` clears it so it never carries into a new session.
+
+Its one action is `downloadWorkoutRescueBackup()`, and the important detail is
+that the payload is `{ ...app.exportData(), activeWorkout: session.toJSON() }`.
+A plain export would rescue only the data that DID save; the in-progress
+session is precisely what the failed write was carrying. `activeWorkout` is an
+extra top-level key that `importAllData` ignores, so the file is still an
+ordinary, importable backup. Pinned by
+`tests/active-workout-write-failure.test.mjs`.
+
+The refresh layer pins `.paused-workout-banner`'s amber treatment at
+`body.gym-tracker .paused-workout-banner`, which a bare `--storage` modifier
+class cannot outrank, so the danger colours are restated in `refresh.css` too.
+Verified at 1280 and 390 with computed styles: the button renders
+`rgb(255,255,255)`, i.e. the sitewide `button { color:#555 !important }` does
+not win here.
 
 ## The programs store could be blanked by one bad record
 

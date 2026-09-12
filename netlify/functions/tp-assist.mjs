@@ -7,7 +7,7 @@
 // OWNER SETUP (one-time, out-of-band; env vars are NOT injected into functions
 // on this site, so the key lives in a Blob):
 //   1. Get a free Gemini API key at https://aistudio.google.com/apikey
-//   2. netlify blobs:set trip-planner-assist config '{"geminiKey":"<key>"}'
+//   2. netlify blobs:set trip-planner-assist config '{"geminiKeyV2":"<key>"}'
 //   3. Disable again with: netlify blobs:set trip-planner-assist config '{}'
 // With no key set the endpoint returns 503 not_configured and the UI falls back
 // to Tier 1 / bring-your-own-key.
@@ -15,8 +15,22 @@
 // The CLI must be linked to the site that actually serves shevato.com before
 // running those commands; the blob store is per-site, so writing it while
 // linked to any other project leaves this endpoint on 503.
+//
+// ONE-TIME MIGRATION STILL OUTSTANDING (the code cannot do this itself; only
+// the owner, from a linked CLI, can rewrite the blob). Until it is done the
+// deployed endpoint answers 503 not_configured, because this version reads
+// `geminiKeyV2` and the live blob still carries `geminiKey`:
+//
+//   netlify status                      # confirm the shevato.com project
+//   netlify blobs:get trip-planner-assist config
+//   netlify blobs:set trip-planner-assist config '{"geminiKeyV2":"<the key from the line above>"}'
+//
+// The new object must NOT keep a `geminiKey` field: dropping the old field is
+// the entire point (see resolveGeminiKey below). Rotating the key at the same
+// time is strictly better, because the old value has been reachable by every
+// deploy permalink ever published.
 
-import { checkQuota } from './lib/tp-assist-quota.mjs';
+import { checkQuota, resetAtFor } from './lib/tp-assist-quota.mjs';
 import { updateUsage } from './lib/blob-cas.mjs';
 import { originAllowed, json, upstreamSignal } from './lib/tp-http.mjs';
 import { networkIdFor } from './lib/tp-client-identity.mjs';
@@ -162,12 +176,7 @@ export default async function handler(req) {
     return json({ error: 'store_unavailable' }, 503);
   }
   const USAGE_KEY = USAGE_KEY_REF.value;
-  // LOCAL DEVELOPMENT AFFORDANCE, not the production path: `netlify dev` serves
-  // functions against a LOCAL blob store, which is empty, so Tier 3 would 503
-  // on localhost even when the deployed site is configured. Deployed functions
-  // on this site get no env vars injected (verified), so this fallback is inert
-  // in production and the blob remains the only way the key is ever set there.
-  const geminiKey = cfg.geminiKey || process.env.TP_GEMINI_KEY;
+  const geminiKey = resolveGeminiKey(cfg, process.env);
   if (!geminiKey) return json({ error: 'not_configured' }, 503);
 
   // (5) Quota check against the usage blob; rejected calls never hit upstream.
@@ -188,9 +197,9 @@ export default async function handler(req) {
     const q = checkQuota(usage, clamped.clientId, now, undefined, networkId);
     return { write: q.allowed ? q.usage : null, result: q };
   });
-  if (!reserved.ok) return json({ error: 'quota_exceeded', scope: 'contention' }, 429);
+  if (!reserved.ok) return quotaExceeded('contention', now);
   const q = reserved.result;
-  if (!q.allowed) return json({ error: 'quota_exceeded', scope: q.scope }, 429);
+  if (!q.allowed) return quotaExceeded(q.scope, now);
 
   // (6) Build the system instruction server-side from the pinned constant plus
   // the client-supplied trip context (messages were already role-filtered).
@@ -205,7 +214,10 @@ export default async function handler(req) {
   try {
     reply = await callGemini(geminiKey, sys, contents);
   } catch (err) {
-    if (err && err.rateLimited) return json({ error: 'quota_exceeded', scope: 'upstream' }, 429);
+    // Google throttled US rather than we ourselves. Same shape as our own
+    // refusals so the client has one thing to parse; the wait is a flat
+    // quarter of an hour, because there is no bucket of ours to point at.
+    if (err && err.rateLimited) return quotaExceeded('upstream', now);
     // Function logs only, never the response: an abort (TimeoutError) or a
     // network failure reaches here without having logged anything, and that
     // silence is what made the plan-mode timeout 502 undiagnosable from the
@@ -227,6 +239,64 @@ export default async function handler(req) {
 
   // (9) Success.
   return json({ reply }, 200);
+}
+
+// Every 429 this function emits says WHICH bucket refused the turn and WHEN
+// that bucket next refills, in a header and in the body, which is the shape
+// tp-places has answered with since 2026-08-17. Without it a client has only
+// one sentence for every refusal, and that sentence is wrong for most of them:
+// an hourly bucket refills in minutes, a monthly one does not refill this week,
+// and CAS contention clears in seconds.
+//
+// A 429 from this endpoint is OURS unless the scope says `upstream`, which is
+// the one case where Google throttled us rather than we ourselves.
+// Exported for the unit tests.
+export function quotaExceeded(scope, now) {
+  const resetAt = resetAtFor(scope, now);
+  const seconds = Math.max(1, Math.ceil((resetAt - now) / 1000));
+  // Logged because a refusal that writes nothing to the function log leaves
+  // "which bucket refused this?" unanswerable from outside - the blind spot
+  // tp-places had to be fixed for. The bucket and the wait only: no clientId
+  // (caller-minted, and not ours to record) and no network digest.
+  console.warn('tp-assist quota_exceeded', scope, 'for', seconds + 's');
+  return new Response(JSON.stringify({ error: 'quota_exceeded', scope, resetAt: new Date(resetAt).toISOString() }), {
+    status: 429,
+    headers: { 'Content-Type': 'application/json', 'Retry-After': String(seconds) },
+  });
+}
+
+// WHICH CREDENTIAL MAY BE USED, and from where. Exported so the rule is pinned
+// by tests rather than living inside the handler. Same shape, and the same
+// reasoning, as resolvePlacesKey in tp-places.mjs.
+//
+// THE FIELD NAME IS A VERSION GATE, and that is its whole point. Netlify keeps
+// every deploy permalink alive forever, and an old deploy runs OLD CODE against
+// the LIVE config blob. tp-places verified that in production on 2026-08-18: a
+// permalink from before its budget shipped still answered and still resolved
+// the key. This function has the same exposure - every version of it ever
+// deployed reads `cfg.geminiKey`, reachable by anyone who knows a deploy URL,
+// because the origin check is a forgeable header and is documented as
+// defence-in-depth only.
+//
+// Reading `geminiKeyV2` closes it in one move: once the old field is removed
+// from the blob, every previously deployed version looks up a name that is no
+// longer there, gets undefined and answers 503 not_configured, permanently,
+// spending nothing. There is deliberately NO fallback to `cfg.geminiKey` - a
+// fallback would reopen exactly the hole this closes.
+//
+// The env key stays a LOCAL DEVELOPMENT AFFORDANCE: `netlify dev` runs against
+// a LOCAL blob store, which is empty, so Tier 3 would 503 on localhost even
+// when the deployed site is configured. It needs no second opt-in the way
+// TP_PLACES_KEY does, because a Places lookup bills a card per call while an
+// assistant turn spends a fraction of a cent of the owner's own Gemini
+// allowance - and it cannot weaken the version gate either way, since deployed
+// functions on this site get no env vars injected (verified).
+export function resolveGeminiKey(cfg, env) {
+  const c = cfg || {};
+  const e = env || {};
+  if (typeof c.geminiKeyV2 === 'string' && c.geminiKeyV2) return c.geminiKeyV2;
+  if (typeof e.TP_GEMINI_KEY === 'string' && e.TP_GEMINI_KEY) return e.TP_GEMINI_KEY;
+  return '';
 }
 
 // The failure CLASS behind a 502, from what the exception can tell us. Kept to

@@ -25,7 +25,11 @@ function makeHarness({ program } = {}) {
         'workout-rest-between-value': { textContent: '' },
     };
     const document = { getElementById: (id) => els[id] || null };
-    const methods = buildMethods(src, ['renderActiveWorkout', 'formatRest'], { document }, 'workout-view.js');
+    // renderAddExerciseFooter is lifted too, rather than stubbed away: it is
+    // what proves a PROGRAMMED workout's stream is byte-identical to what it
+    // was before quick workouts existed.
+    const methods = buildMethods(src,
+        ['renderActiveWorkout', 'formatRest', 'renderAddExerciseFooter'], { document }, 'workout-view.js');
     const view = Object.create(methods);
     view.currentWorkoutSession = { programId: 7, workoutDayName: 'Push Day', exercises: [{}, {}] };
     view.app = { getProgramById: (id) => (id === 7 ? program ?? null : null) };
@@ -113,4 +117,21 @@ test('formatRest: 3600 => 60:00 (minutes never roll into hours)', () => {
 
 test('formatRest: negative input clamps to 0:00', () => {
     assert.equal(fmtView.formatRest(-5), '0:00');
+});
+
+test('a programmed workout gets no "Add exercise" footer', () => {
+    const { view, els } = makeHarness({ program: { restMode: 'custom' } });
+    view.renderActiveWorkout();
+    assert.equal(els['workout-exercises-list'].innerHTML,
+        '<div class="exercise-entry">Bench Press</div>',
+        'the quick-workout footer must not leak into a programmed workout');
+});
+
+test('a quick workout gets one', () => {
+    const { view, els } = makeHarness({ program: null });
+    view.currentWorkoutSession = {
+        programId: null, isQuickWorkout: true, workoutDayName: 'Quick Workout', exercises: [{}],
+    };
+    view.renderActiveWorkout();
+    assert.match(els['workout-exercises-list'].innerHTML, /data-action="add-session-exercise"/);
 });

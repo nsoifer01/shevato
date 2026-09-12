@@ -29,6 +29,7 @@ A comprehensive, mobile-first workout tracking application built with vanilla Ja
 - **Program Scheduling**: Assign weekdays to a program; the days show on the program tiles, as markers on the calendar, and as a compact day-pill week strip at the top of the workout screen where tapping a day shows that day's scheduled workout below the pills and highlights the matching program card
 - **Welcome Tour**: A single scrollable onboarding modal that explains the core features, with quick links into Programs, Workout, Calendar, and Settings; replayable any time from Settings
 - **Workout Recovery**: An unfinished workout is always recoverable. Pausing is still explicit, but an interrupted session (refresh, crash, tab eviction) is offered back too, labelled as interrupted, with its logged sets and elapsed time intact. A finished or discarded workout is never offered again
+- **Quick Workout**: Start a workout with no program at all and add exercises from the usual searchable picker as you go. Offered on the workout screen both in the no-programs empty state and as a card under the program grid. It creates NO program (`programId` stays null and the session records `isQuickWorkout`), nothing appears in the Programs list, and everything downstream treats it as an ordinary session: the same set rows, previous-session prefill (which joins on exercise, not program, so it inherits history from any program), warm-ups, plate hints, rest timers, finish flow, history, analytics, PRs and achievements. The only things it does without are the genuinely program-derived ones - rep ranges, the uniform-rest header, "Edit program" (hidden) and the finish summary's vs-last-time delta
 - **Quick Start**: A floating "Start workout" button on desktop (visible across views; hidden on the active-workout screen) that starts or resumes a workout from anywhere
 - **Achievements**: Unlock achievements for reaching milestones (daily, weekly, monthly, lifetime), plus per-exercise personal-record achievements shown in a dedicated "Strength PRs" section when you beat your all-time best on an exercise. Achievement wording, targets and rules live in code and are refreshed onto existing installs on boot, so a corrected definition reaches everybody - and an unlock earned under a rule that has since been corrected is withdrawn rather than left standing against its own description
 
@@ -50,6 +51,7 @@ A comprehensive, mobile-first workout tracking application built with vanilla Ja
 - Show program schedule toggle (adds scheduled days to the calendar and workout screen)
 - Configurable rest timer. It renders as a compact ~146px circular dial floating above the bottom nav: countdown and "Next set in" / "Next exercise in" centred, with **+30s** and **Skip** side by side INSIDE the circle. Only those two buttons take pointer events - the ring, the glow and the disc are passive, so the dial never intercepts a tap meant for the workout controls it floats over
 - Separate sound and vibration toggles, plus the seconds-left thresholds for the first warning sound and the countdown
+- **Keep screen awake** (default ON): holds a Screen Wake Lock for the duration of an active workout, so the phone does not sleep through a 60-180 s rest and kill the rest cues. Taken when a workout starts or resumes, released on pause, finish and discard, and re-acquired whenever the page becomes visible again (the platform drops the lock every time the page is hidden). Feature-detected and fully optional: on Firefox, or Safari before 16.4, or when the request is denied, it is a silent no-op and the workout is unaffected
 - Plate calculator configuration, kept as INDEPENDENT per-unit equipment profiles: a kg rack and an lb rack are different physical objects, so each unit has its own bar weight, plate list and per-exercise bar overrides, and switching the display unit swaps profiles rather than reinterpreting one as the other. The kg stack defaults to 25, 20, 15, 10, 5, 2.5, 1.25 and the lb stack to 45, 35, 25, 10, 5, 2.5, each with a live preview
 - Per-exercise bar/base weight: bar-based exercises show the bar their plate hints are solved against and let you override it (an EZ or trap bar is not the olympic bar), with one tap to return to the profile default
 - Changed defaults reach existing installs once, through a versioned upgrade that leaves a customised plate stack alone and never overrides a setting you have since chosen yourself
@@ -94,8 +96,9 @@ gym-tracker/
 │   └── exercises-db.json       # Same data as JSON (for the page generator)
 ├── exercises/                  # Generated static exercise-directory pages (gitignored)
 ├── scripts/                    # Static-page + sitemap generators (build-exercise-pages.cjs, ...)
+│                               #   plus update-precache-manifest.mjs (sw.js freshness fixture)
 ├── e2e/                        # Browser regression suites driven over CDP
-└── tests/                      # node:test unit suites
+└── tests/                      # node:test unit suites (+ fixtures/, helpers/)
 ```
 
 ### Indexability of the generated pages
@@ -231,7 +234,12 @@ The app is optimized for mobile use during workouts:
 - Quick data entry (weight/reps only)
 - Previous workout data visible during entry
 - Minimal scrolling required
-- Rest timer cues via audio pings and vibration (no push notifications)
+- Rest timer cues via audio pings and vibration (no push notifications). They
+  need the tab to be awake and foregrounded: nothing is pre-scheduled, so a
+  backgrounded tab's throttled tick never reaches the warning second and the
+  ping and pips do not fire at all. That is why **Keep screen awake** (below)
+  defaults on; with it off, or on a browser without the Screen Wake Lock API,
+  treat the cues as "only while you are looking at it"
 
 ### Desktop Features
 - Side navigation for easy access
@@ -261,7 +269,11 @@ Designed for gym environments with low lighting:
   `js/views/workout-view.js`). Only the per-keystroke notes field is
   debounced, and every lifecycle exit flushes it. It also carries `restState`
   ({ endsAt, exerciseIndex, restType }), so resuming after a reload restores
-  the running rest countdown instead of dropping it
+  the running rest countdown instead of dropping it. If that write is REFUSED
+  (device storage full, evicted storage, private mode), a persistent red
+  banner appears at the top of the workout saying the workout is not being
+  saved, and offers a backup download that includes the in-progress session
+  itself. It stays until a write succeeds, because the condition does
 - `gymTrackerActiveWorkoutLock` ({ tabId, at }) records which tab is driving
   the live workout, refreshed on a 5 s heartbeat and released on pause,
   finish and discard. A second tab with a fresh foreign lock is told the
@@ -464,7 +476,15 @@ Five loading patterns are in use; pick the first that fits:
    (`buildMethods` / `buildFunctions`). Never hand-copy ("mirror") view logic
    into a test; mirrors drift silently and one already had (see FINDINGS).
 4. **Static asset text assertions** for structural invariants
-   (`modal-dom-order`, `sw-precache-completeness`).
+   (`modal-dom-order`, `sw-precache-completeness`,
+   `sw-precache-content-version`, `confirm-modal-escaping`). The last two are
+   guards rather than behaviour tests: `sw-precache-content-version` hashes
+   every precached file into `tests/fixtures/sw-precache-manifest.json` and
+   fails when that content changes without a `CACHE_VERSION` bump (refresh the
+   fixture with `node apps/gym-tracker/scripts/update-precache-manifest.mjs`
+   after bumping), and `confirm-modal-escaping` fails when a view interpolates
+   a name into a `showConfirmModal` message without `escapeHtml()`, since that
+   message is rendered with `innerHTML`.
 5. **`node:vm` harnesses** for classic scripts like `sw.js`
    (`sw-offline-behavior`, plus the cross-app activate pins in
    `apps/trip-planner/tests/sw-activate.test.mjs`).
