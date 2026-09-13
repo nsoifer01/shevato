@@ -373,6 +373,15 @@ ways a write still vanished quietly, all reproduced against the real engine:
   namespace active), never by a timer.
 - `offline` still outranks every failure: when the connection is down that is
   the more actionable truth, and the failure is still there when it returns.
+- **The banner names apps, never namespace ids.** The copy used to interpolate
+  the engine's id, so a visitor read "Some changes in tripPlannerApp have not
+  been saved"; FPL Planner and the new unsaved state made that visible on more
+  pages (found on the deploy preview, 2026-09-13). `APP_NAMES` maps every id to
+  the site's own name (`globalPrefs`, which holds only the theme, reads "your
+  site settings"). An unknown id is left out of the sentence but still counted,
+  so it cannot soften a refused write into "not saved yet". The test reads the
+  namespaces from `sync-system/app-sync-init.js`, so a new app without a name
+  fails it.
 
 Pinned by `sync-system/tests/storage-sync-failure-honesty.test.mjs` (real
 engine: exhaustion, each trigger, one ladder per trigger, permanent, restart

@@ -55,33 +55,57 @@
     const writeFailures = new Map();   // namespace -> { retryable: boolean }
     let initFailure = null;
 
-    function namesOf(retryable) {
-        const names = [];
+    // The banner names apps the way the site names them. The engine speaks in
+    // namespace ids (`tripPlannerApp`), which are internal and used to reach the
+    // page verbatim ("Some changes in tripPlannerApp..."). An id missing from
+    // this list is left out of the sentence rather than shown raw, but it still
+    // counts as a failure, so it can never soften a refused write into "not
+    // saved yet". assets/js/tests/sync-status.test.js checks every namespace
+    // sync-system/app-sync-init.js registers against this list.
+    const APP_NAMES = {
+        footballH2HApp: 'Football H2H',
+        fplPlannerApp: 'FPL Planner',
+        globalPrefs: 'your site settings',
+        gymTrackerApp: 'Gym Tracker',
+        maptapRivalsApp: 'MapTap Rivals',
+        marioKartApp: 'Mario Kart Tracker',
+        risingSeasonsApp: 'Rising Shows',
+        tripPlannerApp: 'Trip Planner',
+    };
+
+    function failuresOf(retryable) {
+        const out = { count: 0, names: [] };
         writeFailures.forEach(function (f, ns) {
-            if (f.retryable === retryable && ns) names.push(ns);
+            if (f.retryable !== retryable) return;
+            out.count += 1;
+            const name = Object.prototype.hasOwnProperty.call(APP_NAMES, ns) ? APP_NAMES[ns] : '';
+            if (name && out.names.indexOf(name) === -1) out.names.push(name);
         });
-        return names;
+        return out;
+    }
+
+    function inApps(names) {
+        return names.length ? ' in ' + names.join(', ') : '';
     }
 
     // The failure to show, most serious first: a refused write, then a write
     // still waiting to be resent, then a sync that never started.
     function currentFailure() {
-        const refused = namesOf(false);
-        const pending = namesOf(true);
-        if (refused.length || (writeFailures.size && !pending.length)) {
-            const where = refused.length ? ' in ' + refused.join(', ') : '';
+        const refused = failuresOf(false);
+        const pending = failuresOf(true);
+        if (refused.count || (writeFailures.size && !pending.count)) {
             return {
                 state: 'failed',
                 label: 'Not saved to cloud',
-                text: 'Some changes' + where + ' could not be saved to the cloud. They are safe on this '
+                text: 'Some changes' + inApps(refused.names) + ' could not be saved to the cloud. They are safe on this '
                     + 'device, but they are not syncing to your other devices.',
             };
         }
-        if (pending.length) {
+        if (pending.count) {
             return {
                 state: 'unsaved',
                 label: 'Not saved to cloud yet',
-                text: 'Some changes in ' + pending.join(', ') + ' have not been saved to the cloud yet. '
+                text: 'Some changes' + inApps(pending.names) + ' have not been saved to the cloud yet. '
                     + 'They are safe on this device, and sync will try again.',
             };
         }
