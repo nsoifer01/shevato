@@ -501,3 +501,28 @@ test('the browser never holds the season-level catalogue at boot', () => {
   assert.match(app, /titleSearch: normalizeSearch\(show\.title\)/,
     'the title fold still happens once per show, where it is used');
 });
+
+test('index.html preloads the show index in the mode load() fetches it, so it downloads once', () => {
+  // load() cannot ask for the index until the document has parsed and every
+  // deferred script ahead of app.js has run: on Fast-3G with a 4x CPU that
+  // was 4.4 s after navigation. The preload starts it from <head> (0.6 s) and
+  // the first card lands ~1.2 s sooner (2026-09-13, audit N-1; FINDINGS has
+  // the measurement). It only helps if the fetch() REUSES it: fetch()
+  // defaults to credentials "same-origin", a preload without `crossorigin` is
+  // keyed as a credentialed request, and the browser then downloads the
+  // 3.4 MB file twice.
+  const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8').replace(/<!--[\s\S]*?-->/g, '');
+  const app = fs.readFileSync(path.join(__dirname, '..', 'js', 'app.js'), 'utf8');
+  const fetched = /await fetch\('([^']+)'\)/.exec(app);
+  assert.equal(fetched && fetched[1], 'shows-index.json', 'load() fetches the show index by a literal, same-origin URL');
+  const head = html.slice(0, html.indexOf('</head>'));
+  const preloads = [...head.matchAll(/<link\b[^>]*>/g)]
+    .map((m) => m[0])
+    .filter((tag) => /\srel="preload"/.test(tag) && tag.includes(`href="${fetched[1]}"`));
+  assert.equal(preloads.length, 1, 'exactly one preload of the file load() fetches, in <head>');
+  assert.match(preloads[0], /\sas="fetch"/);
+  assert.match(preloads[0], /\scrossorigin(?=[\s>])/, 'anonymous CORS mode, matching fetch() defaults');
+  // fetchpriority="low" was measured and rejected: the desktop first card went
+  // from ~400 ms to ~1,200 ms for no throttled gain.
+  assert.equal(/fetchpriority/.test(preloads[0]), false);
+});

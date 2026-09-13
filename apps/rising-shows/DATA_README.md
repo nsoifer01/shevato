@@ -338,7 +338,11 @@ place by the workflow, downloaded at build time by
 
 The two-file split predates the move (data.json crossed GitHub's hard
 100 MiB per-file cap on 2026-07-05) and is kept because it also splits
-the browser payload: the grid only needs `data.json` up front. Release
+the build inputs: the extras are modal-only data. The browser downloads
+neither file; at deploy time `split-data.js` derives `shows-index.json` (the
+only dataset the finder fetches at boot) and the per-show
+`data/detail/<seriesId>.json` files from them (see the app README, "Payload
+split"). Release
 assets have a 2 GiB per-file limit, so the cap is no longer a concern,
 but `build-data.js` still logs both file sizes on every build.
 
