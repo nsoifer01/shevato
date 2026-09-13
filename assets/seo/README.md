@@ -60,12 +60,18 @@ When adding a new HTML page, the head should include:
   entries from the sub-sitemaps (the generated sitemaps carry no `lastmod`
   because a build date is not a content date, so their index entries have
   none either).
-- `/robots.txt` - blanket allow with explicit disallows for
-  repo-internal material that the deploy still serves (`/partials/`,
-  `/sync-system/`, `/tests/`, `/scripts/`, per-app `tests/`, `e2e/`,
-  `scripts/` and `experiments/`, Markdown files, package/Firebase
-  config and the rule files). Disallow only affects crawling; the files
-  stay fetchable. SEO-research bots (Ahrefs, Semrush) are
+- `/robots.txt` - blanket allow with disallows for repo-internal paths
+  (`/netlify/`, `/tests/`, `/scripts/`, `/assets/seo/`, `/assets/og/`,
+  per-app `tests/`, `e2e/`, `scripts/` and `experiments/`, Markdown files,
+  package/Firebase config and the rule files). The deploy no longer
+  publishes that material at all (the publish directory is built from an
+  allow list, so it 404s); the disallows only stop crawlers requesting paths
+  that used to exist. Never disallow a path a page loads: `/partials/`,
+  `/sync-system/` and `/firebase-config.js` were disallowed until
+  2026-09-04, which removed the header and footer from every page Google
+  rendered, and `tests/static/robots-references.test.mjs` now fails on
+  that. The four Rising Shows scripts the browser also loads are allowed
+  back explicitly. SEO-research bots (Ahrefs, Semrush) are
   intentionally permitted so external backlink tools can surface the
   site.
 

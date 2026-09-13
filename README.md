@@ -24,7 +24,7 @@ shevato/
 │   │   ├── passive-events-fix.js     # Passive listeners polyfill
 │   │   ├── breakpoints.min.js, browser.min.js, util.js  # Responsive helpers
 │   │   └── pagination.js, global-icons.js
-│   ├── js/tests/                     # Unit tests for the analytics helper (npm run test:analytics)
+│   ├── js/tests/                     # Unit tests for the analytics, chart-a11y and sync-status helpers (npm run test:analytics)
 │   ├── og/                           # Social-card template, manifest and builder (see assets/og/README.md)
 │   └── seo/                          # Reference JSON-LD fragments + metadata checklist
 │
@@ -45,10 +45,10 @@ shevato/
 │
 ├── images/                           # Logos, bg.webp background, OG cards (images/og/), and app artwork
 ├── netlify/functions/                # Netlify functions (*.mjs), their lib/ helpers, tests/ and own package.json
-├── scripts/                          # Site-level build helpers (partial inlining, sitemap lastmod stamping, IndexNow submit)
+├── scripts/                          # Site-level build and CI helpers (partial inlining, release stamping, sitemap lastmod stamping, the publish directory, IndexNow submit, the Node version check, the bot PR autopilot)
 ├── sync-system/                      # localStorage <-> Firestore sync used by the apps (+ cross-cutting invariant tests)
-├── tests/                            # Site-level test estate: static/, browser/, coverage/, cross-browser/
-├── .github/workflows/                # CI: tests, browser tests, cross-browser smoke, arena rules, rising-shows refresh, bot PR autopilot
+├── tests/                            # Site-level test estate: static/, browser/, coverage/, cross-browser/, plus app-previews/ (the apps-hub preview image builder)
+├── .github/workflows/                # CI: tests, lint, browser tests, cross-browser smoke, arena emulator, rising-shows refresh, bot PR autopilot
 │
 ├── index.html                        # Apex shell, redirects to /home (noindex)
 ├── home.html                         # Main landing page
@@ -63,7 +63,7 @@ shevato/
 ├── <32-hex>.txt                      # IndexNow key file (the key IS the filename; public by design)
 ├── robots.txt                        # Crawler policy
 ├── site.webmanifest                  # PWA manifest for the marketing site
-├── netlify.toml                      # Netlify build, headers, and CSP-Report-Only config
+├── netlify.toml                      # Netlify build, headers, and CSP config (enforced baseline + report-only policy)
 ├── firebase-config.js                # Firebase v10 modular SDK bootstrap
 ├── firestore.rules, database.rules.json
 ├── CLAUDE.md                         # Repo-wide rules for Claude Code sessions (read first)
@@ -243,7 +243,7 @@ DOM behavior is covered because a copy of its logic passes in Node.
 |---|---|---|---|
 | Static checks | `node --test` | `tests/static/` | Internal-link integrity, duplicate ids, manifest + JSON-LD validity, first-party JS syntax, module-import resolution, CSP connect-src inventory, canonical URL forms, netlify redirect inventory, sitemap resolution, analytics presence, stylesheet chain, image dimensions |
 | Unit / integration | `node --test` | `apps/<app>/tests/`, `sync-system/tests/`, `netlify/functions/tests/`, `assets/js/tests/` | Calculations, parsers, business rules, storage/persistence logic, DOM-free view logic, function handlers with injected seams |
-| Browser E2E | custom CDP harness | `tests/browser/`, `apps/{trip-planner,fpl-planner,gym-tracker}/e2e/` | Real user workflows in headless Chromium, with console-error and first-party-network-failure gating |
+| Browser E2E | custom CDP harness | `tests/browser/`, `apps/<app>/e2e/` (every app; Arena's needs the Firebase emulators and runs separately) | Real user workflows in headless Chromium, with console-error and first-party-network-failure gating |
 | Accessibility | CDP + vendored axe-core | `tests/browser/suites/a11y.mjs` | axe WCAG 2.0/2.1 A+AA scans of every page/app plus keyboard/focus behavior checks (mobile-menu focus trap, skip link + main landmark on every shell) |
 | Visual | CDP (deterministic geometry) | `tests/browser/suites/visual.mjs` | Overflow, layout relations, dark-theme integrity, `main.css` collision pins at 3 viewports. Pixel baselines were deliberately rejected: font rendering differs per machine and would flake |
 | Performance | CDP (budgets) | `tests/browser/suites/perf.mjs` | First-party byte / request / DOM-size budgets per page, set from measured baselines with headroom |
@@ -265,18 +265,19 @@ npm run test:browser:parallel  # the same estate, 4 shards at once on this machi
                            #   minutes). Each shard gets its own port pair, static server, Chrome
                            #   and profile, so it is the same isolation CI gets. `-- --shards=<n>`
                            #   to change the width; it refuses to start if a port is busy.
-npm run test:all           # "is this change safe to merge": npm test + test:browser
+npm run test:all           # "is this change safe to merge": lint, then npm test, then test:browser
 npm run test:coverage      # coverage report to .coverage/summary.md + per-area floors
 npm run test:cross-browser # Firefox/WebKit smoke (needs: npm install && npx playwright install firefox webkit;
                            #   WebKit additionally needs system libs, so it runs fully only on CI)
 npm run test:arena:rules   # Firestore security-rules suite vs the local emulator
 npm run test:arena:emulator# two-client multiplayer e2e vs the local emulators
                            #   (both need Java 21 + a one-time firebase-tools download;
-                           #   the rules suite runs weekly on CI via arena-rules.yml)
+                           #   CI runs both via arena-rules.yml on PRs and master pushes
+                           #   that can affect Arena, plus weekly)
 npm run test:<app>         # one app's unit suite (gym, football, fpl-planner, rising-shows, mario-kart,
                            #   arena, maptap, trip-planner); test:static, test:sync, test:analytics,
                            #   test:tp-assist-quota likewise
-npm run test:trip-planner:e2e | test:fpl-planner:e2e   # one app's browser E2E subset
+npm run test:trip-planner:e2e | test:fpl-planner:e2e | test:maptap-rivals:e2e   # one app's browser E2E subset
                            #   (append :headed to the trip-planner one to watch it)
 ```
 
@@ -367,10 +368,14 @@ Fixing the product bug is a separate change from the test that documents it.
   check counts for every harness-owned suite (see EXPECTED_CHECKS in
   run.mjs), so a crashed block cannot silently shrink the denominator.
 - CI (`.github/workflows/`): `tests` (unit + static + syntax, every push to
-  master and every PR), `browser tests` (PRs + master pushes + manual
-  dispatch), `cross-browser smoke` (weekly + manual dispatch), `arena
-  firestore rules` (weekly, against the emulator), and `Refresh Rising Shows
-  data` (daily; publishes the dataset release and merges the derived files).
+  master and every PR, plus a weekly job enforcing the coverage floors),
+  `lint` (every push to master and every PR), `browser tests` (PRs + master
+  pushes + manual dispatch), `cross-browser smoke` (weekly + manual
+  dispatch), `arena emulator` (the rules suite and the two-client e2e against
+  the emulators, on PRs and master pushes that can affect Arena, plus
+  weekly), `Refresh Rising Shows data` (daily; publishes the dataset release
+  and merges the derived files), and `bot pr autopilot` (drives the refresh
+  bot's pull requests through their required checks to auto-merge).
 
 ## Analytics
 
@@ -464,7 +469,7 @@ Latest two versions of Chrome, Edge, Firefox, and Safari (desktop and mobile).
 - FontAwesome (4.x and 6.x).
 - Chart.js (Mario Kart tracker, MapTap Rivals).
 - Firebase Auth + Firestore (optional sync; Arena requires Firestore for room state). Realtime Database is only a sync-engine option in `sync-system/storage-sync-robust.js`; no app depends on it.
-- Netlify Functions: `tp-assist` and `tp-places` (Trip Planner AI assistant and venue ratings) and `fpl` (the cached, allowlisted read proxy in front of the public Fantasy Premier League API, which sends no CORS headers and is otherwise unreachable from a browser).
+- Netlify Functions: `tp-assist` and `tp-places` (Trip Planner AI assistant and venue ratings) and `fpl` (the cached, allowlisted read proxy in front of the public Fantasy Premier League API, which sends no CORS headers and is otherwise unreachable from a browser), and `csp-report` (the endpoint `netlify.toml` names for CSP violation reports; it logs them and stores nothing).
 
 ## Contact
 
