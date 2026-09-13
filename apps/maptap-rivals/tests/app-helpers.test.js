@@ -145,7 +145,7 @@ test('vm harness: app.js exports every helper these tests drive', () => {
     'addDaysISO', 'buildHeatmapWeeks', 'parseWhatsAppText', 'dayBucketDate',
     'rivalNameHint', 'storedDayCities', 'splitGameCities', 'joinGameCities',
     'persistGames', 'loadGamesFromStorage', 'storedGamesAreInline',
-    'migrateInlineCities', 'onExternalStorage',
+    'normalizeStoredGames', 'onExternalStorage', 'reassignGames',
     'state', 'summarizeMapTapProfile', 'syncMapTapForRival', 'syncAllRivals',
   ];
   const missing = expected.filter((name) => helpers[name] == null);
@@ -185,6 +185,77 @@ test('classifyContinent: below 60S falls through to Other (no Antarctica bucket)
   assert.equal(helpers.classifyContinent(-70, 0), 'Other');
   assert.equal(helpers.classifyContinent(-70, 170), 'Other');
   assert.equal(helpers.classifyContinent(-89, -60), 'Other');
+});
+
+// Real places on every boundary the table has to draw, checked all at once so
+// a regression names every city it moved. The 2026-09-12 audit found the old
+// boxes filed Israel, the Gulf, Iran, Athens, Malta and Gibraltar under
+// Africa and Venezuela's coast under North America: an Africa rectangle
+// tested before Europe and Asia swallowed the whole Mediterranean rim, and a
+// flat 7N line split the Americas. Coordinates are city centres. The rules
+// followed are the conventional ones: Europe/Africa across the Mediterranean
+// and the Strait of Gibraltar; Africa/Asia at the Suez Canal, the Red Sea and
+// the Gulf of Aden; Europe/Asia along the Aegean, the Dardanelles and the
+// Bosporus, the Black Sea, the Greater Caucasus ridge, the Caspian, the Ural
+// River and the Ural Mountains; Cyprus in Asia; the Caribbean islands in
+// North America and the continental coast from Colombia to Guyana in South
+// America; Asia/Oceania at Indonesia's borders.
+const CONTINENT_CITIES = [
+  // Strait of Gibraltar and the western Mediterranean
+  ['Gibraltar', 36.14, -5.35, 'Europe'], ['Tangier', 35.76, -5.83, 'Africa'],
+  ['Algiers', 36.75, 3.06, 'Africa'], ['Palma', 39.57, 2.65, 'Europe'],
+  ['Tunis', 36.81, 10.18, 'Africa'], ['Cagliari', 39.22, 9.12, 'Europe'],
+  ['Palermo', 38.12, 13.36, 'Europe'], ['Valletta', 35.9, 14.51, 'Europe'],
+  ['Tripoli', 32.89, 13.19, 'Africa'],
+  // Eastern Mediterranean and the Aegean
+  ['Athens', 37.98, 23.73, 'Europe'], ['Heraklion', 35.34, 25.13, 'Europe'],
+  ['Rhodes', 36.43, 28.22, 'Europe'], ['Izmir', 38.42, 27.14, 'Asia'],
+  ['Nicosia', 35.19, 33.38, 'Asia'], ['Alexandria', 31.2, 29.92, 'Africa'],
+  // Dardanelles and Bosporus
+  ['Istanbul', 41.01, 28.98, 'Europe'], ['Edirne', 41.68, 26.56, 'Europe'],
+  ['Bursa', 40.19, 29.06, 'Asia'],
+  // Suez, Sinai, the Levant, the Red Sea, the Gulf of Aden, Arabia, Iran
+  ['Cairo', 30.04, 31.24, 'Africa'], ['Hurghada', 27.26, 33.81, 'Africa'],
+  ['Sharm el-Sheikh', 27.92, 34.33, 'Asia'], ['Tel Aviv', 32.09, 34.78, 'Asia'],
+  ['Amman', 31.95, 35.93, 'Asia'], ['Beirut', 33.89, 35.5, 'Asia'],
+  ['Jeddah', 21.49, 39.19, 'Asia'], ['Port Sudan', 19.62, 37.22, 'Africa'],
+  ['Djibouti', 11.59, 43.15, 'Africa'], ['Aden', 12.79, 45.02, 'Asia'],
+  ['Riyadh', 24.71, 46.68, 'Asia'], ['Dubai', 25.2, 55.27, 'Asia'],
+  ['Tehran', 35.69, 51.39, 'Asia'],
+  // Caucasus, Caspian, Ural River, Ural Mountains
+  ['Sochi', 43.6, 39.73, 'Europe'], ['Tbilisi', 41.72, 44.79, 'Asia'],
+  ['Grozny', 43.32, 45.69, 'Europe'], ['Baku', 40.41, 49.87, 'Asia'],
+  ['Astrakhan', 46.35, 48.04, 'Europe'], ['Aktau', 43.65, 51.17, 'Asia'],
+  ['Ashgabat', 37.96, 58.33, 'Asia'], ['Moscow', 55.76, 37.62, 'Europe'],
+  ['Perm', 58.01, 56.25, 'Europe'], ['Yekaterinburg', 56.84, 60.61, 'Asia'],
+  ['Chelyabinsk', 55.16, 61.4, 'Asia'],
+  // North Atlantic and Arctic
+  ['Reykjavik', 64.15, -21.94, 'Europe'], ['Nuuk', 64.18, -51.69, 'North America'],
+  ['Longyearbyen', 78.22, 15.65, 'Europe'], ['Ponta Delgada', 37.74, -25.67, 'Europe'],
+  // Central America, the Caribbean and northern South America
+  ['Panama City', 8.98, -79.52, 'North America'], ['Havana', 23.11, -82.37, 'North America'],
+  ['Bogota', 4.71, -74.07, 'South America'], ['Cartagena', 10.39, -75.51, 'South America'],
+  ['Maracaibo', 10.65, -71.64, 'South America'], ['Caracas', 10.48, -66.9, 'South America'],
+  ['Willemstad', 12.11, -68.93, 'North America'], ['Port of Spain', 10.65, -61.52, 'North America'],
+  ['Georgetown', 6.8, -58.16, 'South America'],
+  // Pacific, Indonesia, Australia, New Guinea
+  ['Honolulu', 21.31, -157.86, 'Oceania'], ['Tokyo', 35.68, 139.69, 'Asia'],
+  ['Manila', 14.6, 120.98, 'Asia'], ['Singapore', 1.35, 103.82, 'Asia'],
+  ['Jakarta', -6.21, 106.85, 'Asia'], ['Kupang', -10.18, 123.6, 'Asia'],
+  ['Darwin', -12.46, 130.84, 'Oceania'], ['Jayapura', -2.53, 140.72, 'Asia'],
+  ['Port Moresby', -9.44, 147.18, 'Oceania'], ['Koror', 7.34, 134.47, 'Oceania'],
+  ['Hagatna', 13.47, 144.75, 'Oceania'],
+  // African islands in the Atlantic and Indian Oceans
+  ['Praia', 14.93, -23.51, 'Africa'], ['Port Louis', -20.16, 57.5, 'Africa'],
+  ['Victoria', -4.62, 55.45, 'Africa'], ['Male', 4.18, 73.51, 'Asia'],
+];
+
+test('classifyContinent: representative cities on every continental boundary land on the right side', () => {
+  const wrong = CONTINENT_CITIES
+    .map(([name, lat, lng, expected]) => [name, helpers.classifyContinent(lat, lng), expected])
+    .filter(([, got, expected]) => got !== expected)
+    .map(([name, got, expected]) => `${name}: ${got}, expected ${expected}`);
+  assert.deepEqual(wrong, []);
 });
 
 // ---------------------------------------------------------------------------
@@ -947,8 +1018,8 @@ test('a boot from the legacy inline format hydrates, flags migration, and rewrit
   assert.equal(app._testExports.storedGamesAreInline(), true,
     'a stored row carrying inline cities must be recognised as the old format');
 
-  assert.equal(app._testExports.migrateInlineCities(), true, 'the rewrite runs');
-  assert.equal(app._testExports.migrateInlineCities(), false,
+  assert.equal(app._testExports.normalizeStoredGames(), true, 'the rewrite runs');
+  assert.equal(app._testExports.normalizeStoredGames(), false,
     'and is idempotent - a second pass finds nothing to do');
 
   const storedRows = JSON.parse(app.localStorage.getItem('maptapRivalsGames'));
@@ -987,7 +1058,7 @@ test('a boot from the normalised format hydrates without flagging a migration', 
   });
 
   assert.equal(app._testExports.storedGamesAreInline(), false, 'nothing stored inline');
-  assert.equal(app._testExports.migrateInlineCities(), false,
+  assert.equal(app._testExports.normalizeStoredGames(), false,
     'already-normalised storage must not be rewritten on every boot');
 
   const summary = app._testExports.rivalSummary({ id: 'rival-0', name: 'A' });
@@ -1104,7 +1175,7 @@ test('a remote push of the legacy format is re-normalised on arrival', () => {
   app.localStorage.setItem('maptapRivalsGames', JSON.stringify(games));
   assert.equal(app._testExports.storedGamesAreInline(), true);
 
-  assert.equal(app._testExports.migrateInlineCities(), true);
+  assert.equal(app._testExports.normalizeStoredGames(), true);
   const rewritten = JSON.parse(app.localStorage.getItem('maptapRivalsGames'));
   assert.equal(rewritten.length, games.length, 'no game is lost re-normalising');
   assert.equal(rewritten.filter(r => 'cities' in r).length, 0);
@@ -1422,4 +1493,160 @@ test('a cross-tab storage event reloads the log but never rewrites it; this page
   app._testExports.onExternalStorage({ key: 'maptapRivalsGames', isTrusted: false });
   assert.equal(app._testExports.storedGamesAreInline(), false, 'a delivery this page applied is normalised on arrival');
   assert.equal(JSON.parse(app.localStorage.getItem('maptapRivalsGames')).length, games.length, 'with every game kept');
+});
+
+// ---------------------------------------------------------------------------
+// Two devices, one day (audit R-1, 2026-09-12). Since the 2026-09-05 record
+// merge, the sync engine keys `maptapRivalsGames` records by id. Two devices
+// that each log the same day for the same rival mint different ids, so the
+// merge keeps both rows and every W-L-T figure counted the day twice. These
+// drive the REAL sync pull (`mergeMapTapSync`) on two devices and the REAL
+// engine merge (`mergeValues`), then check what each page shows and writes.
+// ---------------------------------------------------------------------------
+
+const ONE_RIVAL = [{ id: 'r1', name: 'Ari', color: '#6366f1', icon: '🦊', createdAt: 1 }];
+const same5 = (n) => [n, n, n, n, n];
+const PULL_MINE = { '2026-09-10': { scores: same5(80) }, '2026-09-11': { scores: same5(60) } };
+const PULL_THEIRS = { '2026-09-10': { scores: same5(70) }, '2026-09-11': { scores: same5(70) } };
+
+// The last state both devices agreed on: one synced day, already in the cloud.
+const agreedLog = () => [{
+  id: 'g-base', rivalId: 'r1', date: '2026-09-01', note: MapTapStats.SYNC_NOTE, createdAt: 1,
+  myScores: same5(50), myScore: 500, theirScores: same5(40), theirScore: 400,
+}];
+
+// One device runs the MapTap pull before it has seen the other's push.
+function deviceSync(prefix, now) {
+  let n = 0;
+  const games = agreedLog();
+  const { newGames } = MapTapStats.mergeMapTapSync({
+    rivalId: 'r1', mineByDate: PULL_MINE, theirsByDate: PULL_THEIRS,
+    existingGames: games, makeId: () => `${prefix}${n++}`, now,
+  });
+  return games.concat(newGames);
+}
+
+const rowsPerDay = (games) => {
+  const m = new Map();
+  for (const g of games) m.set(`${g.rivalId} ${g.date}`, (m.get(`${g.rivalId} ${g.date}`) || 0) + 1);
+  return Object.fromEntries(m);
+};
+
+// What the sync engine does with a remote value: write it into storage, then
+// the page hears it through the localStorageSync bridge as an untrusted event.
+function deliverGames(app, value) {
+  app.localStorage.setItem('maptapRivalsGames', JSON.stringify(value));
+  app._testExports.onExternalStorage({ key: 'maptapRivalsGames', isTrusted: false });
+}
+
+test('two devices syncing the same day for the same rival end with ONE row each, and the record counts the day once', async () => {
+  const { mergeValues, recordIndex } = await import('../../../sync-system/sync-helpers.mjs');
+  const deviceA = deviceSync('a', 1000);
+  const deviceB = deviceSync('b', 2000);
+  const base = { kind: 'records', entries: recordIndex(agreedLog()) };
+
+  // What each device's engine produces when the other's push lands on its
+  // own unflushed work: every row survives, because the ids differ.
+  const onA = mergeValues(base, deviceA, deviceB);
+  const onB = mergeValues(base, deviceB, deviceA);
+  assert.deepEqual(onA.conflicts, []);
+  assert.equal(onA.merged.length, 5, 'the id-keyed merge keeps both copies of each new day');
+
+  const appA = loadApp({ maptapRivalsRivals: ONE_RIVAL, maptapRivalsGames: deviceA });
+  const appB = loadApp({ maptapRivalsRivals: ONE_RIVAL, maptapRivalsGames: deviceB });
+  for (const app of [appA, appB]) app._testExports.state.view = 'none'; // no DOM; re-render not under test
+  deliverGames(appA, onA.merged);
+  deliverGames(appB, onB.merged);
+
+  for (const [name, app] of [['A', appA], ['B', appB]]) {
+    const games = plain(app._testExports.state.games);
+    assert.deepEqual(rowsPerDay(games), { 'r1 2026-09-01': 1, 'r1 2026-09-10': 1, 'r1 2026-09-11': 1 },
+      `device ${name}: one row per rival and day`);
+    const rec = MapTapStats.overallRecord(games, ['r1']);
+    assert.deepEqual([rec.games, rec.wins, rec.losses, rec.ties], [3, 2, 1, 0],
+      `device ${name}: W-L-T reads 2-1-0, not 3-2-0`);
+  }
+
+  // Each device writes the collapse back so the cloud copy converges too, and
+  // both write the SAME surviving rows whatever order the merge handed them.
+  const storedA = JSON.parse(appA.localStorage.getItem('maptapRivalsGames'));
+  const storedB = JSON.parse(appB.localStorage.getItem('maptapRivalsGames'));
+  assert.equal(storedA.length, 3);
+  const byId = (rows) => Object.fromEntries(rows.map(r => [r.id, r]));
+  assert.deepEqual(byId(storedB), byId(storedA));
+
+  // The next exchange settles: the same copies were dropped on both sides and
+  // the survivors are identical, so no conflict and nothing comes back.
+  const next = mergeValues({ kind: 'records', entries: recordIndex(onA.merged) }, storedA, storedB);
+  assert.deepEqual(next.conflicts, []);
+  assert.equal(next.merged.length, 3);
+});
+
+test('after two devices collapse a day, re-pasting or re-syncing it still updates that one row in place', () => {
+  const doubled = deviceSync('a', 1000).concat(deviceSync('b', 2000).slice(1));
+  const app = loadApp({ maptapRivalsRivals: ONE_RIVAL, maptapRivalsGames: doubled });
+  const { state, upsertPastedGame } = app._testExports;
+  assert.equal(state.games.length, 3, 'the doubled log boots as one row per day');
+
+  const res = upsertPastedGame(state.games, {
+    id: 'pasted', rivalId: 'r1', date: '2026-09-10', note: '', createdAt: 5,
+    myScores: same5(90), myScore: 900, theirScores: same5(70), theirScore: 700,
+  });
+  assert.equal(res.updated, true);
+  assert.equal(state.games.length, 3);
+
+  const again = MapTapStats.mergeMapTapSync({
+    rivalId: 'r1', mineByDate: PULL_MINE, theirsByDate: PULL_THEIRS,
+    existingGames: state.games, makeId: () => 'never-used', now: 9,
+  });
+  assert.equal(again.added, 0, 'a second pull finds every day already logged');
+});
+
+test('a stored log that already holds a day twice collapses on boot, keeping the manual note and the round scores', () => {
+  const app = loadApp({
+    maptapRivalsRivals: ONE_RIVAL,
+    maptapRivalsGames: [
+      { id: 'x1', rivalId: 'r1', date: '2026-08-03', note: 'first paste', createdAt: 10, myScore: 700, theirScore: 500 },
+      { id: 'x2', rivalId: 'r1', date: '2026-08-04', note: '', createdAt: 15, myScores: same5(60), myScore: 600, theirScores: same5(70), theirScore: 700 },
+      { id: 'x3', rivalId: 'r1', date: '2026-08-03', note: '', createdAt: 20, myScores: same5(70), myScore: 700, theirScores: same5(50), theirScore: 500 },
+    ],
+  });
+  const games = plain(app._testExports.state.games);
+  assert.deepEqual(games.map(g => g.id), ['x1', 'x2']);
+  assert.equal(games[0].note, 'first paste');
+  assert.deepEqual(games[0].myScores, same5(70));
+  assert.deepEqual(games[0].theirScores, same5(50));
+  assert.equal(MapTapStats.overallRecord(games, ['r1']).games, 2);
+
+  // init() writes the collapse back once (the harness never runs init, so
+  // call what it calls); a second pass finds nothing left to do.
+  assert.equal(app._testExports.normalizeStoredGames(), true);
+  assert.equal(app._testExports.normalizeStoredGames(), false);
+  assert.deepEqual(JSON.parse(app.localStorage.getItem('maptapRivalsGames')).map(g => g.id), ['x1', 'x2']);
+});
+
+test('reassigning orphaned games onto a rival who already has those days leaves one row per day', () => {
+  // The usual way orphans happen: a rival deleted on one device and re-added
+  // (new id) and synced on another, so the new rival already owns every date
+  // the orphans carry.
+  const { reassignGames } = loadApp()._testExports;
+  const games = [
+    { id: 'o1', rivalId: 'gone', date: '2026-09-01', note: 'from the old rival', createdAt: 1, myScore: 700, theirScore: 500 },
+    { id: 'n1', rivalId: 'r1', date: '2026-09-01', note: MapTapStats.SYNC_NOTE, createdAt: 9, myScores: same5(70), myScore: 700, theirScores: same5(50), theirScore: 500 },
+    { id: 'o2', rivalId: 'gone', date: '2026-09-02', note: '', createdAt: 2, myScore: 600, theirScore: 650 },
+  ];
+  const out = plain(reassignGames(games, new Set(['o1', 'o2']), 'r1'));
+  assert.deepEqual(out.map(g => [g.id, g.rivalId, g.date]), [['o1', 'r1', '2026-09-01'], ['o2', 'r1', '2026-09-02']]);
+  assert.equal(out[0].note, 'from the old rival');
+  assert.deepEqual(out[0].myScores, same5(70), 'the synced round scores are kept');
+});
+
+test('another tab\'s write holding a day twice shows collapsed but is left for that tab to rewrite', () => {
+  const app = loadApp({ maptapRivalsRivals: ONE_RIVAL, maptapRivalsGames: [] });
+  app._testExports.state.view = 'none';
+  app.localStorage.setItem('maptapRivalsGames', JSON.stringify(deviceSync('a', 1000).concat(deviceSync('b', 2000).slice(1))));
+  const before = app.localStorage.writes.length;
+  app._testExports.onExternalStorage({ key: 'maptapRivalsGames', isTrusted: true });
+  assert.equal(app._testExports.state.games.length, 3);
+  assert.equal(app.localStorage.writes.length, before, 'same rule as the inline-cities migration: never rewrite another tab\'s write');
 });

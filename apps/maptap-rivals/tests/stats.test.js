@@ -1487,11 +1487,11 @@ test('accumulateFinishPositions: no history at all yields no records', () => {
 
 // Stand-in for app.js's classifyContinent. The whole point of injecting the
 // classifier is that stats.js never needs the real bounding boxes, so a crude
-// longitude split is enough to exercise the bucketing - with ONE box copied
-// verbatim from the real classifier (Africa, js/app.js), because (0, 0) sits
-// inside it and (0, 0) is where a null coordinate USED to land before the
-// coordNum fix (2026-08-15); the genuine-Gulf-of-Guinea test below still
-// needs the box. A stub that answered 'Unknown' for every coordinate it did
+// longitude split is enough to exercise the bucketing - with ONE box standing
+// in for the real classifier's Africa (js/app.js, a polygon since
+// 2026-09-13), because (0, 0) sits inside it and (0, 0) is where a null
+// coordinate USED to land before the coordNum fix (2026-08-15); the
+// genuine-Gulf-of-Guinea test below still needs the box. A stub that answered 'Unknown' for every coordinate it did
 // not like would hide that seam instead of exercising it.
 //
 // The tests here assert the CONTRACT stats.js uses to call the classifier;
@@ -1704,10 +1704,12 @@ test('compareWinPctDesc: equal win % is left to the caller tie-break', () => {
 // their own (profile sync indexes existing games by date per rival, the
 // WhatsApp importer skips existing (rival, date) pairs in its preview).
 //
-// The tests below stay: a log can still HOLD duplicates written before the
-// fix (or imported from a backup), the stats functions are correctly
-// id-agnostic and cannot tell such a pair from two real days, and these pin
-// what the layer reports for that input.
+// The tests below stay: the stats functions are correctly id-agnostic and
+// cannot tell such a pair from two real days, and these pin what the layer
+// reports for that input. That is why the app never hands them one: since
+// 2026-09-13 every game list entering the app is collapsed to one row per
+// (rival, date) by sanitizeBackup (see collapseDuplicateDays at the end of
+// this file), which covers old backups and two devices logging the same day.
 
 // The two records a pre-fix saveDay wrote for one day pasted twice:
 // identical payload, different ids.
@@ -2169,4 +2171,106 @@ test('sanitizeBackup: "__proto__" ids are data and never pollute Object.prototyp
   assert.equal(r.me, null);
   assert.equal(({}).polluted, undefined);
   assert.equal(Object.prototype.hasOwnProperty.call(r.rivals[0], 'id'), true);
+});
+
+// ---- one row per (rival, day): collapseDuplicateDays ----------------------
+//
+// Two devices that log the same day for the same rival each mint their own
+// row id, and the sync layer's record merge (sync-system/sync-helpers.mjs,
+// mergeRecordCollections) keys records by id, so it keeps BOTH rows and every
+// W-L-T figure counts that day twice. The collapse is the app's half of that
+// contract: every game list entering the app (boot, another tab, a sync
+// delivery, a backup import) passes through sanitizeBackup, which folds each
+// (rival, day) group into one row by a fixed rule that does not depend on the
+// order the rows arrived in, so two devices collapsing the same merged log
+// write the same row and converge. See FINDINGS, "Two devices, one day".
+const R5 = (n) => [n, n, n, n, n];
+
+test('collapseDuplicateDays: a lone row per (rival, day) is returned untouched, by reference', () => {
+  const games = [
+    { id: 'a', rivalId: 'r1', date: '2026-09-01', note: '', createdAt: 1, myScore: 500, theirScore: 400 },
+    { id: 'b', rivalId: 'r1', date: '2026-09-02', note: '', createdAt: 2, myScore: 500, theirScore: 400 },
+    { id: 'c', rivalId: 'r2', date: '2026-09-01', note: '', createdAt: 3, myScore: 500, theirScore: 400 },
+  ];
+  const out = S.collapseDuplicateDays(games);
+  assert.deepEqual(out.merged, []);
+  assert.equal(out.games.length, 3);
+  out.games.forEach((g, i) => assert.equal(g, games[i], 'same object, so an unchanged log persists byte-identical'));
+});
+
+test('collapseDuplicateDays: round scores beat a totals-only side, and the day counts once', () => {
+  const cities = R5(0).map((_, i) => ({ lat: 10 + i, lng: 20 + i, name: `C${i}` }));
+  const games = [
+    // A hand-entered legacy row: totals only, on this device.
+    { id: 'old', rivalId: 'r1', date: '2026-09-10', note: '', createdAt: 10, myScore: 790, theirScore: 640 },
+    // The same day synced from MapTap on another device.
+    { id: 'syn', rivalId: 'r1', date: '2026-09-10', note: SYNC_NOTE, createdAt: 20, myScores: R5(80), myScore: 800, theirScores: R5(60), theirScore: 600, cities },
+  ];
+  const out = S.collapseDuplicateDays(games);
+  assert.equal(out.games.length, 1);
+  assert.deepEqual(out.games[0], {
+    id: 'old', rivalId: 'r1', date: '2026-09-10', note: '', createdAt: 10,
+    myScores: R5(80), myScore: 800, theirScores: R5(60), theirScore: 600, cities,
+  });
+  assert.deepEqual(out.merged, [{ rivalId: 'r1', date: '2026-09-10', count: 2, positions: [0, 1] }]);
+  const rec = S.overallRecord(out.games);
+  assert.deepEqual([rec.games, rec.wins, rec.losses], [1, 1, 0], 'one day, one win: never 2-0');
+});
+
+test('collapseDuplicateDays: with rounds on both rows, a hand-entered row beats a synced one (as a paste over a synced day does)', () => {
+  const games = [
+    { id: 's', rivalId: 'r1', date: '2026-09-10', note: SYNC_NOTE, createdAt: 10, myScores: R5(80), myScore: 800, theirScores: R5(60), theirScore: 600 },
+    { id: 'p', rivalId: 'r1', date: '2026-09-10', note: '', createdAt: 50, myScores: R5(80), myScore: 800, theirScores: R5(90), theirScore: 900 },
+  ];
+  const [row] = S.collapseDuplicateDays(games).games;
+  assert.equal(row.id, 'p');
+  assert.deepEqual(row.theirScores, R5(90));
+  assert.equal(row.note, '', 'a row carrying a hand-entered side must shed the sync marker, or the next sync would overwrite it');
+  assert.equal(row.createdAt, 10, 'the day keeps its earliest creation stamp');
+});
+
+test('collapseDuplicateDays: a me-only and a rival-only synced row become one head-to-head, whatever order they arrive in', () => {
+  const mine = { id: 'b', rivalId: 'r1', date: '2026-09-11', note: SYNC_NOTE, createdAt: 300, myScores: R5(80), myScore: 800 };
+  const theirs = { id: 'a', rivalId: 'r1', date: '2026-09-11', note: SYNC_NOTE, createdAt: 300, theirScores: R5(70), theirScore: 700 };
+  const one = S.collapseDuplicateDays([mine, theirs]).games;
+  const two = S.collapseDuplicateDays([theirs, mine]).games;
+  assert.deepEqual(one, two, 'both devices must write the same row, or they never converge');
+  assert.deepEqual(one, [{
+    id: 'a', rivalId: 'r1', date: '2026-09-11', note: SYNC_NOTE, createdAt: 300,
+    myScores: R5(80), myScore: 800, theirScores: R5(70), theirScore: 700,
+  }]);
+  assert.equal(resultOf(one[0]), 'W');
+});
+
+test('collapseDuplicateDays: every distinct manual note survives, and the merged row sits where the day first appeared', () => {
+  const games = [
+    { id: 'x', rivalId: 'r1', date: '2026-09-12', note: 'rematch at lunch', createdAt: 5, myScore: 600, theirScore: 500 },
+    { id: 'other', rivalId: 'r2', date: '2026-09-12', note: '', createdAt: 6, myScore: 1, theirScore: 2 },
+    { id: 'y', rivalId: 'r1', date: '2026-09-12', note: SYNC_NOTE, createdAt: 7, myScores: R5(60), myScore: 600, theirScores: R5(50), theirScore: 500 },
+    { id: 'z', rivalId: 'r1', date: '2026-09-12', note: 'imported from WhatsApp', createdAt: 9, myScore: 600, theirScore: 500 },
+    { id: 'w', rivalId: 'r1', date: '2026-09-12', note: 'rematch at lunch', createdAt: 11, myScore: 600, theirScore: 500 },
+  ];
+  const out = S.collapseDuplicateDays(games);
+  assert.deepEqual(out.games.map(g => g.id), ['x', 'other']);
+  assert.equal(out.games[0].note, 'rematch at lunch / imported from WhatsApp');
+  assert.deepEqual(out.games[0].myScores, R5(60));
+  assert.deepEqual(out.merged, [{ rivalId: 'r1', date: '2026-09-12', count: 4, positions: [0, 2, 3, 4] }]);
+  assert.deepEqual(S.collapseDuplicateDays(out.games).merged, [], 'idempotent: a collapsed log collapses to itself');
+});
+
+test('sanitizeBackup: a backup holding the same rival and day twice imports one row and says so', () => {
+  const r = S.sanitizeBackup({
+    rivals: [{ id: 'r1', name: 'Ari' }],
+    games: [
+      { id: 'g1', rivalId: 'r1', date: '2026-08-03', myScore: 700, theirScore: 500, note: 'first paste' },
+      { id: 'g2', rivalId: 'r1', date: '2026-08-04', myScore: 600, theirScore: 700 },
+      { id: 'g3', rivalId: 'r1', date: '2026-08-03', myScores: R5(70), theirScores: R5(50) },
+    ],
+  });
+  assert.deepEqual(r.games.map(g => [g.id, g.date]), [['g1', '2026-08-03'], ['g2', '2026-08-04']]);
+  assert.deepEqual(r.games[0].myScores, R5(70));
+  assert.equal(r.games[0].note, 'first paste');
+  assert.deepEqual(r.dropped, { rivals: 0, games: 0 }, 'a merge drops no data, so it is not counted as skipped');
+  assert.ok(r.repaired.some(x => /games #1, #3 \(2026-08-03\)/.test(x) && /merged into one/.test(x)), r.repaired.join(' | '));
+  assert.equal(S.overallRecord(r.games).games, 2);
 });
