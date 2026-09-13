@@ -38,8 +38,10 @@ export const MAX_VERSIONS_PER_GW = 5;
 export const MAX_GWS_KEPT = 8;
 
 // FPL entry ids are positive integers handed out in registration order. The
-// upper bound is a sanity guard, not a rule from the API: total_players has
-// never been within an order of magnitude of it, so anything above is a typo.
+// upper bound is a sanity guard, not a rule from the API: total_players was
+// 10,755,001 on 2026-09-13, about half of it, so anything above is a typo. Ids
+// outrun total_players, so the bound needs raising before a season's
+// registrations come near it.
 export const MAX_TEAM_ID = 20000000;
 
 export function validateTeamId(raw) {

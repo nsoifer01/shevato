@@ -119,12 +119,18 @@ export function chipsRemaining({ history, rules, gw }) {
 // Transfers already made for the gameweek being planned.
 //
 // `entry/{id}/event/{gw}/picks` is FROZEN at that gameweek's deadline: it is
-// what the manager fielded, not what he owns now. The moment the gameweek ends
-// he can transfer for the next one, and those moves appear immediately on
-// `entry/{id}/transfers` and nowhere else. Reading only the picks therefore
-// describes a squad he no longer has: the planner would hold a player he sold,
+// what the manager fielded, not what he owns now. Whenever a payload carries
+// transfer rows for the gameweek being planned, reading only the picks would
+// describe a squad he no longer has: the planner would hold a player he sold,
 // miss the one he bought, recommend the move he had already made, and count a
 // free transfer he had already spent.
+//
+// WHEN THAT HAPPENS, which is rarely. FPL's public `entry/{id}/transfers` does
+// not list a move until the deadline of the gameweek it belongs to (measured
+// 2026-09-13, FINDINGS "What the public endpoints hide until a deadline"), so
+// before the planned gameweek's deadline this finds nothing. It applies in the
+// minutes after that deadline while the cached bootstrap still names it as
+// next, and to hand-built payloads.
 //
 // Applied in time order so a chain inside one window collapses correctly: A for
 // B and then B for C leaves C in the squad and A the one who left.

@@ -175,10 +175,57 @@ Raw test count is not evidence of correctness. Do not report it as if it were.
   `entry/{id}/history` returns `{current: [], past: [], chips: []}` with
   `transfers` an empty array. `started_event` is present and is the honest way
   to tell a late joiner from a manager whose picks simply have not published
-  yet - the app does not use it today, so both land on the draft path.
+  yet. `noSquadReason` in `js/ui/preseason.js` reads it to separate the two,
+  and each gets its own banner.
 - **The live 2026/27 pool is 587 elements**, against the 320 in the committed
   sample dataset. Anything that reasons about "a live season" from the sample
   is reasoning about a pool 45% smaller; see the plan-time note under Optimizer.
+
+## What the public endpoints hide until a deadline (measured 2026-09-13)
+
+**A gameweek's transfers and its chip are not on the public endpoints until
+that gameweek's deadline has passed.** Measured on 2026-09-13 at 19:15 UTC,
+31 hours after the GW4 deadline with GW4 in play: the live bootstrap already
+counted 3,148,560 transfers for GW5 (`transfers_in_event` summed over the
+pool), roughly one for every three or four managers, yet `entry/{id}/transfers`
+and `entry/{id}/history` for 500 managers (300 from the top of the overall
+league, 200 from random standings pages between ranks 50,000 and 7.5 million)
+carried no GW5 transfer and no GW5 chip at all. The newest transfer on any of
+them was 2026-09-12T12:29:44Z, a minute before the GW4 deadline. The
+bootstrap's own GW5 event read `transfers_made: 0` and `chip_plays: []` as well.
+
+What follows, because this app only ever reads those endpoints:
+
+- **Moves made since the last deadline are invisible to the planner.** A
+  manager who has already transferred for the next gameweek is shown the frozen
+  squad and the replayed free-transfer count, and can be recommended the move
+  he has already made. The only read that would see them is FPL's
+  authenticated `my-team`, which this app does not call (next section).
+- **An activated Wildcard or Free Hit is invisible for the same reason.** The
+  2026-09-12 audit's E-1 (transfers under an ACTIVE chip priced as hits, 0 free
+  transfers shown, the Wildcard re-offered) was reproduced only on a hand-built
+  history carrying the chip on the planned gameweek, a state these endpoints
+  never serve before the deadline; after it, the chip's gameweek is the current
+  one and the plan is for the gameweek after. Closed as not reachable, with no
+  code change. Reopen it if an authenticated read is ever added or FPL starts
+  publishing pending chips: `buildSquadState` passes `chipPlayed: null` for the
+  transfers already made, `chipsRemaining` and `evaluateChips` do not know a
+  chip is in play, `searchTransfers` and `scoreCandidate` price further moves
+  off the banked count, `validatePlan` would reject the active chip as already
+  played, and `projectedSquadState` would revert a Free Hit to the
+  post-transfer squad rather than the frozen one.
+- **`pendingTransfers` and `applyPending` still run**, in the minutes after a
+  deadline while the cached bootstrap still names that gameweek as next, and on
+  hand-built payloads. "A transfer existing is not a PENDING transfer" below
+  predates this measurement.
+
+Re-verify before relying on it in either direction, ideally late in a gameweek
+week (this was 31 hours after a deadline, not the evening before the next one):
+sum `transfers_in_event` over `bootstrap-static`, then read
+`entry/{id}/transfers` for a few hundred ids taken from
+`leagues-classic/314/standings/?page_standings=<random page>` and count rows
+whose `event` is the next gameweek. A non-zero count means pending moves are
+public, and both bullets above reopen.
 
 ## The write path, and why there is not one
 
@@ -1292,14 +1339,16 @@ mounting with `window.__syncStatusMounted` both at the top of its IIFE and in
 `mount()`. Lesson: a markup contract ("managed by X") is not evidence that X is
 loaded; grep the script list.
 
-## Operational state (release state verified 2026-08-21)
+## Operational state (release state verified 2026-08-21; hardening shipped 2026-08-22)
 
-- **The GW1 live-season hardening is NOT yet deployed.** It sits on
-  `fix/fpl-live-gameweek-state`. Production is serving the pre-incident code,
-  which means a payload FPL clears mid-season still poisons projections there.
-  The deployed build is otherwise correct: the GW1 pre-season work, the sandbox
-  and the two pre-season encodings all shipped and were verified byte-for-byte
-  against the served files on 2026-08-21 (60 of 60 identical).
+- **The GW1 live-season hardening shipped.** It was written on
+  `fix/fpl-live-gameweek-state` after the 2026-08-21 incident and merged and
+  deployed as PR #429 on 2026-08-22 (timeline under "The shipped opening-season
+  baseline"). Until then a payload FPL cleared mid-season poisoned projections
+  in production. The GW1 pre-season work, the sandbox and the two pre-season
+  encodings had already shipped and were verified byte-for-byte against the
+  served files on 2026-08-21 (60 of 60 identical), and the 2026-09-12 site-wide
+  audit found the served app files identical to master.
 - **Earlier release state, still true of what shipped: SHIPPED.** The GW1 hardening, the team sandbox (PR #380,
   `2bd2bd2`, deployed 2026-08-15) and the sandbox interaction rework (PR #399,
   merged as `91d5e23`) are all on production. The current production build is
@@ -2296,10 +2345,13 @@ transfer shows up depends on which side of the deadline it was made:
   nothing, and none of the reconciliation code runs. The account's only transfer
   (Lacroix out, Tarkowski in) was made at 2026-08-28T05:33Z against a 17:30Z
   deadline, so this is the state it produced.
-- **Made after it** - it lands on `transfers` while `picks` still describes the
-  older squad. That divergence is the entire subject of pass 5, and the only
-  thing that exercises `applyPending`, the free-transfer decrement, and the
-  "do not re-recommend the move already made" rule against real data.
+- **Made after it** - it was expected to land on `transfers` while `picks`
+  still describes the older squad, and pass 5 was built to test that
+  divergence. **The public endpoints never show it** (measured 2026-09-13, see
+  "What the public endpoints hide until a deadline"): a move is not listed
+  until its own deadline, by which time that gameweek's picks contain it too.
+  Pass 5 cannot run on live data as written, and `applyPending` is exercised
+  live only in the minutes after a deadline while the bootstrap is still cached.
 
 So the test for "can pass 5 run?" is not "is `transfers` non-empty". It is
 whether the newest transfer's `event` is the gameweek being PLANNED and its
@@ -2309,8 +2361,8 @@ What this cost: two boxes closed live (bank match; the -4 hit on a second
 transfer, verified in the scenario sandbox), three checked and left open because
 only the end state was observable, and one ("Check for changes" reporting a
 change) untouched. The reconciliation itself is not unverified - `gw2-window` in
-`e2e/lifecycle.mjs` drives exactly that shape - but it has still never been seen
-against live FPL.
+`e2e/lifecycle.mjs` drives exactly that shape - but it has never been seen
+against live FPL, and before a deadline it cannot be.
 
 ### The header states what can be spent today, 2026-08-31
 
@@ -2778,6 +2830,17 @@ Known and deliberately unfixed:
 - `buildTeamHistory` in `scripts/train-model.mjs` keys clubs by NAME and is
   queried with a season-scoped club INDEX, so two of twenty-four declared
   features are identically zero. Reaches no user (`engineConsumes: []`).
+- **The weeks after the baseline retires are a low-evidence regime** (2026-09-12
+  audit, F2). `baselineIsSuperseded` drops the baseline at three matches per
+  club, which fired on 2026-09-06 and cannot recur before 2027/28. Until players
+  pass 450 minutes of the new season the bonus curve runs on its fallback
+  constants, and the per-90 shrinkage compresses rates unevenly: an elite
+  forward's raw xG/90 of 0.90 reads about 0.53 on four matches (0.80 under the
+  blend) against a 0.35 prior, which can reorder premium and mid-price
+  attackers. It belongs to the prior-weight family the registry parked
+  (entries 18-21). A tapered retirement (fading the baseline over, say, 3 to 10
+  matches) is the candidate, and it needs a registered experiment before
+  2027/28, not a mid-season change.
 
 ## A Free Hit squad is RENTED, and the planner has to hand it back
 
