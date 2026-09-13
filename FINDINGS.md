@@ -8,6 +8,76 @@ Site-level knowledge that belongs to no single app: the marketing pages
 lives in `apps/<app>/FINDINGS.md`; this file follows the same living-document
 rule (rewrite, merge, delete; never an append-only diary).
 
+## A stalled third-party CDN held every page (2026-09-13)
+
+A request that is refused fails fast. One that is accepted and never answered
+(a lossy mobile network, a captive portal, a firewall that silently drops
+Google or Cloudflare traffic) holds whatever the browser was told to wait for,
+for as long as the connection hangs. Until 2026-09-13 every root and app page
+told the browser to wait for a third party before it could run anything:
+
+- `firebase-config.js`, `storage-sync-robust.js` and `app-sync-init.js` were
+  plain (deferred) module scripts. Deferred modules run in document order,
+  DOMContentLoaded waits on them, and `firebase-config.js` imports the SDK from
+  www.gstatic.com.
+- Google Fonts (Raleway everywhere, Inter on Gym Tracker, Arena's three
+  families) and cdnjs Font Awesome 6 (FPL Planner, Gym Tracker, Rising Shows,
+  Kometa) were parser-inserted `<head>` stylesheets, which block rendering and
+  every later script.
+- Chart.js came from cdnjs as a parser-blocking classic script, in Mario Kart's
+  `<head>` and near the end of MapTap Rivals' body.
+- `apps/gym-tracker/css/exercise-page.css` `@import`ed Inter.
+
+How it surfaced: CI run 34754204478 on the Rising Shows data PR #534 failed six
+Gym Tracker checks at 390 px, every one downstream of `js/app.js` never
+evaluating while a gstatic request stalled (`apps/gym-tracker/FINDINGS.md` has
+the trace, including the poll-time figure that gave it away). Measured
+afterwards in headless Chromium with each host blackholed: gstatic,
+fonts.googleapis.com and cdnjs each independently kept DOMContentLoaded from
+firing on the pages that used them for as long as the test waited (40 s), and
+Mario Kart rendered nothing at all, while the same hosts refused booted in
+under 3 s. The browser check below failed on all 16 pages before the change and
+passes on all 16 after it.
+
+What changed:
+
+- The three Firebase module tags carry `async`. The late-sync order this allows
+  was already supported: `sync-immediate.js` buffers writes until
+  `syncSystemReady`, every `window.firebaseAuth` consumer waits for
+  `firebaseAuthReady`, and `app-sync-init.js` checks `document.readyState`.
+  Arena still waits for the SDK by design: its `js/app.js` imports
+  `firebase-config.js`.
+- Every third-party stylesheet uses the non-blocking form the site already used
+  for its own Font Awesome 4 (`media="print" onload="this.media='all'"` plus a
+  `<noscript>` copy). Every font request already asked for `display=swap`, so
+  a fallback face first is not new behaviour, and the enforced CSP sets no
+  `script-src`, so the inline `onload` runs.
+- Chart.js 4.4.1 is served from `assets/js/chart-4.4.1.umd.min.js`,
+  byte-identical to the cdnjs file (both pages keep the same `integrity`
+  hash). It stays a synchronous script because both apps' chart code expects it
+  loaded, and from this origin it adds no dependency the page does not already
+  have. To upgrade it, add the new versioned file, point both pages at it with its
+  SRI hash, and delete the old one.
+- The generated exercise pages link Inter non-blockingly from the generator
+  templates instead of the `@import`.
+
+Blocked until 14 September 2026: `privacy.html` still names "a charting library"
+among what pages load from cdnjs and Google Fonts. That now over-states what
+the pages contact (it breaks no promise), and it cannot be corrected on the day
+this shipped: PR #533 had already published a policy edit under "Last reviewed:
+13 September 2026", and `tests/static/privacy-review-date.test.mjs` rightly
+refuses changed policy prose without a strictly later date, which cannot
+honestly exist before the 14th. The correction is one clause, dropped from the
+"cdnjs and Google Fonts" entry, dated the day it ships.
+
+Guards: `tests/static/third-party-boot-path.test.mjs` (async Firebase modules;
+no third-party script without `async`; no blocking third-party stylesheet in
+any page or generator template; no third-party `@import`) and
+`tests/browser/suites/site.mjs` "boots with every third-party CDN stalled",
+which pauses every gstatic, cdnjs and Google Fonts request on each page and
+requires DOMContentLoaded. `tests/static/stylesheet-chain.test.mjs` counts the
+Raleway link outside its `<noscript>` copy.
+
 ## The index baseline, measured 2026-09-05
 
 Read from the Search Console URL Inspection API the day the SEO round shipped,

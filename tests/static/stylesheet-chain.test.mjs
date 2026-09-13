@@ -34,9 +34,13 @@ const TRACKED_HTML = execFileSync('git', ['ls-files', '-z', '*.html'], { cwd: RE
 
 // <link rel="stylesheet" href="..."> tags, in document order, with the
 // position so ordering can be asserted. Comments are stripped first so a
-// commented-out link cannot count.
+// commented-out link cannot count, and so are <noscript> blocks: since
+// 2026-09-13 the Raleway link loads non-blocking (media="print" plus an onload
+// swap, so a stalled fonts.googleapis.com cannot hold the page) and carries a
+// <noscript> copy for scripting-off visitors, which is a fallback, not a
+// second link. tests/static/third-party-boot-path.test.mjs pins that form.
 function stylesheetLinks(html) {
-  const clean = html.replace(/<!--[\s\S]*?-->/g, '');
+  const clean = html.replace(/<!--[\s\S]*?-->/g, '').replace(/<noscript>[\s\S]*?<\/noscript>/gi, '');
   return [...clean.matchAll(/<link\b[^>]*\brel=["']stylesheet["'][^>]*>/gi)]
     .map((m) => ({ href: (m[0].match(/\bhref=["']([^"']+)["']/i) || [])[1] || '', at: m.index }));
 }

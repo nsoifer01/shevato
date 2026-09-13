@@ -1290,6 +1290,59 @@ populate from it, so a fifth hand-written copy cannot creep back in.
   and PRs follow the substitute) and leaves `plannedExerciseId` alone (so the
   rep target, per-slot ranges and rest values survive) - GT-13.
 
+## A stalled Firebase SDK kept the whole app from booting (2026-09-13)
+
+CI run 34754204478 (the Rising Shows data PR #534, which touched no gym file)
+failed six checks in the 390 leg of `e2e/audit-2026-08.mjs`: no history cards,
+the card title opened nothing, the workout never started, the rest-dial probe
+hit a null, and neither focus ring showed. The 1280 leg passed. All six are
+downstream of one fact the suite never checked: `window.gymApp` did not exist.
+The timing table gave it away, not the failures: 25.8 s of condition polling
+against 10.0-10.3 s in every passing run, which is `boot()`'s 15 s `ready()`
+wait expiring with its result ignored.
+
+- **Cause.** `index.html` loaded `firebase-config.js`, `storage-sync-robust.js`
+  and `app-sync-init.js` as plain module scripts ahead of `js/app.js`. Plain
+  module scripts are deferred: they run in document order and
+  DOMContentLoaded waits for them. `firebase-config.js` imports the SDK from
+  www.gstatic.com, so one gstatic request that is accepted and never answered
+  holds `app.js` (whose last statements assign `window.gymApp`) and every
+  DOMContentLoaded handler behind it. The static shell still paints, which is
+  why the axe scans and the checks on static markup kept passing.
+- **Reproduced, not inferred.** Headless Chromium with www.gstatic.com mapped
+  to a local socket that accepts and never replies sat at readyState
+  `interactive` with no `gymApp` for 40 s; mapped to a refused port it booted
+  in under 3 s, exactly as against the real CDN. A refusal fails the import
+  fast and the later modules still run; only a stall blocks.
+- **It was never gym-specific, and never only gstatic.** The browser check
+  below, run against the old pages, failed on all 15 pages that load
+  `firebase-config.js`. Stalling fonts.googleapis.com or cdnjs instead did the
+  same here: the Inter and Raleway stylesheets and the cdnjs Font Awesome 6
+  link are parser-inserted in `<head>`, so every later script waited on them.
+  The site-wide account is in the root `FINDINGS.md`, "A stalled third-party
+  CDN held every page".
+- **Fix.** The three Firebase tags carry `async` on every page, which takes
+  them out of the ordered queue, so the page's own modules and
+  DOMContentLoaded no longer wait for Google. The late-sync order this allows
+  was already supported: `sync-immediate.js` buffers writes until
+  `syncSystemReady`, `setupSyncListeners()` subscribes only while
+  `window.syncSystemInitialized` is unset, and every `window.firebaseAuth`
+  consumer waits for `firebaseAuthReady`. The font and icon stylesheets use
+  the site's existing non-blocking form (`media="print"` plus
+  `onload="this.media='all'"`, with a `<noscript>` copy), and
+  `css/exercise-page.css` no longer `@import`s Inter: the generated exercise
+  pages link it the same non-blocking way. Arena still waits for the SDK, by
+  design: its own `js/app.js` imports `firebase-config.js`. `CACHE_VERSION`
+  moved to 1.15.4 because `index.html` is precached.
+- **Guards.** `tests/static/third-party-boot-path.test.mjs` pins the markup
+  (async Firebase modules, no blocking third-party script or stylesheet, no
+  third-party `@import`). `tests/browser/suites/site.mjs` loads each page with
+  every gstatic, cdnjs and Google Fonts request paused and requires
+  DOMContentLoaded (here also `gymApp.currentView`). In this suite, `boot()` now fails ONE check,
+  `boot: the app booted (<width>px)`, carrying readyState and the page's
+  errors, whenever `ready()` times out, so a boot that never happened is
+  reported as itself instead of as six symptoms.
+
 ## Running the app's own E2E suite (e2e/audit-2026-08.mjs)
 
 - `GYM_E2E_TRACE=1` prints each check as it lands. A CDP command timeout

@@ -171,7 +171,9 @@ tests/browser/
   suites/site.mjs    # 8 marketing pages: meta/robots, first-party network
                      #   failures, apps-hub search + category filters, header
                      #   apps dropdown, moadon-alef language switcher, apex
-                     #   shell structure, nav, forms, responsive
+                     #   shell structure, nav, forms, responsive, and every
+                     #   root and app page (arena excepted) booting with each
+                     #   gstatic, cdnjs and Google Fonts request held open
   suites/apps.mjs    # the apps: real feature flows with storage/table
                      #   assertions, plus a mobile sweep with one interaction
                      #   per app

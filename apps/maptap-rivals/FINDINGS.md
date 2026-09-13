@@ -3,6 +3,16 @@
 Living document: the current best understanding of how this app behaves and
 where it bites. Rewrite sections rather than appending to them.
 
+## Chart.js is served from this site (2026-09-13)
+
+`index.html` loaded Chart.js 4.4.1 from cdnjs as a synchronous script, so a
+stalled cdnjs (accepted, never answered) kept the parser, DOMContentLoaded and
+the deferred `js/app.js` from ever running. It now loads
+`/assets/js/chart-4.4.1.umd.min.js`, byte-identical (same `integrity`), still
+synchronously, so `renderCharts` keeps finding `window.Chart`; its guard stays
+for a request that fails. The site-wide account is in the root `FINDINGS.md`,
+"A stalled third-party CDN held every page".
+
 ## The page carries its own explanation now (`.app-about`)
 
 Measured on production before 2026-09-04, this page rendered almost nothing but
