@@ -145,7 +145,7 @@ test('vm harness: app.js exports every helper these tests drive', () => {
     'addDaysISO', 'buildHeatmapWeeks', 'parseWhatsAppText', 'dayBucketDate',
     'rivalNameHint', 'storedDayCities', 'splitGameCities', 'joinGameCities',
     'persistGames', 'loadGamesFromStorage', 'storedGamesAreInline',
-    'migrateInlineCities',
+    'migrateInlineCities', 'onExternalStorage',
     'state', 'summarizeMapTapProfile', 'syncMapTapForRival', 'syncAllRivals',
   ];
   const missing = expected.filter((name) => helpers[name] == null);
@@ -1392,4 +1392,34 @@ test('summarizeMapTapProfile: verifiedAt is caller-supplied or now, never anythi
     c._testExports.summarizeMapTapProfile(user, 'T'),
     c._testExports.summarizeMapTapProfile(user, 'T')
   );
+});
+
+// ---------------------------------------------------------------------------
+// A tab never rewrites the log in answer to ANOTHER tab's write. localStorage
+// is last-writer-wins across tabs, and a hidden or busy tab can still be
+// handling an event older than a write another tab has since made: the
+// migration used to re-persist that tab's stale view over the newer write.
+// Caught by the browser suite, where a hidden page still handling the UTC+12
+// section's seed wrote that section's games over the sync section's.
+// ---------------------------------------------------------------------------
+
+test('a cross-tab storage event reloads the log but never rewrites it; this page\'s own sync delivery still normalises it', () => {
+  const { games } = buildSyncedLog(2, 6);
+  const rivals = Array.from({ length: 2 }, (_, r) => ({
+    id: `rival-${r}`, name: `R${r}`, color: '#6366f1', icon: '🦊', createdAt: 1,
+  }));
+  const app = loadApp({ maptapRivalsRivals: [], maptapRivalsGames: [] });
+  app.localStorage.setItem('maptapRivalsRivals', JSON.stringify(rivals));
+  app.localStorage.setItem('maptapRivalsGames', JSON.stringify(games));
+  app._testExports.state.view = 'none'; // no DOM in the vm; the handler's re-render is not under test
+  const before = app.localStorage.writes.length;
+
+  app._testExports.onExternalStorage({ key: 'maptapRivalsGames', isTrusted: true });
+  assert.equal(app.localStorage.writes.length, before, 'another tab made that write, and normalises it itself');
+  assert.equal(app._testExports.storedGamesAreInline(), true, 'so the stored rows are left exactly as that tab wrote them');
+  assert.equal(app._testExports.state.games.length, games.length, 'while this tab still shows them');
+
+  app._testExports.onExternalStorage({ key: 'maptapRivalsGames', isTrusted: false });
+  assert.equal(app._testExports.storedGamesAreInline(), false, 'a delivery this page applied is normalised on arrival');
+  assert.equal(JSON.parse(app.localStorage.getItem('maptapRivalsGames')).length, games.length, 'with every game kept');
 });

@@ -1117,6 +1117,19 @@ silently, placeholders still upload where the account has nothing).
   (`navigator.userActivation.hasBeenActive`) when the value was written. Sticky:
   an app write on top of a value a person shaped is still work. Unknown
   provenance (no API, data from before this existed) counts as work.
+- **Recorded after the write, never inside it.** Only the gesture state and
+  the page's owner are read at the write; the value is parsed, hashed and
+  recorded in one batch on the next task, once per key whatever the number of
+  writes. Hashing inline cost 5 ms per write at 365 KB and 87 ms at 3.7 MB,
+  on every `setItem` of a signed-out page, which used to do no sync work at
+  all. Everything that reads provenance (sign-in, registration, forgetting)
+  records the batch first, and so does `pagehide`, so a sign-in in the same
+  task or a page closing straight after a write still sees it. A `storage`
+  event is another tab's write and is not recorded here: that tab recorded it
+  with its own gesture state. The inline version also doubled the storage
+  events every open tab had to handle, which widened a MapTap cross-tab race
+  enough for the browser suite to catch (apps/maptap-rivals/FINDINGS.md,
+  "Never on another tab's storage event").
 - **Work** with no revision gets a synthesized dirty revision 0; drifted work is
   dirty at its restored revision. At the first snapshot it meets the cloud
   through the normal conflict path, and it is uploaded where the cloud has

@@ -974,3 +974,78 @@ test('T-3: an app\'s own write while the cloud is unread (no gesture) gives way 
   assert.equal(eventsSince(events, 'syncConflict').length, 0);
   assert.equal(writesTo(A.uid, from).length, 0);
 });
+
+// ---------------------------------------------------------------------------
+// Provenance costs a signed-out page nothing on the write itself
+// ---------------------------------------------------------------------------
+//
+// Recording whether a person or an app made a signed-out write means hashing
+// the value, and a log can be megabytes (3.7 MB parses and hashes in ~87 ms).
+// That runs after the write, once per key however many writes there were, and
+// anything that reads provenance records the batch first, so a sign-in in the
+// same task still sees it.
+
+test('S-4 provenance: signed-out writes are recorded after the write, once per key, with the last value', async (t) => {
+  isolate(t);
+  userGesture(t, true);
+  const namespace = ns('provenanceBatch');
+  const [log, days] = [`${namespace}-log`, `${namespace}-days`];
+  const page = await openPage(t, [{ namespace, keys: [log, days] }]);
+  backingStore.delete('shevato:sync-local-work');
+
+  page.write(log, [{ id: 1 }]);
+  page.write(days, { d: 1 });
+  page.write(log, [{ id: 1 }, { id: 2 }]);
+  assert.equal(backingStore.has('shevato:sync-local-work'), false,
+    'nothing is hashed or written inside the app\'s setItem');
+
+  t.mock.timers.tick(1);
+  const provenance = stored('shevato:sync-local-work');
+  assert.deepEqual(provenance[log], { hash: hashValue([{ id: 1 }, { id: 2 }]), work: true },
+    'one record for the key, describing the value it ended on');
+  assert.deepEqual(provenance[days], { hash: hashValue({ d: 1 }), work: true });
+});
+
+test('S-4 provenance: a page closing before the batch runs still records its writes', async (t) => {
+  isolate(t);
+  userGesture(t, false);
+  const namespace = ns('provenanceClose');
+  const key = `${namespace}-log`;
+  const page = await openPage(t, [{ namespace, keys: [key] }]);
+  backingStore.delete('shevato:sync-local-work');
+
+  page.write(key, ['floor']);
+  window.dispatchEvent(new Event('pagehide'));
+  assert.deepEqual(stored('shevato:sync-local-work')?.[key], { hash: hashValue(['floor']), work: false },
+    'recorded on pagehide, gesture state as it was at the write');
+});
+
+test('S-4 provenance: another tab\'s write reaching this tab as a storage event is not recorded as this tab\'s', async (t) => {
+  isolate(t);
+  // The fallback override (pages without sync-immediate.js) is the path that
+  // hears other tabs through `storage` events.
+  const saved = { immediateDebug: window.immediateDebug, setItem: localStorage.setItem, removeItem: localStorage.removeItem };
+  delete window.immediateDebug;
+  t.after(() => {
+    window.immediateDebug = saved.immediateDebug;
+    localStorage.setItem = saved.setItem;
+    localStorage.removeItem = saved.removeItem;
+  });
+  const namespace = ns('provenanceCrossTab');
+  const [theirs, mine] = [`${namespace}-theirs`, `${namespace}-mine`];
+  const mod = await import(`${ENGINE}?page=${++pageCounter}`);
+  mod.registerLocalNamespaces([{ namespace, keys: [theirs, mine] }]);
+  backingStore.delete('shevato:sync-local-work');
+  userGesture(t, true);   // this tab has been used; the other tab's write says nothing about that
+
+  backingStore.set(theirs, JSON.stringify(['other tab']));
+  const event = new Event('storage');
+  Object.assign(event, { key: theirs, newValue: JSON.stringify(['other tab']) });
+  window.dispatchEvent(event);
+  localStorage.setItem(mine, JSON.stringify(['this tab']));
+  t.mock.timers.tick(1);
+
+  const provenance = stored('shevato:sync-local-work') || {};
+  assert.equal(provenance[theirs], undefined, 'the tab that wrote it records it');
+  assert.deepEqual(provenance[mine], { hash: hashValue(['this tab']), work: true }, 'while this tab\'s own writes still are');
+});

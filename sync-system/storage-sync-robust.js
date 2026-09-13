@@ -274,6 +274,13 @@ class StorageSyncManager {
     this.bootLineage = new Map();
     // Provenance of writes made before app-sync-init registered its keys.
     this.pendingLocalWork = new Map();
+    // Signed-out writes not yet recorded: key -> { value, work, owner }. They
+    // are hashed and recorded in one batch after the write, never inside it:
+    // parsing and hashing a multi-megabyte log on every setItem is a cost a
+    // signed-out page never used to pay. Anything that reads provenance
+    // records the batch first (flushUnsessionedWrites).
+    this.unsessionedWrites = new Map();
+    this.unsessionedFlushTimer = null;
     // The deletion this tab is running: { uid, id }.
     this.deletionLatch = null;
     this.deletionHeartbeat = null;
@@ -410,7 +417,10 @@ class StorageSyncManager {
     // mobile Safari and for pages entering the back/forward cache. setDoc is
     // reached within this event's microtask checkpoint, after which
     // Firestore's persistent cache owns the write.
-    window.addEventListener('pagehide', () => { this.flushPendingNow(); });
+    window.addEventListener('pagehide', () => {
+      this.flushUnsessionedWrites();
+      this.flushPendingNow();
+    });
     window.addEventListener('online', () => {
       for (const [, state] of this.syncStates) this.resumeParkedWrites(state);
     });
@@ -639,7 +649,7 @@ class StorageSyncManager {
     // Listen for storage events (cross-tab)
     window.addEventListener('storage', (e) => {
       if (e.key) {
-        this.notifyLocalChange(e.key, e.newValue);
+        this.notifyLocalChange(e.key, e.newValue, { crossTab: true });
       }
     });
 
@@ -649,7 +659,7 @@ class StorageSyncManager {
   /**
    * Notify all sync states about a localStorage change
    */
-  notifyLocalChange(key, value) {
+  notifyLocalChange(key, value, { crossTab = false } = {}) {
     // Check if we're in a sync lock (prevent echo)
     if (this.syncLocks.get(key)) {
       return;
@@ -666,8 +676,9 @@ class StorageSyncManager {
     // No session owns it (signed out, or before sync starts): remember whether
     // a person or an app produced it, which is the question the first sign-in
     // on this device has to answer (audit S-4). The engine's own bookkeeping
-    // keys are never app data.
-    if (!owned && typeof key === 'string' && !key.startsWith('shevato:')) {
+    // keys are never app data, and another tab's write is that tab's to
+    // record: its gesture, its page, and it already has.
+    if (!owned && !crossTab && typeof key === 'string' && !key.startsWith('shevato:')) {
       this.noteUnsessionedWrite(key, value);
     }
   }
@@ -2292,6 +2303,7 @@ class StorageSyncManager {
    * what this page loaded, which is what `bootLineage` means.
    */
   registerLocalNamespaces(configs) {
+    this.flushUnsessionedWrites();
     for (const config of Array.isArray(configs) ? configs : []) {
       const namespace = config && config.namespace;
       const keys = config && Array.isArray(config.keys) ? config.keys : [];
@@ -2543,38 +2555,73 @@ class StorageSyncManager {
 
   /** A registered key changed while no session owns it. */
   noteUnsessionedWrite(key, value) {
-    const registered = this.localKeyNamespaces.has(key);
-    if (!registered && this.localKeyNamespaces.size > 0) return;
-    const hash = hashValue(value === null || value === undefined ? null : parseValue(value));
-    const work = this.userHasInteracted();
-    if (registered) {
-      const pageOwner = this.foreignPageNamespaces.get(this.localKeyNamespaces.get(key)) || null;
-      this.recordLocalWork(key, hash, work, pageOwner);
-      return;
-    }
-    // Before app-sync-init has registered anything (a boot-window write
-    // replayed by sync-immediate.js): hold it until the key list is known.
-    if (this.pendingLocalWork.size < 500 || this.pendingLocalWork.has(key)) {
-      const prior = this.pendingLocalWork.get(key);
-      this.pendingLocalWork.set(key, { hash, work: work || !!(prior && prior.work) });
+    const namespace = this.localKeyNamespaces.get(key);
+    if (!namespace && this.localKeyNamespaces.size > 0) return;
+    const prior = this.unsessionedWrites.get(key);
+    if (!prior && !namespace && this.unsessionedWrites.size >= 500) return;
+    // Only what must be read at the moment of the write is read now: whether
+    // a person had acted on the page, and whose data the page had loaded.
+    this.unsessionedWrites.set(key, {
+      value,
+      work: this.userHasInteracted() || !!(prior && prior.work),
+      owner: namespace ? (this.foreignPageNamespaces.get(namespace) || null) : null
+    });
+    if (this.unsessionedFlushTimer === null) {
+      this.unsessionedFlushTimer = setTimeout(() => this.flushUnsessionedWrites(), 0);
     }
   }
 
+  /** Hash and record every signed-out write since the last batch, once per key. */
+  flushUnsessionedWrites() {
+    if (this.unsessionedFlushTimer !== null) {
+      clearTimeout(this.unsessionedFlushTimer);
+      this.unsessionedFlushTimer = null;
+    }
+    if (!this.unsessionedWrites.size) return;
+    const batch = this.unsessionedWrites;
+    this.unsessionedWrites = new Map();
+    const records = [];
+    for (const [key, entry] of batch) {
+      const hash = hashValue(entry.value === null || entry.value === undefined ? null : parseValue(entry.value));
+      if (this.localKeyNamespaces.has(key)) {
+        records.push({ key, hash, work: entry.work, owner: entry.owner });
+        continue;
+      }
+      // Before app-sync-init has registered anything (a boot-window write
+      // replayed by sync-immediate.js): hold it until the key list is known.
+      if (this.pendingLocalWork.size < 500 || this.pendingLocalWork.has(key)) {
+        const prior = this.pendingLocalWork.get(key);
+        this.pendingLocalWork.set(key, { hash, work: entry.work || !!(prior && prior.work) });
+      }
+    }
+    this.writeLocalWork(records);
+  }
+
   recordLocalWork(key, hash, work, owner = null) {
+    // Earlier signed-out writes to the key land first, so this one stays last.
+    this.flushUnsessionedWrites();
+    this.writeLocalWork([{ key, hash, work, owner }]);
+  }
+
+  writeLocalWork(records) {
+    if (!records.length) return;
     try {
       const all = this.readStoredJson(SYNC_LOCAL_WORK_KEY);
       const map = all && typeof all === 'object' ? all : {};
-      const previous = map[key];
-      // Sticky: whatever an app writes on top of a value a person shaped is
-      // still built on their work. `owner` names the account whose data the
-      // writing page had loaded, when that is not the account now stamped.
-      map[key] = { hash: String(hash), work: !!work || !!(previous && previous.work) };
-      if (owner) map[key].owner = owner;
+      for (const { key, hash, work, owner } of records) {
+        const previous = map[key];
+        // Sticky: whatever an app writes on top of a value a person shaped is
+        // still built on their work. `owner` names the account whose data the
+        // writing page had loaded, when that is not the account now stamped.
+        map[key] = { hash: String(hash), work: !!work || !!(previous && previous.work) };
+        if (owner) map[key].owner = owner;
+      }
       this.rawStorage().setItem(SYNC_LOCAL_WORK_KEY, JSON.stringify(map));
     } catch (_) { /* unknown provenance counts as work */ }
   }
 
   localWorkFor(key) {
+    this.flushUnsessionedWrites();
     const all = this.readStoredJson(SYNC_LOCAL_WORK_KEY);
     const entry = all && typeof all === 'object' ? all[key] : null;
     return entry && typeof entry === 'object' ? entry : null;
@@ -2588,6 +2635,7 @@ class StorageSyncManager {
   }
 
   forgetLocalWork(keys) {
+    this.flushUnsessionedWrites();
     const all = this.readStoredJson(SYNC_LOCAL_WORK_KEY);
     if (!all || typeof all !== 'object') return;
     let changed = false;
