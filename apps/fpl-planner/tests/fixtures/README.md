@@ -107,3 +107,28 @@ Regenerating one means re-capturing from the proxy during the equivalent live
 moment; the `manifest.json` counts are the check that you captured the state you
 meant to.
 
+## The gw4-2026 match-window capture
+
+`gw4-2026/` is the payload that projected a 6.4 point best eleven: GW4 of
+2026/27 on 2026-09-13, with MUN v MCI in play, captured off the public API at
+16:27 UTC. It exists because the state that broke the planner (a match in play
+at a club that has already played three) occurs in every match window from the
+fourth round on, and no GW1 capture can contain it. Read at runtime by
+`live-match-window.test.mjs`, so a reference search will not find it either.
+Derived by `scripts/derive-gw4-fixtures.mjs` from the raw captures in
+`~/fpl-gw4-evidence/raw/`, whose sha256 sums `manifest.json` records. The
+payloads are public and carry no entry.
+
+| File | What it is |
+| --- | --- |
+| `base.json` | Rules, clubs, the element metadata and the full fixture list with scores. The pool is every player with a minute plus the 16 most expensive per club (479), which keeps every ever-present starter the collapse turned on. |
+| `in-play.json` | The served state: `totals`, `fixturePhases` and `scores` as in `gw1-2026/`, plus `live`, the gameweek's `event/4/live` stats per player tagged with his fixture. |
+| `full-time.json` | The same three endpoints captured at 17:40 UTC, once MUN v MCI had reached provisional full time (0-1). Used as a real full-time state rather than the in-play capture with its flags flipped. |
+| `manifest.json` | Pool size, per-state counts and the sha256 of every raw file. |
+
+`live` is what makes the set more than one snapshot: subtracting a fixture's live
+stats from the totals rewinds the payload to before that fixture kicked off, so
+the test rebuilds all five GW4 kickoff windows (and each one with a fixture list
+that has not caught up) from a single capture. The per-90 fields have no
+per-match equivalent and stay as captured.
+

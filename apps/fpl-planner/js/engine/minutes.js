@@ -61,6 +61,7 @@
 // existed the model priced them identically.
 
 import { assessBaseline, baselineIsSuperseded } from './baseline.js';
+import { matchesPlayedByClub, matchesKickedOffByClub } from './lifecycle.js';
 
 const UNAVAILABLE_STATUSES = new Set(['i', 's', 'u', 'n']);
 const DOUBTFUL_STATUS = 'd';
@@ -191,7 +192,7 @@ export function positionPriors(gameState) {
   const cached = priorCache.get(gameState);
   if (cached) return cached;
 
-  const teamMatches = teamMatchesPlayed(gameState);
+  const evidence = seasonEvidence(gameState);
   const byPosition = new Map();
   for (const p of gameState.players.values()) {
     if (!byPosition.has(p.position)) {
@@ -205,7 +206,7 @@ export function positionPriors(gameState) {
       row.minutes += p.minutes;
       // The same denominator each player's own rate is read against, so the
       // position prior cannot drift away from the players it is a prior for.
-      row.matches += evidenceMatchesFor(p, teamMatches);
+      row.matches += evidenceMatchesFor(p, defaultEvidenceMatches(evidence, p.teamId));
     }
   }
 
@@ -232,8 +233,9 @@ export function positionPriors(gameState) {
 
   const result = {
     priors,
-    teamMatches,
-    matchesByTeam: matchesPlayedByTeam(gameState),
+    teamMatches: evidence.teamMatches,
+    evidence,
+    matchesByTeam: matchesPlayedByClub(gameState),
     priceBands: priceBands(gameState),
   };
   priorCache.set(gameState, result);
@@ -260,21 +262,16 @@ export function evidenceMatchesFor(player, teamMatches) {
   return Number.isFinite(declared) && declared > 0 ? declared : teamMatches;
 }
 
-// Matches each club has PLAYED OUT this season. Zero for every club pre-season,
-// which is the whole point: it is the count of chances a player has had to
-// appear, so it can only start once the season has.
-//
-// It counts a provisional full-time as played. Reading only `finished` meant
-// that between the final whistle and FPL signing the match off - still unsigned
-// eleven hours later on 2026-08-21 - twenty-two players carried ninety minutes each against
-// a denominator of zero, and the payload was mistaken for last season's.
-function matchesPlayedByTeam(gameState) {
-  const counts = new Map();
-  for (const f of gameState.fixtures) {
-    if (!(f.finished || f.finishedProvisional)) continue;
-    for (const t of [f.teamH, f.teamA]) counts.set(t, (counts.get(t) || 0) + 1);
-  }
-  return counts;
+// The denominator for a player who does not declare his own. In a season of
+// its own it is the matches HIS CLUB's totals cover (`matchesByClub` from
+// `seasonEvidence`: every match the club has kicked off, a provisional full
+// time and a match in play included), not the league's most: clubs do not move through a gameweek together, so a single league-wide
+// count reads every club that has not kicked off yet, or has a blank, against a
+// match it never played. Last season's totals, and a payload with no evidence,
+// are read over a full season as before.
+function defaultEvidenceMatches(evidence, teamId) {
+  if (!evidence.matchesByClub) return evidence.teamMatches;
+  return evidence.matchesByClub.get(teamId) || 0;
 }
 
 // WHICH SEASON THE ELEMENT TOTALS BELONG TO, decided from the payload itself.
@@ -297,25 +294,59 @@ function matchesPlayedByTeam(gameState) {
 // and every projection finite. What separates them is an arithmetic fact about
 // the sport - a player cannot have started more matches than his club has
 // played - so that is what this checks, rather than a date or a gameweek number.
+//
+// WHICH MATCHES THAT FACT IS CHECKED AGAINST (found 2026-09-13). The bound is
+// the matches his club has KICKED OFF, not the matches it has played out,
+// because FPL credits a start at kickoff. Checked against played-out matches,
+// every live match put its ever-present starters one start over the line,
+// twelve of them were enough, and the whole pool was read as last season's:
+// every start rate was divided by 38 instead of 4 and the best eleven in the
+// game projected 6.4. That happened in every GW4 match window from the first
+// kickoff after the baseline retired (2026-09-12 14:00 UTC). It could not
+// happen in GW2 or GW3 because the baseline overlay had already put the payload
+// in the previous-season shape on purpose, with every player declaring his own
+// denominator.
 export function seasonEvidence(gameState) {
-  const perTeam = matchesPlayedByTeam(gameState);
+  // Two counts, because two different questions are asked of the fixture list.
+  // `played` is the lifecycle question (has a match been played out) and
+  // chooses the branch exactly as before. `covered` is the arithmetic one
+  // (which matches do the totals already include) and is the only count a
+  // season total is ever compared with or divided by.
+  const played = matchesPlayedByClub(gameState);
+  const covered = matchesKickedOffByClub(gameState);
   let maxPlayed = 0;
-  for (const n of perTeam.values()) if (n > maxPlayed) maxPlayed = n;
+  for (const n of played.values()) if (n > maxPlayed) maxPlayed = n;
 
   let impossible = 0;
   let withMinutes = 0;
-  let starts = 0;
+  const mostStarts = new Map();
   for (const p of gameState.players.values()) {
     if (p.minutes > 0) withMinutes++;
-    starts += p.starts || 0;
-    const played = perTeam.get(p.teamId) || 0;
-    // The claim only means anything once his club has actually played, and one
-    // player over the line is noise: a squad's worth of them is a season
+    mostStarts.set(p.teamId, Math.max(mostStarts.get(p.teamId) || 0, p.starts || 0));
+    const kickedOff = covered.get(p.teamId) || 0;
+    // The claim only means anything once his club has actually kicked off, and
+    // one player over the line is noise: a squad's worth of them is a season
     // boundary. `starts` is the cleanest signal because it is bounded by
     // matches by construction; minutes are bounded by 90 per match, so they
     // catch the same thing when a payload omits starts.
-    if (played > 0 && ((p.starts || 0) > played || p.minutes > played * 90 + 30)) impossible++;
+    const ceiling = kickedOff + TOTALS_LEAD_TOLERANCE_MATCHES;
+    if (kickedOff > 0 && ((p.starts || 0) > ceiling || p.minutes > ceiling * 90 + 30)) impossible++;
   }
+
+  // The matches each club's totals cover, which is what its players are read
+  // over. Normally that is the kicked-off count. When the fixture list is behind
+  // the totals by the one match the tolerance allows - a club's starters already
+  // credited with a match its fixture list still calls upcoming - the totals are
+  // the fresher of the two, and the club is read over that match as well, so a
+  // stale cache changes nobody's rate and nobody's position prior. Never more
+  // than one match, so a single corrupt total cannot drag its club along.
+  const clubMatches = new Map();
+  for (const [team, kickedOff] of covered) {
+    const lead = Math.max(0, (mostStarts.get(team) || 0) - kickedOff);
+    clubMatches.set(team, kickedOff + Math.min(lead, TOTALS_LEAD_TOLERANCE_MATCHES));
+  }
+  let maxCovered = 0;
+  for (const n of clubMatches.values()) if (n > maxCovered) maxCovered = n;
 
   const totalEvents = gameState.rules.totalEvents;
 
@@ -397,13 +428,14 @@ export function seasonEvidence(gameState) {
     // Have all the clubs played the same number of matches? Until they have,
     // players are being measured against different denominators.
     let minPlayed = Infinity;
-    for (const team of gameState.teams.keys()) minPlayed = Math.min(minPlayed, perTeam.get(team) || 0);
+    for (const team of gameState.teams.keys()) minPlayed = Math.min(minPlayed, played.get(team) || 0);
     const levelClubs = Number.isFinite(minPlayed) && minPlayed === maxPlayed;
     if (!assessment.complete && !baselineIsSuperseded(gameState)) {
       return {
         kind: 'partial-season',
         usable: false,
-        teamMatches: maxPlayed,
+        teamMatches: maxCovered,
+        matchesByClub: clubMatches,
         finishedMatches: maxPlayed,
         impossible,
         assessment,
@@ -425,7 +457,10 @@ export function seasonEvidence(gameState) {
   return {
     kind: 'current-season',
     usable: true,
-    teamMatches: maxPlayed,
+    // The league's most, for display; every player is read against his own
+    // club's count through `matchesByClub`.
+    teamMatches: maxCovered,
+    matchesByClub: clubMatches,
     finishedMatches: maxPlayed,
     impossible,
     message: null,
@@ -438,11 +473,15 @@ export function seasonEvidence(gameState) {
 // pool trips it at once.
 const IMPOSSIBLE_STARTS_QUORUM = 12;
 
-// The denominator for a start rate, which is now whatever the evidence says it
-// is rather than a count of fixtures read in isolation.
-function teamMatchesPlayed(gameState) {
-  return seasonEvidence(gameState).teamMatches;
-}
+// How far a club's element totals may run ahead of the fixture list before a
+// player counts towards that quorum: one match. `bootstrap-static` and
+// `fixtures` are separate endpoints, cached for ten and thirty minutes by the
+// proxy and again by the browser, and FPL updates them independently, so for up
+// to half an hour after a kickoff the totals can already include a match the
+// fixture list still calls upcoming. On the 2026-09-13 payload that lag alone
+// reproduces the whole collapse. A club plays one match at a time, so one is
+// the most the lag can be, while a real season boundary is off by tens.
+const TOTALS_LEAD_TOLERANCE_MATCHES = 1;
 
 // Price percentile within position, used only for players with no minutes.
 function priceBands(gameState) {
@@ -581,7 +620,7 @@ export function minutesConfidence({ startRate, evidenceMatches, availability = 1
 }
 
 export function projectMinutes(player, { gameState, gw, fixtureCount } = {}) {
-  const { priors, teamMatches, matchesByTeam, priceBands: bands } = positionPriors(gameState);
+  const { priors, evidence: season, matchesByTeam, priceBands: bands } = positionPriors(gameState);
   const prior = priors.get(player.position) || { ...FALLBACK_PRIORS };
   const nFixtures = fixtureCount === undefined
     ? (gw === undefined ? 1 : countFixtures(gameState, player.teamId, gw))
@@ -609,17 +648,17 @@ export function projectMinutes(player, { gameState, gw, fixtureCount } = {}) {
   let reason = ceiling.reason;
   if (availability === 0) return { ...zero, confidence: 'high', confidenceScore: 1, reason };
 
-  const hasHistory = player.minutes > 0 && teamMatches > 0;
+  // Every rate below is read against the matches the totals actually cover,
+  // which on a live payload is his own club's count, a match in play included,
+  // and in a replay includes whatever previous season was seeded into them. It
+  // is also the sample size confidence is scored on, so it is read once for
+  // both.
+  const evidence = evidenceMatchesFor(player, defaultEvidenceMatches(season, player.teamId));
+  const hasHistory = player.minutes > 0 && evidence > 0;
   let baseStart;
   let meanStarterMinutes;
   let meanSubMinutes;
   let subOnRate;
-
-  // Every rate below is read against the matches the totals actually cover,
-  // which on a live payload is the league's match count and in a replay
-  // includes whatever previous season was seeded into them. It is also the
-  // sample size confidence is scored on, so it is read once for both.
-  const evidence = evidenceMatchesFor(player, teamMatches);
 
   if (hasHistory) {
     const observedStartRate = clamp01(player.starts / evidence);

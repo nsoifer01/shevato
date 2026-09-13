@@ -30,6 +30,7 @@ import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { homedir } from 'node:os';
+import { META, TOTALS, pick } from './lib/fixture-fields.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 // The positional [raw-dir] [out-dir] form only applies to a full derivation;
@@ -45,26 +46,8 @@ const J = (f) => JSON.parse(readFileSync(join(RAW, f), 'utf8'));
 const has = (f) => existsSync(join(RAW, f));
 const write = (f, v) => writeFileSync(join(OUT, f), JSON.stringify(v));
 
-// Element metadata that does NOT change between lifecycle states.
-const META = [
-  'id', 'code', 'web_name', 'first_name', 'second_name', 'team', 'element_type',
-  'now_cost', 'cost_change_start', 'status', 'chance_of_playing_next_round',
-  'news', 'news_added', 'selected_by_percent',
-  'penalties_order', 'direct_freekicks_order', 'corners_and_indirect_freekicks_order',
-];
-// Totals that DO change: these are what FPL rewrote at the rollover.
-const TOTALS = [
-  'minutes', 'starts', 'total_points', 'bonus', 'bps', 'saves', 'goals_scored',
-  'assists', 'clean_sheets', 'goals_conceded', 'yellow_cards', 'red_cards',
-  'own_goals', 'penalties_saved', 'penalties_missed',
-  'clearances_blocks_interceptions', 'recoveries', 'tackles', 'defensive_contribution',
-  'expected_goals', 'expected_assists', 'expected_goal_involvements', 'expected_goals_conceded',
-  'expected_goals_per_90', 'expected_assists_per_90', 'expected_goal_involvements_per_90',
-  'expected_goals_conceded_per_90', 'saves_per_90', 'goals_conceded_per_90',
-  'starts_per_90', 'clean_sheets_per_90', 'defensive_contribution_per_90',
-];
-
-const pick = (o, keys) => { const r = {}; for (const k of keys) if (k in o) r[k] = o[k]; return r; };
+// The element fields kept (META never changes between states, TOTALS does) are
+// shared with derive-gw4-fixtures.mjs.
 
 // Add ONE state delta against the base that is already committed. Refuses
 // rather than guesses if the base or either raw payload is missing. Re-running
