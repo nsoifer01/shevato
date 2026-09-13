@@ -432,26 +432,27 @@ export function buildSquadState({ entry, history, transfers, picks, gameState, g
   //
   // `costChangeEvent` measures movement since the CURRENT event's deadline, so
   // the roll-back only lines up when the frozen picks ARE the current event's.
-  // Reading an older gameweek's picks (a rollover, a Free Hit revert, a
-  // hand-passed payload) makes it the wrong yardstick, and there the raw
-  // comparison at today's listed prices is the honest one.
+  // An older gameweek's picks (a Free Hit revert, a hand-passed payload) have no
+  // such yardstick: nothing public says what each player cost at THAT deadline,
+  // and comparing at today's prices reports ordinary price drift as a mismatch.
+  // Measured 2026-09-13 on a real GW4 Free Hit: the reverted GW3 squad read
+  // "101.4 does not match FPL's squad value of 101.0" with nothing wrong. So no
+  // comparison is made there; a revert squad is FPL's own picks for that week.
   const alignedToCurrentEvent = gameState.currentEvent !== null
     && gameState.currentEvent !== undefined
     && entryHistory.event === gameState.currentEvent;
   const listedTotal = built.reduce((sum, p) => {
     const player = gameState.players.get(p.playerId);
     if (!player) return sum;
-    return sum + player.nowCost - (alignedToCurrentEvent ? player.costChangeEvent : 0);
+    return sum + player.nowCost - player.costChangeEvent;
   }, 0);
-  if (!applied.count && listedTotal + bankTenths !== frozenValueTenths) {
+  if (!applied.count && alignedToCurrentEvent && listedTotal + bankTenths !== frozenValueTenths) {
     warnings.push({
       code: 'value_mismatch',
       // Both to one decimal. Dividing by 10 alone printed "100.9 does not match
       // FPL's 101", one figure to a tenth and the other not, which read as two
       // different kinds of number rather than the same one twice.
-      message: alignedToCurrentEvent
-        ? `Your fifteen at deadline prices plus the bank come to ${((listedTotal + bankTenths) / 10).toFixed(1)}, which does not match FPL's squad value of ${(frozenValueTenths / 10).toFixed(1)}, and price changes since the deadline do not account for the difference. The players or the bank read here may not be the ones Fantasy Premier League holds.`
-        : `Your fifteen at current prices plus the bank come to ${((listedTotal + bankTenths) / 10).toFixed(1)}, which does not match FPL's squad value of ${(frozenValueTenths / 10).toFixed(1)}. Prices may have moved since that gameweek's deadline, or the players or the bank read here may not be the ones Fantasy Premier League holds.`,
+      message: `Your fifteen at deadline prices plus the bank come to ${((listedTotal + bankTenths) / 10).toFixed(1)}, which does not match FPL's squad value of ${(frozenValueTenths / 10).toFixed(1)}, and price changes since the deadline do not account for the difference. The players or the bank read here may not be the ones Fantasy Premier League holds.`,
     });
   }
 

@@ -214,6 +214,16 @@ What follows, because this app only ever reads those endpoints:
   off the banked count, `validatePlan` would reject the active chip as already
   played, and `projectedSquadState` would revert a Free Hit to the
   post-transfer squad rather than the frozen one.
+- **The reachable case, a chip played in the CURRENT gameweek, is handled.**
+  Checked on real payloads the same day, GW4 in play, planning GW5 exactly as
+  `loadWorld` and `loadTeam` do: entry 895045 (Wildcard in GW4) reads 2 free
+  transfers, no hit, and only the Free Hit still offered; entry 1068212 (Free
+  Hit in GW4) reverts to its GW3 squad with 3 free transfers and no first-half
+  chip left. FPL records both chip weeks as `event_transfers: 0` and
+  `event_transfers_cost: 0`, and `transfer-state.js` treats the week as
+  unlimited either way. That run did find one real bug, a false
+  `value_mismatch` on every Free Hit revert, fixed below in "The value check
+  compares like with like".
 - **`pendingTransfers` and `applyPending` still run**, in the minutes after a
   deadline while the cached bootstrap still names that gameweek as next, and on
   hand-built payloads. "A transfer existing is not a PENDING transfer" below
@@ -2288,8 +2298,14 @@ SAME MOMENT:
   `sum(nowCost - costChangeEvent) + bank`. `cost_change_event` is the movement
   since the current gameweek's deadline, which is exactly the interval `value`
   was frozen across.
-- **Otherwise** (an older gameweek's picks, a rollover, a Free Hit revert):
-  `sum(nowCost) + bank`, raw, because the roll-back would be the wrong yardstick.
+- **Otherwise** (an older gameweek's picks, which in the live flow means a Free
+  Hit revert): no comparison. Nothing public prices each player at that older
+  deadline, and the raw comparison at today's prices this used to make reported
+  ordinary drift as a mismatch: on 2026-09-13 a real GW4 Free Hit (entry
+  1068212) read "101.4 does not match FPL's squad value of 101.0" with nothing
+  wrong, and the same banner reached every manager reverting from a Free Hit that
+  week. The revert squad is FPL's own picks for that gameweek, so there was
+  nothing for the check to catch.
 - **Never once a transfer has been applied** for the gameweek being planned:
   `value` then describes a squad that no longer exists.
 

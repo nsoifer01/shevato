@@ -208,12 +208,14 @@ test('a difference price movement cannot account for is still reported', () => {
   assert.match(out.warnings[0].message, /do not account for the difference/);
 });
 
-test('the roll-back is only applied when the frozen picks ARE the current gameweek', () => {
-  // `costChangeEvent` measures movement since the CURRENT deadline. Against an
-  // older gameweek's picks it is the wrong yardstick, so the raw comparison
-  // stands and the drift is reported rather than explained away.
+test('an older gameweek\'s picks are not compared: price drift since that deadline cannot be told from a real mismatch', () => {
+  // `costChangeEvent` measures movement since the CURRENT deadline, so it cannot
+  // roll an older gameweek's squad back to its own deadline, and nothing else in
+  // the public payloads can. Comparing at today's prices then reports ordinary
+  // drift: a real GW4 Free Hit revert read "101.4 does not match FPL's squad
+  // value of 101.0" on 2026-09-13 with nothing wrong. This is that shape.
   const out = withOvernightFall(fallenId, { event: picks.entry_history.event - 1 });
-  assert.equal(out.warnings.some(w => w.code === 'value_mismatch'), true, JSON.stringify(out.warnings));
+  assert.equal(out.warnings.some(w => w.code === 'value_mismatch'), false, JSON.stringify(out.warnings));
 });
 
 // The header states what the manager can spend TODAY, never FPL's deadline
