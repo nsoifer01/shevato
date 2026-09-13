@@ -33,7 +33,7 @@
  * feature rather than the page.
  */
 
-const CACHE_VERSION = '2.7.1';
+const CACHE_VERSION = '2.7.2';
 const PRECACHE = `trip-precache-${CACHE_VERSION}`;
 const RUNTIME = `trip-runtime-${CACHE_VERSION}`;
 
@@ -88,6 +88,7 @@ const OPTIONAL_URLS = [
   '../../sync-system/sync-loading-modal.js',
   '../../sync-system/sync-modal-integration.js',
   '../../firebase-config.js',
+  '../../firebase-firestore.js',
   '../../images/icon-192.png',
   '../../images/icon-512.png',
   // self-hosted Leaflet (see ensureLeaflet): precached so the Map view is not

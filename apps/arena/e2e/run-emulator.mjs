@@ -77,10 +77,9 @@ for (const sig of ['SIGINT', 'SIGTERM', 'SIGHUP']) process.on(sig, () => bail(si
 let exitCode = 0;
 try {
   // Emulators first: they are the slowest to come up and the suite skips
-  // without them anyway. RTDB is included because the emulator seam
-  // routes the page's rtdb handle to 127.0.0.1:9000, and the shared sync
-  // scripts hold an RTDB reference.
-  emu = await startEmulator({ repoRoot: REPO, only: ['firestore', 'auth', 'database'] });
+  // without them anyway. Firestore and Auth only: the pages hold no
+  // Realtime Database reference since 2026-09-13 (audit S-7).
+  emu = await startEmulator({ repoRoot: REPO, only: ['firestore', 'auth'] });
   if (!emu.ok) {
     if (process.env.ARENA_RULES_REQUIRE) {
       console.error(`FAIL: emulators required but unavailable: ${emu.reason}`);

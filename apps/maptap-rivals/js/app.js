@@ -6282,19 +6282,19 @@
   const NET_PROFILES = 'maptapRivalsNetwork';
   const NET_LINKS = 'maptapRivalsLinks';
 
-  // All Firestore access flows through firebase-config.js (the single init
-  // point; the invariant test in sync-system/tests forbids importing the SDK
+  // All Firestore access flows through firebase-firestore.js (the single
+  // Firestore init point; the invariant test in sync-system/tests forbids importing the SDK
   // anywhere else). Resolve it against this script's own URL so the dynamic
   // import works from a classic script whatever the page's base URL is.
-  const FIREBASE_CONFIG_URL = (function () {
+  const FIRESTORE_MODULE_URL = (function () {
     const src = document.currentScript && document.currentScript.src;
-    return new URL('../../../firebase-config.js', src || document.baseURI).href;
+    return new URL('../../../firebase-firestore.js', src || document.baseURI).href;
   })();
 
   let firebaseBitsPromise = null;
   function firebaseBits() {
     if (!firebaseBitsPromise) {
-      firebaseBitsPromise = import(FIREBASE_CONFIG_URL)
+      firebaseBitsPromise = import(FIRESTORE_MODULE_URL)
         .then(m => ({ db: m.db, fs: m.firestore }));
       // Own the rejection here too so a failed import can never surface as an
       // unhandled promise rejection; every caller awaits inside try/catch.

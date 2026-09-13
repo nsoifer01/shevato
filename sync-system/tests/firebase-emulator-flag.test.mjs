@@ -38,5 +38,5 @@ test('loopback + explicit "1" opt-in enables the seam', () => {
 
 test('flag key and ports are stable contracts (e2e harness + firebase.json depend on them)', () => {
     assert.equal(FIREBASE_EMULATOR_FLAG_KEY, 'shevato:firebase-emulators');
-    assert.deepEqual({ ...FIREBASE_EMULATOR_PORTS }, { firestore: 8085, database: 9000, auth: 9099 });
+    assert.deepEqual({ ...FIREBASE_EMULATOR_PORTS }, { firestore: 8085, auth: 9099 });
 });

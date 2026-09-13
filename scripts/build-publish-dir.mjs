@@ -50,8 +50,10 @@ export const ROOT_FILES = [
   'index.html', 'moadon-alef.html', 'privacy.html', 'work.html',
   'favicon.ico', 'robots.txt', 'site.webmanifest',
   'sitemap.xml', 'sitemap-pages.xml',
-  // Loaded by every app page for auth + sync.
+  // Loaded by every page for auth.
   'firebase-config.js',
+  // Imported by the sync engine, Arena and the MapTap rival network for Firestore.
+  'firebase-firestore.js',
   // Search Console fetches this exact path to verify domain ownership;
   // netlify.toml's redirect inventory names it for the same reason.
   'google10670283c9d04acd.html',

@@ -71,7 +71,7 @@ async function portUp(port) {
     }
 }
 
-const EMULATOR_PORTS = { firestore: 8085, database: 9000, auth: 9099 }; // firebase.json
+const EMULATOR_PORTS = { firestore: 8085, auth: 9099 }; // firebase.json
 
 /**
  * PIDs of emulators THIS harness started and then lost: the command line has

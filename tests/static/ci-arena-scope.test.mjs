@@ -137,7 +137,7 @@ test('the arena emulator workflow reports on every pull request', () => {
 // ---------------------------------------------------------------------------
 const RUNS = {
   'the ruleset itself': ['firestore.rules'],
-  'the RTDB half of the boundary': ['database.rules.json'],
+  'the Firestore seam every client reaches Firestore through': ['firebase-firestore.js'],
   'the emulator wiring': ['firebase.json'],
   'the arena app': ['apps/arena/js/app.js'],
   'the rules suite': ['apps/arena/tests-rules/rules.test.mjs'],

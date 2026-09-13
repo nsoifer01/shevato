@@ -17,15 +17,8 @@ import {
   where
 } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
-import {
-  ref,
-  onValue,
-  serverTimestamp as rtdbServerTimestamp,
-  runTransaction as rtdbTransaction,
-  off
-} from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
-
-import { db, rtdb, auth } from '../firebase-config.js';
+import { auth } from '../firebase-config.js';
+import { db } from '../firebase-firestore.js';
 import { createCrossTabChannel, CHANNEL_MESSAGE_TYPES } from './cross-tab-channel.mjs';
 import {
   hashValue,
@@ -58,7 +51,6 @@ const RETRY_DELAY_MS = 1000;
 // 1s. Total budget: 250 + 500 + 1000 + 2000 = 3.75s.
 const MAX_AUTH_RETRY_ATTEMPTS = 4;
 const AUTH_RETRY_BASE_MS = 250;
-const USE_FIRESTORE = true;
 // Firestore rejects documents > 1 MiB. We refuse to flush above 700 KB so a
 // single namespace can't silently lose writes once payloads grow. With
 // chunking (below) this is a last line of defence rather than a ceiling an
@@ -728,10 +720,10 @@ class StorageSyncManager {
    * `auth.currentUser` immediately, fall back to a one-shot
    * `onAuthStateChanged` if not yet available.
    */
-  startStorageSync({ namespace, keys, useFirestore = USE_FIRESTORE, policies }) {
+  startStorageSync({ namespace, keys, policies }) {
     const user = auth.currentUser;
     if (user) {
-      return this._startSyncForUser(user, { namespace, keys, useFirestore, policies });
+      return this._startSyncForUser(user, { namespace, keys, policies });
     }
 
     console.warn('❌ No authenticated user — sync will start once auth is ready');
@@ -742,7 +734,7 @@ class StorageSyncManager {
 
     const unsubscribe = auth.onAuthStateChanged((authUser) => {
       if (authUser?.uid && !actualSync) {
-        actualSync = this._startSyncForUser(authUser, { namespace, keys, useFirestore, policies });
+        actualSync = this._startSyncForUser(authUser, { namespace, keys, policies });
         unsubscribe();
       }
     });
@@ -764,7 +756,7 @@ class StorageSyncManager {
    * now skip the rebuild when the existing sync already matches the
    * incoming user+namespace+keys.
    */
-  _startSyncForUser(user, { namespace, keys, useFirestore = USE_FIRESTORE, policies }) {
+  _startSyncForUser(user, { namespace, keys, policies }) {
     this.registerKeyPolicies(keys, policies);
 
     const existing = this.syncStates.get(namespace);
@@ -777,7 +769,6 @@ class StorageSyncManager {
     }
     if (existing && !existing.stopped
         && existing.userId === user.uid
-        && existing.useFirestore === useFirestore
         && sameKeySet(existing.keys, keys)) {
       // The next sync start for this user is one of the bounded triggers a
       // parked write is waiting for.
@@ -815,7 +806,6 @@ class StorageSyncManager {
       namespace,
       keys: new Set(keys),
       userId: user.uid,
-      useFirestore,
       listeners: [],
       writeTimer: null,
       // The retry ladder's pending backoff, so stopSync and an early flush
@@ -857,11 +847,7 @@ class StorageSyncManager {
     // Start Firebase listener — the listener's first snapshot doubles
     // as the initial merge, so we no longer need a separate `getDoc`
     // (that was the read costing us 429s on auth-state churn).
-    if (useFirestore) {
-      this.initFirestoreSync(state);
-    } else {
-      this.initRealtimeDbSync(state);
-    }
+    this.initFirestoreSync(state);
 
     return {
       stop: () => this.stopSync(namespace),
@@ -1050,44 +1036,6 @@ class StorageSyncManager {
 
     state.listeners.push(tearDown);
     setupListener();
-  }
-
-  /**
-   * Enhanced Realtime Database sync
-   */
-  initRealtimeDbSync(state) {
-    const dbPath = `users/${state.userId}/apps/${state.namespace}`;
-    const dbRef = ref(rtdb, dbPath);
-
-    const callback = (snapshot) => {
-      if (state.stopped) return;
-
-      if (this.isAccountDeletionLatched(state.userId)) {
-        this.stopSync(state.namespace);
-        return;
-      }
-
-      const data = snapshot.val();
-      const remoteData = data?.data || {};
-      const first = !state.initialMergeStarted;
-      if (first) this.prepareInitialReconciliation(state, remoteData);
-
-      for (const [key, info] of Object.entries(remoteData)) {
-        if (!state.keys.has(key)) continue;
-        this.applyRemoteChange(key, info);
-      }
-
-      if (first) {
-        state.initialMergeStarted = true;
-        this.completeInitialMerge(state, remoteData);
-      }
-    };
-
-    onValue(dbRef, callback, (error) => {
-      console.error(`❌ RTDB sync error for ${state.namespace}:`, error);
-    });
-
-    state.listeners.push(() => off(dbRef, 'value', callback));
   }
 
   /**
@@ -1852,11 +1800,7 @@ class StorageSyncManager {
     state.inFlight = (state.inFlight || 0) + writes.size;
 
     try {
-      if (state.useFirestore) {
-        await this.flushToFirestore(state, writes);
-      } else {
-        await this.flushToRealtimeDb(state, writes);
-      }
+      await this.flushToFirestore(state, writes);
 
       state.retryCount = 0;
       state.lastSyncTime = Date.now();
@@ -3098,41 +3042,6 @@ class StorageSyncManager {
     } finally {
       this.chunkFetches.delete(token);
     }
-  }
-
-  /**
-   * Enhanced RTDB flush
-   */
-  async flushToRealtimeDb(state, writes) {
-    const dbPath = `users/${state.userId}/apps/${state.namespace}`;
-    const dbRef = ref(rtdb, dbPath);
-
-    this.rememberOwnWrites(writes);
-
-    await rtdbTransaction(dbRef, (currentData) => {
-      const data = currentData || { data: {}, meta: {} };
-
-      for (const [key, info] of writes) {
-        if (info.deleted) {
-          delete data.data[key];
-        } else {
-          data.data[key] = {
-            value: info.value,
-            rev: info.rev,
-            updatedAt: rtdbServerTimestamp(),
-            hash: info.hash
-          };
-        }
-      }
-
-      data.meta = {
-        ...data.meta,
-        lastUpdated: rtdbServerTimestamp(),
-        syncVersion: (data.meta?.syncVersion || 0) + 1
-      };
-
-      return data;
-    });
   }
 
   /**

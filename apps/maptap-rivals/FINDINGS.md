@@ -1004,7 +1004,7 @@ but since 2026-08-15 it ends with a `window._testExports` block (rising-shows
 (document stuck at `readyState: 'loading'` so `init()` never runs, a
 never-settling `fetch`, Map-backed localStorage seeded per context so
 `rivalSummary` and `streakDrama` see a known game log; `document.baseURI`
-must exist because `FIREBASE_CONFIG_URL` is computed at parse time, and
+must exist because `FIRESTORE_MODULE_URL` is computed at parse time, and
 `window.MapTapWhatsApp` must be provided like the other two modules). vm-realm objects fail
 `assert.deepEqual` from `node:assert/strict` on prototype identity, so the
 harness JSON-projects them (`plain()`) before comparing.

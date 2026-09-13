@@ -85,7 +85,7 @@ function loadApp(seed = {}, { fetchImpl } = {}) {
     scrollTo() {},
     document: {
       readyState: 'loading', // defers init() onto a listener that never fires
-      // FIREBASE_CONFIG_URL resolves against the script URL or the page base
+      // FIRESTORE_MODULE_URL resolves against the script URL or the page base
       // at parse time, so both have to exist.
       currentScript: null,
       baseURI: 'http://localhost/apps/maptap-rivals/',

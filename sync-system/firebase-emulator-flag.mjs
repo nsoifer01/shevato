@@ -15,11 +15,10 @@
 
 export const FIREBASE_EMULATOR_FLAG_KEY = 'shevato:firebase-emulators';
 
-// Emulator ports. firestore/database mirror firebase.json's emulators
-// block; auth is the firebase-tools default (also pinned in firebase.json).
+// Emulator ports. firestore mirrors firebase.json's emulators block; auth is
+// the firebase-tools default (also pinned in firebase.json).
 export const FIREBASE_EMULATOR_PORTS = Object.freeze({
     firestore: 8085,
-    database: 9000,
     auth: 9099,
 });
 

@@ -172,7 +172,7 @@ test('internal artifacts are NOT published', () => {
   const mustNotShip = [
     'FINDINGS.md', 'README.md', 'TESTING-AUDIT.md', 'CLAUDE.md',
     'package.json', 'package-lock.json', 'netlify.toml',
-    'firestore.rules', 'firebase.json', 'database.rules.json', 'eslint.config.mjs',
+    'firestore.rules', 'firebase.json', 'eslint.config.mjs',
     'netlify/functions/fpl.mjs',
     'netlify/functions/lib/tp-assist-quota.mjs',
     'netlify/functions/lib/tp-places-lookup.mjs',
