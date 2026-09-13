@@ -32,8 +32,12 @@ export async function resolve(specifier, context, next) {
 // and the repo root has no "type": "module", so Node would parse it as
 // CommonJS and fail on its import statements. Tell the loader what the
 // browser already knows.
+//
+// The URL may carry a query string: a test that needs two engine instances (two
+// tabs sharing one localStorage and one Firestore) imports the module twice as
+// `storage-sync-robust.js?tab=1` and `?tab=2`, which Node treats as two modules.
 export async function load(url, context, next) {
-  if (url.endsWith('sync-system/storage-sync-robust.js')) {
+  if (new URL(url).pathname.endsWith('sync-system/storage-sync-robust.js')) {
     return next(url, { ...context, format: 'module' });
   }
   return next(url, context);

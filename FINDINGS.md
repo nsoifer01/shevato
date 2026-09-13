@@ -393,10 +393,10 @@ ways a write still vanished quietly, all reproduced against the real engine:
   compared with the cloud and a moved cloud is merged rather than overwritten.
   It only re-sends a key whose current value is still exactly the persisted
   dirty write, at that write's revision. A value that drifted afterwards
-  (written while no session ran, typically a signed-out default) stays dirty
-  but is not uploaded: that is audit S-4's question, and uploading it could
-  replace agreed cloud data with a placeholder. `uploadLocalOnlyKeys` skips
-  keys already queued, or the write would go twice at two revisions.
+  (written while no session ran) is uploaded at a NEW revision when a person
+  produced it, and gives way to the cloud when only an app's own boot did
+  (since 2026-09-13; see "The account boundary"). `enqueueLocalOnlyKeys`
+  skips keys already queued, or the write would go twice at two revisions.
 - **Never resend an acknowledged write.** Ack clears dirty and is persisted.
   An ack that arrives after `stopSync` (sign-out wait timed out) has no live
   revision map, so `markAckedOnDisk` patches the stored record when rev and
@@ -408,7 +408,9 @@ ways a write still vanished quietly, all reproduced against the real engine:
   (`flushAllNow`, parked writes included) before `auth.signOut()`, bounded at
   1500 ms, because a write attempted after sign-out is refused and offline a
   setDoc never resolves. The hook is on `window` because firebase-config.js
-  cannot import the engine (the engine imports it).
+  cannot import the engine (the engine imports it). Neither flushes a
+  namespace whose first server snapshot has not been reconciled yet (audit
+  T-3): that write has never met the cloud.
 - **`stopSync` does not flush.** It runs from the auth listener after
   sign-out, when the write would be refused. It persists the dirty flags and
   drops the in-memory queue; `requeueDirtyKeys` brings the writes back. It
@@ -455,16 +457,17 @@ ways a write still vanished quietly, all reproduced against the real engine:
 
 Pinned by `sync-system/tests/storage-sync-failure-honesty.test.mjs` (real
 engine: exhaustion, each trigger, one ladder per trigger, permanent, restart
-re-enqueue, no duplicate of an acked or late-acked write, the drift guard,
+re-enqueue, no duplicate of an acked or late-acked write, signed-out work
+versus an app's own rewrite,
 pagehide, hidden, the sign-out flush, in-flight status),
 `sync-system/tests/firebase-config-signout-flush.test.mjs` (the real
 firebase-config.js adapter: flush before signOut, bounded wait, a throwing
 flush) and `assets/js/tests/sync-status.test.js`.
 
-Known residual: a failed `uploadLocalOnlyKeys` initial upload is still only a
-console line. Those keys carry no dirty revision, so they cannot be tracked for
-recovery without synthesising one for local-only data, which is audit S-4.
-They are retried by the same initial upload on the next sync start.
+The residual this section used to end with (a failed first upload of
+local-only keys was only a console line) is gone: since 2026-09-13 those keys
+go through the queue like any other write, with a dirty revision, the ladder
+and `syncWriteRejected`.
 
 ## Shared sync banner stacking
 
@@ -1003,7 +1006,8 @@ A delete now writes `{ deleted: true, value: null, rev, updatedAt, hash }`,
 the shape `applyRemoteChange` already honoured (that branch was dead code
 reachable only from a test). Because it is a real entry it carries a revision
 and a timestamp, so the ordinary last-writer-wins comparison applies, and
-`uploadLocalOnlyKeys` skips the key because it IS present remotely.
+`enqueueLocalOnlyKeys` (the initial merge's local-only step) skips the key
+because it IS present remotely.
 
 Three pieces of user-facing copy already DESCRIBED the tombstone behaviour and
 were simply wrong until this change: `apps/fpl-planner/js/ui/store.js`,
@@ -1040,17 +1044,153 @@ must still not stop.)
 live sync keeps the pending write" in `storage-sync-behavior.test.mjs`
 (behaviour).
 
-## One account's local data must not be uploaded into another's
+## The account boundary (2026-09-13, audit S-2, S-4, S-5, T-3)
 
-Signing out deliberately leaves the synced keys in localStorage, so on a
-shared browser the next person to sign in arrives with the previous person's
-trips, workouts or races in storage. Those keys are missing from THEIR cloud
-document, so `uploadLocalOnlyKeys` copied one person's data into another
-person's account with no gesture from either. The device now records the uid
-that owns the local copy under `shevato:sync-owner` (not part of any
-namespace's key set, so it never syncs itself) and skips the upload when a
-different uid signs in. Reading still works normally: the snapshot overwrites
-the stale local values as it arrives.
+The merge core (tombstones, Lamport revisions, versioned chunks, the three-way
+merge, own-write recognition) was right in all four findings. The edges were
+not: whose data a local copy is, what counts as a person's work, what may
+happen while an account is being deleted, and when the first upload may go.
+All four invariants live in one block of `storage-sync-robust.js` ("The
+account boundary") and are pinned by
+`sync-system/tests/sync-account-boundary.test.mjs`. That file loads the engine
+once per page (a query string on the import), so two tabs, or a page and its
+reload, are two engines on one localStorage and one fake Firestore. 20 of its
+24 tests fail against the pre-fix engine; the other 4 pin behaviour that had
+to survive (anonymous work uploads to an empty account, a moved cloud meets
+signed-out edits through the normal conflict path, placeholders are replaced
+silently, placeholders still upload where the account has nothing).
+
+### Ownership: one account's local data never uploads into another's (S-2)
+
+- **What was wrong.** Signing out deliberately leaves the synced keys in
+  localStorage. `shevato:sync-owner` was written only after an upload and read
+  only by the initial merge's local-only upload, so an account whose first
+  session had nothing to upload never armed it, and any ordinary write of a
+  leftover key went straight into the next account (audit repros R1, R2).
+- **The owner is the namespace's revision record.** `shevato:sync-revs:<ns>`
+  carries `uid`, stamped at every session start (`prepareNamespaceForUser`),
+  before the listener attaches. Everything that writes it is compare-and-set
+  on that uid: `persistRevisions` never stamps an old account back,
+  `rememberSyncBase` keeps an `__owner` on the base record, and `runFlush` and
+  the snapshot callback stop a session whose namespace another tab has handed
+  to a different account. The old device-wide marker is only read, as evidence
+  for data synced before 2026-09-13, and only together with an agreed base.
+- **Another account's local copy is set aside, never adopted.** Its unsynced
+  part (dirty, drifted, no revision, or owner unknown) is parked in
+  `shevato:sync-parked:<ns>`: one slot per owning account with the raw value,
+  revision, synced hash, base and provenance, so switching back and forth
+  replaces rather than accumulates. Its clean part is provably in its own cloud
+  and is simply removed. Parked work comes back when that account signs in here
+  again (into an empty key; into an occupied one it becomes a recovery copy), at
+  its old revision, and meets that account's cloud through the normal merge. If
+  the parked copy cannot be written (storage full) nothing is removed and the
+  namespace does not sync on this device (`appSyncFailed`).
+- **A page that holds another account's data reloads before syncing.** Apps
+  keep their data in memory and write it back, so parking the stored copy is
+  not enough. The engine records, per namespace, which account's data the page
+  may hold (`bootLineage`: what it read at load, replaced whenever a session
+  runs there). A session for a different account on such a page parks,
+  re-stamps, calls `location.reload()`, and starts nothing. Writes the page
+  makes before the reload lands are recorded with the page's account and parked
+  at the next start instead of being adopted. That covers another tab that was
+  already open, too. A sessionStorage marker stops a reload loop if the stamp
+  could not be written. App pages already reloaded after a sign-in
+  (`sync-modal-integration.js`), except within 30 s of an earlier one and for a
+  page loaded with a saved session, which is exactly where the leak lived.
+- **Local-only keys go through the queue.** The old `uploadLocalOnlyKeys` wrote
+  straight to Firestore, past every gate. `enqueueLocalOnlyKeys` queues them,
+  so they pass the barrier, the latch, the owner check and the retry ladder.
+- **Residual.** A device that synced before 2026-09-05 (no revision record, no
+  agreed base) and has not synced since cannot be told apart from a device that
+  never synced; its data is adopted by the next account. Every session since
+  2026-09-05 wrote a base, and every session now stamps an owner.
+
+### Signed-out work does not disappear on sign-in (S-4)
+
+- **What was wrong.** A local value with no revision was replaced by the cloud
+  with no copy and no notice (repro R4). After #533, a same-account value that
+  drifted while signed out stayed dirty but was never uploaded, because nothing
+  could tell a person's edit from an app saving its own default.
+- **Provenance decides.** While no session owns a registered key (app-sync-init
+  registers every namespace at load, signed in or not), the engine records in
+  `shevato:sync-local-work` whether the page had seen a user gesture
+  (`navigator.userActivation.hasBeenActive`) when the value was written. Sticky:
+  an app write on top of a value a person shaped is still work. Unknown
+  provenance (no API, data from before this existed) counts as work.
+- **Work** with no revision gets a synthesized dirty revision 0; drifted work is
+  dirty at its restored revision. At the first snapshot it meets the cloud
+  through the normal conflict path, and it is uploaded where the cloud has
+  nothing.
+- **Placeholders** (an app's own untouched write) get no revision, or a clean
+  revision 0 with the base dropped when they replaced a synced value, so the
+  cloud replaces them with no copy and no notice. Where the account has nothing,
+  a placeholder is still uploaded, as before.
+- **Measured before choosing this**, on a fresh signed-out boot of every app:
+  FPL Planner, MapTap Rivals and Rising Shows write no synced key; Mario Kart and
+  Football write only `theme: "true"`; Gym Tracker writes six defaults (22 KB of
+  achievement definitions among them); Trip Planner writes its floor trip, and
+  rewrites it on the second boot. Treating those as work would raise a conflict
+  and keep a recovery copy on every first sign-in on a device.
+- **No agreed base means the cloud is the established state.** In a conflict
+  with no base (a first reconciliation), entries both sides hold differently
+  take the cloud's side (`mergeValues(..., { preferRemote })`; an unmergeable
+  value goes to the higher revision, a tie to the cloud) and the local value is
+  kept as a recovery copy. Entries only one side holds are unaffected, so record
+  collections still union. The content-hash tie-break used to hand an arbitrary
+  half of the entries to a copy that had never seen the other. A merge that adds
+  nothing to the cloud value applies the cloud value as it is instead of
+  re-uploading it.
+
+### Account deletion cannot be undone by a competing session (S-5)
+
+- **What was wrong.** `deleteAccount` stopped this tab's sync, but
+  `firebase-config.js` re-fans the auth listeners whenever any tab loads,
+  `initAppSync` re-attached in this tab or another, and the first snapshot of
+  the emptied document re-uploaded every local key into the account being
+  deleted.
+- **The latch** is `shevato:sync-deletion` in localStorage:
+  `{ active: { uid, id, startedAt, heartbeatAt }, deleted: [uid] }`, set by
+  `beginAccountDeletion` right after reauthentication, before anything is
+  stopped or deleted. Every tab reads it synchronously before starting a
+  session, merging a snapshot or flushing, and a `storage` event stops live
+  sessions in other tabs at once. It survives a reload of any other tab.
+- **Order in `deleteAccount`:** latch, `stopAppSync`,
+  `settleBeforeAccountDeletion` (this tab's flushes and Firestore's pending
+  writes land before the deletes, never after), the deletes,
+  `confirmCloudDataErased` (a namespace document a late write re-created is
+  deleted again), local keys plus this account's parked copies, stamps and
+  provenance, then `deleteUser`.
+- **Release.** Success keeps the uid latched (`deleted`, last 10), because a
+  stale tab can hold a still-valid ID token for up to an hour. Any failure
+  clears it, so an account that still exists is not left sync-disabled; the page
+  that failed stays unsynced until reloaded, as its message says. An abandoned
+  deletion (its tab closed part-way) is recognised by
+  `clearAbandonedAccountDeletion`, which `initAppSync` runs before refusing to
+  start: exactly through the Web Locks API where it exists (the deleting tab
+  holds `shevato-account-deletion:<uid>`), otherwise when the 2 s heartbeat is
+  30 s stale.
+
+### A namespace uploads nothing before reading its first snapshot (T-3)
+
+- **What was wrong.** On a slow network, an edit made after sync started but
+  before the first server snapshot was flushed at 500 ms and overwrote the unread
+  cloud value; on Trip Planner the floor trip replaced every real trip.
+- **The barrier is per namespace:** `initialMergeStarted`, then
+  `initialMergeDone`. `runFlush`, `flushPendingNow` and `flushAllNow` send
+  nothing before `initialMergeDone`; writes stay queued and dirty (persisted).
+  The first server-confirmed snapshot is applied in full, chunked values
+  included (the release waits for their assembly), then `completeInitialMerge`
+  requeues dirty keys, queues local-only keys, drops queued writes the merge
+  superseded (their hash no longer matches the revision) and flushes at once.
+  Other namespaces are never held.
+- **No deadlocks.** An empty cloud releases on its first snapshot. A listener
+  that gives up announces the queued keys (`syncWriteRejected`, retryable), and
+  nothing ever awaits the barrier, so sign-out and pagehide return at once.
+  Signing out while waiting sends nothing late; the next session sends the edit
+  after its own snapshot. A deletion latch stops the session instead of
+  releasing it.
+- **An app's own write while the cloud is unread** (no user gesture yet) gives
+  way to the cloud's value where the cloud has one, instead of conflicting.
 
 ## One malformed remote entry must not abort the whole snapshot
 

@@ -16,7 +16,15 @@ import {
   eraseCloudData,
   eraseArenaIdentity,
   eraseAccountProfile,
-  eraseRivalNetworkIdentity
+  eraseRivalNetworkIdentity,
+  registerLocalNamespaces,
+  beginAccountDeletion,
+  endAccountDeletion,
+  isAccountDeletionLatched,
+  clearAbandonedAccountDeletion,
+  settleBeforeAccountDeletion,
+  confirmCloudDataErased,
+  forgetAccountLocalState
 } from './storage-sync-robust.js';
 
 // Auth SDK, same pinned URL firebase-config.js uses, so this resolves to the
@@ -177,6 +185,21 @@ const GLOBAL_SYNC_CONFIG = {
   keys: ['theme']
 };
 
+// Every namespace and its keys, registered with the engine at load, signed in
+// or not (the account boundary, 2026-09-12 audit S-2 and S-4). It records which
+// account the data this page loaded belongs to, so a page that loaded one
+// account's data never syncs it for another, and it lets a write made while
+// signed out be told apart from an app's own defaults at the first sign-in.
+registerLocalNamespaces([
+  ...Object.values(APP_SYNC_CONFIG).map(({ namespace, keys }) => ({ namespace, keys })),
+  { namespace: GLOBAL_SYNC_CONFIG.namespace, keys: GLOBAL_SYNC_CONFIG.keys }
+]);
+
+// Set when an account deletion failed part-way on THIS page. Its message says
+// syncing has stopped and a reload resumes it, so sync stays off here until
+// then; other tabs and a reload are unaffected.
+let syncStoppedByFailedDeletion = false;
+
 /**
  * Initialize sync for all apps based on current page
  * Call this when user signs in
@@ -198,6 +221,16 @@ export async function initAppSync() {
   // older remote copy then overwrote it in localStorage and on screen.
   // Restarting is now idempotent, and only namespaces this page no longer
   // wants are stopped.
+
+  if (syncStoppedByFailedDeletion) return 0;
+  // Account deletion latch (audit S-5): a deletion running in any tab, or
+  // finished, means nothing starts for that account. The engine refuses too;
+  // this is where an ABANDONED deletion (its tab closed) is recognised and
+  // cleared, so it cannot disable sync for good.
+  const signedIn = typeof window !== 'undefined' ? window.firebaseAuth?.getCurrentUser?.() : null;
+  if (signedIn && signedIn.uid && isAccountDeletionLatched(signedIn.uid)) {
+    if (!(await clearAbandonedAccountDeletion(signedIn.uid))) return 0;
+  }
 
   // Determine which app we're in based on URL
   const currentPath = window.location.pathname;
@@ -291,6 +324,17 @@ export function getAppSyncStatus() {
  * This integrates with your existing Firebase Auth system
  */
 export function setupAppSyncIntegration() {
+  // A deletion latch cleared in another tab (that deletion failed, or its tab
+  // was closed): sync can start again for an account that still exists.
+  if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
+    window.addEventListener('storage', (event) => {
+      if (!event || event.key !== 'shevato:sync-deletion') return;
+      const user = window.firebaseAuth?.getCurrentUser?.();
+      if (!user || isAccountDeletionLatched(user.uid)) return;
+      initAppSync().catch(() => { /* the auth listener reports start failures */ });
+    });
+  }
+
   // Wait for Firebase Auth to be available
   const waitForAuth = () => {
     if (window.firebaseAuth && window.firebaseAuth.isAvailable()) {
@@ -492,61 +536,95 @@ export async function deleteAccount({ confirmation, password, user } = {}) {
     };
   }
 
-  stopAppSync();
-
-  const deleted = [];
-  const failed = [];
-
-  const targets = getSyncNamespaces().map(namespace => ({
-    target: namespace,
-    run: () => eraseCloudData(namespace)
-  }));
-  targets.push({ target: 'account profile', run: eraseAccountProfile });
-  targets.push({ target: 'rival network entry', run: eraseRivalNetworkIdentity });
-  // Arena's records outside users/{uid} (2026-09-05 audit F18): the public XP
-  // leaderboard row and the daily-challenge scores are deleted, the shared
-  // head-to-head records are anonymised. Before this, all three survived a
-  // full account deletion and privacy.html had to say so.
-  targets.push({ target: 'Arena leaderboard and scores', run: eraseArenaIdentity });
-
-  for (const { target, run } of targets) {
-    try {
-      await run();
-      deleted.push(target);
-    } catch (error) {
-      failed.push({ target, message: error?.message || String(error) });
-    }
-  }
-
-  if (failed.length > 0) {
-    return {
-      ok: false,
-      reason: 'data-delete-failed',
-      // Sync is stopped by this point, so the page is no longer writing to the
-      // cloud. Say that rather than leaving the user on a silently dead tab.
-      message: `Could not delete: ${failed.map(f => f.target).join(', ')}. Your account is still active and nothing has been stranded, so you can try again. Reload the page to resume syncing.`,
-      deleted,
-      failed
-    };
-  }
-
-  const clearedKeys = clearSyncedLocalData();
-
+  // THE LATCH, before anything is stopped or deleted (2026-09-12 audit S-5).
+  // Stopping this tab's sync was never enough: firebase-config.js re-fans the
+  // auth listeners whenever any other tab loads, initAppSync re-attached here
+  // or there, and the first snapshot of the now-empty document re-uploaded
+  // every local key into the account being deleted. The latch lives in
+  // localStorage, so every tab reads it before starting, merging or sending;
+  // it survives a reload of any other tab; and it is released in `finally`
+  // on every outcome, keeping the account on it only when the auth user is
+  // really gone.
+  const latchId = beginAccountDeletion(account.uid);
+  const outcome = { deleted: false };
   try {
-    await deleteUser(account);
-  } catch (error) {
-    return {
-      ok: false,
-      reason: 'auth-delete-failed',
-      code: error?.code || null,
-      message: `${messageFor(AUTH_DELETE_MESSAGES, error, 'Your data was deleted but the account itself could not be removed.')} Your synced data has already been deleted, and syncing has stopped on this page.`,
-      deleted,
-      failed,
-      clearedKeys
-    };
-  }
+    stopAppSync();
+    // A write that left before the latch lands BEFORE the deletes, never after.
+    await settleBeforeAccountDeletion();
 
-  return { ok: true, deleted, failed, clearedKeys };
+    const deleted = [];
+    const failed = [];
+
+    const targets = getSyncNamespaces().map(namespace => ({
+      target: namespace,
+      run: () => eraseCloudData(namespace)
+    }));
+    targets.push({ target: 'account profile', run: eraseAccountProfile });
+    targets.push({ target: 'rival network entry', run: eraseRivalNetworkIdentity });
+    // Arena's records outside users/{uid} (2026-09-05 audit F18): the public XP
+    // leaderboard row and the daily-challenge scores are deleted, the shared
+    // head-to-head records are anonymised. Before this, all three survived a
+    // full account deletion and privacy.html had to say so.
+    targets.push({ target: 'Arena leaderboard and scores', run: eraseArenaIdentity });
+
+    for (const { target, run } of targets) {
+      try {
+        await run();
+        deleted.push(target);
+      } catch (error) {
+        failed.push({ target, message: error?.message || String(error) });
+      }
+    }
+
+    // A tab that had not yet seen the latch when it sent a write could have
+    // re-created a namespace document after its delete: check every one, and
+    // delete any that came back.
+    if (failed.length === 0) {
+      try {
+        await confirmCloudDataErased(getSyncNamespaces());
+      } catch (error) {
+        failed.push({ target: 'final check of your synced data', message: error?.message || String(error) });
+      }
+    }
+
+    if (failed.length > 0) {
+      syncStoppedByFailedDeletion = true;
+      return {
+        ok: false,
+        reason: 'data-delete-failed',
+        // Sync is stopped by this point, so the page is no longer writing to the
+        // cloud. Say that rather than leaving the user on a silently dead tab.
+        message: `Could not delete: ${failed.map(f => f.target).join(', ')}. Your account is still active and nothing has been stranded, so you can try again. Reload the page to resume syncing.`,
+        deleted,
+        failed
+      };
+    }
+
+    const clearedKeys = clearSyncedLocalData();
+    // This account's ownership stamps, parked copies and signed-out provenance
+    // on this device describe an account that is about to stop existing.
+    forgetAccountLocalState(account.uid, getSyncNamespaces(), getSyncedLocalKeys());
+
+    try {
+      await deleteUser(account);
+    } catch (error) {
+      syncStoppedByFailedDeletion = true;
+      return {
+        ok: false,
+        reason: 'auth-delete-failed',
+        code: error?.code || null,
+        message: `${messageFor(AUTH_DELETE_MESSAGES, error, 'Your data was deleted but the account itself could not be removed.')} Your synced data has already been deleted, and syncing has stopped on this page.`,
+        deleted,
+        failed,
+        clearedKeys
+      };
+    }
+
+    outcome.deleted = true;
+    return { ok: true, deleted, failed, clearedKeys };
+  } finally {
+    endAccountDeletion(account.uid, latchId, outcome);
+  }
 }
 
 // Auto-initialize if we're on an app page and this script loads

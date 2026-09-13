@@ -66,11 +66,14 @@ export function onSnapshot(docRef, options, onNext, onError) {
  */
 export function getDoc(docRef) {
   const state = firestoreFakes();
-  const stored = state.docs.get(docRef.path);
-  return Promise.resolve({
-    exists: () => stored !== undefined,
-    data: () => stored
-  });
+  const read = () => {
+    const stored = state.docs.get(docRef.path);
+    return { exists: () => stored !== undefined, data: () => stored };
+  };
+  // A responder (FIFO, like setDocResponders) can hold a read open, which is
+  // how a test keeps a chunked value's part documents on the wire.
+  const responder = (state.getDocResponders || []).shift();
+  return responder ? Promise.resolve(responder(docRef)).then(read) : Promise.resolve(read());
 }
 
 export function setDoc(docRef, payload, options) {
@@ -90,6 +93,18 @@ export function setDoc(docRef, payload, options) {
   }
   const responder = state.setDocResponders.shift();
   return responder ? responder(call) : Promise.resolve();
+}
+
+/**
+ * Resolves once every write this client has issued is acknowledged. The stub
+ * acknowledges writes as they are made (a responder can hold one), so this
+ * waits for the responders a test left pending, which is what lets account
+ * deletion be tested against a write that is still on the wire.
+ */
+export function waitForPendingWrites() {
+  const state = firestoreFakes();
+  state.waitForPendingWritesCalls = (state.waitForPendingWritesCalls || 0) + 1;
+  return Promise.all(state.pendingAcks || []).then(() => undefined);
 }
 
 export function deleteDoc(docRef) {
