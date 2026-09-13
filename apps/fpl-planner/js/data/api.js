@@ -439,8 +439,10 @@ export function createFplApi({
           // arrives FROZEN at the value it had when the function answered; the
           // standard Age header is how long the edge has held it since. Both
           // are server-side durations, so adding them stays clock-skew free. A
-          // response straight from the function carries Age 0 or 1, which can
-          // over-state the age by at most a second (2026-09-12 audit Q-1).
+          // response the edge forwarded to the function still carries a small
+          // Age (2 to 4 s measured on production, 2026-09-13), so the age shown
+          // can be over-stated by a few seconds and is never under-stated
+          // (2026-09-12 audit Q-1).
           serverAgeSeconds: Number.parseInt(res.headers.get('x-fpl-age-seconds') || '', 10)
             + edgeAgeSeconds(res.headers),
         };

@@ -2740,9 +2740,21 @@ function (added 2026-09-07, F11). Stale copies, errors, 404s and every 429 are
   the client: `js/data/api.js` now takes `x-fpl-age-seconds + Age` as the data
   age at receipt. Both are server-side durations, so the "Two different ages"
   rule above (never subtract a server timestamp from the device clock) still
-  holds. A response straight from the function carries `Age: 0` or `1`, so the
-  shown age can be over-stated by at most a second; a missing or junk `Age` is
-  treated as 0. Cache EXPIRY in the browser is unchanged (local receipt time).
+  holds. A response the edge forwarded to the function still carries a small
+  `Age` (2 and 4 s on two fresh misses measured 2026-09-13, both with
+  `x-fpl-age-seconds: 0`), so the shown age can be over-stated by a few seconds,
+  never under-stated; a missing or junk `Age` is treated as 0. Cache EXPIRY in
+  the browser is unchanged (local receipt time).
+- **Back-to-back requests can both miss the blob cache (observed 2026-09-13).**
+  `fplStore()` opens the store with Netlify Blobs' default eventual consistency,
+  so a read shortly after another instance's write may not see it yet: two
+  bootstrap-static requests 3 s apart were both `x-fpl-cache: miss` with their
+  own fresh `x-fpl-fetched-at`, and a request 70 s after a miss was a `hit` on
+  the copy that miss wrote (`x-fpl-age-seconds: 68`). Each extra miss is one
+  upstream fetch and one metered quota unit, limited to the first minute after
+  a copy expires; what is served stays correct. Left unchanged (only the edge
+  window was in scope for Q-1); `getStore({ name, consistency: 'strong' })` is
+  the lever if the miss volume ever matters.
 - **What bounds staleness now, inside the window:** edge at most `120 - age`,
   then the browser at most 120 s of its own, so a planner screen inside the
   window shows data at most about four minutes old, and says how old.
