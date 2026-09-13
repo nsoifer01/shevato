@@ -183,7 +183,7 @@ export default [
     // catalogue loader sits outside `js/` and matched nothing.
     files: [
       'assets/**/*.js', 'apps/*/js/**/*.js', 'apps/*/data/**/*.js',
-      'sync-system/**/*.js', 'sync-system/**/*.mjs', 'firebase-config.js',
+      'sync-system/**/*.js', 'sync-system/**/*.mjs', 'firebase-config.js', 'firebase-firestore.js',
     ],
     languageOptions: {
       ecmaVersion: 'latest',
