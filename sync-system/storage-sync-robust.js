@@ -112,6 +112,8 @@ const SYNC_LOCAL_WORK_KEY = 'shevato:sync-local-work';
 // The account-deletion latch (audit S-5), shared by every tab of the origin and
 // read synchronously before anything is started, merged or sent.
 const SYNC_DELETION_KEY = 'shevato:sync-deletion';
+// { namespace: token }, changed before local data is moved for an account.
+const SYNC_OWNERSHIP_EPOCH_KEY = 'shevato:sync-ownership-epoch';
 // The owner of local data some account synced before per-namespace ownership
 // existed, when that account cannot be named. Never equal to a real uid.
 const UNKNOWN_OWNER = '?';
@@ -606,8 +608,12 @@ class StorageSyncManager {
     
     // Set up the sync manager for immediate override to use
     window.syncManager = {
-      processChange: (key, value) => {
-        this.notifyLocalChange(key, value);
+      // `meta.work` comes with a boot-window write sync-immediate.js buffered:
+      // the gesture state when the write was made, which a replay after the
+      // (async) sync modules load would otherwise read too late.
+      processChange: (key, value, meta) => {
+        const work = meta && typeof meta.work === 'boolean' ? meta.work : undefined;
+        this.notifyLocalChange(key, value, { work });
       }
     };
     
@@ -659,7 +665,7 @@ class StorageSyncManager {
   /**
    * Notify all sync states about a localStorage change
    */
-  notifyLocalChange(key, value, { crossTab = false } = {}) {
+  notifyLocalChange(key, value, { crossTab = false, work } = {}) {
     // Check if we're in a sync lock (prevent echo)
     if (this.syncLocks.get(key)) {
       return;
@@ -679,7 +685,7 @@ class StorageSyncManager {
     // keys are never app data, and another tab's write is that tab's to
     // record: its gesture, its page, and it already has.
     if (!owned && !crossTab && typeof key === 'string' && !key.startsWith('shevato:')) {
-      this.noteUnsessionedWrite(key, value);
+      this.noteUnsessionedWrite(key, value, work);
     }
   }
 
@@ -2281,6 +2287,41 @@ class StorageSyncManager {
    * UNKNOWN_OWNER of data some account synced before ownership was recorded
    * per namespace, or null for data this device has never synced.
    */
+  readOwnershipEpochs(raw) {
+    try {
+      const parsed = JSON.parse(raw || '{}');
+      return parsed && typeof parsed === 'object' ? parsed : {};
+    } catch (_) { return {}; }
+  }
+
+  /**
+   * Whether local data in this namespace was moved for an account after this
+   * page started loading. sync-immediate.js, the first script on every app
+   * page, records the tokens before any app reads storage.
+   */
+  ownershipMovedSinceBoot(namespace) {
+    const boot = typeof window !== 'undefined' ? window.__shevatoSyncBoot : null;
+    if (!boot || !Object.prototype.hasOwnProperty.call(boot, 'ownershipEpochs')) return false;
+    const then = this.readOwnershipEpochs(boot.ownershipEpochs)[namespace] || null;
+    const now = this.readOwnershipEpochs(this.readRaw(SYNC_OWNERSHIP_EPOCH_KEY))[namespace] || null;
+    return then !== now;
+  }
+
+  /**
+   * Called BEFORE local data is parked, restored or cleared for an account, so
+   * a page registering late sees either the lineage its apps read or a moved
+   * token, never the moved data under an unchanged one. False if unrecorded,
+   * in which case the caller leaves the data where it is.
+   */
+  bumpOwnershipEpoch(namespaces) {
+    try {
+      const all = this.readOwnershipEpochs(this.readRaw(SYNC_OWNERSHIP_EPOCH_KEY));
+      for (const namespace of [].concat(namespaces)) all[namespace] = this.newLatchId();
+      this.rawStorage().setItem(SYNC_OWNERSHIP_EPOCH_KEY, JSON.stringify(all));
+      return true;
+    } catch (_) { return false; }
+  }
+
   lineageOf(namespace) {
     const revs = this.readStoredJson(SYNC_REV_KEY_PREFIX + namespace);
     if (revs && typeof revs.uid === 'string' && revs.uid) return { owner: revs.uid };
@@ -2310,10 +2351,13 @@ class StorageSyncManager {
       if (typeof namespace !== 'string' || !namespace) continue;
       for (const key of keys) this.localKeyNamespaces.set(key, namespace);
       if (!this.bootLineage.has(namespace)) {
-        this.bootLineage.set(namespace, {
-          owner: this.lineageOf(namespace).owner,
-          hadData: this.hasLocalData(keys)
-        });
+        // The sync modules load async, so this can run well after the page's
+        // apps read storage. If another tab moved this namespace's data for an
+        // account in between, what the apps hold is unknown, and the page
+        // reloads before it syncs anyone.
+        this.bootLineage.set(namespace, this.ownershipMovedSinceBoot(namespace)
+          ? { owner: UNKNOWN_OWNER, hadData: true }
+          : { owner: this.lineageOf(namespace).owner, hadData: this.hasLocalData(keys) });
       }
       for (const key of keys) {
         const pending = this.pendingLocalWork.get(key);
@@ -2394,6 +2438,7 @@ class StorageSyncManager {
     }
     if (!present.length) return true;
 
+    if (!this.bumpOwnershipEpoch(namespace)) return false;
     slot.at = new Date().toISOString();
     if (Object.keys(slot.keys).length) record.owners[owner] = slot;
     else delete record.owners[owner];
@@ -2424,6 +2469,11 @@ class StorageSyncManager {
     const record = this.readStoredJson(parkKey);
     const slot = record && record.owners && typeof record.owners === 'object' ? record.owners[uid] : null;
     if (!slot || !slot.keys || typeof slot.keys !== 'object') return null;
+    const restorable = keys.some((key) => {
+      const entry = slot.keys[key];
+      return !!entry && typeof entry === 'object' && typeof entry.raw === 'string' && this.readRaw(key) === null;
+    });
+    if (restorable && !this.bumpOwnershipEpoch(namespace)) return null;
 
     const revs = {};
     const bases = {};
@@ -2554,16 +2604,17 @@ class StorageSyncManager {
   }
 
   /** A registered key changed while no session owns it. */
-  noteUnsessionedWrite(key, value) {
+  noteUnsessionedWrite(key, value, work) {
     const namespace = this.localKeyNamespaces.get(key);
     if (!namespace && this.localKeyNamespaces.size > 0) return;
     const prior = this.unsessionedWrites.get(key);
     if (!prior && !namespace && this.unsessionedWrites.size >= 500) return;
     // Only what must be read at the moment of the write is read now: whether
-    // a person had acted on the page, and whose data the page had loaded.
+    // a person had acted on the page, and whose data the page had loaded. A
+    // replayed boot-window write brings the gesture state it was made with.
     this.unsessionedWrites.set(key, {
       value,
-      work: this.userHasInteracted() || !!(prior && prior.work),
+      work: (typeof work === 'boolean' ? work : this.userHasInteracted()) || !!(prior && prior.work),
       owner: namespace ? (this.foreignPageNamespaces.get(namespace) || null) : null
     });
     if (this.unsessionedFlushTimer === null) {
@@ -3339,6 +3390,15 @@ export async function confirmCloudDataErased(namespaces) {
     }
   }
   return reappeared;
+}
+
+/**
+ * Mark the namespaces' local data as moving, before clearing it for an
+ * account, so a page whose sync modules register afterwards reloads rather
+ * than trusting what its apps read.
+ */
+export function bumpOwnershipEpochs(namespaces) {
+  return syncManager.bumpOwnershipEpoch(Array.isArray(namespaces) ? namespaces : []);
 }
 
 /**

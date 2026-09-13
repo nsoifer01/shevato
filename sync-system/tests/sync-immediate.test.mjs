@@ -131,3 +131,34 @@ test('a second install attempt is a no-op (idempotency guard)', () => {
   vm.runInContext(SCRIPT, context, { filename: 'sync-immediate.js (second load)' });
   assert.equal(fakeLocalStorage.setItem, wrappedSetItem, 'override must not be re-wrapped');
 });
+
+
+// The sync modules load async (#535), so what sync-immediate.js knows at the
+// moment of a write is recorded then: the ownership tokens before any app
+// reads storage, and the gesture state with each buffered write.
+test('records the ownership tokens at install and each buffered write\'s gesture state', () => {
+  const store2 = new Map([['shevato:sync-ownership-epoch', '{"tripPlannerApp":"t1"}']]);
+  const target = new EventTarget();
+  const win = { addEventListener: (...a) => target.addEventListener(...a), dispatchEvent: (e) => target.dispatchEvent(e) };
+  const ls = {
+    getItem: (k) => (store2.has(k) ? store2.get(k) : null),
+    setItem(k, v) { store2.set(k, String(v)); },
+    removeItem(k) { store2.delete(k); }
+  };
+  const activation = { hasBeenActive: false };
+  const context = vm.createContext({
+    window: win, localStorage: ls, navigator: { userActivation: activation },
+    console: { log: () => {}, warn: () => {}, error: () => {} }, Date, Map, Event, Error
+  });
+  vm.runInContext(SCRIPT, context, { filename: 'sync-immediate.js (tokens)' });
+  assert.equal(win.__shevatoSyncBoot.ownershipEpochs, '{"tripPlannerApp":"t1"}');
+
+  ls.setItem('floorKey', '"floor"');
+  activation.hasBeenActive = true;   // a click lands before the sync modules do
+  const seen = [];
+  win.syncManager = { processChange: (key, value, meta) => seen.push({ key, work: meta && meta.work }) };
+  win.dispatchEvent(new Event('syncSystemReady'));
+  assert.equal(seen.length, 1);
+  assert.equal(seen[0].key, 'floorKey');
+  assert.equal(seen[0].work, false, 'the write was made before the click');
+});

@@ -55,3 +55,4 @@ export async function clearAbandonedAccountDeletion(uid) {
 export async function settleBeforeAccountDeletion() { fakes().calls.push('settleBeforeAccountDeletion'); }
 export function confirmCloudDataErased() { return record('confirmCloudDataErased').then(() => []); }
 export function forgetAccountLocalState(uid) { fakes().calls.push(`forgetAccountLocalState:${uid}`); }
+export function bumpOwnershipEpochs() { fakes().calls.push('bumpOwnershipEpochs'); }

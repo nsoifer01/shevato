@@ -129,6 +129,12 @@ async function openPage(t, configs) {
       backingStore.set(key, raw);
       engine.processChange(key, raw);
     },
+    /** A boot-window write sync-immediate.js buffered, replayed with its gesture state. */
+    replay(key, value, work) {
+      const raw = typeof value === 'string' ? value : JSON.stringify(value);
+      backingStore.set(key, raw);
+      engine.processChange(key, raw, { work });
+    },
     start(namespace, keys) {
       const handle = mod.startStorageSync({ namespace, keys });
       handles.push(handle);
@@ -1048,4 +1054,93 @@ test('S-4 provenance: another tab\'s write reaching this tab as a storage event 
   const provenance = stored('shevato:sync-local-work') || {};
   assert.equal(provenance[theirs], undefined, 'the tab that wrote it records it');
   assert.deepEqual(provenance[mine], { hash: hashValue(['this tab']), work: true }, 'while this tab\'s own writes still are');
+});
+
+
+// ---------------------------------------------------------------------------
+// The sync modules load async (since #535), so a page registers late
+// ---------------------------------------------------------------------------
+//
+// firebase-config.js, storage-sync-robust.js and app-sync-init.js carry
+// `async`, so a page's apps can read storage long before its engine registers
+// the namespaces. sync-immediate.js, the first script on the page, records the
+// ownership tokens before any app runs; the engine compares them.
+
+test('S-2 late registration: another tab moved the data while this page loaded, so the page reloads before syncing', async (t) => {
+  isolate(t);
+  const namespace = ns('lateRegistration');
+  const key = `${namespace}-trips`;
+  backingStore.set(key, JSON.stringify(['A trip']));
+  backingStore.set(`shevato:sync-revs:${namespace}`, JSON.stringify({
+    uid: A.uid, keys: { [key]: { rev: 2, hash: hashValue(['A trip']), updatedAt: 1, dirty: false } }
+  }));
+  t.after(() => { delete window.__shevatoSyncBoot; backingStore.delete('shevato:sync-ownership-epoch'); });
+
+  // Page X starts loading: sync-immediate.js records the tokens, the apps read A's trip.
+  window.__shevatoSyncBoot = { ownershipEpochs: backingStore.get('shevato:sync-ownership-epoch') ?? null };
+  // Meanwhile tab Y, already open, signs in as B and sets A's trip aside.
+  const tabY = await openPage(t, [{ namespace, keys: [key] }]);
+  signIn(B);
+  tabY.start(namespace, [key]);
+  await settle();
+  assert.equal(backingStore.has(key), false, 'tab Y parked A\'s trip');
+
+  // Page X's sync modules register only now, after the move.
+  const from = mark();
+  const reloadsBefore = reloads.length;
+  const pageX = await openPage(t, [{ namespace, keys: [key] }]);
+  pageX.start(namespace, [key]);
+  await settle();
+  assert.equal(reloads.length, reloadsBefore + 1, 'page X reloads: its apps may still hold A\'s trip');
+  assert.equal(listenersFor(B.uid, namespace).length, 0, 'and syncs nobody before it has');
+
+  // The app saves what it holds while the reload is under way.
+  pageX.write(key, ['A trip', 'edited on X']);
+  t.mock.timers.tick(1);
+
+  // The reloaded page reads storage after the move, so its tokens match.
+  window.__shevatoSyncBoot = { ownershipEpochs: backingStore.get('shevato:sync-ownership-epoch') ?? null };
+  const reloaded = await openPage(t, [{ namespace, keys: [key] }]);
+  reloaded.start(namespace, [key]);
+  await settle();
+  assert.equal(reloads.length, reloadsBefore + 1, 'no second reload');
+  emit(B.uid, namespace, {});
+  await settle();
+  t.mock.timers.tick(600);
+  await settle();
+  assert.equal(sentText(writesTo(B.uid, from)).includes('A trip'), false, 'A\'s trip never reaches B');
+});
+
+test('S-2 late registration: a page whose data nobody moved registers late and syncs without a reload', async (t) => {
+  isolate(t);
+  const namespace = ns('lateQuiet');
+  const key = `${namespace}-trips`;
+  backingStore.set(key, JSON.stringify(['B trip']));
+  backingStore.set(`shevato:sync-revs:${namespace}`, JSON.stringify({
+    uid: B.uid, keys: { [key]: { rev: 1, hash: hashValue(['B trip']), updatedAt: 1, dirty: false } }
+  }));
+  t.after(() => { delete window.__shevatoSyncBoot; });
+  window.__shevatoSyncBoot = { ownershipEpochs: backingStore.get('shevato:sync-ownership-epoch') ?? null };
+
+  const reloadsBefore = reloads.length;
+  const page = await openPage(t, [{ namespace, keys: [key] }]);
+  signIn(B);
+  page.start(namespace, [key]);
+  await settle();
+  assert.equal(reloads.length, reloadsBefore, 'nothing moved, nothing to reload for');
+  assert.equal(listenersFor(B.uid, namespace).length, 1, 'the session starts');
+});
+
+test('S-4 provenance: a boot-window write replayed after a click is still the app\'s own', async (t) => {
+  isolate(t);
+  userGesture(t, true);   // the person clicked before the sync modules finished loading
+  const namespace = ns('replayGesture');
+  const key = `${namespace}-floor`;
+  const page = await openPage(t, [{ namespace, keys: [key] }]);
+  backingStore.delete('shevato:sync-local-work');
+
+  page.replay(key, ['floor'], false);
+  t.mock.timers.tick(1);
+  assert.deepEqual(stored('shevato:sync-local-work')?.[key], { hash: hashValue(['floor']), work: false },
+    'recorded with the gesture state the write was made with');
 });

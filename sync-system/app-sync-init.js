@@ -24,7 +24,8 @@ import {
   clearAbandonedAccountDeletion,
   settleBeforeAccountDeletion,
   confirmCloudDataErased,
-  forgetAccountLocalState
+  forgetAccountLocalState,
+  bumpOwnershipEpochs
 } from './storage-sync-robust.js';
 
 // Auth SDK, same pinned URL firebase-config.js uses, so this resolves to the
@@ -600,6 +601,9 @@ export async function deleteAccount({ confirmation, password, user } = {}) {
       };
     }
 
+    // Before the data goes: a page still loading registers late (the sync
+    // modules load async) and must learn that what its apps read has moved.
+    bumpOwnershipEpochs(getSyncNamespaces());
     const clearedKeys = clearSyncedLocalData();
     // This account's ownership stamps, parked copies and signed-out provenance
     // on this device describe an account that is about to stop existing.

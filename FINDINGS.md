@@ -1097,6 +1097,23 @@ silently, placeholders still upload where the account has nothing).
   could not be written. App pages already reloaded after a sign-in
   (`sync-modal-integration.js`), except within 30 s of an earlier one and for a
   page loaded with a saved session, which is exactly where the leak lived.
+- **A page whose sync modules register late still knows what its apps read.**
+  Since #535 (2026-09-13) `firebase-config.js`, `storage-sync-robust.js` and
+  `app-sync-init.js` load `async`, so a page's apps can read storage well
+  before `registerLocalNamespaces` records `bootLineage`. Another tab moving
+  the data for an account in that window left the page holding the old
+  account's data under the new account's stamp, and it synced without a
+  reload. Every park, restore and account-deletion clear now first changes a
+  per-namespace token in `shevato:sync-ownership-epoch`. `sync-immediate.js`,
+  the first script on every app page, records the tokens before any app runs
+  (`window.__shevatoSyncBoot`), and a namespace whose token moved in between
+  registers with an unknown owner, so the page reloads before syncing anyone.
+  The token changes before the data moves (and if it cannot be written, the
+  data stays put), so a late registration sees either the lineage its apps read
+  or a moved token, never moved data under an unchanged one. The same script
+  records the gesture state with each buffered boot-window write, and the
+  replay hands it to the engine's provenance, so a click that lands before the
+  sync modules do does not turn an app's placeholder into work.
 - **Local-only keys go through the queue.** The old `uploadLocalOnlyKeys` wrote
   straight to Firestore, past every gate. `enqueueLocalOnlyKeys` queues them,
   so they pass the barrier, the latch, the owner check and the retry ladder.

@@ -29,6 +29,24 @@
   if (window.__gymTrackerImmediateSyncInstalled) return;
   window.__gymTrackerImmediateSyncInstalled = true;
 
+  // Which accounts' data the page's apps are about to read. The sync modules
+  // load async and can register long after the apps read storage, while
+  // another tab moves the data for an account; the engine compares these
+  // tokens when it registers (storage-sync-robust.js, ownershipMovedSinceBoot).
+  try {
+    window.__shevatoSyncBoot = { ownershipEpochs: localStorage.getItem('shevato:sync-ownership-epoch') };
+  } catch (_) { /* no capture: the engine reads lineage when it registers, as before */ }
+
+  // Whether a person had acted on the page when a write was made. Buffered
+  // writes replay after the sync modules load, possibly after a click, so the
+  // state is read at the write (the engine's signed-out provenance).
+  function gestureState() {
+    try {
+      const activation = typeof navigator !== 'undefined' ? navigator.userActivation : null;
+      return activation && typeof activation.hasBeenActive === 'boolean' ? activation.hasBeenActive : undefined;
+    } catch (_) { return undefined; }
+  }
+
   const debugOn = (() => {
     try { return localStorage.getItem('gymTrackerDebug') === 'true'; } catch (_) { return false; }
   })();
@@ -45,10 +63,10 @@
   // Forward a write to the robust sync layer if it's listening, swallowing
   // any error so a failing forward never breaks the actual localStorage
   // write that just succeeded.
-  function forward(key, value) {
+  function forward(key, value, meta) {
     const sm = window.syncManager;
     if (sm && typeof sm.processChange === 'function') {
-      try { sm.processChange(key, value); }
+      try { sm.processChange(key, value, meta); }
       catch (e) { console.error('sync forward failed for', key, e); }
     }
   }
@@ -62,7 +80,7 @@
       return;
     }
     // Pre-handoff: buffer; replay on syncSystemReady.
-    pendingChanges.set(key, { action: 'set', value, timestamp: Date.now() });
+    pendingChanges.set(key, { action: 'set', value, timestamp: Date.now(), work: gestureState() });
   };
 
   localStorage.removeItem = function (key) {
@@ -71,7 +89,7 @@
       forward(key, null);
       return;
     }
-    pendingChanges.set(key, { action: 'remove', value: null, timestamp: Date.now() });
+    pendingChanges.set(key, { action: 'remove', value: null, timestamp: Date.now(), work: gestureState() });
   };
 
   window.addEventListener('syncSystemReady', function onReady() {
@@ -80,7 +98,7 @@
     // Replay anything that landed before the handoff so the robust layer
     // sees those writes too.
     for (const [key, change] of pendingChanges) {
-      forward(key, change.action === 'set' ? change.value : null);
+      forward(key, change.action === 'set' ? change.value : null, { work: change.work });
     }
     pendingChanges.clear();
 
