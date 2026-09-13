@@ -1,6 +1,276 @@
 {
   "updates": [
     {
+      "builtAt": "2026-09-13T11:20:19.464Z",
+      "totals": {
+        "seasons": 66683,
+        "delta": 19
+      },
+      "shapeCounts": {
+        "rebound": 10174,
+        "rising": 2611,
+        "slow-burn": 4414,
+        "big-finale": 12168,
+        "u-shaped": 3086,
+        "rollercoaster": 14147,
+        "mid-peak": 4644,
+        "saved-best-for-last": 1497,
+        "front-loaded": 3516,
+        "declining": 1883,
+        "bad-finale": 4654,
+        "consistent": 2620,
+        "shape-drift": 1571
+      },
+      "shapeDeltas": {
+        "rebound": 1,
+        "rising": 2,
+        "slow-burn": 5,
+        "big-finale": 7,
+        "u-shaped": 3,
+        "rollercoaster": -5,
+        "mid-peak": 4,
+        "saved-best-for-last": 4,
+        "declining": -6,
+        "bad-finale": 8,
+        "consistent": 2,
+        "shape-drift": -1
+      },
+      "added": [
+        {
+          "seriesId": "tt19231492",
+          "title": "Dark Matter",
+          "season": 2,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt14668192",
+          "title": "Elite Short Stories",
+          "season": 6,
+          "seasonYear": 2021
+        },
+        {
+          "seriesId": "tt39632118",
+          "title": "Family Kirana Store",
+          "season": 2,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt0235132",
+          "title": "Rescue Heroes",
+          "season": 1,
+          "seasonYear": 1999
+        },
+        {
+          "seriesId": "tt31091039",
+          "title": "The Secret Lives of Mormon Wives",
+          "season": 5,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt39640519",
+          "title": "Chumbak",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt8085744",
+          "title": "Blacked Raw",
+          "season": 2,
+          "seasonYear": 2018
+        },
+        {
+          "seriesId": "tt13321232",
+          "title": "Karma's World",
+          "season": 4,
+          "seasonYear": 2022
+        },
+        {
+          "seriesId": "tt5660604",
+          "title": "The Cul De Sac",
+          "season": 3,
+          "seasonYear": 2018
+        },
+        {
+          "seriesId": "tt0138254",
+          "title": "Anything for Love",
+          "season": 1,
+          "seasonYear": 1997
+        },
+        {
+          "seriesId": "tt1281973",
+          "title": "Bigg Boss",
+          "season": 20,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt11150950",
+          "title": "Skolan",
+          "season": 2,
+          "seasonYear": 2020
+        },
+        {
+          "seriesId": "tt12718412",
+          "title": "Ishqiya",
+          "season": 1,
+          "seasonYear": 2020
+        },
+        {
+          "seriesId": "tt13364522",
+          "title": "Ice Airport Alaska",
+          "season": 2,
+          "seasonYear": 2022
+        },
+        {
+          "seriesId": "tt33056986",
+          "title": "Dumas",
+          "season": 2,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt37884940",
+          "title": "The Princess Diaries",
+          "season": 1,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt43726628",
+          "title": "Your Sky: Hare Nochi Koi",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt44359833",
+          "title": "Kiss or Kill",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt39518375",
+          "title": "2026-2027 UEFA Champions League",
+          "season": 6,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt7684034",
+          "title": "Baaghi",
+          "season": 1,
+          "seasonYear": 2017
+        },
+        {
+          "seriesId": "tt7401162",
+          "title": "Juacas",
+          "season": 1,
+          "seasonYear": 2017
+        }
+      ],
+      "removed": [
+        {
+          "seriesId": "tt16259804",
+          "title": "Elite Short Stories: Samuel Omar",
+          "season": 6,
+          "seasonYear": 2021
+        },
+        {
+          "seriesId": "tt0296374",
+          "title": "Maple Town",
+          "season": 1,
+          "seasonYear": 1986
+        }
+      ],
+      "ratingSwings": [
+        {
+          "seriesId": "tt38956012",
+          "title": "LOL Next",
+          "season": 1,
+          "from": 3.95,
+          "to": 5.25,
+          "delta": 1.3
+        },
+        {
+          "seriesId": "tt4445396",
+          "title": "Portrait Artist of the Year",
+          "season": 9,
+          "from": 8.03,
+          "to": 7.04,
+          "delta": -0.99
+        },
+        {
+          "seriesId": "tt13321232",
+          "title": "Karma's World",
+          "season": 3,
+          "from": 3.9,
+          "to": 4.87,
+          "delta": 0.97
+        },
+        {
+          "seriesId": "tt2169273",
+          "title": "MyMusic",
+          "season": 1,
+          "from": 7.76,
+          "to": 7.11,
+          "delta": -0.65
+        },
+        {
+          "seriesId": "tt43746863",
+          "title": "OJ Unseen: Exploitation of Evil",
+          "season": 1,
+          "from": 4.38,
+          "to": 5.02,
+          "delta": 0.64
+        },
+        {
+          "seriesId": "tt37439410",
+          "title": "The Dinner Club",
+          "season": 1,
+          "from": 6.57,
+          "to": 7.19,
+          "delta": 0.62
+        },
+        {
+          "seriesId": "tt4445396",
+          "title": "Portrait Artist of the Year",
+          "season": 10,
+          "from": 7.73,
+          "to": 7.11,
+          "delta": -0.62
+        },
+        {
+          "seriesId": "tt4445396",
+          "title": "Portrait Artist of the Year",
+          "season": 2,
+          "from": 7.87,
+          "to": 7.26,
+          "delta": -0.61
+        },
+        {
+          "seriesId": "tt8710622",
+          "title": "2019 Cricket World Cup",
+          "season": 1,
+          "from": 6.59,
+          "to": 6.04,
+          "delta": -0.55
+        },
+        {
+          "seriesId": "tt36937503",
+          "title": "Anna Pigeon",
+          "season": 1,
+          "from": 7.04,
+          "to": 6.5,
+          "delta": -0.54
+        }
+      ],
+      "modifiedCounts": {
+        "seriesVotes": 19885,
+        "avgRating": 1104,
+        "seriesRating": 286,
+        "shapes": 202,
+        "episodeCount": 86,
+        "poster": 13,
+        "overview": 2,
+        "providers": 1
+      }
+    },
+    {
       "builtAt": "2026-09-12T10:18:32.835Z",
       "totals": {
         "seasons": 66664,
@@ -7654,266 +7924,6 @@
         "poster": 3,
         "overview": 2,
         "providers": 3
-      }
-    },
-    {
-      "builtAt": "2026-08-10T07:42:37.661Z",
-      "totals": {
-        "seasons": 66210,
-        "delta": 0
-      },
-      "shapeCounts": {
-        "mid-peak": 4636,
-        "rebound": 10081,
-        "rising": 2904,
-        "slow-burn": 4374,
-        "big-finale": 12118,
-        "u-shaped": 3090,
-        "rollercoaster": 14060,
-        "saved-best-for-last": 1543,
-        "front-loaded": 3467,
-        "declining": 1877,
-        "bad-finale": 4666,
-        "consistent": 2625,
-        "shape-drift": 1639
-      },
-      "shapeDeltas": {
-        "rebound": -3,
-        "slow-burn": 1,
-        "big-finale": -3,
-        "u-shaped": -1,
-        "rollercoaster": 2,
-        "front-loaded": -2,
-        "declining": 1,
-        "bad-finale": 2,
-        "consistent": 6,
-        "shape-drift": -2
-      },
-      "added": [
-        {
-          "seriesId": "tt14986406",
-          "title": "Bleach: Thousand-Year Blood War",
-          "season": 4,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt36643714",
-          "title": "Operation Safed Sagar",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt0457246",
-          "title": "Kappa Mikey",
-          "season": 2,
-          "seasonYear": 2007
-        },
-        {
-          "seriesId": "tt43588603",
-          "title": "Salcedo, Leather, and Boogaloo",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt29064303",
-          "title": "Simon Coleman",
-          "season": 2,
-          "seasonYear": 2024
-        },
-        {
-          "seriesId": "tt19892794",
-          "title": "Al Maddah 2: Ostorat Al Wady",
-          "season": 1,
-          "seasonYear": 2022
-        },
-        {
-          "seriesId": "tt42171878",
-          "title": "Eleni",
-          "season": 3,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt43616775",
-          "title": "A Bona Fide Killer",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt2247207",
-          "title": "Beni Affet",
-          "season": 1,
-          "seasonYear": 2011
-        },
-        {
-          "seriesId": "tt29264604",
-          "title": "SKZ Code",
-          "season": 1,
-          "seasonYear": 2021
-        },
-        {
-          "seriesId": "tt29614148",
-          "title": "Death Inc.",
-          "season": 4,
-          "seasonYear": 2026
-        }
-      ],
-      "removed": [
-        {
-          "seriesId": "tt35513078",
-          "title": "Lego Ninjago: Legends",
-          "season": 1,
-          "seasonYear": 2025
-        },
-        {
-          "seriesId": "tt0133302",
-          "title": "Frontline",
-          "season": 45,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt34129249",
-          "title": "MDRJago",
-          "season": 2,
-          "seasonYear": 2024
-        },
-        {
-          "seriesId": "tt34129249",
-          "title": "MDRJago",
-          "season": 1,
-          "seasonYear": 2024
-        },
-        {
-          "seriesId": "tt35546593",
-          "title": "MDR Game",
-          "season": 2,
-          "seasonYear": 2025
-        },
-        {
-          "seriesId": "tt34129249",
-          "title": "MDRJago",
-          "season": 3,
-          "seasonYear": 2024
-        },
-        {
-          "seriesId": "tt27613744",
-          "title": "LEGO® DreamZzz",
-          "season": 4,
-          "seasonYear": 2025
-        },
-        {
-          "seriesId": "tt28672586",
-          "title": "Lego City: No Limits",
-          "season": 2,
-          "seasonYear": 2024
-        },
-        {
-          "seriesId": "tt34129249",
-          "title": "MDRJago",
-          "season": 6,
-          "seasonYear": 2025
-        },
-        {
-          "seriesId": "tt38304490",
-          "title": "MDRJago: Secrets of the Kair Strike",
-          "season": 1,
-          "seasonYear": 2025
-        },
-        {
-          "seriesId": "tt42576938",
-          "title": "MDRJago: Liars of MDR",
-          "season": 1,
-          "seasonYear": 2026
-        }
-      ],
-      "ratingSwings": [
-        {
-          "seriesId": "tt13535142",
-          "title": "Heroes of Envell",
-          "season": 1,
-          "from": 9.02,
-          "to": 8.02,
-          "delta": -1
-        },
-        {
-          "seriesId": "tt13535142",
-          "title": "Heroes of Envell",
-          "season": 2,
-          "from": 9.2,
-          "to": 8.27,
-          "delta": -0.93
-        },
-        {
-          "seriesId": "tt1400819",
-          "title": "Horrible Histories",
-          "season": 10,
-          "from": 5.05,
-          "to": 5.66,
-          "delta": 0.61
-        },
-        {
-          "seriesId": "tt21908550",
-          "title": "Vadhandhi",
-          "season": 2,
-          "from": 8.86,
-          "to": 8.29,
-          "delta": -0.57
-        },
-        {
-          "seriesId": "tt0377291",
-          "title": "Yhdeksän miehen saappaat",
-          "season": 1,
-          "from": 5.4,
-          "to": 5.95,
-          "delta": 0.55
-        },
-        {
-          "seriesId": "tt36951033",
-          "title": "Parlor Room",
-          "season": 2,
-          "from": 8.23,
-          "to": 7.73,
-          "delta": -0.5
-        },
-        {
-          "seriesId": "tt41976477",
-          "title": "Shaidai",
-          "season": 1,
-          "from": 8.51,
-          "to": 8.04,
-          "delta": -0.47
-        },
-        {
-          "seriesId": "tt28083272",
-          "title": "Betrayal",
-          "season": 4,
-          "from": 5.13,
-          "to": 4.67,
-          "delta": -0.46
-        },
-        {
-          "seriesId": "tt31365727",
-          "title": "A renitens",
-          "season": 3,
-          "from": 4.43,
-          "to": 4.89,
-          "delta": 0.46
-        },
-        {
-          "seriesId": "tt7849864",
-          "title": "Grey's Anatomy: The Webisodes",
-          "season": 1,
-          "from": 5.63,
-          "to": 6.07,
-          "delta": 0.44
-        }
-      ],
-      "modifiedCounts": {
-        "seriesVotes": 22017,
-        "avgRating": 1316,
-        "shapes": 209,
-        "seriesRating": 363,
-        "episodeCount": 90,
-        "poster": 1
       }
     }
   ]
