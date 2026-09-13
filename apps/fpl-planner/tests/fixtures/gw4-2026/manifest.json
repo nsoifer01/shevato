@@ -1,0 +1,31 @@
+{
+  "source": "public FPL API, 2026-09-13",
+  "gameweek": 4,
+  "pool": 479,
+  "states": [
+    {
+      "name": "in-play",
+      "what": "MUN v MCI in play (kickoff 15:30 UTC), served at 16:27 UTC: the payload whose best eleven projected 6.4",
+      "withMinutes": 404,
+      "startedFixtures": 39,
+      "livePlayers": 270,
+      "sha256": {
+        "bootstrap-inplay-mun-mci-20260913T1627Z.json": "7ec24b2eeb8a59f80cf5db8780deb065fc293b34cb6de42af4003b27036cd4ee",
+        "fixtures-inplay-mun-mci-20260913T1627Z.json": "9dcd9d5c4dd66a03db487a26d75fa05a7abf22cf365643abe9482e6907a7fd1c",
+        "event4-live-20260913T1630Z.json": "3d9fd0f380a0c53d0bd155bb1f1d4600b715d3ccdbc5d32c83ac6fda37be15da"
+      }
+    },
+    {
+      "name": "full-time",
+      "what": "the same three endpoints once MUN v MCI reached provisional full time",
+      "withMinutes": 405,
+      "startedFixtures": 39,
+      "livePlayers": 274,
+      "sha256": {
+        "bootstrap-ft-mun-mci.json": "cfdf21d96b53da3a9edbbce1b6a53594d0c8972f38734c8c1774b5c3bb2b6d20",
+        "fixtures-ft-mun-mci.json": "4fa3097e8c497edc90e19b6b5309cb0124903a59fbdcaa9d9771ffa687ad550b",
+        "event4-live-ft-mun-mci.json": "4431f54ffce41e7659c8e17d8972b1ac5c8b6646f1ea4f5020d9bc1fa86a3802"
+      }
+    }
+  ]
+}

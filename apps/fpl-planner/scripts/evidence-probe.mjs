@@ -91,6 +91,7 @@ const reading = {
   activeShare: baseline.activeShare,
   startsPerActive: baseline.startsPerActive,
   baselineComplete: baseline.complete,
+  finishedGameweeks: gameState.events.filter(e => e.finished).length,
 };
 
 let vitals = null;
@@ -158,10 +159,26 @@ check('the pool is a whole league',
   reading.pool > 300,
   `${reading.pool} players`, 'more than 300');
 
+// A payload that is not a complete season in its own right may still be
+// projected from once this season has enough matches of its own, which is
+// exactly what `current-season` means: seasonEvidence returns it only for a
+// complete payload or once every club has played three matches. Until
+// 2026-09-13 this check failed on every healthy in-season payload from the day
+// the baseline retired, so the probe was red whether the pipeline was broken or
+// not, and a red that never turns green is not a signal.
 check('the totals describe a season, or are refused',
-  reading.baselineComplete || !reading.evidenceUsable,
-  `complete=${reading.baselineComplete} usable=${reading.evidenceUsable}`,
-  'an incomplete payload must not be projected from');
+  reading.baselineComplete || !reading.evidenceUsable || reading.evidenceKind === 'current-season',
+  `complete=${reading.baselineComplete} usable=${reading.evidenceUsable} kind=${reading.evidenceKind}`,
+  'an incomplete payload is refused unless this season has enough matches of its own');
+
+// Once a gameweek has finished the totals cannot be last season's: FPL clears
+// them when GW1 goes current, and the probe builds its game state without a
+// baseline, so nothing can have put the payload into that shape on purpose.
+// This is the reading that was wrong in every match window of GW4 of 2026/27.
+check('an in-season payload is not read as last season',
+  !(reading.finishedGameweeks > 0 && reading.evidenceKind === 'previous-season'),
+  `${reading.evidenceKind} with ${reading.finishedGameweeks} finished gameweeks`,
+  'previous-season only before the first gameweek has finished');
 
 check('the start-rate denominator matches the season the totals belong to',
   reading.evidenceKind !== 'previous-season' || reading.denominator === rules.totalEvents,

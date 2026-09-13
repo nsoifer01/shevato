@@ -60,20 +60,52 @@ export function fixtureIsPlayed(fixture) {
 }
 
 /**
+ * A fixture FPL has already folded into the element totals: anything that has
+ * kicked off, whether or not it has finished.
+ *
+ * FPL credits `starts` to the eleven named at kickoff and accrues `minutes`
+ * while the match is being played, so a season total includes a match from its
+ * first minute. Measured on 2026-09-13 with MUN v MCI at half time: Haaland
+ * carried `starts: 4, minutes: 315` while his club had three matches played out.
+ */
+export function fixtureHasKickedOff(fixture) {
+  return fixturePhase(fixture) !== FIXTURE_PHASE.UPCOMING;
+}
+
+/**
  * Matches each club has PLAYED OUT, counting provisional full-times.
  *
- * This is the denominator a start rate is measured against, and it is the one
- * number the incident turned on: counting only `finished` said zero while
- * twenty-two players carried ninety minutes each.
+ * This answers the lifecycle question - has the match happened - and it is the
+ * one number the 2026-08-21 incident turned on: counting only `finished` said
+ * zero while twenty-two players carried ninety minutes each. It is NOT the count
+ * to compare a season total with while a match is in play; that is
+ * `matchesKickedOffByClub`.
  */
 export function matchesPlayedByClub(gameState) {
-  const counts = new Map();
-  for (const team of gameState.teams.keys()) counts.set(team, 0);
+  return countByClub(gameState, fixtureIsPlayed);
+}
+
+/**
+ * Matches each club's element totals already COVER: every fixture that has
+ * kicked off.
+ *
+ * This is the denominator a season total is divided by and the bound it is
+ * checked against. Using the played-out count instead is how one live match
+ * made twenty-two starters look like they had started more matches than their
+ * club had played, and the whole pool was read as last season's (2026-09-12).
+ */
+export function matchesKickedOffByClub(gameState) {
+  return countByClub(gameState, fixtureHasKickedOff);
+}
+
+function countByClub(gameState, counts) {
+  const out = new Map();
+  for (const team of gameState.teams.keys()) out.set(team, 0);
   for (const f of gameState.fixtures) {
-    if (!fixtureIsPlayed(f)) continue;
-    for (const t of [f.teamH, f.teamA]) counts.set(t, (counts.get(t) || 0) + 1);
+    if (!counts(f)) continue;
+    for (const t of [f.teamH, f.teamA]) out.set(t, (out.get(t) || 0) + 1);
   }
-  return counts;
+  return out;
 }
 
 /**
@@ -137,9 +169,12 @@ export function gameweekLifecycle(gameState, { now = Date.now() } = {}) {
     fixtures: tally,
     clubsPlayed,
     clubsTotal,
-    // Every club has played the same number of matches. Until this is true the
-    // pool is not comparable across clubs, which is what made one club's
-    // players look like non-starters beside eighteen clubs of untouched priors.
+    // Every club has played at least once, or none has. This is the opening-week
+    // question, not a comparison of match counts: until it is true some clubs'
+    // players carry observed rates while the rest carry untouched priors, which
+    // is what made one club's players look like non-starters beside eighteen
+    // clubs of priors. Later in a season clubs are routinely a match apart, and
+    // that is handled by reading each player against his own club's matches.
     clubsLevel: clubsPlayed === 0 || clubsPlayed === clubsTotal,
     matchesPlayedByClub: played,
   };

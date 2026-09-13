@@ -10,7 +10,7 @@
 // seasonStarted; nothing throws.
 
 import { buildRules } from './rules.js';
-import { fixtureIsPlayed } from './lifecycle.js';
+import { fixtureHasKickedOff } from './lifecycle.js';
 import { RATE_FIELDS, snapshotCarriesRates, OPENING_BASELINE_KIND } from './baseline.js';
 
 const num = (v) => {
@@ -63,9 +63,13 @@ export function buildGameState(bootstrap, fixtures, { fetchedAt, baseline = null
       if (row && row.c != null) byCode.set(row.c, row);
       else byCode.set(Number(pid), row);
     }
+    // The matches THIS season's totals cover, which includes a match in play:
+    // FPL credits starts and minutes from kickoff, so counting only played-out
+    // matches would give `seasonStarts` a denominator one match short while it
+    // is being played.
     const playedByClub = new Map();
     for (const f of normalizedFixtures) {
-      if (!fixtureIsPlayed(f)) continue;
+      if (!fixtureHasKickedOff(f)) continue;
       for (const t of [f.teamH, f.teamA]) playedByClub.set(t, (playedByClub.get(t) || 0) + 1);
     }
     const baselineMatches = baseline.totalEvents || null;
@@ -222,35 +226,42 @@ export function normalizePlayer(e) {
     // payload's season totals, but when FPL has cleared them mid-season they
     // are overlaid from the kept baseline (see engine/baseline.js), because a
     // wiped total is not a measurement of anything.
-    minutes: e.minutes,
-    starts: e.starts,
+    //
+    // Every count below goes through `num` too, although FPL sends them as
+    // integers today. It already sends the expected_* totals as strings, and a
+    // count that arrived as "4" is not a harmless difference: `positionPriors`
+    // SUMS starts across a position, so "4" + "3" concatenates, the prior start
+    // rate clamps to 1, and on the 2026-09-13 payload the best eleven inflated
+    // from 39.8 to 65.9 while every readiness check still passed.
+    minutes: num(e.minutes),
+    starts: num(e.starts),
 
     // THIS SEASON'S CUMULATIVE TOTALS, always straight off the payload and
     // never overlaid. Separated from the fields above because the two answer
     // different questions and conflating them is what let a modal label one
     // match of this season "Last season". A cleared total is a real zero here.
-    seasonMinutes: e.minutes,
-    seasonStarts: e.starts,
-    seasonPoints: e.total_points,
+    seasonMinutes: num(e.minutes),
+    seasonStarts: num(e.starts),
+    seasonPoints: num(e.total_points),
 
-    totalPoints: e.total_points,
-    bonus: e.bonus,
-    bps: e.bps,
-    saves: e.saves,
-    goalsScored: e.goals_scored,
-    assists: e.assists,
-    cleanSheets: e.clean_sheets,
-    goalsConceded: e.goals_conceded,
-    yellowCards: e.yellow_cards,
-    redCards: e.red_cards,
-    ownGoals: e.own_goals,
-    penaltiesSaved: e.penalties_saved,
-    penaltiesMissed: e.penalties_missed,
+    totalPoints: num(e.total_points),
+    bonus: num(e.bonus),
+    bps: num(e.bps),
+    saves: num(e.saves),
+    goalsScored: num(e.goals_scored),
+    assists: num(e.assists),
+    cleanSheets: num(e.clean_sheets),
+    goalsConceded: num(e.goals_conceded),
+    yellowCards: num(e.yellow_cards),
+    redCards: num(e.red_cards),
+    ownGoals: num(e.own_goals),
+    penaltiesSaved: num(e.penalties_saved),
+    penaltiesMissed: num(e.penalties_missed),
 
-    cbit: e.clearances_blocks_interceptions,
-    recoveries: e.recoveries,
-    tackles: e.tackles,
-    defCon: e.defensive_contribution,
+    cbit: num(e.clearances_blocks_interceptions),
+    recoveries: num(e.recoveries),
+    tackles: num(e.tackles),
+    defCon: num(e.defensive_contribution),
 
     xG: num(e.expected_goals),
     xA: num(e.expected_assists),

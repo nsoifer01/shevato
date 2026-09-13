@@ -30,6 +30,7 @@ inherit it.
 | pStart pinned at 1.000 for most of every replayed season | 0 <= pStart <= pAppear <= 1, exhaustively | that the number was ever anything but 1 |
 | 2022-23 replayed as a league with no starters | the column parsed, the season replayed | that a season contains 8,360 starts |
 | The season-statistics rollover collapses every projection | every projection is a finite number | that a gameweek total was ever near 50 rather than 20 |
+| Every GW4 match window projected a 6.4 point best eleven | every probability legal, and the pause fired | that the two match counts the classifier compared described the same matches |
 
 The last two are 2026-08-12 and they are the same joke as the first three: the
 whole suite passed, because a probability of exactly 1 is a legal probability.
@@ -922,7 +923,11 @@ with chips ON: +0 on all 72 trajectories, both instruments.
   of the pool still clamped at gameweek 20**. Corrected, median pStart sits at
   0.57-0.61 and the 90th percentile at 0.82-0.86 all season. Worth +1253 points
   over the then-45-trajectory instrument with the starts fix; see
-  `experiments/replay-evidence.md`.
+  `experiments/replay-evidence.md`. On a live payload FPL's numerator includes
+  a match IN PLAY (starts are credited at kickoff), so the count a player falls
+  back to is the matches his own club has KICKED OFF, never the league's most
+  and never only the ones played out; see "One live match read the whole league
+  as last season".
 - `START_RATE_SHRINK_MATCHES = 6` serves BOTH cross-season (pre-season) and
   within-season evidence. Still an open design question, but it is now a
   MEASURABLE one: `opts.priorSeasonWeight` on the replay is the weight the
@@ -1997,6 +2002,131 @@ builds the numerator owns the denominator" in `minutes.js`): **a fallback that
 applies to a subset while changing a global is a bug until the complement is
 named.** `continue` in a loop that is also mutating shared state is where to
 look for it.
+
+### One live match read the whole league as last season (found and FIXED 2026-09-13)
+
+Reported during GW4, with MUN v MCI in the second half: nearly every player on
+0.3 to 0.5 xP, "the best eleven in the game projects 6.4 points", a recommended
+eleven of 7.5, captain Szoboszlai "1.0 xP doubled", and recommendations paused.
+The pause was right. The question was why the inputs had collapsed.
+
+**Upstream was sane, and production served it unchanged.** The live API at
+16:27 UTC: 657 elements; league starts 858, which is exactly 22 x the 39
+fixtures that had kicked off; Szoboszlai 4 starts and 360 minutes; GW4 current,
+GW5 next with ten fixtures and their difficulties. The production proxy returned
+the same payload (cache miss, age 0). `event/4/live` showed Haaland with 45
+minutes and one start in fixture 39, which had started and was not at full time.
+No gameweek, fixture id, deadline or percentage was wrong anywhere.
+
+**The chain, first wrong number first.**
+
+1. FPL credits `starts` to the eleven named at kickoff and accrues `minutes`
+   live, so the 22 starters of fixture 39 already carried their fourth start.
+2. `seasonEvidence` bounded each player's starts by his club's PLAYED-OUT
+   matches (`finished || finished_provisional`), which for MUN and MCI was 3.
+   **This comparison is where the numbers became wrong**: 13 ever-presents "had
+   started more matches than their club had played".
+3. `IMPOSSIBLE_STARTS_QUORUM` is 12, so the payload was classified
+   `previous-season` and `teamMatches` became `rules.totalEvents`, 38.
+4. Once the baseline has retired no player declares `evidenceMatches`, so every
+   player in the league fell back to 38. Szoboszlai: observed start rate
+   4/38 = 0.105, pStart 0.098, xMins 8.9, GW5 xP 0.52 (the "1.0 doubled").
+   The position start priors, pooled over the same denominator, fell to
+   0.04 to 0.06.
+5. Best eleven 6.35, top-median gap 0.59, so `projection_implausible` and
+   `projection_collapsed` capped readiness at `display`.
+
+| GW5, same payload | Szoboszlai | Haaland | Saka | Palmer | Raya | best XI | plan |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| as served, before the fix (denominator 38) | 0.52 | 0.43 | 0.56 | 0.43 | 0.44 | 6.35 | 9.1 |
+| the same payload rewound to 15:29 UTC | 3.17 | 3.15 | 3.74 | 2.69 | 3.45 | 40.1 | 49.0 |
+| as served, after the fix (denominator 4) | 3.22 | 2.90 | 3.79 | 2.73 | 3.52 | 39.8 | 50.0 |
+
+**Why it started at 14:00 UTC on 2026-09-12, and why it came and went.** It
+needs two things at once. The baseline must have retired (every club three
+matches played, 2026-09-06): through GW2 and GW3 the overlay put the payload in
+the previous-season shape ON PURPOSE, with every player declaring his own
+denominator, so a 38 fallback reached nobody. And a match must be in play at a
+club that has already played: the bound skips a club with nothing played, which
+is why GW1's in-play state never tripped it. The first kickoff with both was
+GW4's opening slot. Rebuilt from the live stats, window by window: Saturday
+14:00 (five matches) put 73 players over the line; 16:30, TOT v EVE, only 11, so
+that window was healthy; 19:00, SUN v ARS, 19; Sunday 13:00, COV v BHA, 13; 15:30,
+MUN v MCI, 13. Each window healed itself at provisional full time, when the
+played-out count caught up, so a manager saw sane numbers between matches and
+garbage during them. Monday's LEE v NEW would have repeated it.
+
+**Not a regression.** The quorum and the played-out bound date from 2026-08-15
+(`8f46685`), the provisional count from 2026-08-21. The captured payload
+collapses identically on the engine at `bccbb12` (2026-08-25) and at the commit
+before #523 (2026-09-08). No September commit touched the path.
+
+**A second trigger that had not fired yet: the two endpoints are cached apart.**
+The proxy caches `bootstrap-static` for 10 minutes and `fixtures` for 30, and the
+browser does the same again, so for up to half an hour after any kickoff the
+fixture list can still call a match upcoming that the totals already include.
+Counting kicked-off matches alone would have collapsed there too: that payload
+pair, simulated, reads 6.4 again.
+
+**The fix.**
+
+- `lifecycle.js` gains `fixtureHasKickedOff` and `matchesKickedOffByClub`: the
+  matches the totals COVER. `matchesPlayedByClub` stays the lifecycle question
+  (which branch applies, baseline retirement, strength ratings), and the
+  classifier now keeps the two apart.
+- The impossibility bound is kicked-off matches plus
+  `TOTALS_LEAD_TOLERANCE_MATCHES` (1). A club plays one match at a time, so one
+  is the most a stale fixture list can trail; a real season boundary is off by
+  tens, and a test pins that two matches still reads as one.
+- Denominators are PER CLUB (`evidence.matchesByClub`), and a club whose
+  starters are already credited with a match its fixture list has not caught up
+  with is read over that match too, capped at one. `teamMatches` survives as the
+  league's most, for display.
+- The baseline overlay's `evidenceMatches` counts kicked-off matches, for the
+  same reason.
+- `normalizePlayer` runs every season count through `num`. Found by the bad-data
+  sweep, not by the incident: counts served as strings concatenate in
+  `positionPriors`, and the best eleven inflated from 39.8 to 65.9 with no
+  readiness block.
+
+**Why per club had to come with the rest.** The old single denominator was the
+league's most played-out count. Counting kicked-off matches while keeping a
+league maximum reads every club that has not kicked off yet against a match it
+never played: in the ten-club Saturday slot, Raya's pStart moved 0.18 because
+other clubs had kicked off. Per club, the most another club's kickoff moves
+anyone is what the pooled position prior learns from it (0.037, identical at full
+time), and a stale fixture list and the final whistle move nothing at all.
+
+**Verified.** The app itself, served locally with the proxy answered from the
+captured payload for team 3855835, reproduced the report exactly before the fix
+("Recommendations paused", "Roll your transfer", 7.5 xP, captain Szoboszlai "1.0
+xP doubled") and after it reads "Make 2 transfers", 50.4 xP, captain Barry "7.2
+xP doubled", at 1280 and 390. The four states of the 15:30 window (rewound, as
+served, fixture list lagging, provisional full time) read best eleven 40.3 /
+39.8 / 39.8 / 40.2 and plan 50.1 / 50.0 / 50.0 / 50.4 with every probe invariant
+ok. The 2025-26
+replay (planner and hold) is byte-identical before and after, because the replay
+declares every player's `evidenceMatches` and marks `started` equal to
+`finished`; that is also why this is a data-handling fix and not a registry
+experiment, since it cannot move a replayable decision.
+`tests/live-match-window.test.mjs` fails 10 of its 15 tests on the pre-fix
+engine (the five that pass are the guards that must hold either way: the
+window count, the safeguard, missing inputs, the two-match lead), a league-wide-denominator mutant fails the 14:00 window, and a mutant
+without the one-match lead fails all five windows.
+
+**Why the suite missed it.** The only captured lifecycle states were GW1's, where
+no club had played before its match was in play, which is exactly the condition
+under which the bound was never evaluated. No payload anywhere in the estate held
+a match in play at a club with matches behind it. The class is the one this file
+keeps meeting: two counts that agree in every state the tests hold and disagree
+in the one that happens every Saturday.
+
+**The probe was red the whole time for an unrelated reason.** "The totals
+describe a season, or are refused" failed on EVERY healthy in-season payload from
+the day the baseline retired (a thin early-season payload is never `complete`),
+so a real failure was indistinguishable from the standing one. It now accepts
+`current-season`, and a new invariant fails any `previous-season` reading once a
+gameweek has finished.
 
 ### "Plan unchanged" over "we are not showing a plan"
 
