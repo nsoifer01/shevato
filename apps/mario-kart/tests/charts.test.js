@@ -325,12 +325,13 @@ test('patterns: the close-race threshold follows the game size', () => {
   assert.ok(closeWorld.includes('spread ≤ 11 places'), closeWorld);
 });
 
-// --- createHeatmapView: Chart.js CDN guard -----------------------------------
-// Chart.js loads from a CDN (index.html); if cdnjs is blocked, neither
-// `window.Chart` nor the bare `Chart` global (classic scripts share one
-// global scope with `window`) ever exists. createTrendCharts already guards
-// its `new Chart(...)` (~172); createHeatmapView's doughnut chart did not, so
-// a blocked CDN threw a ReferenceError here on every render while the
+// --- createHeatmapView: Chart.js load guard ----------------------------------
+// Chart.js is a plain script tag in index.html (served from /assets/js since
+// 2026-09-13, cdnjs before); if it fails to load, neither `window.Chart` nor
+// the bare `Chart` global (classic scripts share one global scope with
+// `window`) ever exists. createTrendCharts already guards its
+// `new Chart(...)` (~172); createHeatmapView's doughnut chart did not, so
+// a failed load threw a ReferenceError here on every render while the
 // Activity tab was open - and since createHeatmapView runs unconditionally
 // from updateDisplay() on every data mutation, that could abort the rest of
 // updateDisplay() (including the success toast).
@@ -339,7 +340,7 @@ test('patterns: the close-race threshold follows the game size', () => {
 // charts.js with no DOM at all), so it gets its own small harness: element
 // stubs good enough for getElementById/querySelector, a synchronous
 // setTimeout (createHeatmapView defers its chart-building work), and a
-// stand-in `Chart` constructor to simulate the CDN script having loaded.
+// stand-in `Chart` constructor to simulate the Chart.js script having loaded.
 function loadChartsWithDom({ players = ['player1', 'player2'], maxPositions = 12, chartAvailable = true } = {}) {
   const elements = {};
   const makeEl = () => ({

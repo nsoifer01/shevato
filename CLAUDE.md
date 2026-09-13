@@ -100,6 +100,15 @@ REJECT, whichever way it goes.
   down when the work ends (`ss -ltn` to verify). `netlify dev` serves the site
   AND functions on 8888 (pinned); its internal static port does not route
   functions.
+- **No third-party request on a page's boot path.** A stalled (not refused) CDN
+  holds whatever the page waits on: deferred Firebase modules, `<head>`
+  stylesheets and synchronous CDN scripts each kept every page from reaching
+  DOMContentLoaded on 2026-09-13. Third-party scripts and the Firebase module
+  tags are `async`, third-party stylesheets use `media="print"
+  onload="this.media='all'"` with a `<noscript>` copy, no CSS `@import`s a
+  third-party URL, and anything needed in order is served from this origin.
+  Enforced by `tests/static/third-party-boot-path.test.mjs` and the site
+  suite's stall check; the account is in the root `FINDINGS.md`.
 - Dark theme only, never add a light theme or toggle. LF line endings, never
   CRLF. No asset build step at the root (`npm run build:site` only generates
   data-driven pages and stamps sitemaps at deploy), and effectively no npm dependencies: code

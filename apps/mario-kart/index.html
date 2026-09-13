@@ -107,7 +107,8 @@
     <link rel="stylesheet" href="css/sidebar.css">
     <link rel="stylesheet" href="css/tooltip.css">
     <link rel="stylesheet" href="css/help-styles.css">
-    <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Raleway:300,400,500,600&display=swap">
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Raleway:300,400,500,600&display=swap" media="print" onload="this.media='all'">
+    <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Raleway:300,400,500,600&display=swap"></noscript>
     <link rel="stylesheet" href="../../assets/css/firebase-auth.css">
     <link rel="stylesheet" href="../../assets/css/main.css" />
       <link rel="stylesheet" href="css/mario-kart-overrides.css">
@@ -117,7 +118,7 @@
     <link rel="stylesheet" href="css/course-picker.css">
     <!-- CRITICAL: Load immediate sync FIRST to catch all localStorage calls -->
     <script src="../../sync-system/sync-immediate.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js" integrity="sha384-bs/nf9FbdNouRbMiFcrcZfLXYPKiPaGVGplVbv7dLGECccEXDW+S3zjqSKR5ZEaD" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+    <script src="/assets/js/chart-4.4.1.umd.min.js" integrity="sha384-bs/nf9FbdNouRbMiFcrcZfLXYPKiPaGVGplVbv7dLGECccEXDW+S3zjqSKR5ZEaD"></script>
   <link rel="stylesheet" href="/assets/css/back-to-top.css">
 
   <!-- Google Analytics. Loaded async + defer so it never blocks first paint;
@@ -646,9 +647,9 @@
     <script src="../../assets/js/util.js"></script>
     
     <!-- Firebase Storage Sync System (ES Modules) -->
-    <script type="module" src="../../firebase-config.js"></script>
-    <script type="module" src="../../sync-system/storage-sync-robust.js"></script>
-    <script type="module" src="../../sync-system/app-sync-init.js"></script>
+    <script type="module" async src="../../firebase-config.js"></script>
+    <script type="module" async src="../../sync-system/storage-sync-robust.js"></script>
+    <script type="module" async src="../../sync-system/app-sync-init.js"></script>
     <script src="../../sync-system/sync-debug.js"></script>
 
     <!-- Sync Loading Modal (after Firebase is initialized) -->

@@ -306,6 +306,7 @@ Designed for gym environments with low lighting:
   or whichever display unit is selected
 
 ### Firebase Integration
+- Never on the boot path: `index.html` loads `firebase-config.js`, `storage-sync-robust.js` and `app-sync-init.js` as `async` modules, and the Inter, Raleway and Font Awesome stylesheets without blocking, so the app boots and works locally while www.gstatic.com, Google Fonts or cdnjs is slow, stalled or blocked, and sync attaches when the SDK arrives (see FINDINGS, "A stalled Firebase SDK kept the whole app from booting"; pinned by `tests/static/third-party-boot-path.test.mjs`)
 - Real-time database sync
 - User authentication
 - Cross-device synchronization

@@ -6,6 +6,18 @@ section below describes the behaviour as it now stands plus the regression
 that pins it. `README.md` beside this file says what the app is; this file
 says what we learned about it.
 
+## Chart.js is served from this site (2026-09-13)
+
+`index.html` loaded Chart.js 4.4.1 from cdnjs as a synchronous script in
+`<head>`. With cdnjs stalled (accepted, never answered) the page rendered
+nothing at all: the parser never got past that tag. It now loads
+`/assets/js/chart-4.4.1.umd.min.js`, byte-identical to the cdnjs file (same
+`integrity`), still synchronously, so the chart code keeps finding
+`window.Chart` whenever it runs. The `window.Chart` guards in `js/charts.js`
+stay: a failed request still leaves the accessible tables as the only
+rendering. The site-wide account is in the root `FINDINGS.md`, "A stalled
+third-party CDN held every page".
+
 ## The game-version toggle used to destroy the page's indexed title
 
 `js/gameVersionManager.js` ran `document.title = 'MK8 Deluxe - Race Tracker'`
