@@ -270,26 +270,35 @@ test('having played a match never projects a player below one who has never play
   // player with no appearances at all, who still carried an untouched price
   // prior. Stated generically: within a position and price band, the players
   // who have appeared cannot rank systematically below those who have not.
-  const gs = state('ft-provisional');
-  const ev = seasonEvidence(gs);
-  if (ev.usable) {
+  //
+  // It runs on the states a plan is actually PRODUCED from: the in-play and
+  // production payloads with the pre-season baseline standing in, which is
+  // what a returning browser (or the shipped baseline) gives them. Without a
+  // baseline the same payloads are refused, which "cleared totals are never
+  // read as last season" pins; a refused state ranks nobody. Until 2026-09-13
+  // this test used the refused state alone, so its assertion never executed.
+  const snapshot = snapshotFrom(state('preseason'), { seasonLabel: '2025/26' });
+  const med = (a) => a.slice().sort((x, y) => x - y)[Math.floor(a.length / 2)];
+  for (const name of ['ft-provisional', 'live-2026-08-22']) {
+    const { bootstrap, fixtures } = payloadFor(name);
+    const gs = buildGameState(bootstrap, fixtures, { baseline: snapshot });
+    const ev = seasonEvidence(gs);
+    assert.equal(ev.usable, true, `${name}: the baseline must make this payload one a plan is produced from`);
     const strength = buildStrength(gs, { asOfGw: 2 });
     const proj = buildProjections({ gameState: gs, strength, gwFrom: 2, gwTo: 2 });
     const played = [], unplayed = [];
     for (const p of gs.players.values()) {
-      if (p.position !== 3 || p.nowCost < 60) continue;
+      if (p.position !== POS.MID || p.nowCost < 60) continue;
       const row = proj.get(p.id, 2);
       if (!row) continue;
       ((p.seasonStarts || 0) > 0 ? played : unplayed).push(row.xPoints);
     }
-    if (played.length && unplayed.length) {
-      const med = (a) => a.slice().sort((x, y) => x - y)[Math.floor(a.length / 2)];
-      assert.ok(med(played) >= med(unplayed),
-        `players who appeared project ${med(played).toFixed(2)} against ${med(unplayed).toFixed(2)} for players who did not`);
-    }
+    // Both populations must exist, or the comparison below is not a comparison.
+    assert.ok(played.length >= 3 && unplayed.length >= 3,
+      `${name}: ${played.length} played and ${unplayed.length} unplayed midfielders at 6.0m or more`);
+    assert.ok(med(played) >= med(unplayed),
+      `${name}: players who appeared project ${med(played).toFixed(2)} against ${med(unplayed).toFixed(2)} for players who did not`);
   }
-  // If the evidence is refused, the property holds because nothing is ranked.
-  assert.ok(true);
 });
 
 /* ========================================================================== */
