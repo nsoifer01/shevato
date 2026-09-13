@@ -34,7 +34,7 @@
 //   DM-10  two items can never share an id
 import {
   APP, recorder, freshIds, iso, item, trip, dbOf,
-  openApp, openTab, readDb, activeTripOf, tpErrors, closePage, evaluate, evalAsync, waitForExpr, standardTrip, pressKey,
+  openApp, openTab, readDb, activeTripOf, openTripIdOf, tpErrors, closePage, evaluate, evalAsync, waitForExpr, standardTrip, pressKey,
   clickSel, setValue, switchView, menuAct, addItemViaUi, escape, ctrlKey,
   toastText, overlayOpenId, sleep, buildShareHash, gotoHard,
 } from './helpers.mjs';
@@ -103,7 +103,7 @@ export async function run({ base, cdpPort }) {
         !!imported && imported.items.length === 1 && after.trips.length === 2,
         `trips=${after.trips.map(x => x.name).join(',')}`, b);
       await t('tp-audit CR-01: the import switched to the imported trip',
-        after.activeTripId === (imported && imported.id), '', b);
+        (await openTripIdOf(b)) === (imported && imported.id), '', b);
       // undo restores the db as STORAGE held it, not as the stale snapshot did
       await ctrlKey(b, 'z', 90);
       await sleep(400);
@@ -166,7 +166,7 @@ export async function run({ base, cdpPort }) {
     await waitForExpr(s, `document.querySelectorAll('#tripSearchResults .ts-row').length > 1`);
     await clickSel(s, `#tripSearchResults .ts-row[data-ts-trip="${tripB.id}"]`, { settle: 700 });
     await t('tp-audit CR-03: the search jump switched trips',
-      (await readDb(s)).activeTripId === tripB.id, '', s);
+      (await openTripIdOf(s)) === tripB.id, '', s);
     await t('tp-audit CR-03: the bulk bar does not follow the jump',
       !(await inSelectMode()), await evaluate(s, `document.getElementById('bulkCount') ? document.getElementById('bulkCount').textContent : 'no bar'`), s);
     await t('tp-audit CR-03: no stray checkboxes on the new board',
@@ -203,7 +203,7 @@ export async function run({ base, cdpPort }) {
     if (hasLink) {
       await clickSel(s, '#issuesList button[data-trip]', { settle: 700 });
       await t('tp-audit CR-03b: the link switched trips',
-        (await readDb(s)).activeTripId === overlapB.id, '', s);
+        (await openTripIdOf(s)) === overlapB.id, '', s);
       await t('tp-audit CR-03b: and dropped the selection with it',
         (await evaluate(s, `!!document.getElementById('bulkBar')`)) === false, '', s);
     }
@@ -257,9 +257,10 @@ export async function run({ base, cdpPort }) {
       a = await openApp(cdpPort, base, { db: dbOf([pk1, pk2], pk1.id) });
       b = await openTab(cdpPort, base, {});
       await menuAct(b, 'packing', 700);
-      // the other tab switches the active trip under the open dialog
+      // the other tab switches trips while the dialog is open (remembered on
+      // the device; it no longer moves this tab, which the dialog must not care about)
       await evaluate(a, `(()=>{const s=document.getElementById('tripSelect'); s.value=${JSON.stringify(pk2.id)}; s.dispatchEvent(new Event('change',{bubbles:true})); return 1})()`);
-      await waitForExpr(b, `JSON.parse(localStorage.getItem('trip-planner:v1')).activeTripId === ${JSON.stringify(pk2.id)}`);
+      await waitForExpr(b, `localStorage.getItem('trip-planner:open-trip') === ${JSON.stringify(pk2.id)}`);
       await setValue(b, '#packingAddInput', 'Passport holder');
       await evaluate(b, `document.getElementById('packingAddForm').requestSubmit()`);
       await sleep(500);

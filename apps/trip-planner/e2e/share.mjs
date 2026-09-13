@@ -9,7 +9,7 @@
 // without needing clipboard access.
 import {
   APP, LS_KEY, recorder, freshIds, iso, item, trip, dbOf, standardTrip,
-  openApp, readDb, overlayOpenId, tpErrors, openMenu, menuState,
+  openApp, readDb, openTripIdOf, overlayOpenId, tpErrors, openMenu, menuState,
   addItemViaUi, buildShareHash, expandTimeline, gotoHard,
   closePage, evaluate, clickSel, setValue, pressKey, sleep, waitForExpr,
 } from './helpers.mjs';
@@ -102,7 +102,7 @@ export async function run({ base, cdpPort }) {
     const imported = db.trips.find(x => x.name === 'Strangers weekend');
     await t('tp-share J: import lands the trip in local data', !!imported && imported.items.length === 3, JSON.stringify(db.trips.map(x => x.name)), s);
     await t('tp-share J: import keeps the owner trips intact', !!db.trips.find(x => x.name === 'My own plans'), '', s);
-    await t('tp-share J: imported trip becomes the active one', db.activeTripId === imported.id, '', s);
+    await t('tp-share J: imported trip becomes the active one', (await openTripIdOf(s)) === imported.id, '', s);
     await t('tp-share J: share fragment cleared after import', await evaluate(s, `!location.hash.toLowerCase().includes('share=')`), '', s);
     await t('tp-share J: imported trip is editable', await evaluate(s, `(()=>{const b=document.getElementById('addBtn'); return !!b && b.offsetParent !== null && !b.disabled})()`), '', s);
     await addItemViaUi(s, { type: 'note', title: 'My note on their plan', start: iso(71) });
