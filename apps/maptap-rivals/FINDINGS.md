@@ -108,6 +108,19 @@ Things worth knowing about it:
   boot rewrite. Normalising on arrival is what makes the account converge.
   It is idempotent - afterwards no stored row carries `cities`, so the check
   is false and nothing is written.
+- **Never on another tab's `storage` event (fixed 2026-09-13).** The
+  migration used to run on every `storage` event for the log or the day map,
+  which includes genuine cross-tab events. localStorage is last-writer-wins
+  across tabs, and a hidden or busy tab can still be handling an event older
+  than a write another tab has since made, so the rewrite re-persisted that
+  tab's stale view over the newer data. The browser suite caught it: the long
+  lived main page, hidden, was still handling the UTC+12 section's seed 27 ms
+  after the sync section seeded its own games, and wrote the UTC+12 games back
+  over them. Now `onExternalStorage` migrates only for an untrusted event,
+  which is this page's own sync delivery bridged from `localStorageSync`; the
+  tab that made a cross-tab write normalises it itself. Pinned in
+  tests/app-helpers.test.js ("a cross-tab storage event reloads the log but
+  never rewrites it").
 - **Losing the day map costs geography, never games.** The two keys are
   independent revisions under per-key last-write-wins, so one can be dropped
   (see the site-level "sync is per-key LWW" finding). A game row survives

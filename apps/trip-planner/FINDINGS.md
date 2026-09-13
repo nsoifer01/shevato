@@ -333,6 +333,17 @@ and coordinate have different rules and must never be given one lifetime.
 - Known remaining edge (documented, not fixed): a repair write during remote
   apply is swallowed by the sync echo lock, and the next reconcile can fire a
   spurious `remote` event that clears undo history. Rare, self-heals.
+- **The floor trip is a placeholder, and an early edit never overwrites unread
+  trips (2026-09-13, audit T-3).** On a fresh device `ensureTrip()` saves "My
+  trip" at boot, before any user gesture, so the sync engine records it as the
+  app's own write: at the first sign-in the account's trips replace it with no
+  conflict notice and no recovery copy. An edit made after sign-in but before
+  the first cloud snapshot arrived used to be flushed at 500 ms and replace
+  every trip in the account with the floor. The engine now sends nothing until
+  that snapshot is reconciled; the cloud's trips stay live, and the early edit
+  is kept as a recovery copy with a conflict notice (with no agreed base, the
+  cloud is the established state). Engine side: root FINDINGS, "The account
+  boundary".
 
 ## Money invariants
 

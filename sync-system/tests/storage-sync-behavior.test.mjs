@@ -407,22 +407,74 @@ test('local-only keys are not uploaded into a different account', async (t) => {
   // Shared browser: person A signs out (synced keys deliberately stay in
   // localStorage), person B signs in. B's cloud document does not have A's
   // keys, so the initial merge used to upload A's data into B's account.
-  // The device records which uid the local copy belongs to; here it belongs
-  // to someone other than the signed-in user.
-  backingStore.set('shevato:sync-owner', 'person-A');
-  t.after(() => backingStore.delete('shevato:sync-owner'));
-
-  const h = await startHarness(t, ['owned'], { emitInitial: false });
-  const [k] = h.keys;
+  //
+  // Changed 2026-09-13 (audit S-2). This used to seed only the device-wide
+  // `shevato:sync-owner` marker and write A's value AFTER the session had
+  // started, then assert the initial merge skipped it. Ownership is now the
+  // namespace's revision record, which A's own session stamps, and it is
+  // settled before B's session exists. A page whose storage held A's data when
+  // it loaded has that data in its apps' memory, so it parks what A had not
+  // synced, clears the rest, and reloads before syncing for B at all. The
+  // reloaded page (a second engine) is covered in sync-account-boundary.test.mjs.
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const namespace = `behaviorNs${++nsCounter}`;
+  const k = `${namespace}:owned`;
   backingStore.set(k, '"person A data"');
+  backingStore.set(`shevato:sync-revs:${namespace}`, JSON.stringify({
+    uid: 'person-A',
+    keys: { [k]: { rev: 3, hash: hashValue('person A data'), updatedAt: 1, dirty: false } }
+  }));
+  const reloads = [];
+  const location = globalThis.window.location;
+  globalThis.window.location = { reload: () => reloads.push(namespace) };
+  t.after(() => { globalThis.window.location = location; });
 
-  const before = h.setDocCalls().length;
-  h.emit({}, { fromCache: false });
+  const handle = mod.startStorageSync({ namespace, keys: [k] });
+  t.after(() => handle.stop());
+  await settle();
+  t.mock.timers.tick(5000);
   await settle();
 
-  const uploaded = h.setDocCalls().slice(before).filter((c) => c.payload?.data?.[k]);
-  assert.equal(uploaded.length, 0,
+  assert.deepEqual(reloads, [namespace], 'the page that loaded person A\'s data reloads before syncing');
+  assert.equal(activeListeners(namespace).length, 0, 'and starts no session for this account until it has');
+  assert.equal(backingStore.has(k), false, "person A's copy is no longer live");
+  assert.equal(backingStore.has(`shevato:sync-parked:${namespace}`), false,
+    "it was already in person A's cloud, so nothing needed keeping");
+  assert.equal(firestoreFakes().setDocCalls.filter((c) => c.payload?.data?.[k]).length, 0,
     "the previous account's local keys must not be uploaded into this account");
+});
+
+test('legacy: data another account synced before ownership was recorded per namespace is not uploaded either', async (t) => {
+  // A device that synced before 2026-09-13 has an agreed base and the old
+  // device-wide marker, but no ownership stamp on the namespace. The base
+  // proves the data was synced; the marker names by whom. It cannot be shown to
+  // be in that account's cloud, so it is kept for it.
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const namespace = `behaviorNs${++nsCounter}`;
+  const k = `${namespace}:legacy`;
+  backingStore.set(k, '"synced by person A long ago"');
+  backingStore.set(`shevato:sync-base:${namespace}`, JSON.stringify({
+    [k]: { kind: 'opaque', entries: null, hash: hashValue('synced by person A long ago') }
+  }));
+  backingStore.set('shevato:sync-owner', 'person-A');
+  const location = globalThis.window.location;
+  globalThis.window.location = { reload: () => {} };
+  t.after(() => {
+    globalThis.window.location = location;
+    backingStore.delete('shevato:sync-owner');
+    backingStore.delete(`shevato:sync-parked:${namespace}`);
+  });
+
+  const handle = mod.startStorageSync({ namespace, keys: [k] });
+  t.after(() => handle.stop());
+  await settle();
+  t.mock.timers.tick(5000);
+  await settle();
+
+  assert.equal(firestoreFakes().setDocCalls.filter((c) => c.payload?.data?.[k]).length, 0, 'nothing of it is uploaded');
+  const parked = JSON.parse(backingStore.get(`shevato:sync-parked:${namespace}`));
+  assert.equal(parked.owners['person-A'].keys[k].raw, '"synced by person A long ago"',
+    'kept on this device for the account that synced it');
 });
 
 test('local-only keys still upload for the account that owns them', async (t) => {

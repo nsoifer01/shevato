@@ -422,13 +422,27 @@ test('an edit inside the debounce window survives a stop: restored dirty, re-enq
   assert.equal(backingStore.get(k), '"v2"', 'and the older cloud copy did not overwrite it');
 });
 
-test('a value that changed after its dirty record is NOT uploaded on restart (that is signed-out work, not a lost write)', async (t) => {
-  // The guard that keeps re-enqueueing safe. The dirty record says "v2 never
-  // landed", but localStorage now holds something else, written while no
-  // session was running: typically a default or placeholder an app saved
-  // while signed out. Uploading it would replace the agreed cloud value with
-  // it. It stays dirty (so a moved cloud still conflicts and merges rather
-  // than overwriting it) and is left to the signed-out-work rules (audit S-4).
+// Changed 2026-09-13 (audit S-4). This used to be one test, "a value that
+// changed after its dirty record is NOT uploaded on restart": ANY drift was
+// held back, because nothing could tell a person's signed-out edit from an app
+// saving its own default, and uploading a default could replace agreed cloud
+// data. The engine now records, for each write no session owns, whether the
+// page had seen a user gesture. So the two cases are two tests: a person's work
+// goes up, an app's own rewrite gives way to the cloud.
+
+/** Make the next writes look like an app's own boot writes: no user gesture yet. */
+function withNoUserGesture(t) {
+  const descriptor = Object.getOwnPropertyDescriptor(globalThis, 'navigator');
+  Object.defineProperty(globalThis, 'navigator', {
+    value: { userActivation: { hasBeenActive: false } }, configurable: true, writable: true
+  });
+  t.after(() => {
+    if (descriptor) Object.defineProperty(globalThis, 'navigator', descriptor);
+    else delete globalThis.navigator;
+  });
+}
+
+test('signed-out work written over a stranded edit is uploaded as new work when the account signs back in', async (t) => {
   clearResponders(t);
   const h = await startHarness(t, ['drift']);
   const [k] = h.keys;
@@ -437,13 +451,37 @@ test('a value that changed after its dirty record is NOT uploaded on restart (th
   t.mock.timers.tick(500); await settle();
   localStorage.setItem(k, '"v2"');
   await settle();
-  h.stop();
-  backingStore.set(k, '"placeholder written while signed out"');
+  h.stop();                                           // v2 is stranded, dirty
+  localStorage.setItem(k, '"v3 made while signed out"'); // a person's edit, no session
 
   await h.restart({ [k]: { value: 'v1', rev: 1, hash: hashValue('v1'), updatedAt: Date.now() } });
   t.mock.timers.tick(5000); await settle();
-  assert.equal(h.writes().length, 1, 'only the original v1 write: the drifted value is not uploaded');
-  assert.equal(h.rev(k).dirty, true, 'but it is still defended as local work');
+  const writes = h.writes();
+  assert.equal(writes.length, 2, 'v1, then the signed-out work');
+  assert.equal(writes[1].payload.data[k].value, 'v3 made while signed out');
+  assert.equal(writes[1].payload.data[k].rev, 3, 'a new revision above the stranded rev 2');
+  assert.equal(h.rev(k).dirty, false);
+});
+
+test('an app rewriting its own value while signed out (no user gesture) is not uploaded, and the cloud replaces it', async (t) => {
+  clearResponders(t);
+  const h = await startHarness(t, ['placeholder']);
+  const [k] = h.keys;
+
+  localStorage.setItem(k, '"v1"');
+  t.mock.timers.tick(500); await settle();
+  localStorage.setItem(k, '"v2"');
+  await settle();
+  h.stop();                                           // v2 stranded, dirty
+  withNoUserGesture(t);
+  localStorage.setItem(k, '"default the app wrote at boot"');
+
+  await h.restart({ [k]: { value: 'v1', rev: 1, hash: hashValue('v1'), updatedAt: Date.now() } });
+  t.mock.timers.tick(5000); await settle();
+  assert.equal(h.writes().length, 1, 'only the original v1 write: the default is never uploaded');
+  assert.equal(backingStore.get(k), 'v1', 'the account\'s value replaces the default');
+  assert.equal(h.rev(k).dirty, false);
+  assert.equal(h.events('syncConflict').length, 0, 'and nobody is told about a conflict that is not one');
 });
 
 test('a write the cloud already accepted is not resent after a restart', async (t) => {

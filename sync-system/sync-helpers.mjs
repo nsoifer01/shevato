@@ -416,7 +416,7 @@ export function splitIntoChunks(serialised, chunkChars) {
  * Group measured payload entries into as few flush batches as possible
  * without any batch crossing `maxBytes`.
  *
- * A flush can carry several keys, and `uploadLocalOnlyKeys` carries every
+ * A flush can carry several keys, and the initial merge queues every
  * key an app owns at once. Per-key chunking bounds each individual entry,
  * but nothing bounds their sum, so the batch is what actually has to fit
  * inside one Firestore commit. Splitting is safe here precisely because the
@@ -517,10 +517,11 @@ export function recordIndex(value) {
  * @param {Record<string,string>|null} baseIndex id -> hash they last agreed on
  * @param {*} localValue
  * @param {*} remoteValue
+ * @param {{preferRemote?: boolean}} [options] see mergeValues
  * @returns {{merged: Array, conflicts: string[]} | null} null when the shapes
  *          do not qualify for a record merge.
  */
-export function mergeRecordCollections(baseIndex, localValue, remoteValue) {
+export function mergeRecordCollections(baseIndex, localValue, remoteValue, options = {}) {
   const localIndex = recordIndex(localValue);
   const remoteIndex = recordIndex(remoteValue);
   if (!localIndex || !remoteIndex) return null;
@@ -544,9 +545,10 @@ export function mergeRecordCollections(baseIndex, localValue, remoteValue) {
       if (bh !== undefined && lh === bh) return remoteById.get(id);   // remote edited
       if (bh !== undefined && rh === bh) return localById.get(id);    // local edited
       // Both edited, or no base to tell. Deterministic on the content hash
-      // so both devices choose the same record.
+      // so both devices choose the same record, unless the caller knows there
+      // was never an agreed state at all (see mergeValues `preferRemote`).
       conflicts.push(id);
-      return rh > lh ? remoteById.get(id) : localById.get(id);
+      return (options.preferRemote || rh > lh) ? remoteById.get(id) : localById.get(id);
     }
     if (inLocal) return inBase ? null : localById.get(id);            // deleted remotely / added locally
     return inBase ? null : remoteById.get(id);                        // deleted locally / added remotely
@@ -633,9 +635,10 @@ export function valueIndex(value) {
  * @param {Record<string,string>|null} baseEntries key -> hash they last agreed on
  * @param {object} localValue
  * @param {object} remoteValue
+ * @param {{preferRemote?: boolean}} [options] see mergeValues
  * @returns {{merged: object, conflicts: string[]} | null}
  */
-export function mergeMaps(baseEntries, localValue, remoteValue) {
+export function mergeMaps(baseEntries, localValue, remoteValue, options = {}) {
   const localIndex = mapIndex(localValue);
   const remoteIndex = mapIndex(remoteValue);
   if (!localIndex || !remoteIndex) return null;
@@ -657,7 +660,7 @@ export function mergeMaps(baseEntries, localValue, remoteValue) {
       if (bh !== undefined && lh === bh) return { take: 'remote' };   // remote edited
       if (bh !== undefined && rh === bh) return { take: 'local' };    // local edited
       conflicts.push(key);
-      return { take: rh > lh ? 'remote' : 'local' };
+      return { take: (options.preferRemote || rh > lh) ? 'remote' : 'local' };
     }
     if (inLocal) return inBase ? null : { take: 'local' };            // deleted remotely / added locally
     return inBase ? null : { take: 'remote' };                        // deleted locally / added remotely
@@ -693,9 +696,19 @@ export function mergeMaps(baseEntries, localValue, remoteValue) {
  *        'records' form written before maps were mergeable.
  * @param {*} localValue
  * @param {*} remoteValue
+ * @param {{preferRemote?: boolean}} [options] `preferRemote` settles an entry
+ *        BOTH sides hold with different content in favour of the remote side,
+ *        instead of the content-hash tie-break. The engine passes it only when
+ *        there has never been an agreed base for the key: a first
+ *        reconciliation, where the cloud is the account's established state
+ *        and this device's copy was made without ever seeing it (signed-out
+ *        work, or an edit made before the first server snapshot). The losing
+ *        local entries are not discarded; the caller keeps the local value as
+ *        a recovery copy whenever `conflicts` is non-empty. Entries only one
+ *        side holds are unaffected, so nothing is dropped structurally.
  * @returns {{merged: *, conflicts: string[]} | null}
  */
-export function mergeValues(base, localValue, remoteValue) {
+export function mergeValues(base, localValue, remoteValue, options = {}) {
   if (localValue === null || localValue === undefined) return null;
   if (remoteValue === null || remoteValue === undefined) return null;
 
@@ -710,8 +723,8 @@ export function mergeValues(base, localValue, remoteValue) {
   const entries = normalised && normalised.kind === localKind.kind ? normalised.entries : null;
 
   return localKind.kind === 'records'
-    ? mergeRecordCollections(entries, localValue, remoteValue)
-    : mergeMaps(entries, localValue, remoteValue);
+    ? mergeRecordCollections(entries, localValue, remoteValue, options)
+    : mergeMaps(entries, localValue, remoteValue, options);
 }
 
 /**

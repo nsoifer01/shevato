@@ -677,3 +677,33 @@ test('mergeValues: a legacy base is honoured, so an upgrade does not resurrect d
     'b was deleted remotely and stays deleted'
   );
 });
+
+// ---------- preferRemote: a first reconciliation with no agreed base ----------
+// Account boundary round (2026-09-13, audits S-4 and T-3). With no base at all,
+// an entry both sides hold with different content was settled on the content
+// hash, which is arbitrary: a device's never-reconciled copy could replace the
+// account's established record. The engine asks for the remote side instead,
+// and keeps the local value as a recovery copy.
+
+test('mergeValues preferRemote: a record both sides hold differently takes the remote copy and is reported', () => {
+  const local = [{ id: 'x', v: 'local' }, { id: 'only-local', v: 1 }];
+  const remote = [{ id: 'x', v: 'remote' }, { id: 'only-remote', v: 2 }];
+  for (const [a, b] of [[local, remote]]) {
+    const r = mergeValues(null, a, b, { preferRemote: true });
+    assert.deepEqual(r.merged.find((e) => e.id === 'x'), { id: 'x', v: 'remote' });
+    assert.deepEqual(r.conflicts, ['x']);
+    assert.deepEqual(r.merged.map((e) => e.id).sort(), ['only-local', 'only-remote', 'x'], 'one-sided entries are still kept');
+  }
+});
+
+test('mergeValues preferRemote: a map field both sides hold differently takes the remote value', () => {
+  const r = mergeValues(null, { units: 'lb', mine: 1 }, { units: 'kg', theirs: 2 }, { preferRemote: true });
+  assert.deepEqual(r.merged, { units: 'kg', theirs: 2, mine: 1 });
+  assert.deepEqual(r.conflicts, ['units']);
+});
+
+test('mergeValues without the option keeps the content-hash tie-break both devices agree on', () => {
+  const a = mergeValues(null, [{ id: 'x', v: 1 }], [{ id: 'x', v: 2 }]);
+  const b = mergeValues(null, [{ id: 'x', v: 2 }], [{ id: 'x', v: 1 }]);
+  assert.deepEqual(a.merged, b.merged, 'the same record wins whichever side is local');
+});

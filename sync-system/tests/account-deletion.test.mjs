@@ -337,3 +337,24 @@ test('every Firebase SDK import in the project is pinned to one version', () => 
   }
   assert.equal(versions.size, 1, `expected a single Firebase version, found: ${[...versions].join(', ')}`);
 });
+
+
+// The sync modules load async (#535): a page still loading when this device's
+// copy is cleared registers afterwards, and must learn the data moved.
+test('the local copy is marked as moving after the cloud is erased and before it is cleared', async () => {
+  const h = setup();
+  await deleteAccount({ confirmation: 'DELETE', password: 'pw' });
+
+  const calls = h.calls();
+  const bump = calls.indexOf('bumpOwnershipEpochs');
+  assert.ok(bump > -1, 'the local copy was never marked as moving');
+  const lastErase = calls.map((c, i) => (c.startsWith('eraseCloudData:') ? i : -1)).reduce((a, b) => Math.max(a, b), -1);
+  assert.ok(bump > lastErase, 'nothing local moves while the cloud still holds the account');
+  assert.ok(bump < calls.findIndex(c => c.startsWith('forgetAccountLocalState:')), 'marked before the account is forgotten');
+});
+
+test('a failed deletion leaves the local copy unmarked', async () => {
+  const h = setup({ failures: { gymTrackerApp: 'permission-denied' } });
+  await deleteAccount({ confirmation: 'DELETE', password: 'pw' });
+  assert.equal(h.calls().includes('bumpOwnershipEpochs'), false);
+});

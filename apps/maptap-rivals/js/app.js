@@ -8026,7 +8026,13 @@
       // A device still on the old format, or the Firestore document as it
       // stood before this migration, pushes rows with the geography inline.
       // Normalise on arrival so the fat copy is not what gets synced onward.
-      migrateInlineCities();
+      // Only on this page's own sync delivery: the event bridged from
+      // `localStorageSync` below is synthetic, so untrusted. A genuine
+      // cross-tab event is another tab's write, which that tab normalises
+      // itself. Rewriting it here re-persists THIS tab's view of storage, and
+      // a hidden or busy tab can still be handling an event older than a
+      // write it would then overwrite.
+      if (e.isTrusted === false) migrateInlineCities();
     }
     else if (e.key === KEY.ME) {
       state.me = loadString(KEY.ME, 'Me');
@@ -8399,6 +8405,7 @@
       loadGamesFromStorage,
       storedGamesAreInline,
       migrateInlineCities,
+      onExternalStorage,
       isValidISODate,
       localISO,
       addDaysISO,

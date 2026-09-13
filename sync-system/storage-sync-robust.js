@@ -9,6 +9,7 @@ import {
   serverTimestamp,
   deleteField,
   deleteDoc,
+  waitForPendingWrites,
   collection,
   collectionGroup,
   getDocs,
@@ -95,11 +96,35 @@ const MAX_INLINE_VALUE_CHARS = 128 * 1024;
 const CHUNK_CHARS = 128 * 1024;
 const CHUNK_COLLECTION = 'chunks';
 
-// Marks which account the synced localStorage keys on this device belong to,
-// so a second account signing in on a shared browser does not upload the
-// first account's data into its own cloud document. Not part of any
-// namespace's key set, so it never syncs itself.
+// LEGACY device-wide owner marker, written before ownership was recorded per
+// namespace (see lineageOf). Only read now, as evidence for local data this
+// device synced before 2026-09-13. Not part of any namespace's key set.
 const SYNC_OWNER_KEY = 'shevato:sync-owner';
+// Another account's unsynced local work, kept on this device when a different
+// account starts syncing the same namespace here (2026-09-12 audit S-2). One
+// record per namespace with one slot per owning account, so switching back and
+// forth replaces rather than accumulates. Never synced, never uploaded.
+const SYNC_PARKED_KEY_PREFIX = 'shevato:sync-parked:';
+// Whether each registered key's local value was produced by a person or only by
+// an app writing its own defaults, recorded while no session owns the key
+// (audit S-4). Never synced.
+const SYNC_LOCAL_WORK_KEY = 'shevato:sync-local-work';
+// The account-deletion latch (audit S-5), shared by every tab of the origin and
+// read synchronously before anything is started, merged or sent.
+const SYNC_DELETION_KEY = 'shevato:sync-deletion';
+// { namespace: token }, changed before local data is moved for an account.
+const SYNC_OWNERSHIP_EPOCH_KEY = 'shevato:sync-ownership-epoch';
+// The owner of local data some account synced before per-namespace ownership
+// existed, when that account cannot be named. Never equal to a real uid.
+const UNKNOWN_OWNER = '?';
+// A deletion whose tab has stopped confirming it is alive for this long is
+// abandoned (the tab was closed or crashed), so it cannot disable sync for the
+// account forever. Only consulted where no Web Locks API can answer exactly.
+const DELETION_HEARTBEAT_MS = 2000;
+const DELETION_STALE_MS = 30000;
+// Deleted accounts stay latched (a stale tab can hold a still-valid ID token
+// for up to an hour after the account is gone); only the most recent few.
+const MAX_DELETED_ACCOUNTS_REMEMBERED = 10;
 // Where the three-way merge base and the conflict copies live. All three are
 // plain keys outside every namespace's key set, so none of them is ever
 // itself synced and notifyLocalChange ignores them.
@@ -240,6 +265,34 @@ class StorageSyncManager {
     // Per manager, not per session, so a sign-out and back in on the same
     // page still retires the message the page is showing.
     this.rejectedWrites = new Map(); // namespace -> Set<key>
+    // ---- the account boundary (audits S-2, S-4, S-5, T-3) -----------------
+    // Registered key -> namespace, known before anyone signs in, so a write no
+    // session owns can still be attributed (signed-out work provenance).
+    this.localKeyNamespaces = new Map();
+    // Which account's data this page's apps may hold in memory, per namespace:
+    // { owner, hadData }. Recorded when the page loads (what it read from
+    // storage) and whenever a session runs here (what sync delivered). A page
+    // holding one account's data must not sync for a different one unreloaded.
+    this.bootLineage = new Map();
+    // Provenance of writes made before app-sync-init registered its keys.
+    this.pendingLocalWork = new Map();
+    // Signed-out writes not yet recorded: key -> { value, work, owner }. They
+    // are hashed and recorded in one batch after the write, never inside it:
+    // parsing and hashing a multi-megabyte log on every setItem is a cost a
+    // signed-out page never used to pay. Anything that reads provenance
+    // records the batch first (flushUnsessionedWrites).
+    this.unsessionedWrites = new Map();
+    this.unsessionedFlushTimer = null;
+    // The deletion this tab is running: { uid, id }.
+    this.deletionLatch = null;
+    this.deletionHeartbeat = null;
+    this.releaseDeletionLock = null;
+    // Flushes on the wire, so account deletion can wait for them to land.
+    this.activeFlushes = new Set();
+    // Namespaces this page must reload for, with the account whose data the
+    // page loaded. Writes the page's apps make while waiting are that
+    // account's, and are recorded as such (noteUnsessionedWrite).
+    this.foreignPageNamespaces = new Map();
     
     // Check if immediate sync override is already installed
     if (window.immediateDebug) {
@@ -251,6 +304,7 @@ class StorageSyncManager {
     this.installCrossTabChannel();
     this.installVisibilityHook();
     this.installFlushTriggers();
+    this.installAccountBoundaryListeners();
   }
 
   /**
@@ -365,7 +419,10 @@ class StorageSyncManager {
     // mobile Safari and for pages entering the back/forward cache. setDoc is
     // reached within this event's microtask checkpoint, after which
     // Firestore's persistent cache owns the write.
-    window.addEventListener('pagehide', () => { this.flushPendingNow(); });
+    window.addEventListener('pagehide', () => {
+      this.flushUnsessionedWrites();
+      this.flushPendingNow();
+    });
     window.addEventListener('online', () => {
       for (const [, state] of this.syncStates) this.resumeParkedWrites(state);
     });
@@ -389,7 +446,9 @@ class StorageSyncManager {
   flushPendingNow() {
     const flights = [];
     for (const [, state] of this.syncStates) {
-      if (state.stopped || (!state.writeTimer && !state.retryTimer)) continue;
+      // Never before the initial merge (T-3): a write that has not met the
+      // cloud yet waits, dirty and persisted, for the next session.
+      if (state.stopped || !state.initialMergeDone || (!state.writeTimer && !state.retryTimer)) continue;
       if (state.writeTimer) {
         clearTimeout(state.writeTimer);
         state.writeTimer = null;
@@ -408,7 +467,7 @@ class StorageSyncManager {
   flushAllNow() {
     const flights = [];
     for (const [, state] of this.syncStates) {
-      if (state.stopped) continue;
+      if (state.stopped || !state.initialMergeDone) continue;
       if (state.writeTimer) {
         clearTimeout(state.writeTimer);
         state.writeTimer = null;
@@ -427,47 +486,51 @@ class StorageSyncManager {
   }
 
   /**
-   * Put this device's unacknowledged writes from an earlier session back in
-   * the queue. Runs at the first SERVER-confirmed snapshot, not at start: by
-   * then applyRemoteChange has compared each dirty key with the cloud, so a
-   * cloud that moved while this device was away is merged (and the merge
-   * queued) instead of being overwritten blind. A key already queued is left
-   * alone.
+   * Queue every write this device holds that the cloud has not accepted.
+   * Runs once, at the end of the initial merge (completeInitialMerge), after
+   * every key has already been compared with the cloud, so a cloud that moved
+   * while this device was away was merged (and the merge queued) instead of
+   * being overwritten blind. A key already queued is left alone.
    *
-   * Only a key whose value is still exactly the dirty write that was
-   * persisted is sent. A value that DRIFTED since (changed while no session
-   * was running, e.g. a default an app wrote while signed out) stays dirty
-   * for conflict defence but is not uploaded here: that is the signed-out
-   * local work question (audit S-4), and uploading it could replace agreed
-   * cloud data with a placeholder. A write the cloud acknowledged is clean
-   * on disk and is never resent.
+   * Two kinds of dirty key, and the revision each goes at:
+   *   - the exact write that never landed (its value still hashes to the dirty
+   *     record persisted last session) goes at that write's own revision;
+   *   - anything newer (signed-out work on this account's data, or a value
+   *     created on this device that the cloud has never had) is a new revision
+   *     on top of the last one this device reached.
+   * A value an app only wrote for itself was never marked dirty in the first
+   * place (see restoreRevisions and synthesizeLocalWork), so it is not here.
+   * A write the cloud acknowledged is clean and is never resent, and neither
+   * is a dirty value the cloud turns out to hold already.
    */
   requeueDirtyKeys(state) {
     if (!state || state.stopped) return;
-    const persisted = state.restoredRevisions;
-    if (!persisted) return;
-    // Same account guard uploadLocalOnlyKeys applies: never widen what one
-    // account's session can send from another account's leftovers.
-    const owner = this.syncedDataOwner();
-    if (owner && owner !== state.userId) return;
     const queue = this.writeQueues.get(state.namespace);
     if (!queue) return;
+    const persisted = state.restoredRevisions || {};
 
     let added = 0;
     for (const key of state.keys) {
       const rev = this.localRevisions.get(key);
-      const entry = persisted[key];
       if (!rev || !rev.dirty || queue.has(key)) continue;
-      if (!entry || !entry.dirty || String(entry.hash || '') !== rev.hash) continue;
       const value = this.readLocalValue(key);
+      const hash = hashValue(value);
+      const seen = String(this.lastRemoteSeen.get(key) || '');
+      if (seen && seen.slice(seen.indexOf(':') + 1) === hash) {
+        this.localRevisions.set(key, { ...rev, hash, dirty: false });
+        continue;
+      }
+      const entry = persisted[key];
+      const unsentWrite = !!(entry && entry.dirty && String(entry.hash || '') === hash);
+      const nextRev = (Number(rev.rev) || 0) + (unsentWrite ? 0 : 1);
       queue.set(key, {
         value,
-        // The revision that never landed, not a new one.
-        rev: Number(rev.rev) || 0,
+        rev: nextRev,
         updatedAt: Date.now(),
         deleted: value === null,
-        hash: rev.hash
+        hash
       });
+      this.localRevisions.set(key, { ...rev, rev: nextRev, hash, dirty: true });
       added++;
     }
     if (added) this.armFlushTimer(state, DEBOUNCE_MS);
@@ -545,8 +608,12 @@ class StorageSyncManager {
     
     // Set up the sync manager for immediate override to use
     window.syncManager = {
-      processChange: (key, value) => {
-        this.notifyLocalChange(key, value);
+      // `meta.work` comes with a boot-window write sync-immediate.js buffered:
+      // the gesture state when the write was made, which a replay after the
+      // (async) sync modules load would otherwise read too late.
+      processChange: (key, value, meta) => {
+        const work = meta && typeof meta.work === 'boolean' ? meta.work : undefined;
+        this.notifyLocalChange(key, value, { work });
       }
     };
     
@@ -588,7 +655,7 @@ class StorageSyncManager {
     // Listen for storage events (cross-tab)
     window.addEventListener('storage', (e) => {
       if (e.key) {
-        this.notifyLocalChange(e.key, e.newValue);
+        this.notifyLocalChange(e.key, e.newValue, { crossTab: true });
       }
     });
 
@@ -598,17 +665,27 @@ class StorageSyncManager {
   /**
    * Notify all sync states about a localStorage change
    */
-  notifyLocalChange(key, value) {
+  notifyLocalChange(key, value, { crossTab = false, work } = {}) {
     // Check if we're in a sync lock (prevent echo)
     if (this.syncLocks.get(key)) {
       return;
     }
 
     // Find all sync states that care about this key
-    for (const [namespace, state] of this.syncStates) {
+    let owned = false;
+    for (const [, state] of this.syncStates) {
       if (state.keys.has(key) && !state.stopped) {
+        owned = true;
         this.queueWrite(state, key, value);
       }
+    }
+    // No session owns it (signed out, or before sync starts): remember whether
+    // a person or an app produced it, which is the question the first sign-in
+    // on this device has to answer (audit S-4). The engine's own bookkeeping
+    // keys are never app data, and another tab's write is that tab's to
+    // record: its gesture, its page, and it already has.
+    if (!owned && !crossTab && typeof key === 'string' && !key.startsWith('shevato:')) {
+      this.noteUnsessionedWrite(key, value, work);
     }
   }
 
@@ -691,6 +768,13 @@ class StorageSyncManager {
     this.registerKeyPolicies(keys, policies);
 
     const existing = this.syncStates.get(namespace);
+    // S-5: an account being deleted (or already deleted) gets no session in
+    // any tab, whatever re-entered initAppSync.
+    if (this.isAccountDeletionLatched(user.uid)) {
+      if (existing) this.stopSync(namespace);
+      console.warn(`Sync for ${namespace} not started: this account is being deleted`);
+      return this.inertHandle(namespace);
+    }
     if (existing && !existing.stopped
         && existing.userId === user.uid
         && existing.useFirestore === useFirestore
@@ -707,6 +791,24 @@ class StorageSyncManager {
     if (existing) {
       this.stopSync(namespace);
     }
+
+    // S-2 / S-4: whose local data this is, settled before a session exists.
+    this.registerLocalNamespaces([{ namespace, keys }]);
+    const boundary = this.prepareNamespaceForUser(namespace, keys, user.uid);
+    if (boundary.hold) {
+      console.warn(`Sync for ${namespace} is paused on this device: ${boundary.hold}`);
+      this.notifyAppSyncHeld(namespace, boundary.hold);
+      return this.inertHandle(namespace);
+    }
+    if (boundary.reload) {
+      this.requestReload();
+      return this.inertHandle(namespace);
+    }
+    // From now on this page's apps may hold this account's data for the
+    // namespace, however empty the page was when it loaded: the session is
+    // about to deliver it. A later session for a different account on this
+    // same page must reload first, exactly as if the page had loaded with it.
+    this.bootLineage.set(namespace, { owner: user.uid, hadData: true });
 
     // Initialize sync state
     const state = {
@@ -728,7 +830,15 @@ class StorageSyncManager {
       stopped: false,
       retryCount: 0,
       lastSyncTime: Date.now(),
-      initialMergeDone: false
+      // T-3: the first server-confirmed snapshot has arrived and is being
+      // reconciled (initialMergeStarted), and has been reconciled
+      // (initialMergeDone). Nothing is sent before the second is true.
+      initialMergeStarted: false,
+      initialMergeDone: false,
+      // Keys written before the initial merge: the revision each had first,
+      // and whether any of those writes followed a user gesture.
+      preMergePrior: new Map(),
+      preMergeWork: new Map()
     };
 
     this.syncStates.set(namespace, state);
@@ -741,6 +851,8 @@ class StorageSyncManager {
     // Before the listener attaches, so the first snapshot is judged against
     // the revisions this device actually reached, not against zero.
     this.restoreRevisions(state);
+    this.synthesizeLocalWork(state);
+    this.persistRevisions(namespace);
 
     // Start Firebase listener — the listener's first snapshot doubles
     // as the initial merge, so we no longer need a separate `getDoc`
@@ -814,9 +926,25 @@ class StorageSyncManager {
         { includeMetadataChanges: true },
         (snapshot) => {
           if (state.stopped) return;
+          // S-5: never merge, and never answer with an upload, a snapshot of an
+          // account that is being deleted, however this listener got here.
+          if (this.isAccountDeletionLatched(state.userId)) {
+            this.stopSync(state.namespace);
+            return;
+          }
+          // S-2: another tab handed this namespace's local copy to a different
+          // account. This listener's values must not be written into it.
+          if (!this.ownsNamespace(state)) {
+            this.stopSync(state.namespace);
+            return;
+          }
 
           const data = snapshot.data();
           const remoteData = data?.data || {};
+          // T-3: the first server-confirmed snapshot is the initial merge.
+          const firstServerSnapshot = !snapshot.metadata?.fromCache && !state.initialMergeStarted;
+          if (firstServerSnapshot) this.prepareInitialReconciliation(state, remoteData);
+          const chunkFlights = [];
           // Firestore's latency compensation delivers this client's own
           // un-acknowledged writes straight back, with every
           // serverTimestamp() still unresolved. Passing the flag down lets
@@ -843,7 +971,7 @@ class StorageSyncManager {
               // A chunked entry is a manifest, not a value: its parts live in
               // the `chunks` subcollection and have to be fetched. Everything
               // after reassembly is the shared inline path.
-              if (info.chunked) this.applyChunkedRemoteChange(state, key, info, snapshotOptions);
+              if (info.chunked) chunkFlights.push(this.applyChunkedRemoteChange(state, key, info, snapshotOptions));
               else this.applyRemoteChange(key, info, snapshotOptions);
             } catch (err) {
               // One unreadable key must not cost the user every other key.
@@ -861,11 +989,12 @@ class StorageSyncManager {
           // guarantees we get a callback when the snapshot transitions
           // from cached to server-confirmed even if the data is
           // unchanged.
-          if (!state.initialMergeDone && !snapshot.metadata.fromCache) {
-            state.initialMergeDone = true;
-            // Before the local-only upload, which skips keys already queued.
-            this.requeueDirtyKeys(state);
-            this.uploadLocalOnlyKeys(state, remoteData);
+          if (firstServerSnapshot) {
+            state.initialMergeStarted = true;
+            // Released only once every chunked value in this snapshot has been
+            // assembled and reconciled: a queued edit to one of them must not
+            // be sent over a cloud value this device has not read yet.
+            Promise.all(chunkFlights).then(() => this.completeInitialMerge(state, remoteData));
           }
 
           retryAttempts = 0;
@@ -893,6 +1022,7 @@ class StorageSyncManager {
             }
             console.error(`🔐 Authentication error for ${state.namespace} after ${MAX_AUTH_RETRY_ATTEMPTS} retries:`, error.message);
             tearDown();
+            this.noteSnapshotUnavailable(state, error);
             return;
           }
 
@@ -910,6 +1040,7 @@ class StorageSyncManager {
           } else {
             console.error(`💥 Max retries exceeded for ${state.namespace} - sync disabled`);
             tearDown();
+            this.noteSnapshotUnavailable(state, error);
           }
         }
       );
@@ -931,18 +1062,24 @@ class StorageSyncManager {
     const callback = (snapshot) => {
       if (state.stopped) return;
 
+      if (this.isAccountDeletionLatched(state.userId)) {
+        this.stopSync(state.namespace);
+        return;
+      }
+
       const data = snapshot.val();
       const remoteData = data?.data || {};
+      const first = !state.initialMergeStarted;
+      if (first) this.prepareInitialReconciliation(state, remoteData);
 
       for (const [key, info] of Object.entries(remoteData)) {
         if (!state.keys.has(key)) continue;
         this.applyRemoteChange(key, info);
       }
 
-      if (!state.initialMergeDone) {
-        state.initialMergeDone = true;
-        this.requeueDirtyKeys(state);
-        this.uploadLocalOnlyKeys(state, remoteData);
+      if (first) {
+        state.initialMergeStarted = true;
+        this.completeInitialMerge(state, remoteData);
       }
     };
 
@@ -1196,8 +1333,9 @@ class StorageSyncManager {
    * base, "this record is missing from their copy" cannot be told apart from
    * "they deleted it", and a two-way union resurrects every deletion.
    */
-  rememberSyncBase(namespace, key, value) {
+  rememberSyncBase(namespace, key, value, uid) {
     if (!namespace) return;
+    const owner = uid || this.syncStates.get(namespace)?.userId || null;
     const empty = value === null || value === undefined;
     // `hash` is the whole agreed value; `entries` is the per-entry index the
     // three-way merge needs. A value with no internal structure (a string, a
@@ -1206,13 +1344,19 @@ class StorageSyncManager {
     const base = empty
       ? null
       : { ...(valueIndex(value) || { kind: 'opaque', entries: null }), hash: hashValue(value) };
-    this.syncBases.set(this.chunkCountKey(namespace, key), base);
     try {
       const setItem = this.originalMethods?.setItem || localStorage.setItem.bind(localStorage);
       const getItem = this.originalMethods?.getItem || localStorage.getItem.bind(localStorage);
       const storeKey = SYNC_BASE_KEY_PREFIX + namespace;
       let all = {};
       try { all = JSON.parse(getItem(storeKey) || '{}') || {}; } catch (_) { all = {}; }
+      // The agreed state belongs to one account. Another tab may already have
+      // handed this namespace to a different account on this device (S-2); a
+      // late acknowledgement from the old session must not write its base
+      // under the new owner.
+      if (all.__owner && owner && all.__owner !== owner) return;
+      this.syncBases.set(this.chunkCountKey(namespace, key), base);
+      if (owner) all.__owner = owner;
       if (base) all[key] = base; else delete all[key];
       setItem(storeKey, JSON.stringify(all));
     } catch (_) {
@@ -1242,6 +1386,11 @@ class StorageSyncManager {
     try {
       const getItem = this.originalMethods?.getItem || localStorage.getItem.bind(localStorage);
       const all = JSON.parse(getItem(SYNC_BASE_KEY_PREFIX + namespace) || '{}') || {};
+      const reader = this.syncStates.get(namespace);
+      if (all && all.__owner && reader && all.__owner !== reader.userId) {
+        this.syncBases.set(mapKey, null);
+        return null;
+      }
       const base = all && typeof all[key] === 'object' ? all[key] : null;
       this.syncBases.set(mapKey, base);
       return base;
@@ -1278,6 +1427,11 @@ class StorageSyncManager {
   persistRevisions(namespace) {
     const state = this.syncStates.get(namespace);
     if (!state || state.stopped) return;
+    // Compare-and-set on the owner. Another tab may have handed this namespace
+    // to a different account (S-2); this session stopping late must not stamp
+    // the old account back over it.
+    const stored = this.readStoredJson(SYNC_REV_KEY_PREFIX + namespace);
+    if (stored && stored.uid && stored.uid !== state.userId) return;
     const out = { uid: state.userId, keys: {} };
     for (const key of state.keys) {
       const rev = this.localRevisions.get(key);
@@ -1338,6 +1492,18 @@ class StorageSyncManager {
       if (!entry || typeof entry !== 'object') continue;
       const currentHash = hashValue(this.readLocalValue(key));
       const drifted = currentHash !== String(entry.hash || '');
+      // A value an app rewrote for itself while no session ran (defaults, a
+      // floor record) is not the account's work: it stays clean and the agreed
+      // base is dropped, so the cloud's value replaces it instead of it being
+      // defended or uploaded (audit S-4).
+      const placeholder = drifted && this.isPlaceholder(key);
+      if (placeholder) {
+        // Revision 0 as well: a restored revision above the cloud's would make
+        // the cloud look OLDER, and skip-older would republish the placeholder.
+        this.forgetSyncBase(state.namespace, key);
+        this.localRevisions.set(key, { rev: 0, updatedAt: 0, hash: currentHash, dirty: false });
+        continue;
+      }
       this.localRevisions.set(key, {
         rev: Number(entry.rev) || 0,
         updatedAt: Number(entry.updatedAt) || 0,
@@ -1394,15 +1560,32 @@ class StorageSyncManager {
       return null;
     }
 
+    // NO AGREED BASE (audits S-4, T-3): this device's copy was made without
+    // ever seeing the cloud's (signed-out work on a first sign-in, or an edit
+    // made before the first server snapshot). The cloud is the account's
+    // established state, so where the two genuinely disagree it stays live and
+    // this device's version is kept as a recovery copy; the content-hash
+    // tie-break would hand an arbitrary half of the entries to a copy that
+    // never saw the other. Entries only one side holds are unaffected.
+    const hasBase = !!this.syncBaseRecordFor(key);
     const merge = (remoteValue === null || localValue === null)
       ? null
-      : mergeValues(this.syncBaseFor(key), localValue, remoteValue);
+      : mergeValues(this.syncBaseFor(key), localValue, remoteValue, { preferRemote: !hasBase });
 
     if (merge) {
       // A merge loses nothing structurally, so a conflict copy is only kept
       // when individual records genuinely disagreed.
       if (merge.conflicts.length) {
         this.preserveConflictCopy(key, localValue, 'record-conflict', merge.conflicts);
+      }
+      // Nothing of this device's survives beyond what the cloud already holds
+      // (and what the copy above kept): apply the cloud as it is, rather than
+      // re-uploading an identical value at a new revision.
+      if (typeof remoteInfo.hash === 'string' && hashValue(merge.merged) === remoteInfo.hash) {
+        if (merge.conflicts.length) {
+          this.notifyConflict(key, { resolution: 'remote-wins', conflictedRecordIds: merge.conflicts });
+        }
+        return remoteInfo;
       }
       this.publishResolved(key, merge.merged, nextRev);
       this.notifyConflict(key, {
@@ -1426,7 +1609,9 @@ class StorageSyncManager {
       };
     }
 
-    const winner = pickConflictWinner(localRev, remoteInfo);
+    const winner = hasBase
+      ? pickConflictWinner(localRev, remoteInfo)
+      : (((localRev && localRev.rev) || 0) > (remoteInfo.rev || 0) ? 'local' : 'remote');
     if (winner === 'remote') {
       this.preserveConflictCopy(key, localValue, 'local-superseded', []);
       this.notifyConflict(key, { resolution: 'remote-wins' });
@@ -1569,6 +1754,14 @@ class StorageSyncManager {
 
     const newRev = localRev.rev + 1;
     const now = Date.now();
+
+    // Before the initial merge (T-3) the write only waits. Remember what the
+    // key was before it and whether a person made it, so an app's own boot
+    // write can still give way to the cloud's value (prepareInitialReconciliation).
+    if (!state.initialMergeDone) {
+      if (!state.preMergePrior.has(key)) state.preMergePrior.set(key, this.localRevisions.get(key) || null);
+      state.preMergeWork.set(key, !!state.preMergeWork.get(key) || this.userHasInteracted());
+    }
     
     queue.set(key, {
       value: parsedValue,
@@ -1606,11 +1799,42 @@ class StorageSyncManager {
    * ladder (requeue, back off), or retryable past it (requeue, park,
    * announce). See the S-3 block above installFlushTriggers.
    */
-  async flushWrites(state) {
+  flushWrites(state) {
+    const flight = this.runFlush(state);
+    this.activeFlushes.add(flight);
+    flight.then(() => this.activeFlushes.delete(flight));
+    return flight;
+  }
+
+  async runFlush(state) {
     // A stopped session's queue belongs to nobody. writeQueues is keyed by
     // namespace, so a timer outliving stopSync would otherwise flush the
     // namespace's NEXT session's queue under this session's uid.
     if (state.stopped) return;
+    // T-3: nothing leaves before the cloud has been read and reconciled. The
+    // queue is left intact; completeInitialMerge sends it.
+    if (!state.initialMergeDone) return;
+    // S-5: the account is being deleted. This session must not write again.
+    if (this.isAccountDeletionLatched(state.userId)) {
+      this.stopSync(state.namespace);
+      return;
+    }
+    // S-2: another tab handed this namespace's local copy to a different
+    // account. What this session queued is its own account's work: it is not
+    // sent (the stamp says the local copy is someone else's now), and where it
+    // is still the stored value it is parked for this session's account rather
+    // than left for the new owner to adopt.
+    if (!this.ownsNamespace(state)) {
+      const queued = this.writeQueues.get(state.namespace);
+      if (queued && queued.size) {
+        const stillOurs = Array.from(queued)
+          .filter(([key, entry]) => hashValue(this.readLocalValue(key)) === entry.hash)
+          .map(([key]) => key);
+        if (stillOurs.length) this.parkForeignLocalData(state.namespace, stillOurs, state.userId);
+      }
+      this.stopSync(state.namespace);
+      return;
+    }
     const queue = this.writeQueues.get(state.namespace);
     if (!queue || queue.size === 0) return;
 
@@ -1643,7 +1867,7 @@ class StorageSyncManager {
       for (const [key, info] of writes) {
         const rev = this.localRevisions.get(key);
         if (rev && rev.rev === info.rev) this.localRevisions.set(key, { ...rev, dirty: false });
-        this.rememberSyncBase(state.namespace, key, info.deleted ? null : info.value);
+        this.rememberSyncBase(state.namespace, key, info.deleted ? null : info.value, state.userId);
       }
       // Stopped while this was on the wire (a sign-out whose bounded wait ran
       // out, say) and nothing has restarted: there is no live revision map to
@@ -1965,12 +2189,768 @@ class StorageSyncManager {
     } catch (_) { return null; }
   }
 
-  claimSyncedData(uid) {
-    if (!uid) return;
+  /* ---------------------------------------------------------------------
+   * The account boundary (2026-09-12 audit S-2, S-4, S-5, T-3).
+   *
+   * The merge core above (tombstones, Lamport revisions, versioned chunks,
+   * the three-way merge, own-write recognition) decides what happens between
+   * two copies of ONE account's data. This section decides whose data a local
+   * copy is, whether it may be sent at all, and when. Four invariants:
+   *
+   *   1. OWNERSHIP. Each namespace's revision record (shevato:sync-revs:<ns>)
+   *      names the account the local copy belongs to, stamped when a session
+   *      starts. A session for a different account never adopts it: that
+   *      account's unsynced work is parked (shevato:sync-parked:<ns>) and put
+   *      back when it signs in here again, its clean data (already in its own
+   *      cloud) is removed, and a page that LOADED it reloads before syncing,
+   *      because the page's apps still hold it in memory. Every write re-checks
+   *      the stamp, so another tab cannot switch the owner under a session.
+   *   2. SIGNED-OUT WORK. A local value this account's session has no revision
+   *      for was made while no session ran. If a person produced it (a write
+   *      after the page saw a user gesture, or provenance unknown), it is
+   *      unacknowledged local work: it meets the cloud through the normal
+   *      conflict path, and is uploaded where the cloud has nothing. If only an
+   *      app's own boot produced it (defaults, Trip Planner's floor trip), it
+   *      is a placeholder and the cloud replaces it without a copy or a notice.
+   *   3. DELETION. From the moment deletion begins, a latch in localStorage
+   *      names the account, and no tab starts, merges or sends for it. A
+   *      finished deletion keeps the account on the latch; a failed one clears
+   *      it; an abandoned one (its tab closed) is recognised when its lock is
+   *      released or its heartbeat stops.
+   *   4. INITIALISATION. A namespace sends nothing until its first
+   *      server-confirmed snapshot has been applied, chunked values included.
+   *      Edits made before that stay queued and dirty, meet the cloud through
+   *      the normal merge, and go afterwards.
+   * ------------------------------------------------------------------- */
+
+  installAccountBoundaryListeners() {
+    if (this._boundaryListenersInstalled) return;
+    if (typeof window === 'undefined' || typeof window.addEventListener !== 'function') return;
+    this._boundaryListenersInstalled = true;
+    // Another tab began deleting an account (or its heartbeat ticked): stop
+    // every session for it here before a debounce or a snapshot can send.
+    window.addEventListener('storage', (event) => {
+      if (!event || event.key !== SYNC_DELETION_KEY) return;
+      const { active } = this.readDeletionRecord();
+      if (active) this.suspendSyncForDeletion(active.uid);
+    });
+  }
+
+  rawStorage() {
+    return {
+      getItem: this.originalMethods?.getItem || localStorage.getItem.bind(localStorage),
+      setItem: this.originalMethods?.setItem || localStorage.setItem.bind(localStorage),
+      removeItem: this.originalMethods?.removeItem || localStorage.removeItem.bind(localStorage)
+    };
+  }
+
+  readStoredJson(key) {
+    try { return JSON.parse(this.rawStorage().getItem(key) || 'null'); } catch (_) { return null; }
+  }
+
+  readRaw(key) {
+    try { return this.rawStorage().getItem(key); } catch (_) { return null; }
+  }
+
+  /** Put an exact stored string back (or remove it) under the echo lock. */
+  writeRawUnderLock(key, raw) {
+    this.syncLocks.set(key, true);
     try {
-      const setItem = this.originalMethods?.setItem || localStorage.setItem.bind(localStorage);
-      setItem(SYNC_OWNER_KEY, uid);
-    } catch (_) { /* storage full or blocked: the guard simply does not arm */ }
+      const { setItem, removeItem } = this.rawStorage();
+      if (raw === null || raw === undefined) removeItem(key);
+      else setItem(key, String(raw));
+    } finally {
+      this.syncLocks.delete(key);
+    }
+  }
+
+  newLatchId() {
+    return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+  }
+
+  /** What startStorageSync hands back when no session was started. */
+  inertHandle(namespace) {
+    return { stop: () => {}, getStatus: () => this.getSyncStatus(namespace) };
+  }
+
+  notifyAppSyncHeld(namespace, message) {
+    if (typeof window === 'undefined' || typeof window.dispatchEvent !== 'function') return;
+    try {
+      window.dispatchEvent(new CustomEvent('appSyncFailed', { detail: { namespace, message } }));
+    } catch (_) { /* never let a notification break a page */ }
+  }
+
+  // ---- 1. ownership ------------------------------------------------------
+
+  /**
+   * Which account the local copy of a namespace belongs to: a uid, the
+   * UNKNOWN_OWNER of data some account synced before ownership was recorded
+   * per namespace, or null for data this device has never synced.
+   */
+  readOwnershipEpochs(raw) {
+    try {
+      const parsed = JSON.parse(raw || '{}');
+      return parsed && typeof parsed === 'object' ? parsed : {};
+    } catch (_) { return {}; }
+  }
+
+  /**
+   * Whether local data in this namespace was moved for an account after this
+   * page started loading. sync-immediate.js, the first script on every app
+   * page, records the tokens before any app reads storage.
+   */
+  ownershipMovedSinceBoot(namespace) {
+    const boot = typeof window !== 'undefined' ? window.__shevatoSyncBoot : null;
+    if (!boot || !Object.prototype.hasOwnProperty.call(boot, 'ownershipEpochs')) return false;
+    const then = this.readOwnershipEpochs(boot.ownershipEpochs)[namespace] || null;
+    const now = this.readOwnershipEpochs(this.readRaw(SYNC_OWNERSHIP_EPOCH_KEY))[namespace] || null;
+    return then !== now;
+  }
+
+  /**
+   * Called BEFORE local data is parked, restored or cleared for an account, so
+   * a page registering late sees either the lineage its apps read or a moved
+   * token, never the moved data under an unchanged one. False if unrecorded,
+   * in which case the caller leaves the data where it is.
+   */
+  bumpOwnershipEpoch(namespaces) {
+    try {
+      const all = this.readOwnershipEpochs(this.readRaw(SYNC_OWNERSHIP_EPOCH_KEY));
+      for (const namespace of [].concat(namespaces)) all[namespace] = this.newLatchId();
+      this.rawStorage().setItem(SYNC_OWNERSHIP_EPOCH_KEY, JSON.stringify(all));
+      return true;
+    } catch (_) { return false; }
+  }
+
+  lineageOf(namespace) {
+    const revs = this.readStoredJson(SYNC_REV_KEY_PREFIX + namespace);
+    if (revs && typeof revs.uid === 'string' && revs.uid) return { owner: revs.uid };
+    // No revision record, but an agreed base: some account synced this before
+    // the record existed. The old device-wide marker may name it.
+    const base = this.readStoredJson(SYNC_BASE_KEY_PREFIX + namespace);
+    const synced = !!base && typeof base === 'object' && Object.keys(base).some((k) => k !== '__owner');
+    if (synced) return { owner: base.__owner || this.syncedDataOwner() || UNKNOWN_OWNER };
+    return { owner: null };
+  }
+
+  hasLocalData(keys) {
+    for (const key of keys) if (this.readRaw(key) !== null) return true;
+    return false;
+  }
+
+  /**
+   * Every namespace and its keys, known before anyone signs in (app-sync-init
+   * registers them at load). The first registration of a namespace records
+   * what this page loaded, which is what `bootLineage` means.
+   */
+  registerLocalNamespaces(configs) {
+    this.flushUnsessionedWrites();
+    for (const config of Array.isArray(configs) ? configs : []) {
+      const namespace = config && config.namespace;
+      const keys = config && Array.isArray(config.keys) ? config.keys : [];
+      if (typeof namespace !== 'string' || !namespace) continue;
+      for (const key of keys) this.localKeyNamespaces.set(key, namespace);
+      if (!this.bootLineage.has(namespace)) {
+        // The sync modules load async, so this can run well after the page's
+        // apps read storage. If another tab moved this namespace's data for an
+        // account in between, what the apps hold is unknown, and the page
+        // reloads before it syncs anyone.
+        this.bootLineage.set(namespace, this.ownershipMovedSinceBoot(namespace)
+          ? { owner: UNKNOWN_OWNER, hadData: true }
+          : { owner: this.lineageOf(namespace).owner, hadData: this.hasLocalData(keys) });
+      }
+      for (const key of keys) {
+        const pending = this.pendingLocalWork.get(key);
+        if (!pending) continue;
+        this.pendingLocalWork.delete(key);
+        this.recordLocalWork(key, pending.hash, pending.work);
+      }
+    }
+  }
+
+  /** Settle who owns the local copy before a session for `uid` exists. */
+  prepareNamespaceForUser(namespace, keys, uid) {
+    const hadData = this.hasLocalData(keys);
+    const lineage = this.lineageOf(namespace);
+    const newOwner = lineage.owner !== uid;
+    if (hadData && lineage.owner !== null && newOwner
+        && !this.parkForeignLocalData(namespace, keys, lineage.owner)) {
+      return { hold: 'the previous account\'s unsynced data could not be set aside' };
+    }
+    const restored = this.restoreParkedLocalData(namespace, keys, uid);
+    this.stampNamespaceOwner(namespace, uid, restored, newOwner);
+    // Writes a page made while it was waiting to reload for a different
+    // account carry that page's account; they are parked, never adopted.
+    if (!this.parkStrayForeignWrites(namespace, keys, uid)) {
+      return { hold: 'another account\'s data written on this device could not be set aside' };
+    }
+
+    const boot = this.bootLineage.get(namespace);
+    if (boot && boot.hadData && boot.owner !== null && boot.owner !== uid) {
+      this.foreignPageNamespaces.set(namespace, boot.owner);
+      return this.reloadGuardAllows(namespace, uid)
+        ? { reload: true }
+        : { hold: 'this page loaded another account\'s data and has not reloaded' };
+    }
+    this.clearReloadMarker(namespace);
+    return {};
+  }
+
+  /**
+   * Keep another account's unsynced local work and clear its live copy.
+   * Returns false, leaving everything untouched, when the copy cannot be kept.
+   */
+  parkForeignLocalData(namespace, keys, owner) {
+    const revs = this.readStoredJson(SYNC_REV_KEY_PREFIX + namespace);
+    const revKeys = revs && revs.uid === owner && revs.keys && typeof revs.keys === 'object' ? revs.keys : {};
+    const bases = this.readStoredJson(SYNC_BASE_KEY_PREFIX + namespace) || {};
+    const parkKey = SYNC_PARKED_KEY_PREFIX + namespace;
+    const stored = this.readStoredJson(parkKey);
+    const record = stored && typeof stored === 'object' && stored.owners && typeof stored.owners === 'object'
+      ? stored : { v: 1, owners: {} };
+    const slot = record.owners[owner] && typeof record.owners[owner] === 'object'
+        && record.owners[owner].keys && typeof record.owners[owner].keys === 'object'
+      ? record.owners[owner] : { keys: {} };
+
+    const present = [];
+    for (const key of keys) {
+      const raw = this.readRaw(key);
+      if (raw === null) continue;
+      present.push(key);
+      const hash = hashValue(parseValue(raw));
+      const rev = revKeys[key] && typeof revKeys[key] === 'object' ? revKeys[key] : null;
+      // Exactly what that account's cloud already holds: signing in as it
+      // brings it back, so there is nothing to keep.
+      if (owner !== UNKNOWN_OWNER && rev && !rev.dirty && String(rev.hash || '') === hash) {
+        delete slot.keys[key];
+        continue;
+      }
+      const provenance = this.localWorkFor(key);
+      slot.keys[key] = {
+        raw,
+        hash,
+        rev: rev ? Number(rev.rev) || 0 : 0,
+        syncedHash: rev ? String(rev.hash || '') : '',
+        dirty: !!(rev && rev.dirty),
+        base: bases && typeof bases[key] === 'object' ? bases[key] : null,
+        work: provenance ? provenance.work !== false : true
+      };
+    }
+    if (!present.length) return true;
+
+    if (!this.bumpOwnershipEpoch(namespace)) return false;
+    slot.at = new Date().toISOString();
+    if (Object.keys(slot.keys).length) record.owners[owner] = slot;
+    else delete record.owners[owner];
+    try {
+      const { setItem, removeItem } = this.rawStorage();
+      if (Object.keys(record.owners).length) setItem(parkKey, JSON.stringify(record));
+      else removeItem(parkKey);
+    } catch (_) {
+      // Storage refused the copy. The live data is then the only copy, so it
+      // stays exactly where it is and this namespace does not sync here.
+      return false;
+    }
+
+    for (const key of present) {
+      this.writeRawUnderLock(key, null);
+      this.localRevisions.delete(key);
+      this.lastRemoteUpdates.delete(key);
+      this.ownWrites.delete(key);
+      this.lastRemoteSeen.delete(key);
+    }
+    this.forgetLocalWork(present);
+    return true;
+  }
+
+  /** Put this account's parked work back wherever nothing has taken its place. */
+  restoreParkedLocalData(namespace, keys, uid) {
+    const parkKey = SYNC_PARKED_KEY_PREFIX + namespace;
+    const record = this.readStoredJson(parkKey);
+    const slot = record && record.owners && typeof record.owners === 'object' ? record.owners[uid] : null;
+    if (!slot || !slot.keys || typeof slot.keys !== 'object') return null;
+    const restorable = keys.some((key) => {
+      const entry = slot.keys[key];
+      return !!entry && typeof entry === 'object' && typeof entry.raw === 'string' && this.readRaw(key) === null;
+    });
+    if (restorable && !this.bumpOwnershipEpoch(namespace)) return null;
+
+    const revs = {};
+    const bases = {};
+    let restored = 0;
+    for (const key of keys) {
+      const entry = slot.keys[key];
+      if (!entry || typeof entry !== 'object' || typeof entry.raw !== 'string') continue;
+      if (this.readRaw(key) !== null) {
+        // Something lives here already (work made while signed out since):
+        // keep both, the parked version as a recovery copy.
+        this.preserveConflictCopy(key, parseValue(entry.raw), 'parked-account-work', []);
+        continue;
+      }
+      this.writeRawUnderLock(key, entry.raw);
+      revs[key] = {
+        rev: Number(entry.rev) || 0,
+        hash: String(entry.syncedHash || ''),
+        updatedAt: 0,
+        dirty: !!entry.dirty
+      };
+      if (entry.base && typeof entry.base === 'object') bases[key] = entry.base;
+      if (entry.work === false) this.recordLocalWork(key, String(entry.hash || ''), false);
+      restored++;
+    }
+    delete record.owners[uid];
+    try {
+      const { setItem, removeItem } = this.rawStorage();
+      if (Object.keys(record.owners).length) setItem(parkKey, JSON.stringify(record));
+      else removeItem(parkKey);
+    } catch (_) { /* restored already; a stale slot restores into occupied keys as copies */ }
+    return { restored, revs, bases };
+  }
+
+  /**
+   * A value whose provenance names another account and still matches what is
+   * stored: an app wrote it on a page that had loaded that account's data and
+   * was waiting to reload. Park it for that account. False if it could not be.
+   */
+  parkStrayForeignWrites(namespace, keys, uid) {
+    const byOwner = new Map();
+    for (const key of keys) {
+      const provenance = this.localWorkFor(key);
+      if (!provenance || !provenance.owner || provenance.owner === uid) continue;
+      if (String(provenance.hash) !== hashValue(this.readLocalValue(key))) continue;
+      if (!byOwner.has(provenance.owner)) byOwner.set(provenance.owner, []);
+      byOwner.get(provenance.owner).push(key);
+    }
+    for (const [owner, strayKeys] of byOwner) {
+      if (!this.parkForeignLocalData(namespace, strayKeys, owner)) return false;
+    }
+    return true;
+  }
+
+  /** Record `uid` as the owner of this namespace's local copy. */
+  stampNamespaceOwner(namespace, uid, restored, newOwner) {
+    try {
+      const { setItem } = this.rawStorage();
+      const revKey = SYNC_REV_KEY_PREFIX + namespace;
+      const current = newOwner ? null : this.readStoredJson(revKey);
+      const keys = current && current.uid === uid && current.keys && typeof current.keys === 'object'
+        ? current.keys : {};
+      if (restored && restored.revs) Object.assign(keys, restored.revs);
+      setItem(revKey, JSON.stringify({ uid, keys }));
+
+      const baseKey = SYNC_BASE_KEY_PREFIX + namespace;
+      const currentBases = newOwner ? null : this.readStoredJson(baseKey);
+      const bases = currentBases && typeof currentBases === 'object'
+          && (!currentBases.__owner || currentBases.__owner === uid)
+        ? currentBases : {};
+      if (restored && restored.bases) Object.assign(bases, restored.bases);
+      bases.__owner = uid;
+      setItem(baseKey, JSON.stringify(bases));
+    } catch (_) { /* unstamped: the next start classifies the data again */ }
+    if (newOwner) {
+      const prefix = this.chunkCountKey(namespace, '');
+      for (const mapKey of Array.from(this.syncBases.keys())) {
+        if (mapKey.startsWith(prefix)) this.syncBases.delete(mapKey);
+      }
+    }
+  }
+
+  // One reload per account per namespace per tab: if a reload did not fix the
+  // mismatch (the stamp could not be written), the namespace holds instead of
+  // reloading forever.
+  reloadGuardAllows(namespace, uid) {
+    try {
+      if (typeof sessionStorage === 'undefined' || !sessionStorage) return true;
+      const marker = `shevato:sync-owner-reload:${namespace}`;
+      if (sessionStorage.getItem(marker) === uid) return false;
+      sessionStorage.setItem(marker, uid);
+    } catch (_) { /* no session storage: nothing to loop on */ }
+    return true;
+  }
+
+  clearReloadMarker(namespace) {
+    try {
+      if (typeof sessionStorage !== 'undefined' && sessionStorage) {
+        sessionStorage.removeItem(`shevato:sync-owner-reload:${namespace}`);
+      }
+    } catch (_) { /* nothing to clear */ }
+  }
+
+  requestReload() {
+    // Not latched: reload() is idempotent while a navigation is pending, and a
+    // second namespace on the same page asks for the same reload.
+    try {
+      if (typeof window !== 'undefined' && window.location && typeof window.location.reload === 'function') {
+        window.location.reload();
+      }
+    } catch (_) { /* a page that cannot reload simply does not sync this app */ }
+  }
+
+  /** Whether this session's account is still the stamped owner of its namespace. */
+  ownsNamespace(state) {
+    const revs = this.readStoredJson(SYNC_REV_KEY_PREFIX + state.namespace);
+    return !revs || !revs.uid || revs.uid === state.userId;
+  }
+
+  // ---- 2. signed-out work ------------------------------------------------
+
+  userHasInteracted() {
+    try {
+      const activation = typeof navigator !== 'undefined' ? navigator.userActivation : null;
+      if (activation && typeof activation.hasBeenActive === 'boolean') return activation.hasBeenActive;
+    } catch (_) { /* fall through */ }
+    // Cannot tell: count it as a person's write, which is the side that keeps data.
+    return true;
+  }
+
+  /** A registered key changed while no session owns it. */
+  noteUnsessionedWrite(key, value, work) {
+    const namespace = this.localKeyNamespaces.get(key);
+    if (!namespace && this.localKeyNamespaces.size > 0) return;
+    const prior = this.unsessionedWrites.get(key);
+    if (!prior && !namespace && this.unsessionedWrites.size >= 500) return;
+    // Only what must be read at the moment of the write is read now: whether
+    // a person had acted on the page, and whose data the page had loaded. A
+    // replayed boot-window write brings the gesture state it was made with.
+    this.unsessionedWrites.set(key, {
+      value,
+      work: (typeof work === 'boolean' ? work : this.userHasInteracted()) || !!(prior && prior.work),
+      owner: namespace ? (this.foreignPageNamespaces.get(namespace) || null) : null
+    });
+    if (this.unsessionedFlushTimer === null) {
+      this.unsessionedFlushTimer = setTimeout(() => this.flushUnsessionedWrites(), 0);
+    }
+  }
+
+  /** Hash and record every signed-out write since the last batch, once per key. */
+  flushUnsessionedWrites() {
+    if (this.unsessionedFlushTimer !== null) {
+      clearTimeout(this.unsessionedFlushTimer);
+      this.unsessionedFlushTimer = null;
+    }
+    if (!this.unsessionedWrites.size) return;
+    const batch = this.unsessionedWrites;
+    this.unsessionedWrites = new Map();
+    const records = [];
+    for (const [key, entry] of batch) {
+      const hash = hashValue(entry.value === null || entry.value === undefined ? null : parseValue(entry.value));
+      if (this.localKeyNamespaces.has(key)) {
+        records.push({ key, hash, work: entry.work, owner: entry.owner });
+        continue;
+      }
+      // Before app-sync-init has registered anything (a boot-window write
+      // replayed by sync-immediate.js): hold it until the key list is known.
+      if (this.pendingLocalWork.size < 500 || this.pendingLocalWork.has(key)) {
+        const prior = this.pendingLocalWork.get(key);
+        this.pendingLocalWork.set(key, { hash, work: entry.work || !!(prior && prior.work) });
+      }
+    }
+    this.writeLocalWork(records);
+  }
+
+  recordLocalWork(key, hash, work, owner = null) {
+    // Earlier signed-out writes to the key land first, so this one stays last.
+    this.flushUnsessionedWrites();
+    this.writeLocalWork([{ key, hash, work, owner }]);
+  }
+
+  writeLocalWork(records) {
+    if (!records.length) return;
+    try {
+      const all = this.readStoredJson(SYNC_LOCAL_WORK_KEY);
+      const map = all && typeof all === 'object' ? all : {};
+      for (const { key, hash, work, owner } of records) {
+        const previous = map[key];
+        // Sticky: whatever an app writes on top of a value a person shaped is
+        // still built on their work. `owner` names the account whose data the
+        // writing page had loaded, when that is not the account now stamped.
+        map[key] = { hash: String(hash), work: !!work || !!(previous && previous.work) };
+        if (owner) map[key].owner = owner;
+      }
+      this.rawStorage().setItem(SYNC_LOCAL_WORK_KEY, JSON.stringify(map));
+    } catch (_) { /* unknown provenance counts as work */ }
+  }
+
+  localWorkFor(key) {
+    this.flushUnsessionedWrites();
+    const all = this.readStoredJson(SYNC_LOCAL_WORK_KEY);
+    const entry = all && typeof all === 'object' ? all[key] : null;
+    return entry && typeof entry === 'object' ? entry : null;
+  }
+
+  /** Only an app's own untouched write; unknown provenance is not a placeholder. */
+  isPlaceholder(key) {
+    const entry = this.localWorkFor(key);
+    if (!entry || entry.work !== false) return false;
+    return String(entry.hash) === hashValue(this.readLocalValue(key));
+  }
+
+  forgetLocalWork(keys) {
+    this.flushUnsessionedWrites();
+    const all = this.readStoredJson(SYNC_LOCAL_WORK_KEY);
+    if (!all || typeof all !== 'object') return;
+    let changed = false;
+    for (const key of keys) {
+      if (Object.prototype.hasOwnProperty.call(all, key)) {
+        delete all[key];
+        changed = true;
+      }
+    }
+    if (!changed) return;
+    try {
+      const { setItem, removeItem } = this.rawStorage();
+      if (Object.keys(all).length) setItem(SYNC_LOCAL_WORK_KEY, JSON.stringify(all));
+      else removeItem(SYNC_LOCAL_WORK_KEY);
+    } catch (_) { /* a stale entry only describes a value that has moved on */ }
+  }
+
+  /**
+   * A local value this session holds no revision for, made by a person, is
+   * unacknowledged local work (rev 0, dirty). Placeholders get no revision, so
+   * the cloud's value applies to them cleanly.
+   */
+  synthesizeLocalWork(state) {
+    for (const key of state.keys) {
+      if (this.localRevisions.has(key)) continue;
+      const raw = this.readRaw(key);
+      if (raw === null) continue;
+      if (this.isPlaceholder(key)) continue;
+      this.localRevisions.set(key, { rev: 0, updatedAt: 0, hash: hashValue(parseValue(raw)), dirty: true });
+    }
+  }
+
+  forgetSyncBase(namespace, key) {
+    this.syncBases.set(this.chunkCountKey(namespace, key), null);
+    try {
+      const { getItem, setItem } = this.rawStorage();
+      const storeKey = SYNC_BASE_KEY_PREFIX + namespace;
+      const all = JSON.parse(getItem(storeKey) || '{}') || {};
+      if (!Object.prototype.hasOwnProperty.call(all, key)) return;
+      delete all[key];
+      setItem(storeKey, JSON.stringify(all));
+    } catch (_) { /* the in-memory base is already gone */ }
+  }
+
+  // ---- 4. initialisation ---------------------------------------------------
+
+  /**
+   * Just before the first server snapshot is applied. A write an app made on
+   * its own while the cloud was unread gives way to the cloud's value where
+   * the cloud has one (the write is not a person's edit, and the agreed base
+   * it would otherwise "agree" with is dropped so the cloud applies). Then
+   * any local value with no revision is classified as work or placeholder.
+   */
+  prepareInitialReconciliation(state, remoteData) {
+    const queue = this.writeQueues.get(state.namespace);
+    for (const [key, prior] of state.preMergePrior) {
+      if (state.preMergeWork.get(key)) continue;
+      if (prior && prior.dirty) continue;
+      if (remoteData[key] === undefined) continue;
+      if (queue) queue.delete(key);
+      // Clean at revision 0 with the value that is actually stored: the prior
+      // record describes the value BEFORE the app's write, so keeping it would
+      // make an unchanged cloud look deduped, and a higher revision would make
+      // it look older. Either way the app's write would outlive the cloud's.
+      this.localRevisions.set(key, { rev: 0, updatedAt: 0, hash: hashValue(this.readLocalValue(key)), dirty: false });
+      this.forgetSyncBase(state.namespace, key);
+    }
+    this.synthesizeLocalWork(state);
+  }
+
+  /** The first server snapshot has been applied in full: release the queue. */
+  completeInitialMerge(state, remoteData) {
+    if (state.stopped || state.initialMergeDone) return;
+    if (this.isAccountDeletionLatched(state.userId)) {
+      this.stopSync(state.namespace);
+      return;
+    }
+    state.initialMergeDone = true;
+    // Dirty keys first, at the revisions they carry; then keys the cloud has
+    // never had. The other order queued a stranded write as a local-only key
+    // at a NEW revision, so it no longer matched the write that never landed.
+    this.requeueDirtyKeys(state);
+    this.enqueueLocalOnlyKeys(state, remoteData || {});
+    this.dropStaleQueuedWrites(state);
+    this.forgetLocalWork(state.keys);
+    state.preMergePrior.clear();
+    state.preMergeWork.clear();
+    this.schedulePersistRevisions(state.namespace);
+
+    const queue = this.writeQueues.get(state.namespace);
+    if (!queue || queue.size === 0) return;
+    if (state.writeTimer) {
+      clearTimeout(state.writeTimer);
+      state.writeTimer = null;
+    }
+    this.flushWrites(state);
+  }
+
+  /**
+   * A queued write whose value the initial merge replaced (the cloud won, or a
+   * merge was queued in its place) must not be sent: it would overwrite the
+   * very state the merge just decided on.
+   */
+  dropStaleQueuedWrites(state) {
+    const queue = this.writeQueues.get(state.namespace);
+    if (!queue) return;
+    for (const [key, entry] of Array.from(queue)) {
+      const rev = this.localRevisions.get(key);
+      if (!rev || !rev.dirty || rev.hash !== entry.hash) queue.delete(key);
+    }
+  }
+
+  /** The listener gave up before the initial merge: say the queued edits are not saved. */
+  noteSnapshotUnavailable(state, error) {
+    if (!state || state.initialMergeDone) return;
+    const queue = this.writeQueues.get(state.namespace);
+    if (!queue || queue.size === 0) return;
+    this.notifyWriteRejected(state, new Map(queue), error, true);
+  }
+
+  // ---- 3. deletion ---------------------------------------------------------
+
+  readDeletionRecord() {
+    const record = this.readStoredJson(SYNC_DELETION_KEY);
+    const active = record && record.active && typeof record.active === 'object'
+        && typeof record.active.uid === 'string' && record.active.uid
+      ? record.active : null;
+    const deleted = record && Array.isArray(record.deleted)
+      ? record.deleted.filter((uid) => typeof uid === 'string' && uid) : [];
+    return { active, deleted };
+  }
+
+  writeDeletionRecord(record) {
+    try {
+      const { setItem, removeItem } = this.rawStorage();
+      if (!record.active && !record.deleted.length) removeItem(SYNC_DELETION_KEY);
+      else setItem(SYNC_DELETION_KEY, JSON.stringify(record));
+    } catch (_) { /* this tab's in-memory latch still holds */ }
+  }
+
+  isAccountDeletionLatched(uid) {
+    if (!uid) return false;
+    if (this.deletionLatch && this.deletionLatch.uid === uid) return true;
+    const { active, deleted } = this.readDeletionRecord();
+    return (!!active && active.uid === uid) || deleted.includes(uid);
+  }
+
+  beginAccountDeletion(uid) {
+    if (typeof uid !== 'string' || !uid) throw new Error('beginAccountDeletion: uid is required');
+    const now = Date.now();
+    const id = this.newLatchId();
+    this.deletionLatch = { uid, id };
+    const record = this.readDeletionRecord();
+    record.active = { uid, id, startedAt: now, heartbeatAt: now };
+    this.writeDeletionRecord(record);
+    this.suspendSyncForDeletion(uid);
+    this.startDeletionHeartbeat();
+    this.holdDeletionLock(uid);
+    return id;
+  }
+
+  endAccountDeletion(uid, id, { deleted = false } = {}) {
+    if (this.deletionLatch && this.deletionLatch.id === id) this.deletionLatch = null;
+    this.stopDeletionHeartbeat();
+    if (typeof this.releaseDeletionLock === 'function') {
+      try { this.releaseDeletionLock(); } catch (_) { /* already released */ }
+      this.releaseDeletionLock = null;
+    }
+    const record = this.readDeletionRecord();
+    if (record.active && record.active.id === id) record.active = null;
+    if (deleted && uid && !record.deleted.includes(uid)) {
+      record.deleted.push(uid);
+      while (record.deleted.length > MAX_DELETED_ACCOUNTS_REMEMBERED) record.deleted.shift();
+    }
+    this.writeDeletionRecord(record);
+  }
+
+  suspendSyncForDeletion(uid) {
+    for (const [namespace, state] of Array.from(this.syncStates)) {
+      if (state && state.userId === uid) this.stopSync(namespace);
+    }
+  }
+
+  startDeletionHeartbeat() {
+    this.stopDeletionHeartbeat();
+    const beat = () => {
+      this.deletionHeartbeat = null;
+      if (!this.deletionLatch) return;
+      const record = this.readDeletionRecord();
+      if (record.active && record.active.id === this.deletionLatch.id) {
+        record.active.heartbeatAt = Date.now();
+        this.writeDeletionRecord(record);
+      }
+      this.deletionHeartbeat = setTimeout(beat, DELETION_HEARTBEAT_MS);
+    };
+    this.deletionHeartbeat = setTimeout(beat, DELETION_HEARTBEAT_MS);
+  }
+
+  stopDeletionHeartbeat() {
+    if (this.deletionHeartbeat) clearTimeout(this.deletionHeartbeat);
+    this.deletionHeartbeat = null;
+  }
+
+  // Held for as long as the deletion runs. The browser releases it when the
+  // tab closes or crashes, which is an exact answer to "is anyone still
+  // deleting?" where the Web Locks API exists.
+  holdDeletionLock(uid) {
+    try {
+      if (typeof navigator === 'undefined' || !navigator.locks || typeof navigator.locks.request !== 'function') return;
+      const held = new Promise((resolve) => { this.releaseDeletionLock = resolve; });
+      navigator.locks.request(`shevato-account-deletion:${uid}`, () => held).catch(() => {});
+    } catch (_) { /* the heartbeat answers instead */ }
+  }
+
+  async clearAbandonedAccountDeletion(uid) {
+    const { active } = this.readDeletionRecord();
+    if (!active || active.uid !== uid) return false;
+    if (this.deletionLatch && this.deletionLatch.id === active.id) return false;
+    let live;
+    try {
+      if (typeof navigator !== 'undefined' && navigator.locks && typeof navigator.locks.query === 'function') {
+        const snapshot = await navigator.locks.query();
+        const name = `shevato-account-deletion:${uid}`;
+        live = Array.isArray(snapshot && snapshot.held) && snapshot.held.some((lock) => lock && lock.name === name);
+      }
+    } catch (_) { live = undefined; }
+    if (live === undefined) {
+      live = Date.now() - (Number(active.heartbeatAt) || Number(active.startedAt) || 0) < DELETION_STALE_MS;
+    }
+    if (live) return false;
+    const record = this.readDeletionRecord();
+    if (!record.active || record.active.id !== active.id) return false;
+    record.active = null;
+    this.writeDeletionRecord(record);
+    return true;
+  }
+
+  /** Wait for this tab's flushes and every pending Firestore write to land. */
+  async settleBeforeAccountDeletion() {
+    await Promise.all(Array.from(this.activeFlushes));
+    try { await waitForPendingWrites(db); } catch (_) { /* offline: every delete waits anyway */ }
+  }
+
+  forgetAccountLocalState(uid, namespaces, keys) {
+    const { setItem, removeItem } = this.rawStorage();
+    for (const namespace of Array.isArray(namespaces) ? namespaces : []) {
+      try {
+        const parkKey = SYNC_PARKED_KEY_PREFIX + namespace;
+        const parked = this.readStoredJson(parkKey);
+        if (parked && parked.owners && typeof parked.owners === 'object' && parked.owners[uid]) {
+          delete parked.owners[uid];
+          if (Object.keys(parked.owners).length) setItem(parkKey, JSON.stringify(parked));
+          else removeItem(parkKey);
+        }
+        const revs = this.readStoredJson(SYNC_REV_KEY_PREFIX + namespace);
+        if (revs && revs.uid === uid) removeItem(SYNC_REV_KEY_PREFIX + namespace);
+        const base = this.readStoredJson(SYNC_BASE_KEY_PREFIX + namespace);
+        if (base && (!base.__owner || base.__owner === uid)) removeItem(SYNC_BASE_KEY_PREFIX + namespace);
+      } catch (_) { /* best effort: the account is gone either way */ }
+    }
+    this.forgetLocalWork(Array.isArray(keys) ? keys : []);
+    try {
+      if (this.syncedDataOwner() === uid) removeItem(SYNC_OWNER_KEY);
+    } catch (_) { /* nothing to clear */ }
   }
 
   chunkCountKey(namespace, key) {
@@ -2156,86 +3136,57 @@ class StorageSyncManager {
   }
 
   /**
-   * Upload any keys we have in localStorage that are missing from the
-   * remote document. Invoked exactly once per sync session, from the
-   * first snapshot the realtime listener delivers — that snapshot
-   * gives us the same remote view that a separate `getDoc` used to
-   * fetch, so this replaces the read-heavy `performInitialMerge` that
-   * previously triggered `429 Too Many Requests` on auth-state churn.
+   * Queue every key this device holds that the cloud document does not.
    *
-   * Conflicts where both sides exist are deliberately left to
-   * `applyRemoteChange` (which the snapshot loop already invoked):
-   * remote wins on a fresh state because the local revision map is
-   * empty at that moment, matching the previous "prefer remote on
-   * initial merge" behaviour without a second code path.
+   * Runs once per session, from completeInitialMerge, so it is judged against
+   * a server-confirmed view (a cached snapshot can look empty and would
+   * overwrite another browser's writes). A tombstone counts as present, so a
+   * delete is never undone. Keys whose local copy belonged to another account
+   * never reach this point: prepareNamespaceForUser parked them before the
+   * session existed.
+   *
+   * These used to be written straight to Firestore from here, outside the
+   * queue, which is why a failed first upload was only ever a console line and
+   * why it bypassed every gate the flush has. They now go through flushWrites
+   * like any other write: the barrier, the deletion latch, the owner check,
+   * the retry ladder, `syncWriteRejected`, and dirty persistence.
    */
-  uploadLocalOnlyKeys(state, remoteData) {
-    const localWrites = new Map();
+  enqueueLocalOnlyKeys(state, remoteData) {
+    const queue = this.writeQueues.get(state.namespace);
+    if (!queue) return;
     const getItem = this.originalMethods?.getItem
       ? this.originalMethods.getItem
       : localStorage.getItem.bind(localStorage);
 
-    // Never hand one account's data to another. Signing out leaves the synced
-    // keys in localStorage on purpose (a signed-out user keeps working
-    // locally), so on a shared browser the next person to sign in arrives
-    // with the previous person's trips, workouts or races still in storage.
-    // Those keys are missing from THEIR cloud document, so this function used
-    // to upload them into it: one person's data copied into another person's
-    // account with no gesture from either. Claim the local copy for the uid
-    // that first synced it and upload only for that uid; a different uid
-    // still READS its own cloud data normally, and applyRemoteChange
-    // overwrites the stale local values as the snapshot arrives.
-    const owner = this.syncedDataOwner();
-    if (owner && owner !== state.userId) {
-      console.warn(
-        `Skipping local-only upload for ${state.namespace}: these keys were last synced by a different account`
-      );
-      return;
-    }
-
-    const queued = this.writeQueues.get(state.namespace);
     for (const key of state.keys) {
-      const localValue = getItem(key);
+      let localValue = null;
+      try { localValue = getItem(key); } catch (_) { localValue = null; }
       if (localValue === null || localValue === undefined) continue;
       if (remoteData[key] !== undefined) continue;
-      // Already on its way through the normal flush (requeueDirtyKeys), at
-      // the revision that never landed. Uploading it here as well would send
-      // it twice, the second time at a LOWER revision than the first.
-      if (queued && queued.has(key)) continue;
+      // Already on its way at a revision of its own (a pre-merge edit or a
+      // restored dirty write); queueing it again would send it twice.
+      if (queue.has(key)) continue;
 
       const parsed = parseValue(localValue);
       const known = this.localRevisions.get(key);
-      localWrites.set(key, {
-        value: parsed,
-        // Never BELOW what this device has already reached. A key can be
-        // missing from the cloud while this device holds a restored
-        // revision (last session's flush never landed), and publishing it
-        // as rev 1 would walk the Lamport counter backwards.
-        rev: Math.max(1, ((known && known.rev) || 0) + (known ? 1 : 0)),
-        updatedAt: Date.now(),
-        hash: hashValue(parsed),
-        deleted: false
-      });
+      // Never BELOW what this device has already reached. A key can be missing
+      // from the cloud while this device holds a restored revision (last
+      // session's flush never landed), and publishing it as rev 1 would walk
+      // the Lamport counter backwards.
+      const rev = Math.max(1, ((known && known.rev) || 0) + (known ? 1 : 0));
+      const hash = hashValue(parsed);
+      const now = Date.now();
+      queue.set(key, { value: parsed, rev, updatedAt: now, hash, deleted: false });
+      this.localRevisions.set(key, { rev, updatedAt: now, hash, dirty: true });
     }
+  }
 
-    if (localWrites.size === 0) return;
-
-    this.claimSyncedData(state.userId);
-
-    const flush = state.useFirestore
-      ? this.flushToFirestore(state, localWrites)
-      : this.flushToRealtimeDb(state, localWrites);
-
-    flush.catch((error) => {
-      if (error.code === 'permission-denied' || error.code === 'unauthenticated') {
-        console.error(`🔐 Auth error uploading local-only keys for ${state.namespace}:`, error.message);
-        return;
-      }
-      // Don't retry-loop here; the next user write will requeue these
-      // through the normal flush path. Retrying would re-hit the same
-      // rate limit that motivated this rewrite.
-      console.warn(`⚠️ Initial upload of local-only keys failed for ${state.namespace}:`, error.message);
-    });
+  /** Debug entry point: queue local-only keys against a remote view and send them. */
+  uploadLocalOnlyKeys(state, remoteData) {
+    this.enqueueLocalOnlyKeys(state, remoteData || {});
+    const queue = this.writeQueues.get(state.namespace);
+    if (queue && queue.size) return this.flushWrites(state);
+    return Promise.resolve();
   }
 
   /**
@@ -2307,7 +3258,10 @@ class StorageSyncManager {
       // Keys handed to Firestore and not yet answered.
       inFlight: state.inFlight || 0,
       // Out of retries on a retryable failure, waiting for a trigger.
-      parked: !!state.parked
+      parked: !!state.parked,
+      // T-3: false until the first server snapshot has been reconciled; nothing
+      // queued is sent before then.
+      initialMergeDone: !!state.initialMergeDone
     };
   }
 
@@ -2372,6 +3326,88 @@ export function getSyncStatus(namespace) {
 
 export function getGlobalSyncStatus() {
   return syncManager.getGlobalStatus();
+}
+
+/**
+ * Tell the engine every namespace and its keys at page load, signed in or not
+ * (app-sync-init.js). It is what lets a write made while signed out be
+ * attributed, and what records the owner of the data this page loaded.
+ *
+ * @param {Array<{namespace: string, keys: string[]}>} configs
+ */
+export function registerLocalNamespaces(configs) {
+  syncManager.registerLocalNamespaces(configs);
+}
+
+/**
+ * Latch account deletion for `uid` in every tab, before anything is deleted.
+ * Returns the latch id endAccountDeletion needs.
+ */
+export function beginAccountDeletion(uid) {
+  return syncManager.beginAccountDeletion(uid);
+}
+
+/**
+ * Release this tab's deletion latch. `deleted: true` (the auth user is gone)
+ * keeps the account latched for good; anything else clears it so sync can
+ * resume for an account that still exists.
+ */
+export function endAccountDeletion(uid, id, options) {
+  syncManager.endAccountDeletion(uid, id, options);
+}
+
+export function isAccountDeletionLatched(uid) {
+  return syncManager.isAccountDeletionLatched(uid);
+}
+
+/** Clear a deletion latch whose tab is gone. Resolves true if it cleared one. */
+export function clearAbandonedAccountDeletion(uid) {
+  return syncManager.clearAbandonedAccountDeletion(uid);
+}
+
+/** Wait for this tab's flushes and every pending Firestore write to land. */
+export function settleBeforeAccountDeletion() {
+  return syncManager.settleBeforeAccountDeletion();
+}
+
+/**
+ * After the deletes: any namespace document a write that was already on its
+ * way re-created is deleted again. Resolves the namespaces that had come back.
+ *
+ * @param {string[]} namespaces
+ * @returns {Promise<string[]>}
+ */
+export async function confirmCloudDataErased(namespaces) {
+  const user = auth.currentUser;
+  if (!user) throw new Error('confirmCloudDataErased: not signed in');
+  await syncManager.settleBeforeAccountDeletion();
+  const reappeared = [];
+  for (const namespace of Array.isArray(namespaces) ? namespaces : []) {
+    const snapshot = await getDoc(doc(db, `users/${user.uid}/apps/${namespace}`));
+    if (snapshot && typeof snapshot.exists === 'function' && snapshot.exists()) {
+      reappeared.push(namespace);
+      await eraseCloudData(namespace);
+    }
+  }
+  return reappeared;
+}
+
+/**
+ * Mark the namespaces' local data as moving, before clearing it for an
+ * account, so a page whose sync modules register afterwards reloads rather
+ * than trusting what its apps read.
+ */
+export function bumpOwnershipEpochs(namespaces) {
+  return syncManager.bumpOwnershipEpoch(Array.isArray(namespaces) ? namespaces : []);
+}
+
+/**
+ * Forget every trace of a deleted account on this device: its parked copies,
+ * its ownership stamps and agreed bases, the provenance of the keys, and the
+ * legacy owner marker if it names the account.
+ */
+export function forgetAccountLocalState(uid, namespaces, keys) {
+  syncManager.forgetAccountLocalState(uid, namespaces, keys);
 }
 
 /**
@@ -2635,9 +3671,7 @@ window._debugSync = {
       console.error(`❌ Namespace "${namespace}" not found`);
       return;
     }
-    state.initialMergeDone = false;
-    syncManager.uploadLocalOnlyKeys(state, {});
-    state.initialMergeDone = true;
+    await syncManager.uploadLocalOnlyKeys(state, {});
   },
   
   // Get all available namespaces

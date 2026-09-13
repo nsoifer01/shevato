@@ -555,14 +555,32 @@ test('RELOAD: revisions saved by one account are never inherited by another', as
   mod.stopSync(h.namespace);
   await settle();
   authFakes().currentUser = { uid: 'uid-2', getIdToken: async () => 'fake-token' };
-  const other = mod.startStorageSync({ namespace: h.namespace, keys: h.keys });
+  // A different account needs a fresh page (audit S-2): this page's apps held
+  // uid-1's data, so the engine here sets that data aside, hands the namespace
+  // to uid-2, and asks for a reload instead of syncing. The reloaded page is a
+  // fresh engine instance on the same storage.
+  const reloads = [];
+  const location = globalThis.window.location;
+  globalThis.window.location = { reload: () => reloads.push(h.namespace) };
+  t.after(() => { globalThis.window.location = location; });
+  mod.startStorageSync({ namespace: h.namespace, keys: h.keys });
+  await settle();
+  assert.deepEqual(reloads, [h.namespace], 'the page that held uid-1 data reloads first');
+  const reloaded = await import(`../storage-sync-robust.js?reload=${h.namespace}`);
+  const other = reloaded.startStorageSync({ namespace: h.namespace, keys: h.keys });
   t.after(() => {
     other.stop();
     authFakes().currentUser = USER;
   });
   await settle();
+  // Its first server snapshot. A namespace sends nothing before one (audit
+  // T-3); this test used to write straight after the start.
+  firestoreFakes().snapshotListeners
+    .filter((l) => l.path === `users/uid-2/apps/${h.namespace}` && l.active).pop()
+    .onNext({ data: () => ({ data: {} }), metadata: { fromCache: false, hasPendingWrites: false } });
+  await settle();
 
-  const status = mod.getSyncStatus(h.namespace);
+  const status = reloaded.getSyncStatus(h.namespace);
   assert.ok(status && status.active, 'the second account syncs normally');
   // Its revision map starts empty rather than inheriting uid-1's counters:
   // a first write from uid-2 is rev 1, not rev 2.
@@ -764,6 +782,10 @@ test('CHUNKED: remote wins on the higher revision, and the local copy is recover
 test('CHUNKED: this device’s own echo of a chunked write is not a conflict', async (t) => {
   const h = await startClient(t, ['log']);
   const [k] = h.keys;
+  // The first server snapshot before the first write: nothing is sent until
+  // the cloud has been read (audit T-3).
+  h.deliver();
+  await settle();
 
   localStorage.setItem(k, JSON.stringify(bigRecords(['a'])));
   t.mock.timers.tick(500);
