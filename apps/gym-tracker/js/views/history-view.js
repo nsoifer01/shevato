@@ -4,7 +4,7 @@
 import { app } from '../app.js';
 import { formatDate, showToast, showConfirmModal, formatSessionDateTime, escapeHtml, pluralize } from '../utils/helpers.js';
 import { displayWeight, formatDurationLong, normalizeWeightUnit, volumeIn } from '../utils/units.js';
-import { performedExerciseCount, sessionTimedSeconds } from '../utils/session-metrics.js';
+import { completedSetsInSlotOrder, performedExerciseCount, sessionTimedSeconds } from '../utils/session-metrics.js';
 import { trapModalFocus } from '../utils/modal-focus.js';
 import { DarkCalendar } from '../utils/dark-calendar.js';
 import { DarkSelect } from '../utils/dark-select.js';
@@ -492,10 +492,14 @@ class HistoryView {
         session.exercises.forEach(exercise => {
             const exerciseData = this.app.getExerciseById(exercise.exerciseId);
             const exerciseName = exerciseData ? exerciseData.name : exercise.exerciseName || 'Unknown Exercise';
-            const completedSets = exercise.sets ? exercise.sets.filter(s => s.completed) : [];
+            // In set order and numbered by slot, the numbering the live
+            // workout and the CSV export use. Array order is commit order, so
+            // after an un-tick and re-tick `index + 1` called a set "Set 3"
+            // that the CSV called "Set 2" (audit G-3).
+            const completedSets = completedSetsInSlotOrder(exercise);
 
             if (completedSets.length > 0) {
-                const isDuration = completedSets[0].duration > 0;
+                const isDuration = completedSets[0].set.duration > 0;
 
                 html += `
                     <div class="detail-exercise">
@@ -524,8 +528,8 @@ class HistoryView {
                             <tbody>
                 `;
 
-                completedSets.forEach((set, index) => {
-                    html += `<tr><td>${index + 1}</td>`;
+                completedSets.forEach(({ set, slot }) => {
+                    html += `<tr><td>${slot + 1}</td>`;
 
                     if (set.duration > 0) {
                         const mins = Math.floor(set.duration / 60);

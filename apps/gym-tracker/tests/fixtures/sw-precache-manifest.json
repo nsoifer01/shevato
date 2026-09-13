@@ -1,5 +1,5 @@
 {
-  "cacheVersion": "1.15.4",
+  "cacheVersion": "1.16.0",
   "files": {
     "./": "7852e02e173933ba",
     "./index.html": "7852e02e173933ba",
@@ -45,19 +45,19 @@
     "./js/utils/exercise-taxonomy.js": "e29d504e2fb500ae",
     "./js/utils/import-merge.js": "a633aa748d76f736",
     "./js/utils/import-sanitize.js": "e0a547a09f5a74da",
-    "./js/utils/session-metrics.js": "396785b171033af8",
+    "./js/utils/session-metrics.js": "30426ed47319b180",
     "./js/utils/units.js": "b7375e979ff2f4b4",
     "./js/utils/week.js": "4f796216f475412b",
     "./js/views/achievements-view.js": "c16a540918fd3761",
     "./js/views/calendar-view.js": "a0719fa4305da79c",
     "./js/views/exercises-view.js": "fafcc20cc2fd840d",
-    "./js/views/history-view.js": "cc3bdea1da109bbb",
+    "./js/views/history-view.js": "e9289721cdac9bfd",
     "./js/views/home-view.js": "50d8200a464190f4",
     "./js/views/insights-view.js": "5faeee9dba33b9b2",
     "./js/views/measurements-view.js": "61e7a36d4e31d6e9",
     "./js/views/paused-banner.js": "9138214f1a7d7ac6",
     "./js/views/programs-view.js": "fa0043b80202759a",
     "./js/views/settings-view.js": "1e8d742e34b48da1",
-    "./js/views/workout-view.js": "c85e05c3099b6dc0"
+    "./js/views/workout-view.js": "071b7c6372a05cd8"
   }
 }

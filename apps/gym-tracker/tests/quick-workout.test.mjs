@@ -31,6 +31,7 @@ import { WorkoutSession } from '../js/models/WorkoutSession.js';
 import { WorkoutExercise } from '../js/models/WorkoutExercise.js';
 import { readableActiveWorkout } from '../js/utils/active-workout.js';
 import { sameId } from '../js/utils/id-utils.js';
+import { completedSetsInSlotOrder } from '../js/utils/session-metrics.js';
 import { normalizeWeightUnit } from '../js/utils/units.js';
 import { AnalyticsService } from '../js/services/AnalyticsService.js';
 
@@ -380,7 +381,7 @@ test('prefill is keyed by EXERCISE, so a quick workout inherits programmed histo
     programmed.programId = 3;
     programmed.isQuickWorkout = false;
 
-    const prefill = buildMethods(src, ['getPreviousExerciseData'], { sameId }, 'workout-view.js');
+    const prefill = buildMethods(src, ['getPreviousExerciseData'], { sameId, completedSetsInSlotOrder }, 'workout-view.js');
     const view = Object.create(prefill);
     view.app = { workoutSessions: [programmed] };
     assert.deepEqual(view.getPreviousExerciseData(7).map((s) => s.weight), [72.5, 72.5]);

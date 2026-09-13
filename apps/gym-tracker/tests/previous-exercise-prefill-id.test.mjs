@@ -20,10 +20,11 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { buildMethods, loadSource } from './helpers/source-extract.mjs';
 import { sameId } from '../js/utils/id-utils.js';
+import { completedSetsInSlotOrder } from '../js/utils/session-metrics.js';
 
 const src = loadSource('js/views/workout-view.js');
 
-const methods = buildMethods(src, ['getPreviousExerciseData'], { sameId }, 'workout-view.js');
+const methods = buildMethods(src, ['getPreviousExerciseData'], { sameId, completedSetsInSlotOrder }, 'workout-view.js');
 
 /** One finished session that logged `exerciseId` for 60 kg x 8 and 62.5 kg x 6. */
 function sessionWith(exerciseId, sortTimestamp = '2026-09-01T18:00:00.000Z') {
