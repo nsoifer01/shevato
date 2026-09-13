@@ -1836,16 +1836,21 @@
                     .catch(function () { /* registration is best-effort */ });
             });
             var reloading = false;
+            // A page that loaded with no controller (a first visit) is claimed
+            // by the fresh worker, and that first controllerchange is the
+            // install, not an update: it only records that the page is now
+            // controlled. This used to be set from serviceWorker.ready, which
+            // resolves when the worker STARTS activating, before its
+            // clients.claim() fires, so every first visit reloaded itself and
+            // counted twice in analytics (audit G-6).
+            var gymHadController = !!navigator.serviceWorker.controller;
             navigator.serviceWorker.addEventListener('controllerchange', function () {
                 if (reloading) return;
-                // The first controller on a fresh install is not an update.
-                if (!window.__gymHadController) return;
+                if (!gymHadController) { gymHadController = true; return; }
                 var workoutLive = !!document.querySelector('#active-workout.active');
                 if (!workoutLive) { reloading = true; location.reload(); return; }
                 showGymUpdateToast();
             });
-            window.__gymHadController = !!navigator.serviceWorker.controller;
-            navigator.serviceWorker.ready.then(function () { window.__gymHadController = true; });
         }
         function showGymUpdateToast() {
             if (document.getElementById('gym-update-toast')) return;
