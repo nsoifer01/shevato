@@ -168,9 +168,23 @@ service cloud.firestore {
     function memberPause() {
       return roomKeys().hasOnly(['paused', 'pausedAt', 'pausedByUid', 'pausedByName']);
     }
+    // A resume re-anchors the question clock to its original start plus the
+    // time spent paused (togglePauseRoom), so an honest stamp never moves
+    // backwards and never lands meaningfully in the future. Unbounded, one
+    // resume could end the current question for everyone (a stamp in the
+    // past) or park it indefinitely (a stamp far ahead, which every client
+    // reads as not started yet). The minute of slack is for the resuming
+    // client's own clock, which is what computes the stamp.
+    function resumeStampSane() {
+      return request.resource.data.questionStartedAt is timestamp
+        && request.resource.data.questionStartedAt <= request.time + duration.value(60, 's')
+        && (!(resource.data.get('questionStartedAt', null) is timestamp)
+            || request.resource.data.questionStartedAt >= resource.data.questionStartedAt);
+    }
     function memberResume() {
       return resource.data.get('paused', false) == true
-        && roomKeys().hasOnly(['paused', 'pausedAt', 'pausedByUid', 'pausedByName', 'questionStartedAt']);
+        && roomKeys().hasOnly(['paused', 'pausedAt', 'pausedByUid', 'pausedByName', 'questionStartedAt'])
+        && (!roomKeys().hasAny(['questionStartedAt']) || resumeStampSane());
     }
     // VALUE bounds for the member-write paths below.
     //
@@ -211,8 +225,33 @@ service cloud.firestore {
         && rankingSane()
         && roomKeys().hasOnly(['status', 'finishedAt', 'paused', 'pausedAt', 'finalRanking']);
     }
+    // Rematch coordination is a VOTE: the host's client restarts the game the
+    // moment the accept list is as long as the live roster, so the lists are
+    // counted, not just read. With keys alone bounded, one member could write
+    // an accept list naming everyone, or themselves several times, and restart
+    // the game (mid-game, discarding every score) with nobody else consenting.
+    // A member may write exactly the three shapes the app makes: PROPOSE (they
+    // propose and are the only accept), WITHDRAW (everything cleared), or
+    // RESPOND to a live proposal by adding themselves, once, to a list.
+    function listGainsOnlyCaller(field) {
+      return request.resource.data.get(field, []) == resource.data.get(field, [])
+        || request.resource.data.get(field, [])
+           == resource.data.get(field, []).concat([request.auth.uid]);
+    }
     function memberRematch() {
-      return roomKeys().hasOnly(['rematchProposedBy', 'rematchAcceptedBy', 'rematchDeclinedBy', 'rematchProposedAt']);
+      return roomKeys().hasOnly(['rematchProposedBy', 'rematchAcceptedBy', 'rematchDeclinedBy', 'rematchProposedAt'])
+        && ((request.resource.data.get('rematchProposedBy', null) == request.auth.uid
+             && request.resource.data.get('rematchAcceptedBy', []) == [request.auth.uid]
+             && request.resource.data.get('rematchDeclinedBy', []) == [])
+            || (request.resource.data.get('rematchProposedBy', null) == null
+             && request.resource.data.get('rematchAcceptedBy', []) == []
+             && request.resource.data.get('rematchDeclinedBy', []) == [])
+            || (resource.data.get('rematchProposedBy', null) != null
+             && !roomKeys().hasAny(['rematchProposedBy', 'rematchProposedAt'])
+             && !(request.auth.uid in resource.data.get('rematchAcceptedBy', []))
+             && !(request.auth.uid in resource.data.get('rematchDeclinedBy', []))
+             && listGainsOnlyCaller('rematchAcceptedBy')
+             && listGainsOnlyCaller('rematchDeclinedBy')));
     }
     function deciderPick() {
       return resource.data.status == 'picking'
@@ -397,11 +436,11 @@ service cloud.firestore {
             || (isStalePlayerData(resource.data) && isRoomHost(roomCode)));
     }
 
-    // Per-room chat. Any signed-in user can read; each user can only
-    // write messages keyed by their own uid in the payload. We cap the
-    // text at 280 characters so a runaway client can't spam the doc
-    // with megabytes; the rules-side check is the last line of defense
-    // (the client also enforces this).
+    // Per-room chat, members only (see below); each user can only write
+    // messages keyed by their own uid in the payload. We cap the text at
+    // 280 characters so a runaway client can't spam the doc with
+    // megabytes; the rules-side check is the last line of defense (the
+    // client also enforces this).
     match /triviaRooms/{roomCode}/chat/{messageId} {
       // Members only, both ways. An outsider used to be able to read a
       // private room's whole conversation AND post into it without ever
@@ -410,10 +449,17 @@ service cloud.firestore {
       allow read: if mayReadRoomContent(roomCode);
       allow create: if request.auth != null
         && isRoomMember(roomCode)
+        && request.resource.data.keys().hasOnly(['uid', 'displayName', 'text', 'sentAt'])
         && request.resource.data.uid == request.auth.uid
         && request.resource.data.text is string
         && request.resource.data.text.size() > 0
-        && request.resource.data.text.size() <= 280;
+        && request.resource.data.text.size() <= 280
+        // Every client in the room downloads the newest 80 messages and
+        // renders this name, so it is capped like every other published name
+        // (Config.MAX_DISPLAY_NAME). It used to be unbounded, and so was the
+        // key set, which made the text cap decorative.
+        && request.resource.data.get('displayName', '') is string
+        && request.resource.data.get('displayName', '').size() <= 20;
       // No edits, no recalls while the room lives - chat stays append-only
       // so moderation is tractable. Once the room doc is deleted (last
       // player left) the messages are orphans and any signed-in user may
@@ -609,9 +655,10 @@ service cloud.firestore {
 
     // Handle claim. Doc id is the lowercased maptap.gg handle, so the
     // collection doubles as the handle -> uid directory the client needs to
-    // turn "my rival's maptap username" into a network member. Any signed-in
-    // user can read (that lookup is the whole point); only a registered user
-    // can claim, and only for their own uid. First claim wins: once the doc
+    // turn "my rival's maptap username" into a network member. A registered
+    // user can look one handle up by its exact name (that lookup is the whole
+    // point); nobody can list the directory. Only a registered user can
+    // claim, and only for their own uid. First claim wins: once the doc
     // exists, update/delete require the caller to already own it, so nobody
     // can steal someone else's handle.
     //
@@ -623,7 +670,16 @@ service cloud.firestore {
     // same. First-claim-wins plus owner-only release is the whole contract:
     // a handle taken by the wrong person is released by deleting the claim.
     match /maptapRivalsHandles/{handleLower} {
-      allow read: if request.auth != null;
+      // `get` is the lookup (tryLinkRival); an unclaimed handle answers
+      // not-found, which is how "not a member" is decided. `list` exists only
+      // for finding your OWN claims (account deletion queries uid == you).
+      // Until 2026-09-13 this was `allow read: if request.auth != null`, so
+      // any signed-in visitor, Arena's anonymous guests included, could
+      // enumerate every claimed handle with its account id, which is half of
+      // what the pair-existence probe below assumes nobody has (audit
+      // 2026-09-12 R-3). Every client flow is a registered account's.
+      allow get: if isRegistered();
+      allow list: if isRegistered() && resource.data.uid == request.auth.uid;
       allow create: if isRegistered()
         && request.resource.data.uid == request.auth.uid;
       allow update, delete: if isRegistered()
