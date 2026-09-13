@@ -64,9 +64,31 @@ test('privacy.html names the booking facts the assistant is NOT given', () => {
   // while still syncing and travelling in a share link like the rest of the item.
   assert.deepEqual(fields.sort(), ['bookBy', 'confirmation', 'paidBy', 'payment', 'place', 'splitAmounts'].sort());
   // each one, in the words the page uses for it
-  for (const phrase of [/confirmation-number field/i, /who paid/i, /how a cost is split/i, /payment tag/i,
+  // splitAmounts is the CUSTOM amounts of an uneven split. Which travellers a cost
+  // is shared between DOES reach the assistant (item.travelers), so the page names
+  // the amounts, not "how a cost is split", which read as if both were held back.
+  for (const phrase of [/confirmation-number field/i, /who paid/i, /custom amounts of an uneven cost split/i, /payment tag/i,
     /booking deadline/i, /resolved Google place/i]) {
     assert.match(section, phrase, `privacy.html no longer says it holds back ${phrase}`);
+  }
+});
+
+// What the projection SENDS must be named too, not only what it holds back
+// (2026-09-12 audit T-5). The trip-level traveller roster and the visa
+// checker's extra countries ride in slimTripForShare, which the assistant
+// projection is built on, and the page listed neither.
+test('privacy.html names the trip-level people and places the assistant IS given', () => {
+  const section = assistantSection(privacy);
+  const share = /function slimTripForShare\([\s\S]*?\n  \}\n/.exec(logic);
+  assert.ok(share, 'slimTripForShare moved; this test reads it to know what the assistant receives');
+  if (/slim\.travelers\s*=/.test(share[0])) {
+    assert.match(section, /names of the travellers/i, 'the assistant receives the traveller roster but privacy.html does not say so');
+  }
+  if (/out\.travelers\s*=/.test(share[0])) {
+    assert.match(section, /travellers the item's cost is shared between/i, 'each item carries who shares its cost but privacy.html does not say so');
+  }
+  if (/slim\.visaExtras\s*=/.test(share[0])) {
+    assert.match(section, /visa checker/i, 'the assistant receives the visa checker countries but privacy.html does not say so');
   }
 });
 

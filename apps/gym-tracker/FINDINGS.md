@@ -294,6 +294,54 @@ per-screen, because per-screen is exactly how the tenth site was missed:
 
 `showToast` is NOT a sink: it sets `textContent`. Do not "fix" it into one.
 
+## Stored records are data at every innerHTML sink: the achievement category key
+
+Audit G-1 (2026-09-12), stored XSS. The Achievements view groups cards by
+`requirement.type` and interpolated that key RAW into `data-category-key`,
+`aria-controls`, the chain `id`, and the `<h2>` built by `humanizeCategoryKey`.
+Nothing upstream stopped a hostile key: the sanitiser kept any achievement with
+a string id, `Achievement` copies `requirement` verbatim, `isRenderable` accepts
+every non-PR type, and `syncDefinitions` skips unknown ids untouched. An imported
+`x" onmouseover="alert(1)` became a live attribute on a `<button>`, and because
+`gymTrackerAchievements` syncs it reached every device on the account. `renderCard`
+already escaped name/description/icon; only the category header was the sink.
+
+Fixed at both boundaries, because synced storage is never re-sanitised:
+
+- **Sanitiser.** The vocabulary is derived from code, never listed by hand:
+  `AchievementService.getDefaultAchievements()` ids and types,
+  `getLiftMilestoneAchievements()` ids (type `lift-milestone`, created in
+  app.js), and strength PRs (`pr-<exerciseId>-<YYYY-MM-DD>`, type
+  `strength-pr`). An id no code path produces is dropped ("N achievement(s)
+  were not one this app defines"); a known id whose type is outside the
+  vocabulary gets its definition's requirement back. An IN-vocabulary type that
+  differs from the current definition is left alone on purpose: that is the
+  legacy GT-11 "Perfect Week" shape, and `syncDefinitions` must see it to
+  withdraw an unlock earned under the old rule. Every id ever shipped in git
+  history is still a definition except `first`, from the very first gym commit,
+  which had no `requirement` at all (superseded by `first-workout`); an export
+  that old loses that one stale record.
+- **View.** `data-category-key` and the heading go through `escapeHtml` (the
+  click handler reads `dataset.categoryKey`, which decodes back to the raw key,
+  so toggling still works). `id` / `aria-controls` use `categoryDomKey`: a key
+  that is already a plain slug keeps its readable id (every key the app
+  produces, so `#achievement-chain-total-workouts` is unchanged), anything else
+  becomes a slug suffixed with its group index. `CATEGORY_META` lookups use
+  `Object.hasOwn`, since `CATEGORY_META['constructor']` is Object's constructor.
+- **Import cycle, deliberately allowed.** `import-sanitize.js` now imports
+  `AchievementService`, which imports `StorageService`, which imports the
+  sanitiser. ES modules tolerate this because none of the three touches another
+  module's binding at top level (the sanitiser reads the definitions inside
+  `sanitizeImportData`). Do not add a top-level use across that cycle.
+
+Guard: `tests/achievement-category-escaping.test.mjs` runs the real `render()`
+(the module prelude and the extracted methods evaluated in one scope) with
+attribute-breaking and element-injecting keys, collapsed and expanded, and
+inspects the markup with an attribute-aware tag scanner: no foreign element, no
+`on*` attribute, the header's attribute list exactly as templated,
+`aria-controls` matching the chain `id`, and the heading decoding back to the
+humanized literal text.
+
 ## Supersets
 
 `groupId` links consecutive program rows. Unlinking clears the row's groupId
@@ -1271,30 +1319,83 @@ populate from it, so a fifth hand-written copy cannot creep back in.
 
 ## Gym Tracker forks two pieces of shared UI, so shared fixes skip it
 
-`js/utils/sync-status.js` and the `.sync-banner` / `.sync-status-pill` rules in
-`css/gym-tracker.css` are gym-local COPIES of `assets/js/sync-status.js` and
-`assets/css/sync-status.css` (gym adds a side-nav pill, a bottom-nav dot, and
-hides the banner on desktop, and its index.html never links the shared
-stylesheet). A fix to the shared pair therefore does nothing here.
+`js/utils/sync-status.js` and the `.sync-banner` / `.sync-status-pill` /
+`.nav-sync-dot` rules in `css/gym-tracker.css` are gym-local counterparts of
+`assets/js/sync-status.js` and `assets/css/sync-status.css` (gym adds a
+side-nav pill and a bottom-nav dot, and its index.html never links the shared
+stylesheet). A fix to the shared pair does nothing here. This has bitten twice:
 
-That is exactly what happened on 2026-08-23: the shared banner was moved below
-the fixed site header (`top` follows `#header`'s bottom edge, z-index 10000
-under the header's 10001, plus a close button) so it stopped covering the
-logo, Menu and Sign In. Gym kept `top: 0; z-index: 1100`, and since the header
-is 10001 the offline banner was drawn ENTIRELY BEHIND the header on phones:
-not "slightly covered" but invisible, so an offline user got no notice at all
-(screenshot pair in `.screenshots/audit/gym-banner/`). Gym now mirrors the
-shared contract: `placeBanner()` on show, on resize and on
-`shevato:include-loaded` (the header is an injected partial, so its height is
-unknown at mount), z-index 10000, and the same dismiss button. Desktop still
-shows the side-nav pill instead of a banner, which is deliberate.
+- **2026-08-23, banner placement.** The shared banner moved below the fixed
+  site header (`top` follows `#header`'s bottom edge, z-index 10000 under the
+  header's 10001, plus a close button). Gym kept `top: 0; z-index: 1100`, so its
+  offline banner was drawn ENTIRELY BEHIND the header on phones: invisible, not
+  "slightly covered" (screenshots in `.screenshots/audit/gym-banner/`). Gym now
+  mirrors the contract: `placeBanner()` on show, on resize and on
+  `shevato:include-loaded` (the header is an injected partial), z-index 10000,
+  the same dismiss button. The geometry assertion catches "hidden under the
+  header" (hit-tests pass in that state), the hit-tests catch the opposite (a
+  banner raised above the header); `e2e/audit-2026-08.mjs` block M pins both at
+  390, plus the desktop pill at 1280.
+- **2026-09-12 audit S-1, failure honesty.** The shared widget had grown
+  `failed` and conflict states; this copy had neither and no listener for
+  `syncWriteRejected`, `appSyncFailed` or `syncConflict`, so the pill, the dot
+  and the banner said "Synced" (or nothing) over a write the cloud refused.
+  Ported, not merged: the divergence is the pill, the dot and a module export
+  shape the tests rely on, too much to fold into the classic shared script.
 
-Two things to keep in mind when either copy changes: the geometry assertion is
-what catches the "hidden under the header" failure (the hit-tests pass in that
-state, because the header is above the banner either way), and the hit-tests
-are what catch the opposite failure (a banner raised above the header, which
-is the bug the shared move was fixing). `e2e/audit-2026-08.mjs` block M pins
-both at 390, plus the desktop-pill behaviour at 1280.
+What the widget does now (keep the two copies in step, same wording, same
+state names):
+
+- Event contract (from the sync engine): `syncWriteRejected`
+  `{ namespace, keys, code, retryable }` and `syncWriteRecovered`
+  `{ namespace }`. `retryable: true` is state `unsaved`, "Not saved to cloud
+  yet"; anything else, INCLUDING a missing flag (the older engine fired only for
+  writes it would not retry), is `failed`, "Not saved to cloud". A permanent
+  rejection is never downgraded by a later retryable one; only
+  `syncWriteRecovered` clears it. An event naming another namespace is ignored
+  (only `gymTrackerApp` counts); `appSyncFailed` and `syncConflict` carry no
+  namespace and always count.
+- Precedence: `offline` > refused write (`failed`) > `unsaved` > failed start
+  (`failed`, "Sync unavailable") > the normal states. Offline wins because it is
+  the more actionable truth; the failure is back when the connection is.
+- A failed start clears itself once any namespace is active (real evidence, not
+  a timer). A refused write does not: a green queue elsewhere proves nothing.
+- The banner shows failures and conflicts until dismissed. Dismissing a failure
+  hides the sentence only (pill and dot keep the state); dismissing a conflict
+  acknowledges it. A pending conflict notice survives later state changes: the
+  old code hid the banner on every state transition it did not recognise, which
+  would have swallowed a conflict at the next queue flush.
+- **Desktop shows failure and conflict banners.** CSS hid the banner at >= 768px
+  because the pill is the desktop surface, but a conflict has no pill state and a
+  failure has a sentence the pill cannot hold, so the media query now exempts
+  `failed`, `unsaved` and `conflict`. The offline banner stays phone-only (block
+  M's 1280 check is unchanged). Needs a screenshot check at 1280 with the side
+  nav: the banner is fixed full-width under the header.
+- The reconnect flash for a non-synced account used state `online`, which had
+  no CSS rule, so it rendered with no background (white text on the page). It
+  now has the slate offline colour.
+- Colours: failure red matches the shared pill; `unsaved` and `conflict` use
+  darker orange/amber than the shared file (orange-700 / amber-700) so white
+  12-13px bold text stays readable.
+
+- **Desktop stacking (2026-09-13, found while verifying S-1 in a browser).**
+  Showing the failure and conflict banner on desktop put a 10000-layer band
+  over Gym's dialogs (`.modal` is 2000), and Gym's centred dialogs start right
+  under the header there, so the banner covered the onboarding dialog's close
+  button: `elementsFromPoint` at that button returned `#sync-banner` at 1280.
+  On desktop the banner now sits at 1900, below dialogs and above the side nav
+  (1000) and the calendar popup (1500); on a phone the dialogs start below the
+  banner, so the mobile layer is unchanged. Re-verified at 1280 and 390: the
+  close button is the top element with the banner up, and with no dialog the
+  banner is on top at its own centre and the header stays clickable. Pinned by
+  `tests/sync-banner-stacking.test.mjs`, which reads the CSS and compares the
+  layers.
+
+Testing: `tests/sync-status.test.mjs` mounts the REAL module per test (a fresh
+instance via an import query string, `?s1-case=N`, because the mount guard is
+module state) against a stubbed window/document/navigator/timers, and drives it
+only through window events and the poll. It mirrors the failure cases of
+`assets/js/tests/sync-status.test.js`.
 
 ## What the 2026-08-22 remediation round changed (and what it taught)
 
@@ -1442,15 +1543,34 @@ not win here.
 
 ## The programs store could be blanked by one bad record
 
-`sanitizeImportData` validated `programs` only for id and name; `exercises` was
-never checked. `Program`'s constructor does `(data.exercises || []).map(...)`,
-so an `exercises` that is an object, a string, or an array holding `null` threw
-while the store was loading. `app.js` wraps the WHOLE store in `_safeLoad`, so
-one bad record made every program vanish behind "Could not load programs, so
-that section reset to empty", and the next `savePrograms()` (create, edit,
-reorder, delete) wrote that empty list over the intact stored one. The
-sanitiser now coerces `exercises` to an array of plain objects and reports the
-repair.
+`app.js` loads the WHOLE programs store in one `_safeLoad`, so anything that
+throws in `Program`'s constructor makes every program vanish behind "Could not
+load programs, so that section reset to empty", and the next `savePrograms()`
+(create, edit, reorder, delete, `history-view.js`) writes that empty list over
+the intact stored one. Sync's three-way merge then honours it as deletions on
+every device. It happened at two depths:
+
+- **Exercises (2026-09-03).** `exercises` as an object, a string, or an array
+  holding `null` threw `(data.exercises || []).map(normalizeExercise)`. The
+  sanitiser coerces `exercises` to an array of plain objects and reports it.
+- **Set rows (audit G-2, 2026-09-12).** One level deeper: the sanitiser never
+  looked inside an exercise, and `normalizeSetRow(s)` read `s.repsMin`, so
+  `sets: [null]` threw the same way. The sanitiser now filters each exercise's
+  `sets` to plain objects ("N program set row(s) were not records and were
+  skipped") and empties a non-array value ("... had an unreadable set list");
+  a missing or null `sets` is the legacy `targetSets`/`targetReps` shape and is
+  left alone.
+
+The sanitiser only guards imports. Storage is also written by sync, other tabs
+and older builds, so the MODEL must not throw either: the constructor now takes
+only record entries from an array `exercises`, `normalizeExercise` skips
+non-record set rows (a list left empty takes the legacy expansion, exactly as a
+sanitised `sets: []` import does, so both channels build the same program), and
+`normalizeSetRow` treats a non-record as `{}`. Pinned in `import-sanitize`
+(null, mixed, non-array and numbers/strings; a valid import byte-identical with
+no repairs), `program-model`, and `storage-service`, which runs the real
+source-extracted `loadAllData` / `_safeLoad` over a store that already holds a
+null row and asserts no reset toast and both programs loaded.
 
 ## Two achievement paths read the UTC day, not the local one
 

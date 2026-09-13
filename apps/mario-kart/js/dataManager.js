@@ -1,5 +1,95 @@
 let races = [];
 
+// --- Race identity and the write of the log ----------------------------------
+// Every race carries a stable string `id`. The history buttons, the edit and
+// delete dialogs and the undo stack name a race by id and re-resolve it at the
+// moment they commit, because `races` is REPLACED whenever storage is re-read
+// (another tab, a cloud delivery) and an index captured a moment earlier can
+// point at a different race by then.
+//
+// A new race gets a random id. A race stored before ids existed gets a
+// DETERMINISTIC one derived from its content. marioKartRaces is a synced key,
+// and the sync merge (sync-system/sync-helpers.mjs, mergeRecordCollections)
+// reconciles an array of id-bearing records per id: if two devices each gave
+// the same legacy race a different random id, the next merge would keep both
+// copies and every stat would count that race twice.
+const RACE_ID_RE = /^[A-Za-z0-9_-]{1,64}$/;
+const RACE_NOT_SAVED_MESSAGE = 'Not saved: this device is out of storage space. Export a backup and clear some data.';
+const RACE_GONE_MESSAGE = 'That race is no longer in the log (it was changed in another tab or on another device).';
+
+function isValidRaceId(id) {
+    return typeof id === 'string' && RACE_ID_RE.test(id);
+}
+
+function newRaceId() {
+    const cryptoApi = typeof crypto !== 'undefined' ? crypto : null;
+    if (cryptoApi && typeof cryptoApi.randomUUID === 'function') return `mk-${cryptoApi.randomUUID()}`;
+    return `mk-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`;
+}
+
+// Content fingerprint of a race: a 53-bit cyrb53 hash of the fields that
+// define it, read in a fixed order, so key order and absent-vs-null never
+// change it and every device computes the same value.
+function raceContentHash(race) {
+    const text = JSON.stringify(['date', 'timestamp', 'player1', 'player2', 'player3', 'player4', 'courseId', 'course']
+        .map((key) => (race[key] === undefined ? null : race[key])));
+    let h1 = 0xdeadbeef;
+    let h2 = 0x41c6ce57;
+    for (let i = 0; i < text.length; i++) {
+        const ch = text.charCodeAt(i);
+        h1 = Math.imul(h1 ^ ch, 2654435761);
+        h2 = Math.imul(h2 ^ ch, 1597334677);
+    }
+    h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+    h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+    return (4294967296 * (2097151 & h2) + (h1 >>> 0)).toString(36);
+}
+
+// Gives every race in `list` a valid, unique id, replacing entries in place.
+// A valid id is kept (first occurrence wins). A missing, malformed or repeated
+// one becomes `lg-<content hash>`, with `-2`, `-3`, ... for further races that
+// hash the same (identical races are still separate races). Two passes, so a
+// healed race can never take an id a later race already owns. Deterministic
+// for a given list, which is the property sync needs. Returns the count.
+function assignRaceIds(list) {
+    const taken = new Set();
+    const needsId = [];
+    list.forEach((race, i) => {
+        if (isValidRaceId(race.id) && !taken.has(race.id)) taken.add(race.id);
+        else needsId.push(i);
+    });
+    for (const i of needsId) {
+        const base = `lg-${raceContentHash(list[i])}`;
+        let id = base;
+        for (let n = 2; taken.has(id); n++) id = `${base}-${n}`;
+        taken.add(id);
+        list[i] = { ...list[i], id };
+    }
+    return needsId.length;
+}
+
+function findRaceIndexById(id) {
+    if (!isValidRaceId(id)) return -1;
+    return races.findIndex((race) => race && race.id === id);
+}
+
+// Every user action writes the race log through here. Storage can refuse
+// (quota exhausted, private mode, evicted storage): this reports it and
+// returns false, and every caller rolls its in-memory change back, so the
+// screen never shows a race that a reload would not. The failure used to be
+// logged and followed by a success toast.
+function persistRaces() {
+    try {
+        const storageKey = window.getStorageKey ? window.getStorageKey('Races') : 'marioKartRaces';
+        localStorage.setItem(storageKey, JSON.stringify(races));
+        return true;
+    } catch (e) {
+        console.error('Mario Kart: could not write races to storage', e);
+        showMessage(RACE_NOT_SAVED_MESSAGE, true);
+        return false;
+    }
+}
+
 // Detect active players from race data
 function detectActivePlayersFromRaces(raceData) {
     if (!raceData || !Array.isArray(raceData) || raceData.length === 0) {
@@ -127,7 +217,7 @@ function addRace() {
     }
 
     // Create race object with all player data
-    const raceObject = { date, timestamp };
+    const raceObject = { id: newRaceId(), date, timestamp };
     allPlayers.forEach(player => {
         raceObject[player] = raceData[player];
     });
@@ -141,9 +231,15 @@ function addRace() {
     }
 
     races.push(raceObject);
+    if (!persistRaces()) {
+        // Not stored: take it back out and leave the form filled in, so the
+        // screen never shows a race that a reload would not.
+        races.pop();
+        return;
+    }
 
-    // The app's core action, reported only after every validation above has
-    // passed. Player count and whether a course was picked, never player
+    // The app's core action, reported only once the race is validated and
+    // saved. Player count and whether a course was picked, never player
     // names or finishing positions.
     if (typeof window !== 'undefined' && window.shevatoAnalytics) {
         try {
@@ -156,13 +252,6 @@ function addRace() {
 
     // Save action for undo/redo
     saveAction('ADD_RACE', { race: raceObject });
-    
-    try {
-        const storageKey = window.getStorageKey ? window.getStorageKey('Races') : 'marioKartRaces';
-        localStorage.setItem(storageKey, JSON.stringify(races));
-    } catch (e) {
-        console.error('Error saving to localStorage:', e);
-    }
 
     // Clear inputs for all players
     allPlayers.forEach(player => {
@@ -182,9 +271,12 @@ function addRace() {
     showMessage('Race added successfully!');
 }
 
-function editRace(index) {
-    const race = races[index];
-    if (!race) return;
+function editRace(raceId) {
+    const race = races[findRaceIndexById(raceId)];
+    if (!race) {
+        showMessage(RACE_GONE_MESSAGE, true);
+        return;
+    }
 
     const esc = (v) => (typeof escapeHtml === 'function' ? escapeHtml(v) : String(v == null ? '' : v));
 
@@ -246,10 +338,7 @@ function editRace(index) {
             return;
         }
 
-        // Save the original race for undo/redo
-        const originalRace = { ...race };
-        
-        // Check if date/time actually changed
+        // Check if date/time actually changed from what the dialog showed
         const originalTime = race.timestamp ? race.timestamp.split(' ')[0] : '';
         const dateChanged = newDate !== race.date;
         const timeChanged = newTime !== originalTime;
@@ -297,14 +386,28 @@ function editRace(index) {
             return;
         }
 
+        // Re-resolve the race NOW, by id. `races` may have been replaced
+        // while the dialog was open (another tab, a cloud delivery), and the
+        // index it had then can belong to a different race by now.
+        const index = findRaceIndexById(raceId);
+        if (index === -1) {
+            close();
+            showMessage(RACE_GONE_MESSAGE, true);
+            return;
+        }
+        const current = races[index];
+
+        // Save the original race for undo/redo
+        const originalRace = { ...current };
+
         // Handle timestamp updates
-        let newTimestamp = race.timestamp; // Keep original by default
+        let newTimestamp = current.timestamp; // Keep the stored one by default
         
         if (timeChanged) {
             if (newTime) {
                 // Time was changed to a new value
                 // Get timezone info from the original timestamp or generate new one
-                const originalTz = race.timestamp ? race.timestamp.split(' ').slice(1).join(' ') : null;
+                const originalTz = current.timestamp ? current.timestamp.split(' ').slice(1).join(' ') : null;
                 if (originalTz) {
                     newTimestamp = `${newTime} ${originalTz}`;
                 } else {
@@ -324,8 +427,8 @@ function editRace(index) {
 
         // Update the race
         const updatedRace = {
-            ...race,
-            date: dateChanged ? newDate : race.date,
+            ...current,
+            date: dateChanged ? newDate : current.date,
             ...newPositions
         };
 
@@ -337,16 +440,14 @@ function editRace(index) {
         }
 
         races[index] = updatedRace;
-
-        // Save action for undo/redo
-        saveAction('EDIT_RACE', { originalRace, newRace: races[index], index });
-
-        try {
-            const storageKey = window.getStorageKey ? window.getStorageKey('Races') : 'marioKartRaces';
-            localStorage.setItem(storageKey, JSON.stringify(races));
-        } catch (e) {
-            console.error('Error saving to localStorage:', e);
+        if (!persistRaces()) {
+            // Not stored: put the race back and keep the dialog open.
+            races[index] = current;
+            return;
         }
+
+        // Save action for undo/redo (undo finds the race by its id)
+        saveAction('EDIT_RACE', { originalRace, newRace: updatedRace });
 
         updateDisplay();
         // Explicitly pass fresh filtered data to ensure achievements use updated race data
@@ -358,9 +459,13 @@ function editRace(index) {
     };
 }
 
-function deleteRace(index) {
+function deleteRace(raceId) {
+    const index = findRaceIndexById(raceId);
     const race = races[index];
-    if (!race) return;
+    if (!race) {
+        showMessage(RACE_GONE_MESSAGE, true);
+        return;
+    }
 
     const esc = (v) => (typeof escapeHtml === 'function' ? escapeHtml(v) : String(v == null ? '' : v));
     const raceNumber = index + 1;
@@ -382,25 +487,31 @@ function deleteRace(index) {
     document.getElementById('cancel-delete-race').onclick = close;
     document.getElementById('confirm-delete-race').onclick = () => {
         close();
-        performDeleteRace(index);
+        performDeleteRace(raceId);
     };
 }
 
-function performDeleteRace(index) {
-    // Save action for undo/redo before deleting
-    const raceToDelete = races[index];
-    saveAction('DELETE_RACE', { race: raceToDelete, index });
-
-    races.splice(index, 1);
-    try {
-        const storageKey = window.getStorageKey ? window.getStorageKey('Races') : 'marioKartRaces';
-        localStorage.setItem(storageKey, JSON.stringify(races));
-    } catch (e) {
-        console.error('Error saving to localStorage:', e);
+// Deletes the race with this id, resolved at the moment of the delete (the
+// log may have been replaced since the confirm opened, see editRace). A race
+// that is gone is reported, never "removed successfully" as a no-op. Returns
+// whether a race was deleted and saved.
+function performDeleteRace(raceId) {
+    const index = findRaceIndexById(raceId);
+    if (index === -1) {
+        showMessage(RACE_GONE_MESSAGE, true);
+        return false;
     }
+    const [removed] = races.splice(index, 1);
+    if (!persistRaces()) {
+        races.splice(index, 0, removed);
+        return false;
+    }
+    // Undo finds the race by id; the index only says where to put it back.
+    saveAction('DELETE_RACE', { race: removed, index });
     updateDisplay();
     updateClearButtonState();
     showMessage('Race removed successfully!');
+    return true;
 }
 
 // --- Race data validation -----------------------------------------------
@@ -525,6 +636,9 @@ function sanitizeRaceData(input, options = {}) {
         }
         out.push(race);
     }
+    // Ids are kept from the file when valid; missing ones are derived from
+    // the race (see assignRaceIds), so re-importing an export changes none.
+    assignRaceIds(out);
     return { ok: true, error: null, races: out, repairs };
 }
 
@@ -552,11 +666,22 @@ function migrateRaceData(races) {
         if (!race || typeof race !== 'object') { repairs.push('dropped an empty entry'); continue; }
         migratedRaces.push(healRace(race, repairs, 'race'));
     }
+    // Rows stored before ids existed get their deterministic id here.
+    const idsAssigned = assignRaceIds(migratedRaces);
 
-    if (repairs.length > 0) {
-        console.log('Migrating race data from old format to new format');
-        const storageKey = window.getStorageKey ? window.getStorageKey('Races') : 'marioKartRaces';
-        localStorage.setItem(storageKey, JSON.stringify(migratedRaces));
+    // Written back once. Skipped inside a cross-tab refresh: tab-sync refuses
+    // that write anyway, and the tab that wrote derives the same ids. A
+    // refused write must not throw out of here either: loadSavedData turns any
+    // throw into an EMPTY log, and the next add would then overwrite the lot.
+    const inTabSyncHandler = !!(window.ShevatoTabSync && window.ShevatoTabSync.inHandler);
+    if ((repairs.length > 0 || idsAssigned > 0) && !inTabSyncHandler) {
+        if (repairs.length > 0) console.log('Migrating race data from old format to new format');
+        try {
+            const storageKey = window.getStorageKey ? window.getStorageKey('Races') : 'marioKartRaces';
+            localStorage.setItem(storageKey, JSON.stringify(migratedRaces));
+        } catch (e) {
+            console.error('Mario Kart: could not write the healed race log back', e);
+        }
     }
 
     return migratedRaces;
@@ -686,104 +811,14 @@ function importData(event) {
                 return;
             }
 
-            races = result.races;
-            const storageKey = window.getStorageKey ? window.getStorageKey('Races') : 'marioKartRaces';
-            localStorage.setItem(storageKey, JSON.stringify(races));
-
-            // The stack indexed the old log; none of it applies now.
-            if (typeof resetActionHistory === 'function') resetActionHistory();
-            
-            // Detect active players from race data
-            const activePlayerCount = detectActivePlayersFromRaces(races);
-            if (activePlayerCount > 0 && typeof updatePlayerCount === 'function') {
-                updatePlayerCount(activePlayerCount);
-            }
-            
-            // Import player names if present (backward compatible)
-            const importedNames = sanitizePlayerNames(importedData.playerNames);
-            if (Object.keys(importedNames).length > 0) {
-                // Use centralized PlayerNameManager
-                if (window.PlayerNameManager) {
-                    window.PlayerNameManager.setAll(importedNames);
-                } else {
-                    // Fallback
-                    playerNames = {
-                        player1: importedNames.player1 || 'Player 1',
-                        player2: importedNames.player2 || 'Player 2',
-                        player3: importedNames.player3 || 'Player 3',
-                        player4: importedNames.player4 || 'Player 4'
-                    };
-                    
-                    // Save to localStorage
-                    const storageKey = window.getStorageKey ? window.getStorageKey('PlayerNames') : 'marioKartPlayerNames';
-                    localStorage.setItem(storageKey, JSON.stringify(playerNames));
-                    
-                    // Update all labels and inputs
-                    updatePlayerLabels();
-                    
-                    // Update the name inputs in the widget
-                    const nameInputs = ['player1-name', 'player2-name', 'player3-name', 'player4-name'];
-                    nameInputs.forEach((inputId, index) => {
-                        const input = document.getElementById(inputId);
-                        if (input) {
-                            input.value = playerNames[`player${index + 1}`];
-                        }
-                    });
-                }
-            }
-            
-            // Import player icons if present (version 1.2+)
-            if (importedData.playerIcons && typeof importedData.playerIcons === 'object') {
-                if (window.PlayerIconManager) {
-                    // Clear existing icons and set new ones
-                    window.PlayerIconManager.clearAllIcons();
-                    Object.entries(importedData.playerIcons).forEach(([playerKey, iconData]) => {
-                        if (iconData) {
-                            window.PlayerIconManager.setIcon(playerKey, iconData);
-                        }
-                    });
-                }
-            }
-            
-            // Import player symbols if present (version 1.3+): short strings only.
-            if (importedData.playerSymbols && typeof importedData.playerSymbols === 'object') {
-                const symbols = {};
-                for (const key of ['player1', 'player2', 'player3', 'player4']) {
-                    const v = importedData.playerSymbols[key];
-                    if (typeof v === 'string' && v && v.length <= 8) symbols[key] = v;
-                }
-                if (window.PlayerSymbolManager) {
-                    window.PlayerSymbolManager.setAllSymbols(symbols);
-                }
-            }
-            
-            // If we're on Help or Guide view and just imported data, switch to Achievements
-            if (typeof currentView !== 'undefined' && (currentView === 'help' || currentView === 'guide')) {
-                // Switch to achievements view
-                if (typeof toggleView === 'function') {
-                    toggleView('achievements');
-                }
-            } else {
-                // Otherwise just update the current view
-                updateDisplay();
-            }
-            
-            updateAchievements();
-            updateClearButtonState();
-            
-            // Always update player icons after import, regardless of what was imported
-            if (window.updateAllPlayerIcons) {
-                setTimeout(() => {
-                    window.updateAllPlayerIcons();
-                }, 100); // Small delay to ensure DOM is ready
-            }
-            
-            if (result.repairs.length > 0) {
-                showMessage(`Imported ${races.length} races (repaired: ${summarizeRepairs(result.repairs)})`);
-            } else {
-                showMessage(`Successfully imported ${races.length} races!`);
+            // A file with nothing in it used to replace the whole log with an
+            // empty one behind "Successfully imported 0 races!".
+            if (result.races.length === 0) {
+                showMessage('Import failed: this file has no races to import', true);
+                return;
             }
 
+            confirmImport(importedData, result);
         } catch (error) {
             console.error('Import error:', error);
             showMessage('Import failed: the file could not be read', true);
@@ -793,6 +828,148 @@ function importData(event) {
 
     // Reset the file input
     event.target.value = '';
+}
+
+// Import replaces the whole log, so it asks first, as Delete, Clear and
+// Restore already did, and says exactly what is about to be replaced.
+function confirmImport(importedData, result) {
+    const current = races.length;
+    const incoming = result.races.length;
+    const count = (n) => `${n} race${n === 1 ? '' : 's'}`;
+    const backupNote = current > 0
+        ? '<br><br><span class="modal-warning">⚠️ The auto-backup is refreshed first, so Restore can bring your current races back.</span>'
+        : '';
+
+    const { close } = presentModal({
+        initialFocus: '#cancel-import',
+        html: `
+        <div class="modal-icon">📥</div>
+        <h3 class="modal-title">Replace your races?</h3>
+        <p class="modal-text">
+            This will replace your <strong>${count(current)}</strong> with <strong>${count(incoming)}</strong> from the file.${backupNote}
+        </p>
+        <div class="modal-buttons">
+            <button id="confirm-import" class="modal-btn-primary">Replace Races</button>
+            <button id="cancel-import" class="modal-btn-secondary">Cancel</button>
+        </div>
+    `,
+    });
+
+    document.getElementById('cancel-import').onclick = close;
+    document.getElementById('confirm-import').onclick = () => {
+        close();
+        applyImport(importedData, result);
+    };
+}
+
+// Everything a confirmed import does. The auto-backup is refreshed BEFORE the
+// log is replaced (as clearData does), so Restore can bring back the races the
+// import replaced, even after a reload.
+function applyImport(importedData, result) {
+    const previous = races;
+    if (previous.length > 0 && typeof autoBackupToLocalStorage === 'function') {
+        autoBackupToLocalStorage();
+    }
+
+    races = result.races;
+    if (!persistRaces()) {
+        races = previous;
+        return;
+    }
+
+    // The stack described the old log; none of it applies now.
+    if (typeof resetActionHistory === 'function') resetActionHistory();
+
+    // Detect active players from race data
+    const activePlayerCount = detectActivePlayersFromRaces(races);
+    if (activePlayerCount > 0 && typeof updatePlayerCount === 'function') {
+        updatePlayerCount(activePlayerCount);
+    }
+
+    // Import player names if present (backward compatible)
+    const importedNames = sanitizePlayerNames(importedData.playerNames);
+    if (Object.keys(importedNames).length > 0) {
+        // Use centralized PlayerNameManager
+        if (window.PlayerNameManager) {
+            window.PlayerNameManager.setAll(importedNames);
+        } else {
+            // Fallback
+            playerNames = {
+                player1: importedNames.player1 || 'Player 1',
+                player2: importedNames.player2 || 'Player 2',
+                player3: importedNames.player3 || 'Player 3',
+                player4: importedNames.player4 || 'Player 4'
+            };
+
+            // Save to localStorage
+            const storageKey = window.getStorageKey ? window.getStorageKey('PlayerNames') : 'marioKartPlayerNames';
+            localStorage.setItem(storageKey, JSON.stringify(playerNames));
+
+            // Update all labels and inputs
+            updatePlayerLabels();
+
+            // Update the name inputs in the widget
+            const nameInputs = ['player1-name', 'player2-name', 'player3-name', 'player4-name'];
+            nameInputs.forEach((inputId, index) => {
+                const input = document.getElementById(inputId);
+                if (input) {
+                    input.value = playerNames[`player${index + 1}`];
+                }
+            });
+        }
+    }
+
+    // Import player icons if present (version 1.2+)
+    if (importedData.playerIcons && typeof importedData.playerIcons === 'object') {
+        if (window.PlayerIconManager) {
+            // Clear existing icons and set new ones
+            window.PlayerIconManager.clearAllIcons();
+            Object.entries(importedData.playerIcons).forEach(([playerKey, iconData]) => {
+                if (iconData) {
+                    window.PlayerIconManager.setIcon(playerKey, iconData);
+                }
+            });
+        }
+    }
+
+    // Import player symbols if present (version 1.3+): short strings only.
+    if (importedData.playerSymbols && typeof importedData.playerSymbols === 'object') {
+        const symbols = {};
+        for (const key of ['player1', 'player2', 'player3', 'player4']) {
+            const v = importedData.playerSymbols[key];
+            if (typeof v === 'string' && v && v.length <= 8) symbols[key] = v;
+        }
+        if (window.PlayerSymbolManager) {
+            window.PlayerSymbolManager.setAllSymbols(symbols);
+        }
+    }
+
+    // If we're on Help or Guide view and just imported data, switch to Achievements
+    if (typeof currentView !== 'undefined' && (currentView === 'help' || currentView === 'guide')) {
+        // Switch to achievements view
+        if (typeof toggleView === 'function') {
+            toggleView('achievements');
+        }
+    } else {
+        // Otherwise just update the current view
+        updateDisplay();
+    }
+
+    updateAchievements();
+    updateClearButtonState();
+
+    // Always update player icons after import, regardless of what was imported
+    if (window.updateAllPlayerIcons) {
+        setTimeout(() => {
+            window.updateAllPlayerIcons();
+        }, 100); // Small delay to ensure DOM is ready
+    }
+
+    if (result.repairs.length > 0) {
+        showMessage(`Imported ${races.length} races (repaired: ${summarizeRepairs(result.repairs)})`);
+    } else {
+        showMessage(`Successfully imported ${races.length} races!`);
+    }
 }
 
 // "race #3: healed a 24:MM midnight time, race #4: ..." is too long for a
@@ -851,14 +1028,12 @@ function clearData() {
     }
 
     races = [];
-    saveAction('CLEAR_DATA', { races: snapshot });
-
-    try {
-        const racesKey = window.getStorageKey ? window.getStorageKey('Races') : 'marioKartRaces';
-        localStorage.setItem(racesKey, '[]');
-    } catch (e) {
-        console.error('Error clearing localStorage:', e);
+    if (!persistRaces()) {
+        // Not stored: the races stay, and so does everything on screen.
+        races = snapshot;
+        return;
     }
+    saveAction('CLEAR_DATA', { races: snapshot });
 
     // Don't directly update innerHTML here - let updateDisplay handle it based on current view
     // This prevents destroying the achievements view structure

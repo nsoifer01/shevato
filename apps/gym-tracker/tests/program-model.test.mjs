@@ -305,3 +305,36 @@ test('Program: targetSeconds survives a clone', () => {
     const copy = Program.clone(p);
     assert.equal(copy.exercises[0].sets[0].targetSeconds, 120);
 });
+
+// -------------------------------------------------------
+// Non-record set rows and exercises (audit G-2)
+// -------------------------------------------------------
+// normalizeSetRow read `s.repsMin`, so ONE null row threw the constructor.
+// app.js loads the whole programs store in one _safeLoad, so that throw reset
+// every program to [] and the next savePrograms persisted the empty list (and
+// sync propagated it as deletions). Storage is reachable by channels the import
+// sanitiser never sees (sync, other tabs, older builds), so the model itself
+// must not throw.
+
+test('Program: a null set row does not throw, and valid rows keep their order', () => {
+    let p;
+    assert.doesNotThrow(() => {
+        p = new Program({ name: 'P', exercises: [{ exerciseId: 'a', sets: [null, { repsMin: 5, repsMax: 6 }, undefined, { repsMin: 8, repsMax: 8 }] }] });
+    });
+    assert.deepEqual(p.exercises[0].sets.map(s => [s.repsMin, s.repsMax]), [[5, 6], [8, 8]]);
+});
+
+test('Program: a set list of only non-records reads like an empty one', () => {
+    for (const sets of [[null], [3, 'x'], [undefined]]) {
+        const p = new Program({ name: 'P', exercises: [{ exerciseId: 'a', sets, targetSets: 2, targetReps: 7 }] });
+        const empty = new Program({ name: 'P', exercises: [{ exerciseId: 'a', sets: [], targetSets: 2, targetReps: 7 }] });
+        assert.deepEqual(p.exercises[0].sets, empty.exercises[0].sets, JSON.stringify(sets));
+    }
+});
+
+test('Program: a null exercise entry or a non-array exercises value does not throw', () => {
+    assert.doesNotThrow(() => new Program({ name: 'P', exercises: [null, { exerciseId: 'a' }] }));
+    assert.equal(new Program({ name: 'P', exercises: [null, { exerciseId: 'a' }] }).exercises.length, 1);
+    assert.doesNotThrow(() => new Program({ name: 'P', exercises: { a: 1 } }));
+    assert.deepEqual(new Program({ name: 'P', exercises: { a: 1 } }).exercises, []);
+});

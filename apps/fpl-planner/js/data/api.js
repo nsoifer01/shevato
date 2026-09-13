@@ -69,6 +69,12 @@ export const RETRY_JITTER_MS = 200;
 export const ATTEMPT_TIMEOUT_MS = 15000;
 export const TOTAL_DEADLINE_MS = 32000;
 
+/** Seconds a CDN has held this response (the Age header), or 0 when absent or junk. */
+function edgeAgeSeconds(headers) {
+  const age = Number.parseInt(headers.get('age') || '', 10);
+  return Number.isFinite(age) && age > 0 ? age : 0;
+}
+
 /** A request that ran out of time rather than being refused. */
 export class RequestTimeoutError extends Error {
   constructor(path) {
@@ -427,7 +433,16 @@ export function createFplApi({
           // that can say how old the DATA is. Carried through so freshness
           // never has to be inferred by subtracting a server timestamp from a
           // device clock.
-          serverAgeSeconds: Number.parseInt(res.headers.get('x-fpl-age-seconds') || '', 10),
+          //
+          // Plus the edge's Age. Netlify's CDN may repeat a proxy response,
+          // headers and all, for the rest of its TTL, so x-fpl-age-seconds
+          // arrives FROZEN at the value it had when the function answered; the
+          // standard Age header is how long the edge has held it since. Both
+          // are server-side durations, so adding them stays clock-skew free. A
+          // response straight from the function carries Age 0 or 1, which can
+          // over-state the age by at most a second (2026-09-12 audit Q-1).
+          serverAgeSeconds: Number.parseInt(res.headers.get('x-fpl-age-seconds') || '', 10)
+            + edgeAgeSeconds(res.headers),
         };
       }
     );

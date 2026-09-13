@@ -4,9 +4,11 @@
 //
 //   1. `#sync-banner` - fixed banner pinned just below the site header
 //      (its `top` follows #header's bottom edge, see placeBanner). Only
-//      visible when the user is offline (or briefly on the offline ->
-//      online transition), dismissible with its close button, and
-//      silent otherwise so it never competes with the app's content.
+//      visible when something needs saying: offline (and briefly on the
+//      offline -> online transition), a sync conflict, a write that has
+//      not reached the cloud, or a sync that could not start. Dismissible
+//      with its close button, and silent otherwise so it never competes
+//      with the app's content.
 //      The recovery copy says "synced" only for a signed-in user whose
 //      sync is active; a signed-out visitor just gets "Back online".
 //
@@ -28,24 +30,75 @@
     const POLL_MS = 2000;
     const RECOVERY_FLASH_MS = 2000;
 
-    // A PERMANENT FAILURE OUTRANKS EVERY HEALTHY STATE.
+    // A FAILURE OUTRANKS EVERY HEALTHY STATE.
     //
-    // The engine already told us, and nobody was listening: it dispatches
-    // `syncWriteRejected` when a flush is refused in a way retrying cannot fix
-    // (payload too large, an invalid document), and `appSyncFailed` when sync
-    // could not start at all. Both events existed, both had zero listeners, and
-    // the pill went on reporting "Synced" while the writes sat in localStorage
-    // with no path to Firestore. Saying "Synced" over a failed write is the
-    // one lie this widget must never tell.
+    // The engine tells us two things, and for a long time nobody was
+    // listening to either. `syncWriteRejected` means a flush did not reach
+    // Firestore; `appSyncFailed` means sync could not start at all. Saying
+    // "Synced" over either is the one lie this widget must never tell.
     //
-    // `failure` is checked after `offline` on purpose: when the connection is
+    // A rejected write carries `retryable` (2026-09-12 audit S-3):
+    //   - true:  the retry ladder ran out on a network-type failure. The engine
+    //            has kept the write and resends it when the connection comes
+    //            back, the tab becomes visible, the user edits again or sync
+    //            restarts. Reads "Not saved to cloud yet" (amber).
+    //   - false: the server refused it (rules, shape, size). Reads "Not saved
+    //            to cloud" (red). A missing flag means false, which is what
+    //            the event meant before the flag existed.
+    // Either way the namespace stays unsaved until the engine dispatches
+    // `syncWriteRecovered` for THAT namespace. A healthy poll, or another
+    // namespace recovering, is not evidence that this one landed.
+    //
+    // Failures are checked after `offline` on purpose: when the connection is
     // down, "Offline" is the more useful and more actionable truth, and the
     // failure is still there when the connection comes back.
-    let failure = null;
+    const writeFailures = new Map();   // namespace -> { retryable: boolean }
+    let initFailure = null;
+
+    function namesOf(retryable) {
+        const names = [];
+        writeFailures.forEach(function (f, ns) {
+            if (f.retryable === retryable && ns) names.push(ns);
+        });
+        return names;
+    }
+
+    // The failure to show, most serious first: a refused write, then a write
+    // still waiting to be resent, then a sync that never started.
+    function currentFailure() {
+        const refused = namesOf(false);
+        const pending = namesOf(true);
+        if (refused.length || (writeFailures.size && !pending.length)) {
+            const where = refused.length ? ' in ' + refused.join(', ') : '';
+            return {
+                state: 'failed',
+                label: 'Not saved to cloud',
+                text: 'Some changes' + where + ' could not be saved to the cloud. They are safe on this '
+                    + 'device, but they are not syncing to your other devices.',
+            };
+        }
+        if (pending.length) {
+            return {
+                state: 'unsaved',
+                label: 'Not saved to cloud yet',
+                text: 'Some changes in ' + pending.join(', ') + ' have not been saved to the cloud yet. '
+                    + 'They are safe on this device, and sync will try again.',
+            };
+        }
+        if (initFailure) {
+            return {
+                state: 'failed',
+                label: 'Sync unavailable',
+                text: 'Sync could not start. Your changes are being saved on this device only.',
+            };
+        }
+        return null;
+    }
 
     function classify(online, status, signedIn) {
         if (online === false) return { state: 'offline', label: 'Offline' };
-        if (failure) return { state: 'failed', label: failure.label };
+        const failure = currentFailure();
+        if (failure) return { state: failure.state, label: failure.label };
         if (!status) return { state: 'connecting', label: 'Connecting…' };
         if (status.totalQueueSize > 0) return { state: 'syncing', label: 'Saving…' };
         if (status.activeNamespaces === 0) {
@@ -117,10 +170,11 @@
         // its message up. Without this the 2s poll would wipe it on the very
         // next tick, because the tail of this function hides the banner for
         // every state it does not recognise.
-        if (next.state === 'failed') {
+        const failure = currentFailure();
+        if (failure && next.state === failure.state) {
             clearTimeout(recoveryTimer);
             recoveryTimer = null;
-            showBanner('failed', failure.text);
+            showBanner(failure.state, failure.text);
             return;
         }
 
@@ -189,39 +243,43 @@
     /**
      * Record a sync failure and paint it immediately.
      *
-     * Deliberately NOT auto-dismissed: the condition lasts until the user does
-     * something about it, and a message that fades is a message that was never
-     * delivered. The banner's own close button is the way out, matching the
-     * conflict banner.
+     * Deliberately NOT auto-dismissed: the condition lasts until the engine
+     * reports recovery, and a message that fades is a message that was never
+     * delivered. The banner's close button hides the banner; the pill keeps
+     * the state.
      */
     function noteFailure(kind, detail) {
-        const app = detail && detail.namespace ? String(detail.namespace) : '';
-        const where = app ? ' in ' + app : '';
-        failure = kind === 'init'
-            ? {
-                kind,
-                label: 'Sync unavailable',
-                text: 'Sync could not start. Your changes are being saved on this device only.',
-            }
-            : {
-                kind,
-                label: 'Not saved to cloud',
-                text: 'Some changes' + where + ' could not be saved to the cloud. They are safe on this '
-                    + 'device, but they are not syncing to your other devices.',
-            };
+        if (kind === 'init') {
+            initFailure = { kind: 'init' };
+        } else {
+            const ns = detail && detail.namespace ? String(detail.namespace) : '';
+            const prev = writeFailures.get(ns);
+            // Once refused, a namespace stays refused until it recovers: a later
+            // retryable failure on another key does not soften the message.
+            const retryable = detail && detail.retryable === true && !(prev && prev.retryable === false);
+            writeFailures.set(ns, { retryable: retryable });
+        }
         lastRender = null;   // force the next render past its no-change guard
+        render();
+    }
+
+    // The engine confirmed every rejected write in this namespace has landed.
+    function noteRecovered(detail) {
+        const ns = detail && detail.namespace ? String(detail.namespace) : '';
+        if (!writeFailures.delete(ns)) return;
+        lastRender = null;
         render();
     }
 
     function render() {
         // An init failure can fix itself: if any namespace is syncing now, the
         // thing that failed is working, so stop saying otherwise. A rejected
-        // write cannot fix itself, so that one stands until dismissed.
-        if (failure && failure.kind === 'init') {
+        // write is retired only by `syncWriteRecovered`, never by a poll.
+        if (initFailure) {
             const s = typeof window.gymGetGlobalSyncStatus === 'function'
                 ? window.gymGetGlobalSyncStatus()
                 : null;
-            if (s && s.activeNamespaces > 0) failure = null;
+            if (s && s.activeNamespaces > 0) initFailure = null;
         }
         const next = readCurrent();
         const prev = lastRender;
@@ -273,11 +331,14 @@
         window.addEventListener('syncConflict', function (e) {
             try { showConflictBanner(e && e.detail); } catch (err) { /* never break a page */ }
         });
-        // A write the engine will not retry. It names the app whose data is
-        // affected, because on a site where eight apps share one account
-        // "sync failed" without a subject is not actionable.
+        // A write that did not reach the cloud, retryable or not. It names the
+        // app whose data is affected, because on a site where eight apps share
+        // one account "sync failed" without a subject is not actionable.
         window.addEventListener('syncWriteRejected', function (e) {
             try { noteFailure('write', e && e.detail); } catch (err) { /* never break a page */ }
+        });
+        window.addEventListener('syncWriteRecovered', function (e) {
+            try { noteRecovered(e && e.detail); } catch (err) { /* never break a page */ }
         });
         // Sync never started. Unlike a rejected write this one can genuinely
         // recover on its own, so `render` clears it once any namespace is live.

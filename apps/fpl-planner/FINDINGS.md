@@ -149,9 +149,12 @@ Raw test count is not evidence of correctness. Do not report it as if it were.
   tackles; MID/FWD = CBIT + recoveries + tackles; GKP none. Verified against
   live per-player sums.
 - **`entry/{id}/transfers` is served newest-first.** Never assume order.
-- **`entry_history.value` includes the bank**, and is FROZEN at that gameweek's
-  deadline - it does not track later price moves (measured 2026-08-28; see
-  "Fact 3, answered"). Affordability never depends on it, only display.
+- **`entry_history.value` is the fifteen at their LISTED prices plus the bank**,
+  FROZEN at that gameweek's deadline. It is not their selling value, and it does
+  not track later price moves (deadline freeze measured 2026-08-28, listed not
+  selling on 2026-09-13; see "Fact 3, answered"). It can check the fifteen and
+  the bank, never a purchase price. Affordability never depends on it; only the
+  empty-picks display fallback and the `value_mismatch` check read it.
 - **Pre-season quirks**: every event has `is_current: false` (so
   `currentEvent === null` is normal), `cost_change_start` is 0 for everyone
   (live data cannot exercise purchase/sell divergence; fixtures inject it),
@@ -1267,6 +1270,23 @@ with chips ON: +0 on all 72 trajectories, both instruments.
   active to 2027. EPL injuries come one season per request with NO pagination,
   so the whole 3-season backfill costs 3 requests.
 
+### The page had the sync banner but not the script that drives it (fixed 2026-09-13)
+
+`index.html` shipped `#sync-banner` and `assets/css/sync-status.css`, and an HTML
+comment saying the banner is "Managed by assets/js/sync-status.js", but never
+loaded that script (audit S-1). Nothing threw and every test was green, so the
+page simply showed no offline, failed-write, sync-start or conflict banner, ever.
+Signed-in FPL writes that were rejected read as silence.
+
+The fix is one classic `<script>` tag before `firebase-config.js`, the position
+Trip Planner uses. The widget needs nothing else from the page: it mounts on
+`DOMContentLoaded` against `#sync-banner` (and any `[data-sync-status-slot]`,
+of which this page has none), reads `window.gymGetGlobalSyncStatus` from
+`storage-sync-robust.js` and `window.firebaseAuth` defensively, and guards double
+mounting with `window.__syncStatusMounted` both at the top of its IIFE and in
+`mount()`. Lesson: a markup contract ("managed by X") is not evidence that X is
+loaded; grep the script list.
+
 ## Operational state (release state verified 2026-08-21)
 
 - **The GW1 live-season hardening is NOT yet deployed.** It sits on
@@ -1349,7 +1369,8 @@ with chips ON: +0 on all 72 trajectories, both instruments.
   `value_mismatch` warning is a constant false alarm), and what upstream
   actually returns while the game is updating. **All four are now answered**
   (Facts 1, 2 and 4 on 2026-08-21, Fact 3 on 2026-08-28: it does not track
-  them, and the warning is real but fires on ordinary price movement).
+  them; that it counts listed rather than selling prices was only settled on
+  2026-09-13, and the warning no longer fires on either).
   `GW1-RUNBOOK.md` beside this file is the
   checklist for all four, with the commands and what each answer means; capture
   the bootstrap at 17:25 and 17:35 and keep both; (2) early 2026-27: confirm vaastav's merged_gw.csv is accumulating
@@ -1557,7 +1578,8 @@ recorded here is the shape, because the next seam will look like these.
   Cache expiry may only be decided on a clock that shares an origin with the
   timestamp it is compared against, so it now uses a locally recorded
   `receivedAt`. The age SHOWN to the user is the data's age, which is the
-  proxy's own `x-fpl-age-seconds` at receipt plus the time held since. Measuring
+  proxy's own `x-fpl-age-seconds` plus the response `Age` header at receipt
+  (the time a CDN held that copy, since 2026-09-13) plus the time held since. Measuring
   either with the other produced an entry that never expired on a slow device
   and fresh data reported as stale on a fast one.
 - **The client cache has to honour the deadline window too.** The proxy
@@ -2036,76 +2058,99 @@ where the arithmetic inverts"; it is "the arithmetic must not invert in any
 state we plan from". Assert it wherever a plan is produced, not only where one
 is withheld.
 
-### Fact 3, answered 2026-08-28: `entry_history.value` is a deadline snapshot
+### Fact 3, answered 2026-08-28, corrected 2026-09-13: `entry_history.value` is the deadline MARKET value
 
-The last of the four opening-gameweek unknowns. `entry_history.value` does
-**not** track daily price moves: it is frozen at the deadline of the gameweek
-whose picks you asked for, and drifts from reality by the sum of every price
-move since.
+`entry_history.value` is **the fifteen at their listed prices as of the frozen
+gameweek's deadline, plus the bank**. Two separate properties, established on
+two separate days:
 
-Measured on the first overnight move of the season. Anderson (MCI) fell 6.5 to
-6.4; nobody else in the fifteen moved. `entry/3855835/event/1/picks` still
-served `value: 1000, bank: 0` while the fifteen at that day's `now_cost` summed
-to 999. One player, one tenth, and the two numbers part company - which settles
-the design question that was open: the `value_mismatch` warning is **not** a
-constant false alarm, but it does fire on ordinary price movement rather than
-only on a genuine reconstruction error, so its wording has to be the
-informational one it now has and never an error.
+- **Frozen at the deadline** (2026-08-28). It does not track daily price moves.
+  Measured on the first overnight move of the season: Anderson (MCI) fell 6.5 to
+  6.4 with nobody else in the fifteen moving, and `entry/3855835/event/1/picks`
+  still served `value: 1000, bank: 0` while the fifteen at that day's `now_cost`
+  summed to 999.
+- **Listed prices, not selling prices** (2026-09-13). Team ID 1, GW4, fetched
+  through the site proxy: `value` 1012, bank 0. The fifteen at
+  `now_cost - cost_change_event` sum to exactly 1012; the reconstructed selling
+  total is 1004. The 0.8 between them is eight players held since purchase
+  below their listed price, each by 0.1 of sell-on fee (Calafiori bought at 5.6
+  per the transfer log, listed 5.8, sells for 5.7; Palmer bought 9.5, listed
+  9.7, sells for 9.6; and six more). The season's history rows read 1000, 1001,
+  1007, 1012, which only a listed-price total produces for that squad.
 
-Two consequences worth keeping:
+**Why this was written up as "selling value plus bank" for two weeks.** Every
+observation available was a FALL, and a player at or below his purchase price
+sells for exactly his listed price (`sellingPrice` returns `now`), so the two
+readings predicted identical numbers. A GW1 squad bought at start prices holds
+no risers at all. The test fixture (999) and the sample dataset (1009) were
+then both built as selling totals, so no test could tell the difference either,
+and the check shipped comparing the wrong total (see the next section).
+
+Consequences worth keeping:
 
 - **Reconstructing selling prices per player is load-bearing, not defensive.**
-  Trusting `value` would have the planner spending money the manager does not
-  have within days of a deadline. `buildSquadState` already does the right
-  thing; this is the measurement that says why it must.
-- **The header and the banner used to disagree, and no longer do.** With no
-  transfer made, `squadValueTenths` fell back to `frozenValueTenths`, so SQUAD
-  VALUE read £100.0m while the banner named 99.9: the app displayed the number
-  it had just told you was wrong. The documented fix - display the reconstructed
-  total, keep the check - was taken on 2026-08-31 (see "The header states what
-  can be spent today" below).
+  Trusting `value` would have the planner spending half the profit on every
+  riser, money the manager does not have, and drifting further with every price
+  move after the deadline.
+- **`value` cannot validate the purchase-price reconstruction at all.** It
+  carries no purchase prices, and no public endpoint serves a selling price, so
+  a wrong purchase price is invisible to every number FPL hands out. What it
+  can check is the fifteen and the bank.
+- **The header shows the selling total, which is LOWER than FPL's own "Team
+  value" whenever a riser is held.** That gap is expected. The display fix is
+  "The header states what can be spent today" below.
 
-Verified in production at 1280 and 390 on 2026-08-28: "One number does not match
-Fantasy Premier League" / "Reconstructed squad value 99.9 does not match FPL's
-100. Selling prices may be off by the difference.", no staleness banner, no
-"older copy" wording, console clean.
+### The value check compares like with like, in time and in kind (2026-09-01, 2026-09-13)
 
-### The value check compares like with like, 2026-09-01
+`value_mismatch` compares `value` against the fifteen priced the SAME WAY at the
+SAME MOMENT:
 
-`value_mismatch` fired on ordinary price movement. That was accepted when Fact 3
-was written up ("real, but fires on ordinary price movement rather than only on a
-genuine reconstruction error"), and living with it was a mistake: one 0.1 fall
-put a warning banner on a page whose arithmetic was perfect, and it would have
-done so for most of the days between any two deadlines.
+- **Aligned to the current event** (`entry_history.event === currentEvent`):
+  `sum(nowCost - costChangeEvent) + bank`. `cost_change_event` is the movement
+  since the current gameweek's deadline, which is exactly the interval `value`
+  was frozen across.
+- **Otherwise** (an older gameweek's picks, a rollover, a Free Hit revert):
+  `sum(nowCost) + bank`, raw, because the roll-back would be the wrong yardstick.
+- **Never once a transfer has been applied** for the gameweek being planned:
+  `value` then describes a squad that no longer exists.
 
-The check was comparing a LIVE total against a total frozen at the gameweek
-deadline. Those two are guaranteed to differ the moment any owned player changes
-price, so what it measured was mostly "has a price moved", not "is the
-reconstruction wrong".
+It got there in two steps, and each fixed one axis.
 
-`cost_change_event` is the price movement since the current gameweek's deadline,
-which is exactly the interval `entry_history.value` was frozen across. Rolling
-every owned player back by it reproduces the deadline squad, and comparing THAT
-against `value` leaves only the part price movement does not explain. Verified
-against the owner's live payloads on 2026-09-01: the old engine emitted the
-banner ("99.8 does not match FPL's 99.9"), the new one emits nothing, and the
-header still reads 99.8 in both.
+**Time, 2026-09-01.** The check compared a LIVE total against a total frozen at
+the deadline, so one 0.1 fall put a banner on a page whose arithmetic was
+perfect. Rolling prices back with `cost_change_event` fixed that, verified on
+the owner's live payload ("99.8 does not match FPL's 99.9" before, silence
+after). But it rolled back SELLING prices, and it was verified on a fall, where
+selling equals listed, so the wrong kind of total passed.
 
-Three things to keep:
+**Kind, 2026-09-13 (audit E-2).** On live data the banner fired for almost every
+manager: Team ID 1 read "Reconstructed squad value 100.4 does not match FPL's
+101.2" with nothing wrong. The comparison now sums listed prices. The selling
+total is still what the header shows and what transfers are priced from; it is
+simply no longer compared against a number that does not contain it. The
+message names the listed total it actually compared, and says the players or
+the bank read here may not be the ones FPL holds, because that is now the only
+thing a mismatch can mean.
 
-- **The safety property is intact.** A missing transfer in the payload still
-  leaves an unexplained remainder and still warns. The wording says so now: "and
-  price changes since the deadline do not account for the difference".
-- **The roll-back needs the frozen picks to BE the current event's.**
-  `costChangeEvent` measures from the current deadline, so against an older
-  gameweek's picks it is the wrong yardstick. `alignedToCurrentEvent` guards it
-  and the raw comparison stands otherwise, which is also what keeps every
-  fixture without `cost_change_event` behaving exactly as before.
-- **Test the silence, not just the noise.** The regression test doctors one
-  owned player down 0.1 with `cost_change_event: -1` and asserts NO warning
-  while the header still moves to the lower figure. Pick a player already at or
-  below his purchase price for it: his selling price tracks his current price
-  one for one, so the arithmetic stays exact.
+Things to keep:
+
+- **What the check still catches is a squad or bank that disagrees with FPL** (a
+  transfer missing from the payload changes both). It no longer claims to catch
+  a wrong purchase price, and in practice it never did: the selling comparison
+  fired on correct squads, so its signal was noise.
+- **Test the silence on a RISER, not only a fall.** `squad.test.mjs` "a riser
+  held since purchase does NOT raise a value mismatch" builds `value` from the
+  raw payload's listed prices and asserts no warning while the header stays at
+  the lower selling figure; "a riser who moved UP since the deadline" covers the
+  live Joao Pedro shape (`cost_change_event: 1`). Both fail on the pre-E-2
+  engine. The exact-arithmetic fall test still picks a player at or below his
+  purchase price, so a 0.1 fall moves the header by exactly 0.1.
+- **Fixtures must carry FPL's real `value`, not the selling total.**
+  `tests/fixtures/entry-picks.json` (and the GW5 history row) moved 999 to 1008;
+  `data/sample/entry-picks.json` (and its GW12 history row) must read 1020, or
+  the demo squad shows the banner.
+- Verified against live Team ID 1 on 2026-09-13: the old engine emits the
+  banner, the new one emits nothing, and the header reads 100.4 in both.
 
 ### A transfer existing is not a PENDING transfer, 2026-09-01
 
@@ -2655,3 +2700,56 @@ gameweek (`const revert = prevPlan.chip === 'freehit'`). The semantics were
 always known; the gap was only at the input boundary. A wildcard is explicitly
 not reverted, because a wildcard rebuilds the permanent squad, and there is a
 regression test saying so.
+
+## The proxy edge cache has to honour the deadline window (fixed 2026-09-13)
+
+`netlify/functions/fpl.mjs` sends `Netlify-CDN-Cache-Control: public, max-age=N`
+on a fresh 200 so Netlify's edge can answer repeats without invoking the
+function (added 2026-09-07, F11). Stale copies, errors, 404s and every 429 are
+`no-store`, and `Cache-Control` to the browser stays `no-store`.
+
+- **The edge ignored the pre-deadline collapse (2026-09-12 audit Q-1).**
+  `edgeCachePolicy` asked `ttlSeconds()` for the TTL with `nextDeadline: null`,
+  so it always got the base TTL: `max-age=600` for bootstrap-static (fixtures
+  1800, entry 300) in the six hours before a deadline, while the function and
+  the browser both collapsed to 120 s. A copy the edge repeats is never
+  re-judged by the function, so for up to ten minutes of the window the CDN
+  could hand out prices and team news the rest of the stack considered expired.
+- **The fix: the edge window ends before the data outgrows the TTL the function
+  would apply at that moment.** `serveFpl` now returns the `nextDeadline` it
+  judged a fresh answer against (the stored `meta:next-deadline` on a hit or a
+  non-bootstrap miss, the bootstrap body itself on a bootstrap miss), and
+  `edgeCachePolicy(result, now)` uses it. Inside the window: `120 - age`. Before
+  the window, when it opens inside the copy's base lifetime: until the window
+  opens or `120 - age`, whichever is longer, never past `base - age`, so a copy
+  stored at 6 h 01 m is not carried into the window at 30 minutes. No deadline
+  known: base TTL, which is also what the function applies. The rule is pinned
+  as an invariant in `netlify/functions/tests/fpl-edge-cache.test.mjs` (every
+  path class, many ages and deadline offsets, every second the edge may serve:
+  data age stays below `ttlSeconds` at that second), plus boundary cases just
+  either side of the 6 h mark and handler-level header checks.
+- **`x-fpl-age-seconds` is frozen on an edge-served copy; the client adds
+  `Age`.** The header is computed when the function answers, and the edge
+  repeats it verbatim. Observed on production 2026-09-13, before the fix and
+  outside any deadline window: `cache-status: "Netlify Edge"; hit; ttl=529`,
+  `age: 18`, `x-fpl-age-seconds: 53`, i.e. a copy 71 s old labelled 53 s, from
+  a store at `max-age=547` (600 minus the 53 s the blob copy already had).
+  Most repeats in that probe were `fwd=miss` (different edge nodes), so hits
+  are intermittent, not absent. Shortening the edge window cannot make a frozen
+  number honest without making the edge nearly useless, so the honest layer is
+  the client: `js/data/api.js` now takes `x-fpl-age-seconds + Age` as the data
+  age at receipt. Both are server-side durations, so the "Two different ages"
+  rule above (never subtract a server timestamp from the device clock) still
+  holds. A response straight from the function carries `Age: 0` or `1`, so the
+  shown age can be over-stated by at most a second; a missing or junk `Age` is
+  treated as 0. Cache EXPIRY in the browser is unchanged (local receipt time).
+- **What bounds staleness now, inside the window:** edge at most `120 - age`,
+  then the browser at most 120 s of its own, so a planner screen inside the
+  window shows data at most about four minutes old, and says how old.
+- Verify after deploy with two or three
+  `curl -sD - -o /dev/null -H 'Origin: https://shevato.com' 'https://shevato.com/.netlify/functions/fpl?path=bootstrap-static'`:
+  on an edge hit, `ttl` (from `cache-status`) + `age` + `x-fpl-age-seconds`
+  is the data age at the end of the edge window and must never exceed 600
+  outside the window, or 120 inside it (the probe above: 529 + 18 + 53 = 600). `Netlify-CDN-Cache-Control`
+  itself is consumed by the edge and never reaches the client, so read it from
+  the `ttl=` value or from a local handler test, not from the response.

@@ -332,22 +332,38 @@ export function requeueFailedWrites(queue, failedWrites) {
 
 /**
  * Firestore write errors that are DETERMINISTIC: the identical batch will
- * fail the identical way however many times it is resent.
+ * fail the identical way however many times it is resent, so `flushWrites`
+ * gives it exactly one attempt, keeps the keys dirty, and tells the page
+ * (`syncWriteRejected` with `retryable: false`). A later sync start, typically
+ * after the user signs in again, tries the dirty keys once more.
  *
  *   - `payload-too-large` is ours (the MAX_FLUSH_BYTES guard).
  *   - `invalid-argument` is Firestore rejecting the document shape itself
  *     (an unsupported value, a field path it will not accept, a document
  *     over the 1 MiB ceiling).
+ *   - `permission-denied` is the security rules refusing the write. Nothing
+ *     about the batch changes between retries, so neither does the answer.
+ *     It used to climb the three-step ladder and then vanish (2026-09-12
+ *     audit S-3).
+ *   - `unauthenticated` is a write with no valid credential: it needs a new
+ *     sign-in, which a timer cannot supply.
+ *   - `not-found`: `setDoc` with `merge: true` CREATES a missing document,
+ *     so this can only mean the database or the path itself is missing, and
+ *     resending the same batch cannot fix that.
  *
- * Retrying either one is pure waste, and worse than waste when the app is
- * still appending to the same key between attempts: the 2026-08-31 MapTap
- * Rivals incident retried a 760 KB refusal three times and shipped ~890 KB
- * on the last one, because the rival sync kept adding games while the
- * ladder ran. `flushWrites` drops a permanently-rejected batch instead.
+ * Everything else stays retryable: `unavailable`, `deadline-exceeded`,
+ * `resource-exhausted`, `aborted`, `internal`, `unknown`, a network error
+ * with no code, and `failed-precondition`. That last one is deliberate: its
+ * client-side causes (the persistence layer's multi-tab lease, an index still
+ * building) are states that change without the batch changing, and a
+ * retryable failure costs at most one bounded ladder per trigger, whereas
+ * misfiling a recoverable failure as permanent would stop it being resent
+ * until the next sign-in.
  *
- * Everything else (network blips, `unavailable`, `deadline-exceeded`, an
- * unrecognised code) stays on the retry ladder, which is the behaviour
- * every transient failure had before.
+ * Retrying a deterministic rejection is worse than waste when the app keeps
+ * appending to the same key between attempts: the 2026-08-31 MapTap Rivals
+ * incident retried a 760 KB refusal three times and shipped ~890 KB on the
+ * last one, because the rival sync kept adding games while the ladder ran.
  *
  * @param {{code?: string, permanent?: boolean} | null | undefined} error
  * @returns {boolean}
@@ -355,8 +371,16 @@ export function requeueFailedWrites(queue, failedWrites) {
 export function isPermanentWriteError(error) {
   if (!error || typeof error !== 'object') return false;
   if (error.permanent === true) return true;
-  return error.code === 'payload-too-large' || error.code === 'invalid-argument';
+  return PERMANENT_WRITE_ERROR_CODES.has(error.code);
 }
+
+const PERMANENT_WRITE_ERROR_CODES = new Set([
+  'payload-too-large',
+  'invalid-argument',
+  'permission-denied',
+  'unauthenticated',
+  'not-found'
+]);
 
 /**
  * Split an already-serialised value into chunk-sized pieces.

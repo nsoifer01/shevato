@@ -7751,6 +7751,13 @@ button.calendar-day {
 .sync-status-pill[data-state="connecting"] { background: rgba(245, 158, 11, 0.6); }
 .sync-status-pill[data-state="offline"]    { background: rgba(148, 163, 184, 0.85); }
 .sync-status-pill[data-state="idle"]       { background: rgba(100, 116, 139, 0.7); }
+/* A write the cloud refused, or a sync that never started: it does not resolve
+   by waiting, so it is red rather than the amber of the in-progress states.
+   "unsaved" (refused, still queued for another attempt) is a deeper orange
+   than "Saving…" so it does not read as routine. Both dark enough for white
+   12px bold text (audit S-1). */
+.sync-status-pill[data-state="failed"]     { background: rgba(220, 38, 38, 0.9); }
+.sync-status-pill[data-state="unsaved"]   { background: rgba(194, 65, 12, 0.92); }
 
 /* Mobile compact sync dot — a tiny colored circle pinned to the upper
    corner of the "More" tab in the bottom nav. Always visible on
@@ -7776,6 +7783,8 @@ button.calendar-day {
 .nav-sync-dot[data-state="connecting"] { background: rgba(245, 158, 11, 0.55); }
 .nav-sync-dot[data-state="offline"]    { background: rgba(148, 163, 184, 0.95); }
 .nav-sync-dot[data-state="idle"]       { background: rgba(100, 116, 139, 0.85); }
+.nav-sync-dot[data-state="failed"]     { background: rgba(220, 38, 38, 0.95); }
+.nav-sync-dot[data-state="unsaved"]   { background: rgba(234, 88, 12, 0.95); }
 
 @media (min-width: 768px) {
     .nav-sync-dot { display: none; }
@@ -7847,12 +7856,29 @@ button.calendar-day {
 .sync-banner[hidden] { display: none; }
 .sync-banner[data-state="offline"] { background: rgba(100, 116, 139, 0.95); }
 .sync-banner[data-state="synced"]  { background: rgba(34, 197, 94, 0.95); }
+.sync-banner[data-state="online"]  { background: rgba(100, 116, 139, 0.95); }
+/* Failures and conflicts stay up until dismissed (or resolved). A conflict is
+   neither failure nor success: amber, dark enough for white 13px text. */
+.sync-banner[data-state="failed"]   { background: rgba(185, 28, 28, 0.97); }
+.sync-banner[data-state="unsaved"] { background: rgba(194, 65, 12, 0.97); }
+.sync-banner[data-state="conflict"] { background: rgba(180, 83, 9, 0.97); }
 .sync-banner[data-fading="true"]   { opacity: 0; transform: translateY(-4px); }
 
-/* Hide the banner on desktop — the side-nav pill already shows status
-   and a top banner would shove the layout down for no reason. */
+/* Hide the routine banner on desktop: the side-nav pill already shows
+   status. A failure or a conflict is the exception: each carries a sentence
+   the pill cannot, and a conflict has no pill state at all, so hiding those
+   on desktop would hide them completely (audit S-1). */
 @media (min-width: 768px) {
-    .sync-banner { display: none !important; }
+    .sync-banner:not([data-state="failed"]):not([data-state="unsaved"]):not([data-state="conflict"]) {
+        display: none !important;
+    }
+    /* Desktop is where the failure and conflict banner is new (audit S-1),
+       and Gym's centred dialogs start right under the header, so a banner
+       layered above them (10000 against .modal 2000) covered the onboarding
+       dialog's close button: elementsFromPoint returned #sync-banner. Here it
+       sits below dialogs and above the side nav (1000) and the calendar popup
+       (1500). Pinned by tests/sync-banner-stacking.test.mjs. */
+    .sync-banner { z-index: 1900; }
 }
 
 /* ------------------------------------------------------------------

@@ -374,23 +374,50 @@ and coordinate have different rules and must never be given one lifetime.
 
 ## Server functions
 
-- **A reservation covers two costs, and only one of them is money (fixed
-  2026-09-11).** `releaseQuota` used to hand an unspent slot back off every
-  counter, keyed on `spent` alone. `spent` counts BILLED Place Details calls,
-  so a query whose free Text Search ran and resolved to nothing reported zero
-  and got its whole reservation refunded - including the per-client and
-  per-network RATE counters, which are not a billing ledger. Measured against
-  the real modules before the fix: 40 batches of never-resolving queries were
-  all admitted, produced **480 upstream Text Searches and 480 blob keys, and
-  left every counter reading zero**. After: 5 batches admitted, 35 refused, 60
-  searches, 60 blob keys, rate counters at 60 and `billedMonth` correctly still
-  0. `resolveQueries` now returns `searched` alongside `spent`; the handler
-  refunds `granted - spent` from the billed dimensions and
-  `granted - max(spent, searched)` from the rate dimensions. The property that
-  had to survive, and did: a fully cached itinerary searches nothing, so both
-  numbers are the whole reservation and it still costs the traveller nothing.
-  The free-vs-billed SKU split itself was right and is unchanged - the bug was
-  treating "cost no money" as "did no work".
+- **A reservation covers two costs, and only one of them is money (named
+  path fixed 2026-09-11, discovery path fixed 2026-09-13).** `releaseQuota`
+  takes two refunds: `amount` (money: the shared pools and `billedMonth`) and
+  `rateAmount` (the per-client and per-network counters, which bound how much
+  upstream work one caller can cause and are not a billing ledger).
+  `rateAmount` DEFAULTS to `amount`, so a call site that passes one number
+  silently refunds both, and that default is how the bug happened twice.
+  - Named path: `spent` counts BILLED Place Details calls, so a query whose
+    free Text Search ran and found nothing reported zero and got its whole
+    reservation back off every counter. Measured before the fix: 40 batches of
+    never-resolving queries all admitted, **480 Text Searches and 480 blob
+    keys, every counter at zero**; after, 5 admitted and 35 refused.
+    `resolveQueries` returns `searched` alongside `spent`; the handler refunds
+    `granted - spent` (money) and `granted - max(spent, searched)` (rate).
+  - Discovery path: the same bug survived one day longer in the other branch
+    (2026-09-12 audit F-1). `discoverPlaces` always runs one restricted Text
+    Search before it can answer `no_candidates`, reported only `spent: 0`, and
+    the handler passed one refund, so **1,000 discover requests were admitted
+    against a 60/hour per-client cap**. `discoverPlaces` now returns
+    `searched: 1` on every outcome that reached Google (found, found nothing,
+    all shut at that hour, or the search itself failed, matching `resolveOne`,
+    which also counts a thrown search), and the handler refunds the two
+    dimensions separately exactly like the named path. A no-result discovery
+    now costs one rate slot and no money; the 61st in an hour is a 429.
+  - What stayed free, deliberately: a fully cached named batch (a cached
+    place-id "no match" or a remembered rejection) searches nothing, so both
+    refunds are the whole reservation and re-opening an itinerary costs
+    nothing. Discovery has no cache at all (a category's answer changes with
+    the world), so it has no free case. A billed lookup is charged money once
+    and rate once, never search plus details.
+  - Why a library test was not enough: `tests/tp-places-search-accounting.test.mjs`
+    proved the arithmetic both times the call site was wrong.
+    `tests/tp-places-handler-accounting.test.mjs` drives the real handler
+    through the `@netlify/blobs` stub and reads the counters it wrote: no-result
+    discovery, the per-client and per-network caps refusing repeats, a failed
+    search, a successful discovery (no double charge), the named path, a cached
+    named lookup, and named-vs-discovery parity. Dropping the seventh
+    `releaseQuota` argument on either branch fails it (checked by mutation).
+    The same file and `tp-assist-handler.test.mjs` also pin the two fail-closed
+    boundaries no handler test used to reach: sustained CAS contention (a store
+    whose etag changes between every read and write) is a 429
+    `scope:"contention"` with `Retry-After: 2` and no upstream call, and a
+    store that throws on `getStore()` or on the config read is a JSON 503
+    `store_unavailable`.
   - Trap for anyone re-measuring this: a cached itinerary looks like it stops
     billing after the first pass. That is the REJECTION cache, not a quota bug.
     A refused candidate is remembered against its signature, and re-fetching

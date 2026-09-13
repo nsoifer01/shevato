@@ -17,6 +17,7 @@
  * untouched: every rule below only fires on a value that is actually wrong.
  */
 import { generateNumericId } from './helpers.js';
+import { AchievementService } from '../services/AchievementService.js';
 
 const WEIGHT_UNITS = ['kg', 'lb'];
 const TIME_FORMATS = ['12', '24'];
@@ -27,6 +28,31 @@ const MAX_SECONDS = 24 * 3600;
 const BAD_ID_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
 
 const isPlainObject = (v) => !!v && typeof v === 'object' && !Array.isArray(v);
+
+/** The id shape AchievementService.checkExercisePRs writes: `pr-<exerciseId>-<YYYY-MM-DD>`. */
+const STRENGTH_PR_ID = /^pr-.+-\d{4}-\d{2}-\d{2}$/;
+
+/**
+ * The achievement vocabulary the code owns. Achievements are definitions in
+ * code (AchievementService), plus lift milestones (created by app.js with
+ * `requirement: { type: 'lift-milestone' }`) and per-exercise strength PRs.
+ * `requirementFor(id)` returns a function that rebuilds a valid requirement for
+ * a known id, or null when no code path ever produces that id.
+ */
+function achievementVocabulary() {
+    const defaults = new Map(AchievementService.getDefaultAchievements().map((a) => [a.id, a.requirement]));
+    const milestones = new Set(AchievementService.getLiftMilestoneAchievements().map((m) => m.id));
+    const types = new Set([...defaults.values()].map((r) => r.type));
+    types.add('lift-milestone');
+    types.add('strength-pr');
+    const requirementFor = (id) => {
+        if (defaults.has(id)) return () => ({ ...defaults.get(id) });
+        if (milestones.has(id)) return () => ({ type: 'lift-milestone' });
+        if (STRENGTH_PR_ID.test(id)) return (req) => ({ ...(isPlainObject(req) ? req : {}), type: 'strength-pr' });
+        return null;
+    };
+    return { types, requirementFor };
+}
 
 /** `YYYY-MM-DD` from a date key or an ISO timestamp; null when unparseable. */
 export function normalizeDateKey(value) {
@@ -87,6 +113,8 @@ export function sanitizeImportData(input) {
         data.programs = fixIds(data.programs, 'program(s)');
         let badExerciseLists = 0;
         let droppedExercises = 0;
+        let badSetLists = 0;
+        let droppedSetRows = 0;
         for (const p of data.programs) {
             if (typeof p.name !== 'string') { p.name = String(p.name ?? 'Imported program'); note('a program name was not text and was converted'); }
 
@@ -108,12 +136,35 @@ export function sanitizeImportData(input) {
             const before = p.exercises.length;
             p.exercises = p.exercises.filter(isPlainObject);
             droppedExercises += before - p.exercises.length;
+
+            // One level deeper, the same failure (audit G-2): Program's
+            // normalizeSetRow read `s.repsMin`, so a single null row threw the
+            // constructor and blanked the store exactly as above. A missing
+            // or null `sets` is the legacy targetSets/targetReps shape and is
+            // left alone; anything else must be a list of records.
+            for (const ex of p.exercises) {
+                if (ex.sets === undefined || ex.sets === null) continue;
+                if (!Array.isArray(ex.sets)) {
+                    ex.sets = [];
+                    badSetLists++;
+                    continue;
+                }
+                const rows = ex.sets.length;
+                ex.sets = ex.sets.filter(isPlainObject);
+                droppedSetRows += rows - ex.sets.length;
+            }
         }
         if (badExerciseLists) {
             note(`${badExerciseLists} program(s) had an unreadable exercise list and were emptied`);
         }
         if (droppedExercises) {
             note(`${droppedExercises} program exercise entries were not records and were skipped`);
+        }
+        if (badSetLists) {
+            note(`${badSetLists} program exercise(s) had an unreadable set list and were emptied`);
+        }
+        if (droppedSetRows) {
+            note(`${droppedSetRows} program set row(s) were not records and were skipped`);
         }
     }
 
@@ -189,10 +240,32 @@ export function sanitizeImportData(input) {
     }
 
     if (Array.isArray(data.achievements)) {
+        // An achievement's id and requirement are code, not user data
+        // (AchievementService.syncDefinitions). The Achievements view groups by
+        // `requirement.type` and renders that key into attributes and a
+        // heading, so a type outside the vocabulary was a stored-XSS carrier
+        // that synced to every device (audit G-1). An id no code path produces
+        // is dropped; a known id whose type is outside the vocabulary gets its
+        // definition's requirement back. An IN-vocabulary type that differs
+        // from the current definition is left alone on purpose: that is the
+        // legacy GT-11 shape, and syncDefinitions must see it to withdraw an
+        // unlock earned under the old rule.
+        const vocabulary = achievementVocabulary();
+        let unknown = 0;
+        let retyped = 0;
         data.achievements = data.achievements.filter((a) => {
             if (!isPlainObject(a) || typeof a.id !== 'string' || !a.id) { note('an achievement record without an id was skipped'); return false; }
+            const rebuild = vocabulary.requirementFor(a.id);
+            if (!rebuild) { unknown++; return false; }
+            const type = isPlainObject(a.requirement) ? a.requirement.type : undefined;
+            if (!vocabulary.types.has(type)) {
+                a.requirement = rebuild(a.requirement);
+                retyped++;
+            }
             return true;
         });
+        if (unknown) note(`${unknown} achievement(s) were not one this app defines and were skipped`);
+        if (retyped) note(`${retyped} achievement(s) had an unknown requirement type and got their definition back`);
     }
 
     if (isPlainObject(data.settings)) {

@@ -181,3 +181,88 @@ test('offline outranks a standing failure, because offline is the more useful tr
   w.fire('online');
   assert.equal(w.pill.dataset.state, 'failed');
 });
+
+// ---------- retryable vs permanent, and recovery (2026-09-12 audit S-3) ----------
+//
+// The engine now tells the two apart. A write that ran out of retries on a
+// network failure is parked and will be resent (`retryable: true`); a write
+// the server refused outright is not (`retryable: false`). Either way the
+// namespace is NOT saved until the engine says `syncWriteRecovered` for it,
+// and until then the widget must never read "Synced".
+
+test('a retryable rejection reads as not saved yet, never Synced, and survives the poll', () => {
+  const w = load({ status: HEALTHY, signedIn: true });
+  w.fire('syncWriteRejected', { namespace: 'tripPlanner', keys: ['k'], code: 'unavailable', retryable: true });
+  assert.equal(w.pill.dataset.state, 'unsaved');
+  assert.equal(w.pill.textContent, 'Not saved to cloud yet');
+  w.tick();
+  w.tick();
+  assert.equal(w.pill.textContent, 'Not saved to cloud yet', 'a healthy poll is not evidence the write landed');
+  assert.equal(w.banner.hidden, false);
+  assert.equal(w.banner.dataset.state, 'unsaved');
+  const text = w.banner.children.map(c => c.textContent).join(' ');
+  assert.match(text, /tripPlanner/);
+  assert.match(text, /safe on this device/i);
+  assert.match(text, /try again/i, 'the retryable copy says it will be retried');
+});
+
+test('a permanent rejection reads as not saved and stays until that namespace recovers', () => {
+  const w = load({ status: HEALTHY, signedIn: true });
+  w.fire('syncWriteRejected', { namespace: 'gymTrackerApp', keys: ['k'], code: 'permission-denied', retryable: false });
+  assert.equal(w.pill.dataset.state, 'failed');
+  assert.equal(w.pill.textContent, 'Not saved to cloud');
+
+  w.fire('syncWriteRecovered', { namespace: 'someOtherApp' });
+  w.tick();
+  assert.equal(w.pill.textContent, 'Not saved to cloud', 'another namespace recovering is not this one recovering');
+
+  w.fire('syncWriteRecovered', { namespace: 'gymTrackerApp' });
+  assert.equal(w.pill.dataset.state, 'synced');
+  assert.equal(w.pill.textContent, 'Synced');
+  assert.equal(w.banner.hidden, true, 'the failure banner comes down with the failure');
+});
+
+test('a retryable rejection clears on recovery', () => {
+  const w = load({ status: HEALTHY, signedIn: true });
+  w.fire('syncWriteRejected', { namespace: 'marioKart', keys: ['k'], code: 'deadline-exceeded', retryable: true });
+  w.fire('syncWriteRecovered', { namespace: 'marioKart' });
+  assert.equal(w.pill.textContent, 'Synced');
+});
+
+test('with two namespaces failing, one recovering still does not read Synced', () => {
+  const w = load({ status: HEALTHY, signedIn: true });
+  w.fire('syncWriteRejected', { namespace: 'a', keys: ['k'], code: 'unavailable', retryable: true });
+  w.fire('syncWriteRejected', { namespace: 'b', keys: ['k'], code: 'permission-denied', retryable: false });
+  assert.equal(w.pill.textContent, 'Not saved to cloud', 'the permanent failure is the one shown');
+
+  w.fire('syncWriteRecovered', { namespace: 'b' });
+  assert.equal(w.pill.textContent, 'Not saved to cloud yet', 'the retryable one is still outstanding');
+
+  w.fire('syncWriteRecovered', { namespace: 'a' });
+  assert.equal(w.pill.textContent, 'Synced');
+});
+
+test('a namespace that failed permanently is not downgraded by a later retryable failure', () => {
+  const w = load({ status: HEALTHY, signedIn: true });
+  w.fire('syncWriteRejected', { namespace: 'a', keys: ['k1'], code: 'invalid-argument', retryable: false });
+  w.fire('syncWriteRejected', { namespace: 'a', keys: ['k2'], code: 'unavailable', retryable: true });
+  assert.equal(w.pill.textContent, 'Not saved to cloud');
+});
+
+test('a rejection without a retryable flag keeps the old permanent reading', () => {
+  const w = load({ status: HEALTHY, signedIn: true });
+  w.fire('syncWriteRejected', { namespace: 'a', keys: ['k'], code: 'payload-too-large' });
+  assert.equal(w.pill.dataset.state, 'failed');
+  assert.equal(w.pill.textContent, 'Not saved to cloud');
+});
+
+test('a write failure is not cleared by sync coming up, the way an init failure is', () => {
+  const w = load({ status: { totalQueueSize: 0, activeNamespaces: 0 }, signedIn: true });
+  w.fire('appSyncFailed', { message: 'x' });
+  w.fire('syncWriteRejected', { namespace: 'a', keys: ['k'], code: 'unavailable', retryable: true });
+  w.setStatus(HEALTHY);
+  w.tick();
+  assert.equal(w.pill.textContent, 'Not saved to cloud yet');
+  w.fire('syncWriteRecovered', { namespace: 'a' });
+  assert.equal(w.pill.textContent, 'Synced', 'and the init failure was already retired by the live namespace');
+});

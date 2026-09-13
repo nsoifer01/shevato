@@ -223,7 +223,7 @@ const SUITE_SECONDS = {
   'apps/gym-tracker/e2e/units-migration.mjs': 130,
   // 118 without the rising-shows dataset, 120 with it.
   'tests/browser/suites/apps.mjs': 120,
-  'apps/mario-kart/e2e/audit-2026-08.mjs': 113,
+  'apps/mario-kart/e2e/audit-2026-08.mjs': 116,
   'tests/browser/suites/site.mjs': 111,
   'apps/trip-planner/e2e/trips-sync.mjs': 107,
   'apps/maptap-rivals/e2e/quality.mjs': 101,

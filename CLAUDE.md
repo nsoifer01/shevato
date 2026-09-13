@@ -86,6 +86,9 @@ REJECT, whichever way it goes.
   described, so re-read that line at merge time. `tests/static/privacy-review-date.test.mjs`
   fails when the policy prose changes and the date does not; when it goes red,
   bump the date and record the new digest it prints, never the digest alone.
+  Since 2026-09-13 it also compares the prose and date against git (the
+  uncommitted tree against HEAD, a PR against its base, a branch against its
+  merge base), so overwriting `CURRENT.digest` in place no longer turns it green.
 - **Screenshot-verify every visual change** on desktop 1280 AND mobile 390
   before believing it. Computed styles for any colour claim, never eyeballing:
   `assets/css/main.css` sets `button { color:#555 !important }`, a red hover

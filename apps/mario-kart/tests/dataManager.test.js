@@ -316,8 +316,9 @@ function editRace({ race, edits = {}, playerCount = 3, maxPositions = 12, now = 
     seed[`edit-${key}`] = value;
   }
 
-  const app = makeDataContext({ playerCount, maxPositions, now, seedRaces: [race], elementSeed: seed });
-  app.ctx.editRace(0);
+  // The dialog is opened by race id and re-resolves that id at Save time.
+  const app = makeDataContext({ playerCount, maxPositions, now, seedRaces: [{ ...race, id: 'race-under-edit' }], elementSeed: seed });
+  app.ctx.editRace('race-under-edit');
   app.elements['save-edit'].onclick();
   return app;
 }
@@ -433,11 +434,26 @@ test('editRace: records an undoable EDIT_RACE action', () => {
 
 test('migrateRaceData: new-format races pass through untouched and nothing is written', () => {
   const app = makeDataContext();
-  const input = [{ date: '2026-03-01', timestamp: '10:00:00 UTC', player1: 1, player2: 2, player3: null, player4: null }];
+  const input = [{ id: 'mk-1', date: '2026-03-01', timestamp: '10:00:00 UTC', player1: 1, player2: 2, player3: null, player4: null }];
   const migrated = app.ctx.migrateRaceData(input);
 
   assert.equal(JSON.stringify(migrated), JSON.stringify(input));
   assert.equal(app.stored(), null, 'no migration means no localStorage write');
+});
+
+// Races stored before ids existed are healed like any other legacy shape. The
+// id is derived from the race, so two devices healing the same synced log agree
+// on it and the per-record sync merge does not keep two copies.
+test('migrateRaceData: a race without an id gets a deterministic one, written back', () => {
+  const input = () => [{ date: '2026-03-01', timestamp: '10:00:00 UTC', player1: 1, player2: 2, player3: null, player4: null }];
+  const app = makeDataContext();
+  const migrated = app.ctx.migrateRaceData(input());
+  const elsewhere = makeDataContext().ctx.migrateRaceData(input());
+
+  assert.match(migrated[0].id, /^lg-[0-9a-z]+$/);
+  assert.equal(elsewhere[0].id, migrated[0].id, 'another device derives the same id');
+  assert.equal(migrated[0].player1, 1, 'nothing else about the race changes');
+  assert.deepEqual(app.stored(), JSON.parse(JSON.stringify(migrated)), 'the healed log is written back');
 });
 
 test('migrateRaceData: maps the legacy slav/mike/nikita keys onto slots and persists', () => {
@@ -518,7 +534,7 @@ test('migrateRaceData: heals the stamp on a legacy-keyed race in the same pass',
 
 test('migrateRaceData: does not touch a valid 00:MM:SS midnight stamp or write back', () => {
   const app = makeDataContext();
-  const input = [{ date: '2026-03-01', timestamp: '00:30:09 EDT', player1: 1, player2: 2, player3: null, player4: null }];
+  const input = [{ id: 'mk-1', date: '2026-03-01', timestamp: '00:30:09 EDT', player1: 1, player2: 2, player3: null, player4: null }];
   const migrated = app.ctx.migrateRaceData(input);
 
   assert.equal(JSON.stringify(migrated), JSON.stringify(input));

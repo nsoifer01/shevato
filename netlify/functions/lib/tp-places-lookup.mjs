@@ -695,7 +695,14 @@ export const DISCOVERY_SEARCH_PAGE = 10;
 /**
  * Returns up to `limit` VERIFIED candidates for a category-style query.
  *
- *   { query, area, limit, exclude }  ->  { results, spent }
+ *   { query, area, limit, exclude }  ->  { results, spent, searched }
+ *
+ * `spent` is the billed Place Details calls (money). `searched` is the free
+ * Text Search, which always runs once: it is 1 whether it found candidates,
+ * found none, or failed upstream, because in every case a real request reached
+ * Google. The handler charges it against the RATE counters exactly as it does
+ * for a named lookup; refunding it because it billed nothing is what let a
+ * never-matching category be searched without limit (2026-09-12 audit F-1).
  *
  * `exclude` is a set of place IDs already spoken for - the recommendations that
  * survived, and the ones already rejected - so a replacement can never be a
@@ -732,10 +739,10 @@ export async function discoverPlaces({
   try {
     ids = (await findPlaceIds(query, box, DISCOVERY_SEARCH_PAGE)) || [];
   } catch {
-    return { results: [], spent: 0, reason: 'upstream' };
+    return { results: [], spent: 0, searched: 1, reason: 'upstream' };
   }
   const fresh = ids.filter(id => typeof id === 'string' && id && !skip.has(id));
-  if (!fresh.length) return { results: [], spent: 0, reason: 'no_candidates' };
+  if (!fresh.length) return { results: [], spent: 0, searched: 1, reason: 'no_candidates' };
 
   for (const id of fresh) {
     if (out.length >= want) break;
@@ -808,6 +815,6 @@ export async function discoverPlaces({
   }
   // Nothing survived, and hours are why: say so rather than let an empty list
   // be read as an empty neighbourhood.
-  if (!out.length && hoursRejected) return { results: [], spent, reason: 'no_open_candidates' };
-  return { results: out, spent };
+  if (!out.length && hoursRejected) return { results: [], spent, searched: 1, reason: 'no_open_candidates' };
+  return { results: out, spent, searched: 1 };
 }

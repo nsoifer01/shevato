@@ -276,35 +276,116 @@ against a representative file from each class after any edit to the `files`
 lists, and compare against a file you know is covered (28 rules today). The
 same trap applies to any future `.mjs`, `.cjs`, or `data/` addition.
 
-## An event with no listener is not a feature (sync failure surfacing)
+## A write that did not land must be said, and resent (sync failure surfacing)
 
-The sync engine dispatches `syncWriteRejected` when a flush is refused in a way
-retrying cannot fix (`storage-sync-robust.js`, the `payload-too-large` /
-`invalid-argument` path) and `app-sync-init.js` dispatches `appSyncFailed` when
-sync could not start. Both carried comments saying the banner would render
-them. Neither had a listener anywhere in the repo: a grep across `apps/`,
-`assets/` and `sync-system/` returned the two dispatch sites and nothing else.
+Two rounds, each fixing a lie the pill told with the whole test estate green.
 
-The visible consequence was the worst kind: a user's writes stopped reaching
-Firestore, stayed in localStorage, and the pill went on reading **Synced**.
-Fixed 2026-09-11 in `assets/js/sync-status.js`.
+**2026-09-11: an event with no listener is not a feature.** The engine
+already dispatched `syncWriteRejected` and `app-sync-init.js` dispatched
+`appSyncFailed`, both with comments saying the banner would render them, and a
+grep found zero listeners. Writes stopped reaching Firestore and the pill read
+**Synced**. `assets/js/sync-status.js` now listens.
 
-Two rules came out of wiring it up, and both are load-bearing:
+**2026-09-13 (audit S-3): the engine only reported the rarest failure.** Four
+ways a write still vanished quietly, all reproduced against the real engine:
 
-- **The failure has to outrank the poll.** `render()` runs every 2s and the
-  tail of `updateBanner` hides the banner for any state it does not recognise,
-  so a failure banner painted once would be wiped on the next tick. `failed` is
-  handled before that tail, and `classify` returns it ahead of every healthy
-  state.
-- **The two failures expire differently, because only one of them can come
-  good.** A rejected write is permanent by definition, so it stands until the
-  user dismisses it; a healthy namespace elsewhere is NOT evidence that it
-  landed. A failed init can genuinely recover, so it is cleared the moment
-  `activeNamespaces > 0` - retired by evidence, never by a timer. Both
-  directions are pinned in `assets/js/tests/sync-status.test.js`.
+- A retryable failure (`unavailable`, a network error) that outlasted the
+  three-step retry ladder was dropped from the queue with a console line. The
+  key stayed dirty, so no later path resent it either.
+- `permission-denied` was treated as transient: three resends of a rules
+  refusal, then the same silent drop.
+- An edit inside the 500 ms debounce before closing the tab or signing out was
+  persisted dirty, restored dirty on the next start, and never re-enqueued.
+- `flushWrites` empties the queue before the network call, so the pill read
+  Synced while the only copy of an edit was on the wire (audit F9).
 
-`offline` still outranks a standing failure: when the connection is down that
-is the more actionable truth, and the failure is still there when it returns.
+### What the engine does now (`storage-sync-robust.js`)
+
+- **Permanent** = `isPermanentWriteError` in `sync-helpers.mjs`:
+  `payload-too-large`, `invalid-argument`, `permission-denied`,
+  `unauthenticated`, `not-found` (a `merge: true` setDoc creates a missing
+  document, so not-found means the path or database is structurally missing).
+  One attempt, no ladder, not requeued, keys stay dirty, event with
+  `retryable: false`. The next sync start tries the dirty keys once.
+- **Retryable** = everything else, including `failed-precondition`, whose
+  client-side causes (persistence tab lease, index building) change without
+  the batch changing. The ladder runs as before; when it runs out, the batch is
+  requeued and the session is **parked**: no timer resends it, event with
+  `retryable: true`.
+- **Bounded resend triggers** for a parked write: the next local change in
+  that namespace (the flush sends the whole queue), window `online`, the tab
+  becoming visible, and the next sync start for the same user (including the
+  same-user re-entry `initAppSync` makes). Each runs at most one ladder, so a
+  backend that stays down costs four attempts per trigger and never loops.
+  Hidden is NOT a resend trigger, or a tab flicking in and out would be a loop.
+- **Dirty re-enqueue** (`requeueDirtyKeys`) runs at the first
+  server-confirmed snapshot, not at start, so each dirty key has already been
+  compared with the cloud and a moved cloud is merged rather than overwritten.
+  It only re-sends a key whose current value is still exactly the persisted
+  dirty write, at that write's revision. A value that drifted afterwards
+  (written while no session ran, typically a signed-out default) stays dirty
+  but is not uploaded: that is audit S-4's question, and uploading it could
+  replace agreed cloud data with a placeholder. `uploadLocalOnlyKeys` skips
+  keys already queued, or the write would go twice at two revisions.
+- **Never resend an acknowledged write.** Ack clears dirty and is persisted.
+  An ack that arrives after `stopSync` (sign-out wait timed out) has no live
+  revision map, so `markAckedOnDisk` patches the stored record when rev and
+  hash still match.
+- **Last-second edits.** `pagehide` and `visibilitychange` to hidden flush any
+  write waiting on a debounce or backoff timer immediately; setDoc is reached
+  within that event's microtask checkpoint, after which Firestore's persistent
+  cache owns it. `firebase-config.js` awaits `window.__shevatoFlushSync`
+  (`flushAllNow`, parked writes included) before `auth.signOut()`, bounded at
+  1500 ms, because a write attempted after sign-out is refused and offline a
+  setDoc never resolves. The hook is on `window` because firebase-config.js
+  cannot import the engine (the engine imports it).
+- **`stopSync` does not flush.** It runs from the auth listener after
+  sign-out, when the write would be refused. It persists the dirty flags and
+  drops the in-memory queue; `requeueDirtyKeys` brings the writes back. It
+  also cancels the ladder's backoff timer, and `flushWrites` returns early for
+  a stopped session: `writeQueues` is keyed by namespace, so a stale timer
+  used to be able to flush the NEXT session's queue under the old uid.
+- **Status.** `getGlobalStatus().totalQueueSize` counts queued plus in-flight
+  keys (`inFlightWrites` separately); both pills read that field.
+  `getSyncStatus(ns)` adds `inFlight` and `parked`.
+
+### Event contract (add fields, never rename or remove)
+
+- `syncWriteRejected` `{ namespace, keys, code, message, retryable }`.
+- `syncWriteRecovered` `{ namespace }`, dispatched when every key announced as
+  rejected in that namespace has been acknowledged. Tracked key by key
+  (`rejectedWrites`), because another key landing is not evidence the rejected
+  one did.
+- `appSyncFailed` and `syncConflict` unchanged.
+
+### What the widget does (`assets/js/sync-status.js`)
+
+- **A failure outranks the poll.** `render()` runs every 2s and the tail of
+  `updateBanner` hides the banner for any state it does not recognise, so the
+  failure states are handled before that tail and `classify` returns them
+  ahead of every healthy state.
+- Write failures are latched per namespace until `syncWriteRecovered` for THAT
+  namespace. Pill and banner states: `failed` "Not saved to cloud" (red, any
+  refused namespace, sticky even if a later failure there is retryable; a
+  missing `retryable` means false), then `unsaved` "Not saved to cloud yet"
+  (amber, only retryable failures outstanding), then `failed` "Sync
+  unavailable" for a failed init, which alone is retired by evidence (any
+  namespace active), never by a timer.
+- `offline` still outranks every failure: when the connection is down that is
+  the more actionable truth, and the failure is still there when it returns.
+
+Pinned by `sync-system/tests/storage-sync-failure-honesty.test.mjs` (real
+engine: exhaustion, each trigger, one ladder per trigger, permanent, restart
+re-enqueue, no duplicate of an acked or late-acked write, the drift guard,
+pagehide, hidden, the sign-out flush, in-flight status),
+`sync-system/tests/firebase-config-signout-flush.test.mjs` (the real
+firebase-config.js adapter: flush before signOut, bounded wait, a throwing
+flush) and `assets/js/tests/sync-status.test.js`.
+
+Known residual: a failed `uploadLocalOnlyKeys` initial upload is still only a
+console line. Those keys carry no dirty revision, so they cannot be tracked for
+recovery without synthesising one for local-only data, which is audit S-4.
+They are retried by the same initial upload on the next sync start.
 
 ## Shared sync banner stacking
 
@@ -421,6 +502,21 @@ Two lessons worth keeping:
   declaration reassigned to monkey-patch itself. Cross-file globals in the
   classic multi-script apps are declared in `eslint.config.mjs`; add to that
   list when you add a real one.
+
+
+**The telemetry that caught it went blind for a week afterwards.** PR #506
+(2026-09-07) replaced `error_message` with `error_code` and put a normaliser in
+front that refuses free text, but left both global handlers passing the
+message, so every real error arrived as `unclassified` (and a one-word message,
+being code-shaped, was forwarded verbatim). This bug would have read `window` /
+`unclassified`, which says nothing. Since 2026-09-13 the handlers classify by
+shape (`classifyWindowError`, `classifyRejection` in `assets/js/analytics.js`):
+a standard error name, a Firebase code from a closed vocabulary, `script_error`,
+`non_error_rejection`, else `unclassified`; `error_source` is a same-origin
+pathname or `external`. `tests/static/analytics-call-sites.test.mjs` pins the
+event and action vocabulary. Lesson: when a field changes from free text to a
+code, change its producers in the same PR, because a normaliser that fails
+closed hides the breakage behind a valid-looking value.
 
 ## `var a = 1; b = 2` silently creates a global
 
@@ -589,7 +685,7 @@ placeholder promises. Filter state is mirrored into the URL (`?q=`,
 `?category=`) with `replaceState` and read back on load, so a filtered view is
 shareable.
 
-## privacy.html is binding, and now has a two-way invariant test
+## privacy.html is binding, and its tests pin both directions
 
 The document over-disclosed for months: it described sending Arena chat text to
 PurgoMalum for profanity checking while `apps/arena/js/chat.js` was a local
@@ -597,14 +693,46 @@ word-boundary word list making zero external requests. Both the Arena bullet
 and the PurgoMalum service entry are gone, and the FPL wording now says the
 Delete/Disconnect actions also remove the cached copy of your team data while
 the bulk public fixture and projection cache remains.
-`sync-system/tests/privacy-third-parties.test.mjs` pins both directions:
-every service named under "Other services that receive data" must map to a host
-that appears as a URL literal in first-party code (host inventory derived from
-`apps/`, `assets/`, `sync-system/`, `netlify/`, `partials/` and the root pages,
-the way `tests/static/csp-connect-src.test.mjs` does it), every mapped service
-must still be named in the document, and PurgoMalum must never reappear.
-When a service is added or removed, update `SERVICE_HOSTS` in that test in the
+
+It under-disclosed too, and the old test could not see it. The section was
+called a "two-way invariant test" while it only pinned NAMED -> CONTACTED
+(every service named under "Other services that receive data" maps to a host
+literal in first-party code, and every mapped service is still named). Nothing
+checked CONTACTED -> NAMED, so the Trip Planner's bring-your-own-key assistant
+posted trips to `api.openai.com` for months while the list never named OpenAI
+(2026-09-12 audit T-5). `sync-system/tests/privacy-third-parties.test.mjs` now
+checks that direction as well: every host the site actually contacts must be
+covered by a named service, a related host of one (`RELATED_HOSTS`, with the
+reason), or the analytics section. "Contacted" is derived, not a grep of every
+https literal (that set is mostly plain links to IMDb, TVDB and Google Maps):
+the connect/script/style/font/frame hosts of the Report-Only CSP (themselves
+pinned to the fetch call sites by `tests/static/csp-connect-src.test.mjs`), the
+Netlify functions' upstream literals outside comments minus the two that are
+not requests, and the two image hosts `img-src https:` cannot name. When a
+service is added or removed, update `SERVICE_HOSTS` or `RELATED_HOSTS` in the
 same change.
+
+The same round (2026-09-13) closed the other gaps the audit found in the page:
+the MapTap rival network's three published documents and who can read each
+(P-1), the traveller names, per-item cost sharing and visa-checker countries the
+assistant receives, the stored passport expiry date, the CSP report function
+(T-5), and an analytics list that said errors were sent "by their message",
+that generated pages sent "nothing else" and promised a Football event that
+does not exist (A-2). `tests/static/trip-planner-assistant-privacy.test.mjs`
+now reads `slimTripForShare` and fails if the assistant receives the traveller
+roster, per-item sharing or visa countries without the page naming them.
+
+`tests/static/privacy-review-date.test.mjs` ties the prose to `Last reviewed:`
+with a (date, digest) pair kept in the test file. The pair alone could be
+defeated by overwriting `CURRENT.digest` in place and leaving the date (audit
+C-1, reproduced 2026-09-13: all six original assertions passed). Nothing inside
+a file the editor controls can be an anchor, so its last test compares the
+prose and the date against git: the uncommitted tree against HEAD, a pull
+request's merge commit against its first parent, a branch against its merge
+base with master, a push to master against the previous commit. If the words
+moved there, the date must be later. With no usable history (a depth-1
+checkout, as in the Rising Shows refresh job) it records a diagnostic and the
+digest pair is the only guard.
 
 ## tel: hrefs are E.164 and country-checked
 
@@ -824,7 +952,10 @@ listener and re-ran the initial merge, which is the read amplification the
 shortcut was written to stop.
 
 `initAppSync` now computes the namespaces the page wants, stops only the ones
-it no longer wants, and starts the rest; restarting is idempotent.
+it no longer wants, and starts the rest; restarting is idempotent. (Since
+2026-09-13 a stop no longer loses a dirty write for good, because the next
+start re-enqueues it, but it still waits for the next start, so restarting
+must still not stop.)
 `stopAppSync` (the sign-out path) still stops everything. Pinned by
 `sync-system/tests/app-sync-restart.test.mjs` (call site) and "restarting a
 live sync keeps the pending write" in `storage-sync-behavior.test.mjs`

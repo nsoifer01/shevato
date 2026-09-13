@@ -102,19 +102,26 @@ test('the squad value invariant holds and no warning is raised', () => {
   assert.equal(total + squadState.bankTenths, squadState.squadValueTenths);
   assert.deepEqual(squadState.warnings, []);
   assert.equal(squadState.bankTenths, picks.entry_history.bank);
-  assert.equal(squadState.squadValueTenths, picks.entry_history.value);
+  // FPL's `value` is the fifteen at LISTED prices plus the bank. This fixture
+  // holds risers, so the spendable figure the header shows sits below it; the
+  // two were asserted equal until 2026-09-13, which is the selling-value
+  // misreading E-2 removed.
+  const listed = squadState.picks.reduce((s, p) => s + gameState.players.get(p.playerId).nowCost, 0);
+  assert.equal(listed + squadState.bankTenths, picks.entry_history.value);
+  assert.ok(squadState.squadValueTenths < picks.entry_history.value);
 });
 
 /* ------------------------------------------- value check, price movement ---
 
-FPL's `value` is frozen at the gameweek deadline, so the live reconstruction
-drifts from it the moment any owned player changes price. The check rolls the
-prices back with `costChangeEvent` before comparing, so ordinary movement is
-silent and only an unexplained remainder is reported.
+FPL's `value` is the fifteen at their LISTED prices plus the bank, frozen at
+the gameweek deadline, so today's prices drift from it the moment any owned
+player changes price. The check rolls the listed prices back with
+`costChangeEvent` before comparing, so ordinary movement is silent and only an
+unexplained remainder is reported.
 
 Doctoring a player who is already at or below his purchase price keeps the
 arithmetic exact: his selling price IS his current price, so a 0.1 fall moves
-the reconstruction by exactly 0.1. */
+the reconstructed (selling) squad value by exactly 0.1 as well. */
 
 // A squad member whose selling price tracks his current price one for one.
 const fallenId = squadState.picks.find(p => p.sellingTenths === gameState.players.get(p.playerId).nowCost).playerId;
@@ -143,9 +150,55 @@ test('an overnight price fall does NOT raise a value mismatch: FPL froze its num
   const sellingTotal = out.picks.reduce((s, p) => s + p.sellingTenths, 0);
   // The drift is real and is what the header reports ...
   assert.equal(out.squadValueTenths, sellingTotal + out.bankTenths);
-  assert.equal(out.squadValueTenths, picks.entry_history.value - 1, 'the fall moved the reconstruction by 0.1');
+  assert.equal(out.squadValueTenths, squadState.squadValueTenths - 1, 'the fall moved the reconstruction by 0.1');
   // ... and it is NOT a fault, so nothing is reported.
   assert.deepEqual(out.warnings, []);
+});
+
+/* E-2, 2026-09-13. `value` is the deadline MARKET value of the fifteen plus the
+bank, not their selling value. Measured on Team ID 1 in GW4: `value` 1012 equals
+sum(now_cost - cost_change_event) + bank exactly, while the reconstructed selling
+total plus bank is 1004, and the 0.8 between them is eight players each held
+0.1 below his listed price by the sell-on fee. Every earlier value test doctored
+a FALL, where selling equals market, so none of them could tell the two apart
+and the check shipped comparing the wrong total: it warned on almost every
+squad that owned a riser. */
+test('a riser held since purchase does NOT raise a value mismatch: FPL values him at his listed price', () => {
+  // Priced from the raw payload, not through the engine, so the expected total
+  // cannot inherit a mistake from the code under test.
+  const listed = new Map(bootstrap.elements.map(e => [e.id, e.now_cost - (e.cost_change_event ?? 0)]));
+  const marketValue = picks.picks.reduce((sum, p) => sum + listed.get(p.element), 0) + picks.entry_history.bank;
+  const atMarket = { ...picks, entry_history: { ...picks.entry_history, value: marketValue } };
+  const out = buildSquadState({ entry, history, transfers, picks: atMarket, gameState, gw: PLAN_GW });
+
+  assert.equal(picks.entry_history.event, gameState.currentEvent, 'the frozen picks are the current gameweek');
+  assert.equal(out.pendingTransfers.length, 0, 'no transfer has been made this gameweek');
+  const risers = out.picks.filter(p => p.purchaseTenths < gameState.players.get(p.playerId).nowCost
+    && p.sellingTenths < gameState.players.get(p.playerId).nowCost);
+  assert.ok(risers.length >= 1, 'the squad holds a player bought cheaper who has risen, so selling is below market');
+  const sellingTotal = out.picks.reduce((sum, p) => sum + p.sellingTenths, 0);
+  assert.ok(sellingTotal + out.bankTenths < marketValue, 'so the selling total and FPL\'s value genuinely differ');
+
+  assert.equal(out.warnings.some(w => w.code === 'value_mismatch'), false, JSON.stringify(out.warnings));
+  // The header still states what the manager can SPEND, which is the lower figure.
+  assert.equal(out.squadValueTenths, sellingTotal + out.bankTenths);
+});
+
+test('a riser who moved UP since the deadline is rolled back like a fall, and stays silent', () => {
+  // The live shape beside the one above: Joao Pedro rose 0.1 after the GW4
+  // deadline (cost_change_event 1) while `value` still counted his old price.
+  const riser = squadState.picks.find(p => p.purchaseTenths < gameState.players.get(p.playerId).nowCost).playerId;
+  const listed = new Map(bootstrap.elements.map(e => [e.id, e.now_cost - (e.cost_change_event ?? 0)]));
+  const marketValue = picks.picks.reduce((sum, p) => sum + listed.get(p.element), 0) + picks.entry_history.bank;
+  const bs = JSON.parse(JSON.stringify(bootstrap));
+  const el = bs.elements.find(e => e.id === riser);
+  el.now_cost += 1;
+  el.cost_change_event = (el.cost_change_event ?? 0) + 1;
+  el.cost_change_start = (el.cost_change_start ?? 0) + 1;
+  const gs = buildGameState({ ...bs, events: eventsInSeason }, fixtures, { fetchedAt: '2026-09-24T10:00:00Z' });
+  const pk = { ...picks, entry_history: { ...picks.entry_history, value: marketValue } };
+  const out = buildSquadState({ entry, history, transfers, picks: pk, gameState: gs, gw: PLAN_GW });
+  assert.equal(out.warnings.some(w => w.code === 'value_mismatch'), false, JSON.stringify(out.warnings));
 });
 
 test('a difference price movement cannot account for is still reported', () => {

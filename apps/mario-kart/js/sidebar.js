@@ -113,7 +113,12 @@ function openSidebar(animate = true) {
     const container = document.querySelector('.container');
     
     sidebarOpen = true;
-    
+
+    // The closed panel is `inert`: it is hidden only by translateX, so its
+    // controls would otherwise stay in the Tab order at negative x.
+    sidebar.inert = false;
+    sidebar.removeAttribute('inert');
+
     // Update ARIA attributes
     toggle.setAttribute('aria-expanded', 'true');
     
@@ -151,8 +156,13 @@ function closeSidebar() {
     toggle.style.opacity = '1';
     toggle.style.pointerEvents = 'auto';
     
-    // Return focus to toggle button
+    // Return focus to the toggle BEFORE the panel goes inert, so focus is
+    // never left inside a subtree that just left the accessibility tree.
     toggle.focus();
+
+    // Out of the Tab order and the accessibility tree until reopened.
+    sidebar.inert = true;
+    sidebar.setAttribute('inert', '');
 }
 
 function handleSidebarKeyboard(event) {
@@ -164,9 +174,13 @@ function handleSidebarKeyboard(event) {
     // Trap focus within sidebar when open
     if (sidebarOpen && event.key === 'Tab') {
         const sidebar = document.getElementById('sidebar');
-        const focusableElements = sidebar.querySelectorAll(
-            'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
-        );
+        // Visible, enabled controls only: a display:none input
+        // (#sidebar-date-input, #importFile-sidebar) or a disabled Undo can
+        // never hold focus, so as the first or last entry the trap would
+        // never wrap.
+        const focusableElements = Array.from(sidebar.querySelectorAll(
+            'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+        )).filter(el => el.offsetParent !== null);
         
         if (focusableElements.length === 0) return;
         

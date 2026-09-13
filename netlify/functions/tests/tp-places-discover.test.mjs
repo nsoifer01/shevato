@@ -218,7 +218,11 @@ test('a discovery request with nothing findable answers empty, not wrong', opts,
   const body = await (await discover({ q: 'nama chocolate Tokyo', ...TOKYO, limit: 3 })).json();
   assert.deepEqual(body.results, []);
   const usage = globalThis.__tpAssistBlobStub.stores[STORE].get('usage').data;
-  assert.equal(usage.billedMonth, 0, 'a free search that finds nothing costs nothing');
+  assert.equal(usage.billedMonth, 0, 'a free search that finds nothing costs nothing in money');
+  // ...but it is still a real upstream search, so it is not free to REPEAT
+  // (2026-09-12 audit F-1: this test used to assert the money alone, which is
+  // how a full refund of the rate counters passed it).
+  assert.equal(usage.clientHour['c-disc'], 1, 'the search stays on the per-client rate counter');
 });
 
 test('clampDiscover bounds every field a hostile body could send', () => {

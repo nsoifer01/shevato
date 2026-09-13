@@ -30,6 +30,19 @@ const CATEGORY_META = {
 };
 const CATEGORY_ORDER = Object.keys(CATEGORY_META);
 
+/**
+ * A category key as an id fragment. The key is `requirement.type` from stored
+ * (imported, synced) records, so it is data, not code: a key that is already a
+ * plain slug keeps its readable id (every key the app produces is one), and
+ * anything else gets a slug made unique by its group index (audit G-1).
+ */
+function categoryDomKey(key, index) {
+    const raw = String(key);
+    if (/^[a-z0-9_-]+$/.test(raw)) return raw;
+    const slug = raw.toLowerCase().replace(/[^a-z0-9_-]+/g, '-').replace(/^-+|-+$/g, '');
+    return `${slug || 'category'}-${index}`;
+}
+
 /** "lift-milestone" -> "Lift Milestone". Last-resort title for a new type. */
 function humanizeCategoryKey(key) {
     return String(key || 'other')
@@ -266,22 +279,30 @@ class AchievementsView {
             return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
         });
 
-        container.innerHTML = prSectionHtml + ordered.map(([type, items]) => {
+        container.innerHTML = prSectionHtml + ordered.map(([type, items], index) => {
             // A slug is never shown to a user: an unknown requirement type
             // gets a readable fallback title rather than its raw key (GT-29).
-            const meta = CATEGORY_META[type] || { name: humanizeCategoryKey(type), icon: '🏆', desc: 'Other goals' };
+            // Own keys only: CATEGORY_META['constructor'] is Object's
+            // constructor through the prototype chain.
+            const meta = Object.hasOwn(CATEGORY_META, type)
+                ? CATEGORY_META[type]
+                : { name: humanizeCategoryKey(type), icon: '🏆', desc: 'Other goals' };
             const done = items.filter(a => a.unlocked).length;
             const isExpanded = this.expandedCategories.has(type);
+            // `type` comes from stored records (imported and synced), so every
+            // use below is escaped or slugged: it once reached these attributes
+            // and the heading raw, a stored XSS (audit G-1).
+            const domKey = categoryDomKey(type, index);
             return `
                 <section class="achievement-category ${isExpanded ? 'is-expanded' : ''}">
                     <button type="button"
                             class="achievement-category-header"
-                            data-category-key="${type}"
+                            data-category-key="${escapeHtml(type)}"
                             aria-expanded="${isExpanded}"
-                            aria-controls="achievement-chain-${type}">
+                            aria-controls="achievement-chain-${domKey}">
                         <span class="achievement-category-icon">${meta.icon}</span>
                         <div class="achievement-category-text">
-                            <h2>${meta.name}</h2>
+                            <h2>${escapeHtml(meta.name)}</h2>
                             ${meta.desc ? `<p>${meta.desc}</p>` : ''}
                         </div>
                         <span class="achievement-category-count">
@@ -292,7 +313,7 @@ class AchievementsView {
                         </span>
                     </button>
                     <div class="achievement-chain"
-                         id="achievement-chain-${type}"
+                         id="achievement-chain-${domKey}"
                          ${isExpanded ? '' : 'hidden'}>
                         ${items.map(a => this.renderCard(a, sessions)).join('')}
                     </div>

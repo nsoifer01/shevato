@@ -111,8 +111,11 @@ export async function fplStore() {
 // The whole serve path: cache read, freshness decision, upstream fetch, cache
 // write, and the degraded fallbacks.
 //
-// Returns { status, body, cache, fetchedAt, stale, ageSeconds }. The caller
-// turns that into a Response, so this stays testable without a Request.
+// Returns { status, body, cache, fetchedAt, stale, ageSeconds }, plus
+// `nextDeadline` on a fresh 200: the deadline this answer's TTL was judged
+// against, so the edge-cache header can be held to the same window (fpl.mjs
+// edgeCachePolicy). The caller turns that into a Response, so this stays
+// testable without a Request.
 export async function serveFpl({ path, store, fetchUpstream, now, leaseId }) {
   const key = cacheKey(path);
   const cached = await readCache(store, key);
@@ -121,7 +124,7 @@ export async function serveFpl({ path, store, fetchUpstream, now, leaseId }) {
     const nextDeadline = await readDeadline(store);
     const age = ageSeconds(cached.fetchedAt, now);
     if (age < ttlSeconds(path, { now, nextDeadline })) {
-      return { status: 200, body: cached.body, cache: 'hit', fetchedAt: cached.fetchedAt, stale: false, ageSeconds: age };
+      return { status: 200, body: cached.body, cache: 'hit', fetchedAt: cached.fetchedAt, stale: false, ageSeconds: age, nextDeadline };
     }
 
     // EXPIRED, BUT WE STILL HAVE IT. One refresh is enough; the rest of a
@@ -175,6 +178,11 @@ export async function serveFpl({ path, store, fetchUpstream, now, leaseId }) {
     if (!res.ok) throw new Error('upstream ' + res.status);
     const body = await res.json();
     const fetchedAt = new Date(now).toISOString();
+    // The deadline the edge window must respect. A bootstrap carries it in the
+    // body just fetched (fresher than the stored meta); any other path reads
+    // the meta the last bootstrap wrote. One small read on a MISS only, and a
+    // failed read is "no deadline known", the same answer the hit path gives.
+    const nextDeadline = path === 'bootstrap-static' ? nextDeadlineFrom(body, now) : await readDeadline(store);
     // The cache is an optimisation, so a failure to WRITE it must not lose the
     // body that was successfully fetched. Inside the outer try this threw the
     // fresh response away and answered 503, or served a day-old copy instead of
@@ -182,12 +190,12 @@ export async function serveFpl({ path, store, fetchUpstream, now, leaseId }) {
     try {
       await store.setJSON(key, { fetchedAt, body });
       if (path === 'bootstrap-static') {
-        await store.setJSON(DEADLINE_KEY, { nextDeadline: nextDeadlineFrom(body, now) });
+        await store.setJSON(DEADLINE_KEY, { nextDeadline });
       }
     } catch (writeErr) {
       console.error('fpl cache write failed', path, String(writeErr && writeErr.message));
     }
-    return { status: 200, body, cache: 'miss', fetchedAt, stale: false, ageSeconds: 0 };
+    return { status: 200, body, cache: 'miss', fetchedAt, stale: false, ageSeconds: 0, nextDeadline };
   } catch (err) {
     console.error('fpl upstream error', path, String(err && err.message));
     // Stale beats nothing, but it must SAY it is stale: a plan built on

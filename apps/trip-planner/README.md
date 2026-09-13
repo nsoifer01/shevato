@@ -657,6 +657,16 @@ curl -s -H "X-TP-Owner-Token: <token>" -H "Origin: https://shevato.com" \
   "https://shevato.com/.netlify/functions/tp-places?status=1"
 ```
 
+The monthly budget counts MONEY. The per-client and per-network caps (60 an
+hour and 120 a day each, public tier) count upstream WORK, and a Text Search is
+work even though Google bills it at $0.00: a lookup or a discovery request whose
+search finds nothing gives its unused slots back to the budget but keeps one
+slot on the caller's hourly and daily counters, so it cannot be repeated without
+limit. A billed lookup takes one slot on each, never two, and a lookup answered
+entirely from the place-id cache costs nothing at all.
+`netlify/functions/tests/tp-places-handler-accounting.test.mjs` pins this
+through the real handler for both the named and the discovery path.
+
 Local `netlify dev` will NOT spend against the real card on a key alone: it also
 needs `TP_PLACES_ALLOW_LOCAL_SPEND=1`, and the production key is no longer in
 `.env` at all. For paid local testing, create a SEPARATE dev key in Google Cloud

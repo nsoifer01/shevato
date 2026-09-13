@@ -10,7 +10,12 @@ export class Program {
         this.name = data.name || '';
         this.description = data.description || '';
         // Array of normalized program-exercise objects (see normalizeExercise).
-        this.exercises = (data.exercises || []).map(normalizeExercise);
+        // Only records become exercises: a null entry or a non-array value
+        // (sync, another tab, an older build) threw here and blanked the whole
+        // programs store on load (audit G-2).
+        this.exercises = (Array.isArray(data.exercises) ? data.exercises : [])
+            .filter(isRecord)
+            .map(normalizeExercise);
         this.createdAt = data.createdAt || new Date().toISOString();
         this.updatedAt = data.updatedAt || new Date().toISOString();
 
@@ -153,9 +158,14 @@ export const DEFAULT_TARGET_SECONDS = 60;
 function normalizeExercise(ex) {
     // Build the canonical sets[] array.
     let sets;
-    if (Array.isArray(ex.sets) && ex.sets.length > 0) {
+    // A row that is not a record (a null from a hand-edited file or a sync
+    // glitch) is skipped, the same repair the import sanitiser reports, so a
+    // store loaded directly and an import of it build the same program. A list
+    // left empty reads like `sets: []` and takes the legacy expansion below.
+    const rows = Array.isArray(ex.sets) ? ex.sets.filter(isRecord) : [];
+    if (rows.length > 0) {
         // Already in new format — clamp each row.
-        sets = ex.sets.map(s => normalizeSetRow(s));
+        sets = rows.map(s => normalizeSetRow(s));
     } else {
         // Legacy or freshly constructed: expand targetSets x targetReps.
         const count = clampInt(ex.targetSets, 1, 20, 3);
@@ -217,7 +227,13 @@ function normalizeScheduleDays(value) {
     return [...seen].sort((a, b) => a - b);
 }
 
+function isRecord(value) {
+    return !!value && typeof value === 'object' && !Array.isArray(value);
+}
+
 function normalizeSetRow(s) {
+    // Null-safe on its own too: this is the line that threw (audit G-2).
+    if (!isRecord(s)) s = {};
     const repsMin = clampInt(s.repsMin, 1, 100, 10);
     const repsMax = clampInt(s.repsMax, 1, 100, repsMin);
     // Absent stays absent: a reps exercise must not acquire a phantom hold,

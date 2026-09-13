@@ -1192,14 +1192,14 @@ function updateRaceHistoryTable(filteredRaces) {
         ? window.GlobalPaginationManager.getPaginatedItems('mario-kart-races', orderedRaces)
         : orderedRaces;
 
-    // Pre-index both source arrays so lookups inside the row map are O(1)
-    // instead of O(n) per row. With heavy users (1k+ races) the previous
-    // indexOf-per-row pattern made the history tab visibly hitch on
-    // every render.
+    // Pre-index the filtered array so the "Race #" lookup inside the row map
+    // is O(1) instead of O(n) per row. With heavy users (1k+ races) the
+    // previous indexOf-per-row pattern made the history tab visibly hitch on
+    // every render. The edit/delete buttons carry the race's id, never an
+    // index: the log can be replaced (another tab, a cloud delivery) between
+    // this render and the click.
     const filteredIndexMap = new Map();
     for (let i = 0; i < filteredRaces.length; i++) filteredIndexMap.set(filteredRaces[i], i);
-    const racesIndexMap = new Map();
-    for (let i = 0; i < races.length; i++) racesIndexMap.set(races[i], i);
 
     // Update history table
     const historyHtml = racesToDisplay.map((race) => {
@@ -1208,7 +1208,7 @@ function updateRaceHistoryTable(filteredRaces) {
         const positions = players.map(player => race[player]).filter(isFinitePosition);
         const originalIndex = filteredIndexMap.get(race) ?? -1;
         const raceNumber = originalIndex + 1;
-        const globalIndex = racesIndexMap.get(race) ?? -1;
+        const raceId = isValidRaceId(race.id) ? race.id : '';
         const playerCells = players.map(player => {
             const position = race[player];
             return isFinitePosition(position)
@@ -1223,8 +1223,8 @@ function updateRaceHistoryTable(filteredRaces) {
             <td>${escapeHtml(formatDateForDisplay(race.date))}${race.timestamp ? '<br><small>' + escapeHtml(race.timestamp) + '</small>' : ''}${courseLabel}</td>
             ${playerCells}
             <td>
-                <button class="edit-btn" onclick="editRace(${globalIndex})" title="Edit race">✏️</button>
-                <button class="delete-btn" onclick="deleteRace(${globalIndex})" title="Delete race">🗑️</button>
+                <button class="edit-btn" onclick="editRace('${raceId}')" title="Edit race">✏️</button>
+                <button class="delete-btn" onclick="deleteRace('${raceId}')" title="Delete race">🗑️</button>
             </td>
         </tr>
     `;
@@ -1249,7 +1249,7 @@ function updateRaceHistoryTable(filteredRaces) {
 
     // Mobile cards render the SAME paginated slice and the SAME index maps as
     // the table, so the two presentations can never desync.
-    updateMobileRaceCards(filteredRaces, racesToDisplay, filteredIndexMap, racesIndexMap);
+    updateMobileRaceCards(filteredRaces, racesToDisplay, filteredIndexMap);
 
     // Update player icons in race history after rendering
     if (window.updateAllPlayerIcons) {
@@ -1259,7 +1259,7 @@ function updateRaceHistoryTable(filteredRaces) {
     }
 }
 
-function updateMobileRaceCards(filteredRaces, racesToDisplay, filteredIndexMap, racesIndexMap) {
+function updateMobileRaceCards(filteredRaces, racesToDisplay, filteredIndexMap) {
     // Get the race history section element
     const raceHistorySection = document.querySelector('.race-history');
 
@@ -1283,7 +1283,7 @@ function updateMobileRaceCards(filteredRaces, racesToDisplay, filteredIndexMap, 
         // Race number is the position within the filtered set (1-based), matching
         // the table's numbering across pages.
         const raceNumber = (filteredIndexMap.get(race) ?? -1) + 1;
-        const globalIndex = racesIndexMap.get(race) ?? -1;
+        const raceId = isValidRaceId(race.id) ? race.id : '';
 
         const playerPositions = players.map(player => {
             const position = race[player];
@@ -1309,8 +1309,8 @@ function updateMobileRaceCards(filteredRaces, racesToDisplay, filteredIndexMap, 
                 ${playerPositions}
             </div>
             <div class="race-card-actions">
-                <button class="edit-btn" onclick="editRace(${globalIndex})" title="Edit race">✏️</button>
-                <button class="delete-btn" onclick="deleteRace(${globalIndex})" title="Delete race">🗑️</button>
+                <button class="edit-btn" onclick="editRace('${raceId}')" title="Edit race">✏️</button>
+                <button class="delete-btn" onclick="deleteRace('${raceId}')" title="Delete race">🗑️</button>
             </div>
         </div>
     `;

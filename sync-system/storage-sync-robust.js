@@ -234,6 +234,12 @@ class StorageSyncManager {
     // recovery without re-reading storage.
     this.conflictRecords = [];
     this.chunkFetches = new Set(); // `${key}:${hash}:${rev}`
+    // Keys the page has been told did not reach the cloud, per namespace
+    // (`syncWriteRejected`). Emptied key by key as each one is acknowledged;
+    // `syncWriteRecovered` goes out when the set for a namespace is empty.
+    // Per manager, not per session, so a sign-out and back in on the same
+    // page still retires the message the page is showing.
+    this.rejectedWrites = new Map(); // namespace -> Set<key>
     
     // Check if immediate sync override is already installed
     if (window.immediateDebug) {
@@ -244,6 +250,7 @@ class StorageSyncManager {
 
     this.installCrossTabChannel();
     this.installVisibilityHook();
+    this.installFlushTriggers();
   }
 
   /**
@@ -297,6 +304,13 @@ class StorageSyncManager {
     this._visibilityHookInstalled = true;
 
     document.addEventListener('visibilitychange', () => {
+      // Hidden is often the last event a mobile page ever gets (the OS kills
+      // it in the background without a pagehide), so a pending debounced
+      // edit goes out now rather than in 500 ms that may never come.
+      if (document.visibilityState === 'hidden') {
+        this.flushPendingNow();
+        return;
+      }
       if (document.visibilityState !== 'visible') return;
       this.handleTabVisible();
     });
@@ -306,7 +320,157 @@ class StorageSyncManager {
     for (const [, state] of this.syncStates) {
       if (state.stopped) continue;
       this.reconcileFromLocalStorage(state);
+      // Coming back to the tab is one of the bounded resend triggers.
+      this.resumeParkedWrites(state);
     }
+  }
+
+  /* ---------------------------------------------------------------------
+   * When a write is (re)sent, and the promise that nothing is lost quietly
+   * (2026-09-12 audit S-3).
+   *
+   * Four ways a write used to vanish, and what replaced each:
+   *
+   *   - A RETRYABLE failure (network, `unavailable`, ...) that outlasted the
+   *     retry ladder was dropped from the queue. It is now requeued and
+   *     PARKED: no timer resends it, the page is told (`syncWriteRejected`,
+   *     `retryable: true`), and it goes out again on the next bounded
+   *     trigger - a local change in the namespace, the window `online`
+   *     event, the tab becoming visible, or the next sync start for the same
+   *     user. Each trigger runs at most one normal ladder, so a backend that
+   *     stays down costs four attempts per trigger, never a loop.
+   *   - A PERMANENT failure (see isPermanentWriteError) gets one attempt and
+   *     no ladder. The keys stay dirty, the page is told (`retryable:
+   *     false`), and the next sync start tries them once (requeueDirtyKeys).
+   *   - An edit inside the 500 ms debounce window before the tab closed, the
+   *     tab was hidden or the user signed out never left the device.
+   *     `pagehide` and `visibilitychange` to hidden now flush a pending
+   *     debounced write at once, and firebase-config.js awaits
+   *     `window.__shevatoFlushSync` (flushAllNow) before auth.signOut(),
+   *     because a write attempted after sign-out is refused.
+   *   - stopSync still drops the in-memory queue (by then the auth may be
+   *     gone, so flushing there is too late), but the dirty flags are
+   *     persisted and requeueDirtyKeys puts those writes back on the next
+   *     start for the same user.
+   *
+   * `syncWriteRecovered` ({ namespace }) goes out once every key that was
+   * announced as rejected in that namespace has been acknowledged.
+   * ------------------------------------------------------------------- */
+
+  installFlushTriggers() {
+    if (this._flushTriggersInstalled) return;
+    if (typeof window === 'undefined' || typeof window.addEventListener !== 'function') return;
+    this._flushTriggersInstalled = true;
+    // pagehide rather than beforeunload/unload: it is the one that fires on
+    // mobile Safari and for pages entering the back/forward cache. setDoc is
+    // reached within this event's microtask checkpoint, after which
+    // Firestore's persistent cache owns the write.
+    window.addEventListener('pagehide', () => { this.flushPendingNow(); });
+    window.addEventListener('online', () => {
+      for (const [, state] of this.syncStates) this.resumeParkedWrites(state);
+    });
+  }
+
+  /** (Re)arm the debounced flush for a session. */
+  armFlushTimer(state, delay) {
+    if (state.writeTimer) clearTimeout(state.writeTimer);
+    state.writeTimer = setTimeout(() => {
+      state.writeTimer = null;
+      this.flushWrites(state);
+    }, delay);
+  }
+
+  /**
+   * Send every write that is waiting on a timer (a debounce or a retry
+   * backoff) right now. A parked write with no timer is NOT sent: hiding a
+   * tab is not one of its resend triggers, and a page that hides and shows
+   * repeatedly must not turn into a retry loop.
+   */
+  flushPendingNow() {
+    const flights = [];
+    for (const [, state] of this.syncStates) {
+      if (state.stopped || (!state.writeTimer && !state.retryTimer)) continue;
+      if (state.writeTimer) {
+        clearTimeout(state.writeTimer);
+        state.writeTimer = null;
+      }
+      flights.push(this.flushWrites(state));
+    }
+    return Promise.all(flights).then(() => undefined);
+  }
+
+  /**
+   * The sign-out flush: everything queued in every live session, parked
+   * writes included, because this is the last moment the user's credentials
+   * are available to send them. Resolves once each flush has had its answer
+   * (flushWrites never rejects); the caller bounds the wait.
+   */
+  flushAllNow() {
+    const flights = [];
+    for (const [, state] of this.syncStates) {
+      if (state.stopped) continue;
+      if (state.writeTimer) {
+        clearTimeout(state.writeTimer);
+        state.writeTimer = null;
+      }
+      const queue = this.writeQueues.get(state.namespace);
+      if (!queue || queue.size === 0) continue;
+      flights.push(this.flushWrites(state));
+    }
+    return Promise.all(flights).then(() => undefined);
+  }
+
+  /** One resend of a parked write, on one of its bounded triggers. */
+  resumeParkedWrites(state) {
+    if (!state || state.stopped || !state.parked) return;
+    this.flushWrites(state);   // clears `parked`; a new failure parks it again
+  }
+
+  /**
+   * Put this device's unacknowledged writes from an earlier session back in
+   * the queue. Runs at the first SERVER-confirmed snapshot, not at start: by
+   * then applyRemoteChange has compared each dirty key with the cloud, so a
+   * cloud that moved while this device was away is merged (and the merge
+   * queued) instead of being overwritten blind. A key already queued is left
+   * alone.
+   *
+   * Only a key whose value is still exactly the dirty write that was
+   * persisted is sent. A value that DRIFTED since (changed while no session
+   * was running, e.g. a default an app wrote while signed out) stays dirty
+   * for conflict defence but is not uploaded here: that is the signed-out
+   * local work question (audit S-4), and uploading it could replace agreed
+   * cloud data with a placeholder. A write the cloud acknowledged is clean
+   * on disk and is never resent.
+   */
+  requeueDirtyKeys(state) {
+    if (!state || state.stopped) return;
+    const persisted = state.restoredRevisions;
+    if (!persisted) return;
+    // Same account guard uploadLocalOnlyKeys applies: never widen what one
+    // account's session can send from another account's leftovers.
+    const owner = this.syncedDataOwner();
+    if (owner && owner !== state.userId) return;
+    const queue = this.writeQueues.get(state.namespace);
+    if (!queue) return;
+
+    let added = 0;
+    for (const key of state.keys) {
+      const rev = this.localRevisions.get(key);
+      const entry = persisted[key];
+      if (!rev || !rev.dirty || queue.has(key)) continue;
+      if (!entry || !entry.dirty || String(entry.hash || '') !== rev.hash) continue;
+      const value = this.readLocalValue(key);
+      queue.set(key, {
+        value,
+        // The revision that never landed, not a new one.
+        rev: Number(rev.rev) || 0,
+        updatedAt: Date.now(),
+        deleted: value === null,
+        hash: rev.hash
+      });
+      added++;
+    }
+    if (added) this.armFlushTimer(state, DEBOUNCE_MS);
   }
 
   /**
@@ -531,6 +695,9 @@ class StorageSyncManager {
         && existing.userId === user.uid
         && existing.useFirestore === useFirestore
         && sameKeySet(existing.keys, keys)) {
+      // The next sync start for this user is one of the bounded triggers a
+      // parked write is waiting for.
+      this.resumeParkedWrites(existing);
       return {
         stop: () => this.stopSync(namespace),
         getStatus: () => this.getSyncStatus(namespace)
@@ -549,6 +716,15 @@ class StorageSyncManager {
       useFirestore,
       listeners: [],
       writeTimer: null,
+      // The retry ladder's pending backoff, so stopSync and an early flush
+      // can cancel it. A failed ladder never re-arms itself: see `parked`.
+      retryTimer: null,
+      // true when the ladder ran out on a retryable failure: the writes are
+      // back in the queue and wait for a bounded trigger.
+      parked: false,
+      // Keys handed to Firestore and not yet answered, so status cannot read
+      // "Synced" while the only copy of an edit is on the wire.
+      inFlight: 0,
       stopped: false,
       retryCount: 0,
       lastSyncTime: Date.now(),
@@ -687,6 +863,8 @@ class StorageSyncManager {
           // unchanged.
           if (!state.initialMergeDone && !snapshot.metadata.fromCache) {
             state.initialMergeDone = true;
+            // Before the local-only upload, which skips keys already queued.
+            this.requeueDirtyKeys(state);
             this.uploadLocalOnlyKeys(state, remoteData);
           }
 
@@ -763,6 +941,7 @@ class StorageSyncManager {
 
       if (!state.initialMergeDone) {
         state.initialMergeDone = true;
+        this.requeueDirtyKeys(state);
         this.uploadLocalOnlyKeys(state, remoteData);
       }
     };
@@ -1150,6 +1329,9 @@ class StorageSyncManager {
     if (!stored || typeof stored !== 'object') return;
     if (stored.uid !== state.userId) return;   // a different account's counters
     const saved = stored.keys && typeof stored.keys === 'object' ? stored.keys : {};
+    // What was on disk, untouched, so requeueDirtyKeys can tell the write that
+    // never landed apart from a value that drifted afterwards.
+    state.restoredRevisions = saved;
 
     for (const key of state.keys) {
       const entry = saved[key];
@@ -1325,8 +1507,7 @@ class StorageSyncManager {
     queue.set(key, { value, rev, updatedAt: Date.now(), deleted: false, hash });
     this.localRevisions.set(key, { rev, updatedAt: Date.now(), hash, dirty: true });
     this.schedulePersistRevisions(namespace);
-    if (state.writeTimer) clearTimeout(state.writeTimer);
-    state.writeTimer = setTimeout(() => this.flushWrites(state), DEBOUNCE_MS);
+    this.armFlushTimer(state, DEBOUNCE_MS);
   }
 
   /**
@@ -1411,30 +1592,40 @@ class StorageSyncManager {
     });
     this.schedulePersistRevisions(state.namespace);
 
-    // Clear existing timer
-    if (state.writeTimer) {
-      clearTimeout(state.writeTimer);
-    }
-
-    // Debounced write with exponential backoff on failure
+    // Debounced write with exponential backoff on failure. Also the "next
+    // local change" trigger for a parked write: the flush sends the whole
+    // queue, parked entries included.
     const delay = state.retryCount > 0 ? 
       DEBOUNCE_MS * Math.pow(2, state.retryCount) : DEBOUNCE_MS;
-    
-    state.writeTimer = setTimeout(() => {
-      this.flushWrites(state);
-    }, delay);
+    this.armFlushTimer(state, delay);
   }
 
   /**
-   * Enhanced write flushing with retry logic
+   * Send the queue. Success marks the keys clean; failure is classified:
+   * permanent (one attempt, announced, keys stay dirty), retryable within the
+   * ladder (requeue, back off), or retryable past it (requeue, park,
+   * announce). See the S-3 block above installFlushTriggers.
    */
   async flushWrites(state) {
+    // A stopped session's queue belongs to nobody. writeQueues is keyed by
+    // namespace, so a timer outliving stopSync would otherwise flush the
+    // namespace's NEXT session's queue under this session's uid.
+    if (state.stopped) return;
     const queue = this.writeQueues.get(state.namespace);
     if (!queue || queue.size === 0) return;
+
+    // Whatever caused this flush is the one resend a parked write gets, and a
+    // pending backoff is superseded by it.
+    state.parked = false;
+    if (state.retryTimer) {
+      clearTimeout(state.retryTimer);
+      state.retryTimer = null;
+    }
 
     // Copy queue and clear it
     const writes = new Map(queue);
     queue.clear();
+    state.inFlight = (state.inFlight || 0) + writes.size;
 
     try {
       if (state.useFirestore) {
@@ -1454,7 +1645,13 @@ class StorageSyncManager {
         if (rev && rev.rev === info.rev) this.localRevisions.set(key, { ...rev, dirty: false });
         this.rememberSyncBase(state.namespace, key, info.deleted ? null : info.value);
       }
+      // Stopped while this was on the wire (a sign-out whose bounded wait ran
+      // out, say) and nothing has restarted: there is no live revision map to
+      // persist, and the one on disk still says dirty, so the next start
+      // would send the write a second time.
+      if (!this.syncStates.has(state.namespace)) this.markAckedOnDisk(state, writes);
       this.schedulePersistRevisions(state.namespace);
+      this.noteWriteRecovered(state, writes);
 
       // Broadcast to peer tabs that this namespace just changed. Their
       // onSnapshot listeners will eventually fire too, but a same-origin
@@ -1470,59 +1667,142 @@ class StorageSyncManager {
     } catch (error) {
       console.error(`❌ Failed to flush writes for ${state.namespace}:`, error);
 
-      // A deterministic rejection (our size guard, or Firestore refusing
-      // the document shape) fails identically however often it is resent,
-      // so the retry ladder is pure waste, and worse than waste while the
-      // app keeps appending to the same key between attempts, which is how
-      // the MapTap Rivals incident turned a 760 KB refusal into an 890 KB
-      // one. Drop the batch, reset the ladder, and tell the page.
+      // A deterministic rejection (our size guard, Firestore refusing the
+      // document shape, the rules refusing the write) fails identically
+      // however often it is resent, so the retry ladder is pure waste, and
+      // worse than waste while the app keeps appending to the same key
+      // between attempts, which is how the MapTap Rivals incident turned a
+      // 760 KB refusal into an 890 KB one. Do not requeue the batch; its keys
+      // stay dirty, so the next sync start tries them once. Tell the page.
       if (isPermanentWriteError(error)) {
         console.error(`🛑 Permanent write rejection for ${state.namespace}; not retrying:`, error.message);
         state.retryCount = 0;
-        this.notifyWriteRejected(state, writes, error);
+        this.notifyWriteRejected(state, writes, error, false);
         return;
       }
 
-      // Retry logic
+      // Re-queue failed writes, but never OVER a newer entry the user made
+      // while this flush was in flight; see requeueFailedWrites for the
+      // data-loss race this guards against.
+      requeueFailedWrites(queue, writes);
+
       if (state.retryCount < MAX_RETRY_ATTEMPTS) {
         state.retryCount++;
         console.log(`🔄 Retrying write flush (${state.retryCount}/${MAX_RETRY_ATTEMPTS})`);
-        
-        // Re-queue failed writes, but never OVER a newer entry the user made
-        // while this flush was in flight; see requeueFailedWrites for the
-        // data-loss race this guards against.
-        requeueFailedWrites(queue, writes);
-        
-        // Retry with exponential backoff
-        setTimeout(() => this.flushWrites(state), RETRY_DELAY_MS * state.retryCount);
+        if (!state.stopped) {
+          state.retryTimer = setTimeout(() => {
+            state.retryTimer = null;
+            this.flushWrites(state);
+          }, RETRY_DELAY_MS * state.retryCount);
+        }
       } else {
-        console.error(`💥 Max retry attempts exceeded for ${state.namespace}`);
+        // Out of retries on a failure that CAN still succeed. This used to
+        // drop the batch with nothing but this console line, while the key
+        // stayed dirty and the pill read "Synced". The writes are back in the
+        // queue; they wait for a bounded trigger rather than a timer, so a
+        // backend that stays down is not hammered forever.
+        console.error(`💥 Max retry attempts exceeded for ${state.namespace}; parked until the next trigger`);
         state.retryCount = 0;
+        state.parked = true;
+        this.notifyWriteRejected(state, writes, error, true);
       }
+    } finally {
+      state.inFlight = Math.max(0, (state.inFlight || 0) - writes.size);
     }
   }
 
   /**
-   * Surface a permanently-rejected batch.
-   *
-   * The write is gone: the data is still safe in localStorage, but this
-   * device will not push it to the cloud until the value changes into
-   * something writable. That is worth more than a console line, so it also
-   * goes out as a DOM event any app (or a test) can listen for.
-   *
-   * @param {object} state sync state whose flush was rejected
-   * @param {Map<string, object>} writes the batch that will not be resent
-   * @param {Error} error the rejection
+   * Record, on disk, that writes from a STOPPED session were acknowledged.
+   * Only an entry still describing exactly the write that landed (same rev,
+   * same hash) is marked clean; anything newer stays dirty.
    */
-  notifyWriteRejected(state, writes, error) {
+  markAckedOnDisk(state, writes) {
+    try {
+      const getItem = this.originalMethods?.getItem || localStorage.getItem.bind(localStorage);
+      const setItem = this.originalMethods?.setItem || localStorage.setItem.bind(localStorage);
+      const storeKey = SYNC_REV_KEY_PREFIX + state.namespace;
+      const stored = JSON.parse(getItem(storeKey) || 'null');
+      if (!stored || stored.uid !== state.userId || !stored.keys || typeof stored.keys !== 'object') return;
+      let changed = false;
+      for (const [key, info] of writes) {
+        const entry = stored.keys[key];
+        if (entry && entry.dirty
+            && Number(entry.rev) === Number(info.rev)
+            && String(entry.hash || '') === String(info.hash || '')) {
+          entry.dirty = false;
+          changed = true;
+        }
+      }
+      if (changed) setItem(storeKey, JSON.stringify(stored));
+    } catch (_) {
+      // Storage blocked or unreadable: the worst case is one duplicate of a
+      // write the cloud already holds, which is idempotent.
+    }
+  }
+
+  /**
+   * Tell the page a namespace it was told about has fully landed.
+   *
+   * Key by key, not flush by flush: a different key succeeding is not
+   * evidence that the rejected one did.
+   */
+  noteWriteRecovered(state, writes) {
+    const pending = this.rejectedWrites.get(state.namespace);
+    if (!pending) return;
+    const live = this.syncStates.has(state.namespace);
+    for (const key of Array.from(pending)) {
+      const rev = this.localRevisions.get(key);
+      // With a live session the revision map is the truth; without one, only
+      // what this very flush carried is known to have landed.
+      if (live ? (!rev || !rev.dirty) : writes.has(key)) pending.delete(key);
+    }
+    if (pending.size) return;
+    this.rejectedWrites.delete(state.namespace);
+    if (typeof window === 'undefined' || typeof window.dispatchEvent !== 'function') return;
+    try {
+      window.dispatchEvent(new CustomEvent('syncWriteRecovered', {
+        detail: { namespace: state.namespace }
+      }));
+    } catch (_) { /* never let a notification break a sync */ }
+  }
+
+  /**
+   * Surface a batch that did not reach the cloud.
+   *
+   * The data is safe in localStorage either way; what differs is whether the
+   * engine will send it again by itself. EVENT CONTRACT (the shared
+   * sync-status widget and app pills code against it; add fields, never
+   * rename or remove):
+   *
+   *   syncWriteRejected  { namespace, keys, code, message, retryable }
+   *     retryable true:  parked after the retry ladder; resent on the next
+   *                      bounded trigger.
+   *     retryable false: refused; the keys stay dirty and the next sync start
+   *                      tries once.
+   *   syncWriteRecovered { namespace } once every rejected key has landed.
+   *
+   * @param {object} state sync state whose flush failed
+   * @param {Map<string, object>} writes the batch that did not land
+   * @param {Error} error the failure
+   * @param {boolean} retryable whether the engine will resend it itself
+   */
+  notifyWriteRejected(state, writes, error, retryable) {
+    const keys = Array.from(writes.keys());
+    let pending = this.rejectedWrites.get(state.namespace);
+    if (!pending) {
+      pending = new Set();
+      this.rejectedWrites.set(state.namespace, pending);
+    }
+    for (const key of keys) pending.add(key);
     if (typeof window === 'undefined' || typeof window.dispatchEvent !== 'function') return;
     try {
       window.dispatchEvent(new CustomEvent('syncWriteRejected', {
         detail: {
           namespace: state.namespace,
-          keys: Array.from(writes.keys()),
+          keys,
           code: error?.code || 'unknown',
-          message: error?.message || String(error)
+          message: error?.message || String(error),
+          retryable: retryable === true
         }
       }));
     } catch (_) {
@@ -1913,10 +2193,15 @@ class StorageSyncManager {
       return;
     }
 
+    const queued = this.writeQueues.get(state.namespace);
     for (const key of state.keys) {
       const localValue = getItem(key);
       if (localValue === null || localValue === undefined) continue;
       if (remoteData[key] !== undefined) continue;
+      // Already on its way through the normal flush (requeueDirtyKeys), at
+      // the revision that never landed. Uploading it here as well would send
+      // it twice, the second time at a LOWER revision than the first.
+      if (queued && queued.has(key)) continue;
 
       const parsed = parseValue(localValue);
       const known = this.localRevisions.get(key);
@@ -1967,8 +2252,18 @@ class StorageSyncManager {
 
     state.stopped = true;
 
+    // The queue below is dropped, deliberately without a flush: stopSync runs
+    // from the auth-state listener AFTER a sign-out, when a write would be
+    // refused for want of credentials. Nothing is lost by that. The dirty
+    // flags were just persisted, and requeueDirtyKeys sends those writes on
+    // the next start for this user. The flush that CAN still succeed happens
+    // before sign-out (flushAllNow) and on pagehide (flushPendingNow).
     if (state.writeTimer) {
       clearTimeout(state.writeTimer);
+    }
+    if (state.retryTimer) {
+      clearTimeout(state.retryTimer);
+      state.retryTimer = null;
     }
 
     state.listeners.forEach(cleanup => cleanup());
@@ -2008,7 +2303,11 @@ class StorageSyncManager {
       keyCount: state.keys.size,
       retryCount: state.retryCount,
       lastSyncTime: state.lastSyncTime,
-      queueSize: this.writeQueues.get(namespace)?.size || 0
+      queueSize: this.writeQueues.get(namespace)?.size || 0,
+      // Keys handed to Firestore and not yet answered.
+      inFlight: state.inFlight || 0,
+      // Out of retries on a retryable failure, waiting for a trigger.
+      parked: !!state.parked
     };
   }
 
@@ -2020,10 +2319,19 @@ class StorageSyncManager {
     for (const queue of this.writeQueues.values()) {
       totalQueueSize += queue.size;
     }
+    let inFlightWrites = 0;
+    for (const state of this.syncStates.values()) {
+      inFlightWrites += state.inFlight || 0;
+    }
     return {
       activeNamespaces: this.syncStates.size,
       totalKeys: Array.from(this.syncStates.values()).reduce((sum, state) => sum + state.keys.size, 0),
-      totalQueueSize,
+      // Queued AND on the wire. flushWrites empties the queue before the
+      // network call, so counting the queue alone let the sync pill read
+      // "Synced" while the only copy of an edit was still in flight
+      // (2026-09-12 audit F9). Both pills read this field.
+      totalQueueSize: totalQueueSize + inFlightWrites,
+      inFlightWrites,
       syncLocks: this.syncLocks.size,
       overrideInstalled: this.isOverrideInstalled
     };
@@ -2303,6 +2611,11 @@ export async function eraseRivalNetworkIdentity() {
 // state through window because the sync layer is loaded before it).
 if (typeof window !== 'undefined') {
   window.gymGetGlobalSyncStatus = () => syncManager.getGlobalStatus();
+  // Called by firebase-config.js before auth.signOut(), with a bounded wait:
+  // a write attempted after sign-out is refused, so the last edits have to
+  // leave first. firebase-config.js cannot import this module (this module
+  // imports it), hence the window hook.
+  window.__shevatoFlushSync = () => syncManager.flushAllNow();
 }
 
 // Debug helpers

@@ -399,7 +399,7 @@ Events, all carrying `app_name` and `app_section` automatically:
 | `app_action` | a meaningful action completes | `action_name` + per-action counts |
 | `outbound_click` | a link to another origin | `link_domain` |
 | `site_nav_click` | an internal link or mailto/tel | `nav_location`, `link_destination`, `link_kind` (`internal`/`mailto`/`tel`) |
-| `app_error` | uncaught error or rejection | `error_scope`, `error_message` (capped at 5/page) |
+| `app_error` | uncaught error or unhandled rejection (capped at 5/page) | `error_scope` (`window`/`promise`), `error_code` (a standard error name such as `referenceerror`, a Firebase-style code such as `auth_network-request-failed`, `script_error`, `non_error_rejection` or `unclassified`; never the message), `error_source` (window only: a same-origin script path, or `external`) |
 | `page_not_found` | 404.html renders | `not_found_path`, `referrer_domain` |
 
 Two rules when adding tracking:
