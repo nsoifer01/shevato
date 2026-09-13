@@ -384,6 +384,85 @@ test('far from a deadline the ordinary TTL still applies', async () => {
   assert.equal(fetchImpl.calls.length, 1, 'three minutes is well inside the ten minute TTL');
 });
 
+// A stored copy, as a previous page load left it in localStorage.
+const storedCopy = (data, ageSeconds) => JSON.stringify({
+  fetchedAt: new Date(NOW - ageSeconds * 1000).toISOString(),
+  stale: false,
+  data,
+  receivedAt: NOW - ageSeconds * 1000,
+  serverAgeSeconds: 0,
+});
+
+// A proxy whose bootstrap answer is held until the test releases it, which is
+// the order a real cold page load sees: the 2.6 MB bootstrap arrives after the
+// fixtures were already asked for.
+function heldBootstrapProxy(secondsToDeadline) {
+  let release;
+  const held = new Promise((resolve) => { release = resolve; });
+  const fetchImpl = recorder(async (url) => {
+    if (url.endsWith('path=bootstrap-static')) {
+      await held;
+      return proxyResponse(bootstrapWithDeadline(secondsToDeadline));
+    }
+    return proxyResponse([{ id: 'fresh' }]);
+  });
+  return { fetchImpl, release };
+}
+
+test('a cold page load learns the deadline before trusting a stored fixtures copy', async () => {
+  // loadWorld asks for the bootstrap and the fixtures together, and the
+  // bootstrap is held in memory only, so on a fresh page the deadline that
+  // collapses the fixtures TTL was not known when the stored copy was judged:
+  // two hours before a deadline a twenty minute old fixture list was served as
+  // fresh (2026-09-12 audit, FPL F3).
+  const storage = fakeStorage();
+  storage.setItem(CACHE_PREFIX + 'fixtures', storedCopy([{ id: 'stored' }], 20 * 60));
+  const { fetchImpl, release } = heldBootstrapProxy(2 * 3600);
+  const api = createFplApi({ fetchImpl, storage, now: () => NOW });
+
+  const boot = api.getBootstrap();
+  const fixtures = api.getFixtures();
+  release();
+  const [, fx] = await Promise.all([boot, fixtures]);
+
+  assert.deepEqual(fx.data, [{ id: 'fresh' }], 'two hours before a deadline a twenty minute old copy has expired');
+  assert.equal(fetchImpl.calls.filter((u) => u.endsWith('path=fixtures')).length, 1);
+});
+
+test('far from a deadline the stored fixtures copy is still served once the bootstrap arrives', async () => {
+  const storage = fakeStorage();
+  storage.setItem(CACHE_PREFIX + 'fixtures', storedCopy([{ id: 'stored' }], 20 * 60));
+  const { fetchImpl, release } = heldBootstrapProxy(72 * 3600);
+  const api = createFplApi({ fetchImpl, storage, now: () => NOW });
+
+  const boot = api.getBootstrap();
+  const fixtures = api.getFixtures();
+  release();
+  const [, fx] = await Promise.all([boot, fixtures]);
+
+  assert.deepEqual(fx.data, [{ id: 'stored' }], 'twenty minutes is inside the thirty minute fixtures TTL');
+  assert.equal(fetchImpl.calls.filter((u) => u.endsWith('path=fixtures')).length, 0);
+});
+
+test('a fixtures copy younger than the collapsed TTL does not wait for the bootstrap', async () => {
+  // No deadline can expire a copy under two minutes old, so there is nothing to
+  // learn from the bootstrap and no reason to hold the fixtures behind it.
+  const storage = fakeStorage();
+  storage.setItem(CACHE_PREFIX + 'fixtures', storedCopy([{ id: 'stored' }], 60));
+  const { fetchImpl, release } = heldBootstrapProxy(2 * 3600);
+  const api = createFplApi({ fetchImpl, storage, now: () => NOW });
+
+  const boot = api.getBootstrap();
+  let fixturesSettled = false;
+  const fixtures = api.getFixtures().then((fx) => { fixturesSettled = true; return fx; });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(fixturesSettled, true, 'the fixtures answered while the bootstrap was still in flight');
+
+  release();
+  const [, fx] = await Promise.all([boot, fixtures]);
+  assert.deepEqual(fx.data, [{ id: 'stored' }]);
+});
+
 test('a device clock that is hours slow cannot pin the cache forever', async () => {
   // The server timestamp and the device clock are different clocks. Subtracting
   // one from the other measured the SKEW, clamped it at zero, and produced an
@@ -516,6 +595,24 @@ test('a transient 5xx is retried once, and a 404 is not', async () => {
   const api2 = createFplApi({ fetchImpl: missing, storage: fakeStorage(), now: () => NOW });
   await assert.rejects(() => api2.getEntry(999));
   assert.equal(notFound, 1, 'an unknown team is a real answer and is never retried');
+});
+
+test('a 429 from the proxy is its own quota refusal and is not retried', async () => {
+  // The function never passes an upstream 429 through (an upstream failure is a
+  // stale copy or a 503), so a 429 is always its per-network quota, whose
+  // Retry-After is at least a second. A retry 300-500 ms later is refused again
+  // and only spends another invocation.
+  let attempts = 0;
+  const limited = recorder(() => {
+    attempts++;
+    return new Response(JSON.stringify({ error: 'quota_exceeded', scope: 'minute', resetAt: '2026-08-10T12:01:00Z' }), {
+      status: 429,
+      headers: { 'Content-Type': 'application/json', 'Retry-After': '42', 'Cache-Control': 'no-store' },
+    });
+  });
+  const api = createFplApi({ fetchImpl: limited, storage: fakeStorage(), now: () => NOW });
+  await assert.rejects(() => api.getFixtures(), /429/, 'the error still names the status, which is how the app words rate limiting');
+  assert.equal(attempts, 1, 'one request, not a retry the quota is certain to refuse');
 });
 
 // --------------------------------------------------- request deadlines ------

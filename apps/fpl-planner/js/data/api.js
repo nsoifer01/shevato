@@ -44,7 +44,14 @@ export const DEADLINE_TTL_SECONDS = 120;
 // single retry with a little jitter turns a one-off blip into a slower success;
 // anything more would be a client hammering an upstream that is already
 // struggling.
-export const RETRY_STATUSES = [500, 502, 503, 504, 408, 429];
+//
+// 429 is deliberately NOT one of them. The proxy never passes an upstream 429
+// through (an upstream failure becomes a stale copy or a 503), so a 429 is
+// always the function's own per-network quota, whose Retry-After is at least a
+// second: a retry 300-500 ms later is refused again and only spends another
+// invocation. It still fails with the status in its message, which is what the
+// app's rate-limiting sentence matches (2026-09-12 audit).
+export const RETRY_STATUSES = [500, 502, 503, 504, 408];
 export const RETRY_DELAY_MS = 300;
 export const RETRY_JITTER_MS = 200;
 
@@ -489,10 +496,30 @@ export function createFplApi({
     }
   }
 
+  // Whether judging this stored copy needs a deadline that is still on its way.
+  //
+  // `ttlFor` reads the deadline from the bootstrap in MEMORY, and the bootstrap
+  // is never persisted, so on a cold page load it is still in flight when
+  // loadWorld asks for the fixtures beside it. Judged then, a fixture list up to
+  // thirty minutes old passed as fresh two hours before a deadline (2026-09-12
+  // audit, FPL F3). Only a copy the collapse could expire waits: one younger
+  // than the collapsed TTL is fresh under any deadline, one past the base TTL
+  // has expired under none, and the wait costs nothing the caller was not
+  // already spending on the bootstrap itself.
+  function awaitsDeadline(path, entry) {
+    const kind = kindOf(path);
+    if (kind === 'bootstrap' || memory.has('bootstrap-static') || !inflight.has('bootstrap-static')) return false;
+    const age = localAgeOf(entry);
+    return age >= DEADLINE_TTL_SECONDS && age < CLIENT_TTL[kind];
+  }
+
   async function fetchPath(path, { force = false } = {}) {
     if (sampleBundle) return sampleRead(path);
 
     const cached = readCache(path);
+    if (cached && !force && awaitsDeadline(path, cached)) {
+      await inflight.get('bootstrap-static').catch(() => null);
+    }
     if (cached && !force && localAgeOf(cached) < ttlFor(path)) {
       record(path, cached, null);
       return { data: cached.data, fetchedAt: cached.fetchedAt, stale: !!cached.stale, ageSeconds: ageOf(cached.fetchedAt, cached) };
