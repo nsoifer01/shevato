@@ -34,14 +34,41 @@ Two things make this class hard to catch:
 - The failure is silent in the file that "wins". Nothing logs, nothing throws in
   the surviving file, and the symptom appears somewhere else entirely.
 
-`tests/classic-script-globals.test.js` now evaluates every classic script
-index.html loads into one `vm` context and asserts each library still reaches
-`window`. It reads the script tags from index.html rather than hardcoding a
-list, and it splits classic from module by the tag's own `type` attribute, so
-adding a script or converting one to a module keeps it honest. A first draft of
-that test treated all four as classic and produced a confident false positive
-about `integrations-lib.js` being broken on master, which is worth remembering:
-simulate the loader the page actually uses, not the one you assume.
+**The guard is site-wide now (2026-09-13, audit N-3).** The first guard,
+`tests/classic-script-globals.test.js`, read the `scripts/*.js` tags of
+index.html only. The Kometa builder, which loads `integrations-lib.js` as a
+CLASSIC script (`const API` and `const CATEGORICAL_SHAPES` included) beside
+`js/kometa.js`, every site script, and every other app's page (Mario Kart's 44
+classic scripts, Football H2H's 23 plus an inline block) sat outside it.
+
+`tests/static/classic-script-scope.test.mjs` took over the collision check. It
+takes every published page from `scripts/build-publish-dir.mjs` (no hand-kept
+app list), collects each page's same-origin and inline classic scripts in
+execution order (parser-inserted first, then `defer`; modules, JSON-LD and
+anything in a comment, `<template>` or `<noscript>` skipped), and instantiates
+them into one `node:vm` context per page WITHOUT running them. Each script is
+compiled with `throw PROBE;` as its first statement, after a leading
+`'use strict'`: the redeclaration check belongs to instantiation, which happens
+before any statement runs, so V8 raises the same "Identifier 'X' has already
+been declared" a browser does and no DOM stub is involved. A clash names the
+page, both files and the name. Appending a `const CATEGORICAL_SHAPES` to
+`js/kometa.js` produced exactly that on the Kometa page. 17 pages, no clashes
+today, about 0.2 s.
+
+Measured on node 20 before relying on the probe: const/const, let/let,
+class/const, var-then-let, let-then-var, function-then-const and
+const-then-function all throw; var/var, function/function and a `const` inside
+an IIFE do not; a non-configurable host global (`top`) defined inside the
+context counts as taken, as on a real window.
+
+`classic-script-globals.test.js` kept one job, the one the site-wide guard
+cannot do: it EXECUTES match.js, finder-lib.js and providers-lib.js in one
+context and asserts each namespace reaches `window`, which catches a library
+that parses and declares cleanly but never assigns its export. A first draft of
+that test treated all four scripts as classic and reported a confident false
+positive about `integrations-lib.js`; the lesson still stands: simulate the
+loader the page actually uses. On index.html it is a module; on the Kometa page
+it is not.
 
 
 ## The phone close button was 36x2 px for as long as it was sticky (2026-09-11)
