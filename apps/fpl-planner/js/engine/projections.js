@@ -90,9 +90,12 @@ const CORNER_ORDER_BOOST = [0.08, 0.04, 0.015];
 // raises everyone's basis for comparison.
 const BONUS_FIXTURE_SENSITIVITY = 0.5;
 
-// Fallback for the bonus curve when the payload has too few players with real
-// minutes to fit one (which happens only in tests). Measured from the live
-// population: bonus per 90 rises roughly linearly above a floor of 7 BPS per 90.
+// Fallback for the bonus curve when too few players carry
+// BONUS_MODEL_MIN_MINUTES of rate minutes to fit one. That is small test
+// worlds, and also every live season from the day the baseline retires (three
+// matches per club) until enough players pass 450 minutes of the new season.
+// Measured from the live population: bonus per 90 rises roughly linearly above
+// a floor of 7 BPS per 90.
 const BONUS_BPS_FLOOR = 7;
 const BONUS_PER_BPS = 0.035;
 const BONUS_MODEL_MIN_MINUTES = 450;

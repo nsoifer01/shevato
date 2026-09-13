@@ -199,7 +199,7 @@
     localDateISO, localDateFromISO, formatDate, countNoun,
     // The single definition of a countable H2H game, shared with Records.
     eligibleH2HGames, overallRecord, parityOutlook,
-    sanitizeBackup,
+    sanitizeBackup, collapseDuplicateDays,
   } = window.MapTapStats;
 
   // WhatsApp export parsing (js/whatsapp.js, pure, unit-tested).
@@ -359,17 +359,32 @@
       && raw.some(g => g && Array.isArray(g.cities) && g.cities.length === N_LOCS);
   }
 
-  // Rewrite the stored log into the normalised pair whenever the old format
-  // turns up. Called at boot and again on every remote delivery, because the
-  // pre-migration Firestore document wins the first snapshot of a session
-  // (remote wins on a fresh local revision map) and a device still running
-  // the old code can push it back at any time.
+  // True while the STORED log holds a (rival, day) more than once: what two
+  // devices logging the same day leave behind, because the sync layer's
+  // record merge keys rows by id and each device minted its own (see
+  // collapseDuplicateDays in stats.js). Hydration already shows one row
+  // either way; this says whether storage, and so the cloud copy, still
+  // carries the doubled form.
+  function storedGamesHaveDuplicateDays() {
+    return sanitizeStored([], load(KEY.GAMES, [])).mergedDays > 0;
+  }
+
+  // Rewrite the stored log into its normalised form whenever it is not:
+  // rows still carrying the day's geography inline (the format that predates
+  // KEY.DAYS), or a (rival, day) stored twice. Called at boot and again on
+  // every remote delivery, because the pre-migration Firestore document wins
+  // the first snapshot of a session (remote wins on a fresh local revision
+  // map), a device still running the old code can push it back at any time,
+  // and a sync merge can deliver the same day from two devices. Writing the
+  // collapse back is what lets the cloud copy converge: both devices collapse
+  // the same merged log to the same rows, so the next exchange settles.
   //
-  // Idempotent: afterwards no stored row carries `cities`, so the check is
-  // false and nothing is written; and even a redundant rewrite is dropped by
-  // the sync layer's hash comparison. Returns whether it did anything.
-  function migrateInlineCities() {
-    if (!storedGamesAreInline()) return false;
+  // Idempotent: afterwards no stored row carries `cities` and no day repeats,
+  // so the checks are false and nothing is written; and even a redundant
+  // rewrite is dropped by the sync layer's hash comparison. Returns whether
+  // it did anything.
+  function normalizeStoredGames() {
+    if (!storedGamesAreInline() && !storedGamesHaveDuplicateDays()) return false;
     persistGames();
     return true;
   }
@@ -554,6 +569,15 @@
   function orphanGames(games, rivals) {
     const live = new Set(rivals.map(r => r.id));
     return games.filter(g => !live.has(g.rivalId));
+  }
+  // Moves the games with the given ids onto `rivalId`. Orphans usually exist
+  // because a rival was deleted on one device and re-added (a new id) and
+  // synced on another, so the target already owns the same dates: the result
+  // goes through the same one-row-per-(rival, day) collapse as every loaded
+  // log, or the reassigned days would count twice.
+  function reassignGames(games, ids, rivalId) {
+    for (const g of games) if (ids.has(g.id)) g.rivalId = rivalId;
+    return collapseDuplicateDays(games).games;
   }
 
   const PREDICT_WINDOW_DAYS = 7;
@@ -5777,8 +5801,7 @@
         onclick: () => {
           const target = sel.value;
           if (!state.rivals.some(r => r.id === target)) return;
-          const ids = new Set(orphans.map(g => g.id));
-          state.games.forEach(g => { if (ids.has(g.id)) g.rivalId = target; });
+          state.games = reassignGames(state.games, new Set(orphans.map(g => g.id)), target);
           persistGames();
           renderHistory();
         },
@@ -7069,22 +7092,101 @@
   // mapTapHistoryToRounds lives in stats.js (bound at the top of this IIFE) so
   // the profile-history → per-day-rounds conversion can be unit-tested in node.
 
-  // Geographic continent from (lat, lng). Order matters — overlapping
-  // bounding boxes are resolved by the first matching rule (Africa
-  // checked before Europe so Egypt isn't misclassified, etc.). Russia
-  // splits at the Ural meridian (~60°E); Anatolia and Pacific islands
-  // get explicit carve-outs. Verified against 250 real MapTap rounds.
+  // Geographic continent from (lat, lng). The first matching rule wins, so a
+  // narrow carve-out must come before any wider rule that also covers it.
+  // The Americas, Oceania and the Pacific are boxes. Africa and Europe are
+  // polygons, because the lines separating them from each other and from
+  // Asia run through seas and straits no rectangle can follow: until
+  // 2026-09-13 an Africa box tested before Europe and Asia filed Israel, the
+  // Gulf, Iran, Athens, Malta and Gibraltar under Africa, and a flat 7N line
+  // put Venezuela's coast in North America. In the Old World, whatever lies
+  // outside both polygons is Asia.
+  //
+  // The boundaries are the conventional ones: Europe/Africa through the
+  // Strait of Gibraltar and the middle of the Mediterranean (Malta and Sicily
+  // Europe, Tunisia and Libya Africa); Africa/Asia along the Suez Canal, the
+  // Gulf of Suez, the Red Sea and the Gulf of Aden (Sinai Asia); Europe/Asia
+  // along the Aegean (the Greek islands Europe, the Turkish coast Asia), the
+  // Dardanelles, the Sea of Marmara and the Bosporus, the Black Sea, the
+  // Greater Caucasus ridge that Russia's southern border follows, the
+  // Caspian, the Ural River and the Ural Mountains (Cyprus, the South
+  // Caucasus and Kazakhstan's Caspian coast Asia); the Caribbean islands
+  // North America and the mainland from Colombia to Guyana South America;
+  // Asia/Oceania at Indonesia's borders (New Guinea splits at 141E, Timor is
+  // Asia and Darwin Oceania, Palau, Guam and Micronesia Oceania). The lines
+  // are traced to within about 20 km: every city lands on the right side, a
+  // cape or islet sitting on a strait may not. tests/app-helpers.test.js pins
+  // real cities on every boundary (CONTINENT_CITIES); check a change there.
+  //
   // There is deliberately no Antarctica bucket (owner call, 2026-08-15): a
   // polar round or two is noise next to the real continents, so everything
   // below 60°S falls through to 'Other'. No remaining rule reaches that far
   // south (the lowest floor is South America at -56°).
+
+  // [lat, lng] vertices, west to east. Africa's northern edge and Europe's
+  // southern edge share them, so no point in the Mediterranean belongs to
+  // both polygons or to neither.
+  const MEDITERRANEAN_LINE = [
+    [35.95, -26],                   // Atlantic, north of Madeira and the Canaries
+    [35.95, -2],                    // Strait of Gibraltar, Alboran Sea
+    [37.3, 1], [38, 8.5],           // Algeria's coast / the Balearics, Sardinia
+    [37.35, 11], [36.3, 11.6],      // Cap Bon / Pantelleria
+    [35.3, 12.3], [34, 13.5],       // Tunisia's east coast / Lampedusa, Malta
+    [34, 23],                       // Libya / Crete
+  ];
+  const AFRICA_POLYGON = MEDITERRANEAN_LINE.concat([
+    [31.6, 32.35], [30.6, 32.35], [29.9, 32.6],   // Port Said, the Suez Canal, Suez
+    [28.3, 33.3], [27.75, 33.95],                  // Gulf of Suez, Sinai to the east
+    [27, 34.5], [24, 36.3], [20, 38.5], [15.5, 41], [12.9, 43.2],   // Red Sea
+    [12.5, 43.45], [12.1, 45], [11.95, 51.6],     // Bab-el-Mandeb, Gulf of Aden
+    [11, 53], [0, 58], [-18, 64.5],               // Indian Ocean: Seychelles, Mauritius
+    [-35, 64.5], [-35, -26],                      // Southern Ocean; Atlantic, Cape Verde
+  ]);
+  const EUROPE_POLYGON = [[35.95, -32]].concat(MEDITERRANEAN_LINE, [
+    [35, 29], [36.5, 28.4], [36.64, 27.95],         // east of Crete and Rhodes
+    [36.64, 27.45], [36.75, 27.4], [36.96, 27.35],  // Symi, Kos / Datca, Bodrum
+    [37, 27.15], [37.3, 27], [37.75, 27.1],         // Kalymnos, Leros, Samos
+    [38, 26.75], [38.3, 26.22], [38.6, 26.25],      // Chios / Cesme, Karaburun
+    [39.2, 26.72], [39.42, 26.5], [39.42, 25.9],    // Lesbos
+    [39.9, 25.9], [40, 26.19],                      // Lemnos / Bozcaada
+    [40.15, 26.39], [40.4, 26.69],                  // Dardanelles
+    [40.7, 27.2], [40.85, 28.5], [40.99, 29],       // Sea of Marmara
+    [41.05, 29.02], [41.22, 29.12],                 // Bosporus
+    [42.3, 30], [43.1, 34], [43.3, 38.5], [43.39, 40],             // Black Sea, to the Psou
+    [43.55, 40.6], [43.2, 42.5], [42.9, 43.8], [42.72, 44.63],     // Greater Caucasus ridge
+    [42.5, 45.7], [41.95, 46.3], [41.2, 47.2], [41.25, 47.9], [41.87, 48.58],
+    [42.3, 50], [45, 50], [46.9, 51.95],            // Caspian, to the Ural's mouth
+    [48.5, 51.75], [49.1, 51.9], [50.2, 51.2],      // Ural River
+    [51.2, 51.35], [51.5, 53.3], [51.72, 55.1], [51.2, 58.6],
+    [53.4, 59], [55, 59.9], [56.8, 60.05], [58, 59.3],             // Ural Mountains
+    [60, 59.4], [62, 59.3], [64, 59.6], [65.5, 60.5],
+    [66.5, 63], [67.5, 65.2], [68.5, 66.2],                        // Polar Urals
+    [70, 64.5], [73.5, 63.5], [77, 69.5], [82, 69.5],              // Kara Sea, Novaya Zemlya
+    [82, -10], [60, -10], [60, -32],                // Arctic; Iceland and Greenland are ruled first
+  ]);
+
+  // Even-odd ray casting over [lat, lng] vertices. Neither polygon crosses
+  // the antimeridian, so plain longitudes compare correctly.
+  function inPolygon(lat, lng, polygon) {
+    let inside = false;
+    for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+      const [latI, lngI] = polygon[i];
+      const [latJ, lngJ] = polygon[j];
+      if ((latI > lat) !== (latJ > lat)
+        && lng < lngI + ((lat - latI) * (lngJ - lngI)) / (latJ - latI)) {
+        inside = !inside;
+      }
+    }
+    return inside;
+  }
+
   function classifyContinent(lat, lng) {
     if (!Number.isFinite(lat) || !Number.isFinite(lng)) return 'Unknown';
-    // Northern Pacific islands (Hawaii) — strict lng cutoff so Mexican
+    // Northern Pacific islands (Hawaii): strict lng cutoff so Mexican
     // Baja (e.g. Cabo at -110) stays in North America below.
     if (lat >= 0 && lat < 30 && lng < -140) return 'Oceania';
     // Southern Pacific islands (Easter Island at -109, French Polynesia,
-    // Pitcairn, Cook Islands) — no mainland this far south so safe.
+    // Pitcairn, Cook Islands): no mainland this far south so safe.
     if (lat > -30 && lat < 0 && lng < -100) return 'Oceania';
     // Iceland must be tested BEFORE Greenland: its box (63..67, -25..-13)
     // sits entirely inside Greenland's (>60, -75..-10), so with the old
@@ -7094,19 +7196,25 @@
     // is west of -25 and stays in the Greenland rule.
     if (lat > 63 && lat < 67 && lng > -25 && lng < -13) return 'Europe'; // Iceland
     if (lat > 60 && lng > -75 && lng < -10) return 'North America'; // Greenland
+    // South America's Caribbean coast (Colombia east of the Panama border,
+    // Venezuela, the Guianas), carved out of the North America box below:
+    // south of 12N, leaving Aruba, Curacao and Bonaire in the Caribbean, and
+    // east of 62W south of 10N, leaving Trinidad and Tobago there too.
+    if (lat >= 7 && lat < (lng > -62 ? 10 : 12) && lng > -77.4 && lng < -52) return 'South America';
     if (lat >= 7 && lat <= 84 && lng >= -170 && lng <= -52) return 'North America';
-    // South America — widened west to include Galápagos (-91°)
+    // South America, widened west to include Galápagos (-91°)
     if (lat >= -56 && lat <= 13 && lng >= -92 && lng <= -34) return 'South America';
-    if (lat >= -50 && lat <= -10 && lng >= 110 && lng <= 180) return 'Oceania';   // Aus
+    // Australia; its line with Indonesia runs through the Timor and Arafura seas at 11S
+    if (lat >= -50 && lat <= -11 && lng >= 110 && lng <= 180) return 'Oceania';
     if (lat >= -47 && lat <= -34 && lng >= 165 && lng <= 180) return 'Oceania';   // NZ
-    if (lat >= -25 && lat <= 5 && lng >= 140 && lng <= 180) return 'Oceania';     // PNG/Fiji
-    if (lat >= -35 && lat <= 38 && lng >= -20 && lng <= 52) return 'Africa';
-    if (lat >= 36 && lat <= 42 && lng >= 26 && lng <= 45) return 'Asia';          // Anatolia
-    // Svalbard / arctic European islands (above the 72° Europe ceiling)
-    if (lat > 72 && lat <= 82 && lng >= -10 && lng <= 60) return 'Europe';
-    // Europe — widened west to -32° to include the Azores at -25.2°
-    if (lat >= 36 && lat <= 72 && lng >= -32 && lng <= 60) return 'Europe';
-    if (lat >= -10 && lat <= 80 && lng >= 25 && lng <= 180) return 'Asia';
+    // New Guinea east of the Indonesian border (141E), Melanesia, Fiji
+    if (lat >= -25 && lat <= 5 && lng >= 141 && lng <= 180) return 'Oceania';
+    // Palau, Guam, the Marianas, Micronesia, the Marshalls: north of
+    // Indonesia, east of the Philippines, south of Japan's Bonin Islands.
+    if (lat >= 0 && lat < 24.5 && lng >= 129 && lng <= 180) return 'Oceania';
+    if (inPolygon(lat, lng, AFRICA_POLYGON)) return 'Africa';
+    if (inPolygon(lat, lng, EUROPE_POLYGON)) return 'Europe';
+    if (lat >= -11 && lat <= 80 && lng >= 25 && lng <= 180) return 'Asia';
     return 'Other';
   }
 
@@ -8024,15 +8132,16 @@
     else if (e.key === KEY.GAMES || e.key === KEY.DAYS) {
       state.games = loadGamesFromStorage();
       // A device still on the old format, or the Firestore document as it
-      // stood before this migration, pushes rows with the geography inline.
-      // Normalise on arrival so the fat copy is not what gets synced onward.
+      // stood before this migration, pushes rows with the geography inline,
+      // and a sync merge can deliver one day from two devices as two rows.
+      // Normalise on arrival so neither form is what gets synced onward.
       // Only on this page's own sync delivery: the event bridged from
       // `localStorageSync` below is synthetic, so untrusted. A genuine
       // cross-tab event is another tab's write, which that tab normalises
       // itself. Rewriting it here re-persists THIS tab's view of storage, and
       // a hidden or busy tab can still be handling an event older than a
       // write it would then overwrite.
-      if (e.isTrusted === false) migrateInlineCities();
+      if (e.isTrusted === false) normalizeStoredGames();
     }
     else if (e.key === KEY.ME) {
       state.me = loadString(KEY.ME, 'Me');
@@ -8085,10 +8194,11 @@
   // ---------- init ----------
   function init() {
     // Rewrite into the normalised storage format if this device still holds
-    // the old one, so the synced document shrinks now rather than waiting
-    // for the next game to be logged. Purely a storage-shape change -
-    // nothing a renderer, an export or a backup can see.
-    migrateInlineCities();
+    // the old one or a day stored twice, so the synced document is fixed now
+    // rather than at the next game logged. Purely a storage-shape change -
+    // hydration already gave every renderer, export and backup the
+    // normalised log.
+    normalizeStoredGames();
 
     // wire view tabs
     $$('.view-tab').forEach(tab => {
@@ -8404,8 +8514,9 @@
       persistGames,
       loadGamesFromStorage,
       storedGamesAreInline,
-      migrateInlineCities,
+      normalizeStoredGames,
       onExternalStorage,
+      reassignGames,
       isValidISODate,
       localISO,
       addDaysISO,

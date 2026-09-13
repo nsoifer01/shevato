@@ -298,9 +298,13 @@ export async function createDoc(path, data, token) {
     return res.status;
 }
 
-/** Field-masked update; precondition exists=true so it can never become a create. */
-export async function updateDoc(path, data, token) {
-    const mask = Object.keys(data)
+/**
+ * Field-masked update; precondition exists=true so it can never become a create.
+ * `deleteFields` are named in the mask and absent from the body, which is the
+ * write the SDK sends for `deleteField()`.
+ */
+export async function updateDoc(path, data, token, { deleteFields = [] } = {}) {
+    const mask = [...Object.keys(data), ...deleteFields]
         .map((k) => `updateMask.fieldPaths=${encodeURIComponent(k)}`)
         .join('&');
     const res = await fetch(`${DOCS_BASE}/${path}?currentDocument.exists=true&${mask}`, {
@@ -323,6 +327,26 @@ export async function deleteDoc(path, token) {
     const res = await fetch(`${DOCS_BASE}/${path}?currentDocument.exists=true`, {
         method: 'DELETE',
         headers: headers(token),
+    });
+    return res.status;
+}
+
+/**
+ * `where(field, '==', value)` over a top-level collection. Exercises `list`
+ * rules the way a client query does: the rules are checked against the
+ * query's constraints, so a rule keyed on the caller's own uid admits a query
+ * filtered on it and refuses an unfiltered listing.
+ */
+export async function queryEquals(collectionId, field, value, token) {
+    const res = await fetch(`${DOCS_BASE}:runQuery`, {
+        method: 'POST',
+        headers: headers(token),
+        body: JSON.stringify({
+            structuredQuery: {
+                from: [{ collectionId }],
+                where: { fieldFilter: { field: { fieldPath: field }, op: 'EQUAL', value: toValue(value) } },
+            },
+        }),
     });
     return res.status;
 }

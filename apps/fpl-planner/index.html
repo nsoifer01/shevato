@@ -116,7 +116,8 @@
      app. Enforced by sync-system/tests/shared-ui-consistency.test.mjs. -->
 <body class="fpl-page">
 <a class="skip-link" href="#main-content">Skip to main content</a>
-  <!-- Sync status banner, only visible when offline (and briefly on recovery).
+  <!-- Sync status banner: offline (and briefly on recovery), a failed or
+       rejected cloud write, a sync that could not start, and a merge conflict.
        Managed by assets/js/sync-status.js. Shared chrome: stays OUTSIDE the
        app root wrapper. -->
   <div id="sync-banner" class="sync-banner" role="status" aria-live="polite" hidden></div>

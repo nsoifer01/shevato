@@ -215,10 +215,15 @@ export async function openTab(cdpPort, base, { hash = '', viewport = [1280, 900]
 // ---------------------------------------------------------------------------
 // Reading state back.
 export const readDb = (s) => evaluate(s, `JSON.parse(localStorage.getItem(${JSON.stringify(LS_KEY)}) || 'null')`);
+// The trip THIS PAGE has open. Which trip is open is navigation kept on the
+// device (2026-09-12 audit, T-2): the synced value's activeTripId no longer
+// follows a switch, so "which trip is on screen" is read off the picker.
+export const openTripIdOf = (s) => evaluate(s, `document.getElementById('tripSelect').value`);
 export async function activeTripOf(s) {
   const db = await readDb(s);
   if (!db || !Array.isArray(db.trips)) return null;
-  return db.trips.find((t) => t.id === db.activeTripId) || null;
+  const id = await openTripIdOf(s);
+  return db.trips.find((t) => t.id === id) || null;
 }
 export const rowCount = (s) => evaluate(s, `document.querySelectorAll('#board .tp-row').length`);
 export const overlayOpenId = (s) => evaluate(s, `(()=>{const o=[...document.querySelectorAll('.overlay.open')]; return o.length? o[o.length-1].id : null})()`);

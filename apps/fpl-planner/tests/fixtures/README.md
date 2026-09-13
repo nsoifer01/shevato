@@ -67,9 +67,10 @@ set the two equal would hide the E-2 false alarm (2026-09-13). Tests that want
 the failure path mutate a copy in memory rather than adding a second fixture.
 
 **A free-transfer replay with a real answer.** The history rows carry 0, 1, 4,
-2 and 0 transfers over GW1-5 with a wildcard in GW3, which replays to 3 banked
-free transfers going into GW6. The naive answer (1) is wrong, so a test asserting
-3 actually proves the replay runs.
+2 and 0 transfers over GW1-5 with a wildcard in GW3, which replays to 2 banked
+free transfers going into GW6 (1, 1, 2, 1, 2 banked into GW2 to GW6: the
+wildcard week keeps its bank, and GW4's two transfers spend it). The naive
+answer (1) is wrong, so a test asserting 2 actually proves the replay runs.
 
 ## Regenerating
 

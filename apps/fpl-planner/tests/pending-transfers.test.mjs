@@ -1,10 +1,12 @@
 // Transfers already made for the gameweek being planned.
 //
-// `entry/{id}/event/{gw}/picks` is frozen at that gameweek's deadline. Between
-// gameweeks a manager transfers for the NEXT one, and until that one is played
-// those moves exist only on `entry/{id}/transfers`. Reading the picks alone
-// describes a squad he no longer owns, which is the most common interaction
-// there is: transfer on the FPL site, then open the planner.
+// `entry/{id}/event/{gw}/picks` is frozen at that gameweek's deadline. When a
+// payload carries transfer rows for the gameweek being planned, reading the
+// picks alone describes a squad he no longer owns. FPL's public transfers
+// endpoint only lists a move once its own deadline has passed (measured
+// 2026-09-13, FINDINGS "What the public endpoints hide until a deadline"), so
+// live this is the minutes after a deadline while the cached bootstrap still
+// names that gameweek as next; the engine rule is pinned here regardless.
 //
 // Every money and free-transfer assertion here is computed by hand from the
 // fixture rather than read back out of the module, because the failure this

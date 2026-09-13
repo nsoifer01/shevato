@@ -234,6 +234,13 @@ Check:
 
 Make one transfer on the Fantasy Premier League site, then reopen the app.
 
+**Measured 2026-09-13: this state does not occur on the public endpoints.** FPL
+does not list a transfer on `entry/{id}/transfers` until the deadline of the
+gameweek it belongs to, by which time that gameweek's picks contain it too
+(FINDINGS "What the public endpoints hide until a deadline"). The pass below
+cannot run on live data as written; `tests/pending-transfers.test.mjs` and the
+`gw2-window` scenario in `e2e/lifecycle.mjs` remain the evidence for the overlay.
+
 **Timing is the whole test.** The transfer has to be made AFTER the previous
 gameweek's deadline, so that it lands on `transfers` while `picks` still
 describes the squad from before it. A transfer made before its own deadline is

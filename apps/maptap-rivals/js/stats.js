@@ -1272,6 +1272,95 @@
     if (raw.cities != null && out.cities === undefined) repaired.push(`${where}: dropped malformed geo data`);
   }
 
+  // ---------- one row per (rival, day) ----------
+  // MapTap plays one puzzle a day, so a rival has at most one result per
+  // date, and on one device the writers keep it that way (upsertPastedGame
+  // in app.js, mergeMapTapSync above, the WhatsApp preview). Across devices
+  // they cannot: each device mints its own row id, and the sync layer's
+  // record merge keys records by id, so two devices that log the same day
+  // both keep their row and every W-L-T figure counts the day twice.
+  // sanitizeBackup, which every game list entering the app passes through
+  // (boot, another tab, a sync delivery, a backup import), folds each such
+  // group into ONE row:
+  //   - the row kept (its id and position): a hand-entered row (any note but
+  //     SYNC_NOTE) before a synced one, then the earliest createdAt, then the
+  //     smaller id, then the content itself;
+  //   - each side on its own: the round scores of the first row in that
+  //     order carrying them, else its total. Round scores always beat a
+  //     totals-only side, so a side never loses detail;
+  //   - cities: the first row carrying all five;
+  //   - note: every distinct manual note, joined; SYNC_NOTE only when every
+  //     row was synced, or the next sync would overwrite a hand-entered side;
+  //   - createdAt: the earliest.
+  // The rule reads the group as a set, not a sequence, so two devices
+  // collapsing the same merged log write identical rows and the next sync
+  // exchange settles. Two rows carrying DIFFERENT round scores for the same
+  // side can only come from a hand edit (MapTap reports a day the same way
+  // to every device); the order above keeps one of them.
+  function dayRowOrder(a, b) {
+    const aManual = a.note !== SYNC_NOTE;
+    if (aManual !== (b.note !== SYNC_NOTE)) return aManual ? -1 : 1;
+    if (a.createdAt !== b.createdAt) return a.createdAt - b.createdAt;
+    const aId = String(a.id), bId = String(b.id);
+    if (aId !== bId) return aId < bId ? -1 : 1;
+    const aJson = JSON.stringify(a), bJson = JSON.stringify(b);
+    return aJson < bJson ? -1 : aJson > bJson ? 1 : 0;
+  }
+
+  function mergeDayRows(rows) {
+    const ordered = rows.slice().sort(dayRowOrder);
+    const notes = [];
+    for (const r of ordered) {
+      if (r.note && r.note !== SYNC_NOTE && !notes.includes(r.note)) notes.push(r.note);
+    }
+    // Same field order as sanitizeGame builds, so a reload re-sanitising the
+    // row writes it back byte-identical.
+    const out = {
+      id: ordered[0].id,
+      rivalId: ordered[0].rivalId,
+      date: ordered[0].date,
+      note: notes.length ? notes.join(' / ').slice(0, 200)
+        : ordered.every(r => r.note === SYNC_NOTE) ? SYNC_NOTE : '',
+      createdAt: Math.min(...ordered.map(r => r.createdAt)),
+    };
+    for (const side of ['my', 'their']) {
+      const withRounds = ordered.find(r => Array.isArray(r[`${side}Scores`]));
+      if (withRounds) {
+        out[`${side}Scores`] = withRounds[`${side}Scores`].slice();
+        out[`${side}Score`] = weightedTotal(withRounds[`${side}Scores`]);
+      } else {
+        const withTotal = ordered.find(r => Number.isFinite(r[`${side}Score`]));
+        if (withTotal) out[`${side}Score`] = withTotal[`${side}Score`];
+      }
+    }
+    const withCities = ordered.find(r => Array.isArray(r.cities) && r.cities.length === N_LOCS);
+    if (withCities) out.cities = withCities.cities;
+    return out;
+  }
+
+  // Takes sanitized rows. Returns the collapsed list (a row with no
+  // duplicate is the same object, so an unchanged log persists unchanged)
+  // and one { rivalId, date, count, positions } per merged group, positions
+  // indexing the input.
+  function collapseDuplicateDays(games) {
+    const groups = new Map();
+    games.forEach((g, i) => {
+      const key = JSON.stringify([g.rivalId, g.date]);
+      if (groups.has(key)) groups.get(key).push(i);
+      else groups.set(key, [i]);
+    });
+    const out = [];
+    const merged = [];
+    games.forEach((g, i) => {
+      const positions = groups.get(JSON.stringify([g.rivalId, g.date]));
+      if (positions.length === 1) { out.push(g); return; }
+      if (positions[0] !== i) return;   // folded into the group's first row
+      out.push(mergeDayRows(positions.map(p => games[p])));
+      merged.push({ rivalId: g.rivalId, date: g.date, count: positions.length, positions });
+    });
+    return { games: out, merged };
+  }
+
   function sanitizeBackup(parsed, options) {
     const opts = options || {};
     const makeId = typeof opts.makeId === 'function' ? opts.makeId : undefined;
@@ -1296,19 +1385,32 @@
       seen.add(r.id);
       rivals.push(r);
     });
-    const games = [];
+    const kept = [];
+    const keptNumber = [];   // each kept row's 1-based position in the file
     let droppedGames = 0;
     parsed.games.forEach((raw, i) => {
       const where = `game #${i + 1}`;
       const g = sanitizeGame(raw, makeId);
       if (!g) { droppedGames++; rejected.push(`${where}: ${whyGameDropped(raw)}`); return; }
       noteGameRepairs(raw, g, `${where} (${g.date})`, repaired);
-      games.push(g);
+      kept.push(g);
+      keptNumber.push(i + 1);
     });
+    // One row per (rival, day), see collapseDuplicateDays. A merge keeps
+    // every side's scores and every manual note, so it is disclosed as a
+    // repair rather than counted as a skipped row.
+    const collapsed = collapseDuplicateDays(kept);
+    for (const m of collapsed.merged) {
+      repaired.push(`games ${m.positions.map(p => `#${keptNumber[p]}`).join(', ')} (${m.date}): ${m.count} records of the same rival and day, merged into one`);
+    }
+    const games = collapsed.games;
     return {
       ok: true,
       rivals,
       games,
+      // How many (rival, day) groups were merged, so the boot path can tell
+      // whether storage still holds the doubled form and needs rewriting.
+      mergedDays: collapsed.merged.length,
       me: typeof parsed.me === 'string' && parsed.me.trim() ? parsed.me.trim().slice(0, 24) : null,
       myIcon: typeof parsed.myIcon === 'string' && parsed.myIcon.trim() ? parsed.myIcon.trim().slice(0, 8) : null,
       dropped: { rivals: droppedRivals, games: droppedGames },
@@ -1361,8 +1463,8 @@
     localDateFromISO, formatDate, calendarDayOf, countNoun, parityOutlook,
     // eligibility
     eligibleH2HGames, overallRecord,
-    // backup import
-    sanitizeBackup, sanitizeRival, sanitizeGame,
+    // backup import, and the one-row-per-(rival, day) collapse it applies
+    sanitizeBackup, sanitizeRival, sanitizeGame, collapseDuplicateDays,
     periodOutcomeVsRival, runningRivalPeriodRecords, periodTallyText,
     // predicted-position accuracy
     rankByScore, positionHitsForDay, accumulatePositionHits,

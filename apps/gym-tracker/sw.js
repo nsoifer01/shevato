@@ -18,13 +18,16 @@
  * Old caches are pruned automatically on activate.
  */
 
-const CACHE_VERSION = '1.15.4';
+const CACHE_VERSION = '1.16.0';
 const PRECACHE = `gym-precache-${CACHE_VERSION}`;
 const RUNTIME = `gym-runtime-${CACHE_VERSION}`;
 
+// './' is the app shell. Never './index.html': production 301s it to './'
+// (netlify.toml), addAll follows the redirect, and a redirected response
+// served to a navigation is a network error (audit G-5). The array stays a
+// plain literal with no comments inside: the tests parse it as JSON.
 const PRECACHE_URLS = [
   './',
-  './index.html',
   './manifest.webmanifest',
   './offline/index.html',
   './css/gym-tracker.css',
@@ -160,7 +163,10 @@ self.addEventListener('fetch', (event) => {
     const cached = (await cache.match(req, matchOpts))
       || (await precache.match(req, matchOpts));
     const networkPromise = fetch(freshRequest(req)).then((res) => {
-      if (res && res.ok) return cache.put(req, res.clone()).catch(() => {}).then(() => res);
+      // Cache a response only under the URL it came from. A redirected one
+      // stored under the pre-redirect URL is exactly what the next navigation
+      // to that URL must not be served.
+      if (res && res.ok && !res.redirected) return cache.put(req, res.clone()).catch(() => {}).then(() => res);
       return res;
     }).catch(async () => cached || (isNavigation ? precache.match('./offline/index.html') : undefined));
     // Keep the worker alive until the background refresh has landed. Without
@@ -168,6 +174,17 @@ self.addEventListener('fetch', (event) => {
     // respondWith settles, which is why a module could stay stale for loads
     // on end even with a fresh cache mode (2026-08-22 audit D5).
     try { event.waitUntil(networkPromise); } catch (_) { /* event already settled */ }
-    return cached || networkPromise;
+    const response = cached || await networkPromise;
+    return isNavigation ? forNavigation(response) : response;
   })());
 });
+
+// A navigation's redirect mode is 'manual', and respondWith() with a response
+// that FOLLOWED a redirect is a network error. Production 301s every
+// `/apps/<app>/index.html` and `/exercises/.../index.html` to its directory
+// URL, so serving the followed answer put the browser's error page on all of
+// them once the worker was installed (audit G-5). Hand the browser the
+// redirect itself instead: exactly what it gets from the network without us.
+function forNavigation(res) {
+  return res && res.redirected ? Response.redirect(res.url, 301) : res;
+}

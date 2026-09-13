@@ -21,7 +21,7 @@
 // shared dependency to the suite without widening the trigger fails here.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync, writeFileSync, mkdtempSync, mkdirSync, chmodSync } from 'node:fs';
+import { readFileSync, readdirSync, writeFileSync, mkdtempSync, mkdirSync, chmodSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join, dirname, resolve, relative } from 'node:path';
@@ -201,6 +201,48 @@ test('every module the multiplayer e2e imports from outside apps/arena is an inp
   for (const path of escaping) {
     assert.equal(runScope({ event: 'pull_request', files: [path] }).run, '1',
       `${path} is imported by the multiplayer e2e but does not trigger it`);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Derived, not restated, from the APP's side too: whatever apps/arena/js
+// imports from outside apps/arena, and whatever that imports in turn, runs
+// in-page in every client of both emulator suites, and must be in the trigger.
+//
+// The e2e-harness walk above could never see firebase-config.js, because the
+// harness does not import it: the page does. It is the emulator seam every
+// client reaches Firestore through, and it was missing from the trigger until
+// 2026-09-13 (site-wide audit C-4), so a pull request touching only that file
+// reported `rules` green having run neither suite.
+// ---------------------------------------------------------------------------
+test('every module the arena app imports from outside apps/arena, transitively, is an input', () => {
+  const importRe = /(?:\bfrom|\bimport)\s*\(?\s*['"](\.{1,2}\/[^'"]+)['"]/g;
+  const queue = readdirSync(join(REPO_ROOT, 'apps/arena/js'))
+    .filter((f) => f.endsWith('.js'))
+    .map((f) => `apps/arena/js/${f}`);
+  const seen = new Set();
+  const escaping = new Set();
+
+  while (queue.length) {
+    const file = queue.shift();
+    if (seen.has(file)) continue;
+    seen.add(file);
+    for (const m of read(file).matchAll(importRe)) {
+      const rel = relative(REPO_ROOT, resolve(REPO_ROOT, dirname(file), m[1])).split('\\').join('/');
+      if (rel.startsWith('apps/arena/')) continue;
+      escaping.add(rel);
+      queue.push(rel);
+    }
+  }
+
+  // If the app stops importing the seam directly, the walk needs a new root
+  // rather than quietly checking nothing.
+  assert.ok(escaping.has('firebase-config.js'),
+    `expected apps/arena/js to import firebase-config.js; found ${[...escaping].join(', ') || 'nothing'}`);
+
+  for (const path of escaping) {
+    assert.equal(runScope({ event: 'pull_request', files: [path] }).run, '1',
+      `${path} runs in-page in both emulator suites but does not trigger them`);
   }
 });
 

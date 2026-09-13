@@ -591,7 +591,12 @@ class ExercisesView {
             isCustom: true
         };
 
-        this.app.addCustomExercise(newExercise);
+        if (this.app.addCustomExercise(newExercise) === false) {
+            // Nothing was stored, so nothing was created: the form stays open
+            // with what was typed (audit G-4).
+            showToast('Could not create this exercise: device storage is full. Free some space and try again.', 'error', 6000);
+            return;
+        }
 
         showToast(`Created custom exercise: ${name}`, 'success');
         document.getElementById('custom-exercise-modal').classList.remove('active');
@@ -1153,6 +1158,10 @@ class ExercisesView {
 
         if (!confirmed) return;
 
+        // What storage holds right now, so a refused write can put it back.
+        const storedSessions = this.app.workoutSessions;
+        const storedExercises = storedSessions.map(session => session.exercises);
+
         // Remove this exercise's entries from every session in memory
         this.app.workoutSessions.forEach(session => {
             session.exercises = session.exercises.filter(ex => !sameId(ex.exerciseId, exerciseId));
@@ -1169,7 +1178,12 @@ class ExercisesView {
         this.app.workoutSessions = this.app.workoutSessions.filter(isLoggedSession);
         const pruned = before - this.app.workoutSessions.length;
 
-        this.app.saveWorkoutSessions();
+        if (this.app.saveWorkoutSessions() === false) {
+            storedSessions.forEach((session, i) => { session.exercises = storedExercises[i]; });
+            this.app.workoutSessions = storedSessions;
+            showToast('Could not remove this history: device storage is full. Free some space and try again.', 'error', 6000);
+            return;
+        }
         this.app.updateAchievements();
 
         showToast(
@@ -1262,8 +1276,12 @@ class ExercisesView {
         if (confirmed) {
             const index = this.app.customExercises.findIndex(ex => sameId(ex.id, exerciseId));
             if (index >= 0) {
-                this.app.customExercises.splice(index, 1);
-                this.app.saveCustomExercises();
+                const [removed] = this.app.customExercises.splice(index, 1);
+                if (this.app.saveCustomExercises() === false) {
+                    this.app.customExercises.splice(index, 0, removed);
+                    showToast('Could not delete this exercise: device storage is full. Free some space and try again.', 'error', 6000);
+                    return;
+                }
                 showToast('Custom exercise deleted successfully', 'info');
 
                 // Re-render to update the list and count

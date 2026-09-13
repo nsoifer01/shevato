@@ -1244,6 +1244,7 @@ class ProgramsView {
 
         // Check if this is a new program or edit
         const existingIndex = this.app.programs.findIndex(p => p.id === this.currentProgram.id);
+        const storedProgram = existingIndex >= 0 ? this.app.programs[existingIndex] : null;
         if (existingIndex >= 0) {
             // Update existing
             this.app.programs[existingIndex] = this.currentProgram;
@@ -1252,7 +1253,16 @@ class ProgramsView {
             this.app.programs.push(this.currentProgram);
         }
 
-        this.app.savePrograms();
+        if (this.app.savePrograms() === false) {
+            // Storage still holds the old list, so memory must too. The editor
+            // stays open with the edits, so Save works again once there is
+            // room (audit G-4).
+            if (storedProgram) this.app.programs[existingIndex] = storedProgram;
+            else this.app.programs.pop();
+            this.isSaving = false;
+            showToast('Could not save this program: device storage is full. Your changes are still here, free some space and save again.', 'error', 6000);
+            return;
+        }
         showToast('Program saved successfully', 'success');
         this.render();
         this.closeProgramModal();
@@ -1486,7 +1496,11 @@ class ProgramsView {
             uniformRestSeconds: source.uniformRestSeconds,
         });
         this.app.programs.push(copy);
-        this.app.savePrograms();
+        if (this.app.savePrograms() === false) {
+            this.app.programs.pop();
+            showToast('Could not duplicate this program: device storage is full. Free some space and try again.', 'error', 6000);
+            return;
+        }
         this.render();
         showToast(
             hadSchedule
@@ -1515,8 +1529,12 @@ class ProgramsView {
         if (confirmed) {
             const index = this.app.programs.findIndex(p => sameId(p.id, programId));
             if (index >= 0) {
-                this.app.programs.splice(index, 1);
-                this.app.savePrograms();
+                const [removed] = this.app.programs.splice(index, 1);
+                if (this.app.savePrograms() === false) {
+                    this.app.programs.splice(index, 0, removed);
+                    showToast('Could not delete this program: device storage is full. Free some space and try again.', 'error', 6000);
+                    return;
+                }
                 showToast('Program deleted successfully', 'info');
                 this.render();
             }

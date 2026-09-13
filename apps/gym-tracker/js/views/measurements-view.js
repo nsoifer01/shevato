@@ -205,8 +205,9 @@ class MeasurementsView {
         return raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
     }
 
+    /** False when storage refused the write. */
     saveGoals(goals) {
-        storageService.set(GOALS_KEY, goals);
+        return storageService.set(GOALS_KEY, goals);
     }
 
     /** Display unit for a metric, matching the tile / history rendering. */
@@ -506,7 +507,10 @@ class MeasurementsView {
 
         const goals = this.loadGoals();
         goals[this.goalMetricKey] = { target: canonicalTarget, direction };
-        this.saveGoals(goals);
+        if (this.saveGoals(goals) === false) {
+            showToast('Could not save this goal: device storage is full. Free some space and save again.', 'error', 6000);
+            return;
+        }
 
         document.getElementById('measurement-goal-modal').classList.remove('active');
         this.goalMetricKey = null;
@@ -519,7 +523,10 @@ class MeasurementsView {
         if (!this.goalMetricKey) return;
         const goals = this.loadGoals();
         delete goals[this.goalMetricKey];
-        this.saveGoals(goals);
+        if (this.saveGoals(goals) === false) {
+            showToast('Could not clear this goal: device storage is full. Free some space and try again.', 'error', 6000);
+            return;
+        }
 
         document.getElementById('measurement-goal-modal').classList.remove('active');
         this.goalMetricKey = null;
@@ -602,11 +609,21 @@ class MeasurementsView {
                 // is canonical whatever the original was.
                 unitsCanonical: true,
             });
+            const stored = this.app.measurements[idx];
             this.app.measurements[idx] = updated;
-            this.app.saveMeasurements();
+            if (this.app.saveMeasurements() === false) {
+                // Storage still holds the old entry; the form keeps the new
+                // values so Save works again once there is room (audit G-4).
+                this.app.measurements[idx] = stored;
+                showToast('Could not save this measurement: device storage is full. Your entry is still here, free some space and save again.', 'error', 6000);
+                return;
+            }
             showToast('Measurement updated', 'success');
         } else {
-            this.app.addMeasurement(new Measurement({ ...data, unitsCanonical: true }));
+            if (this.app.addMeasurement(new Measurement({ ...data, unitsCanonical: true })) === false) {
+                showToast('Could not save this measurement: device storage is full. Your entry is still here, free some space and save again.', 'error', 6000);
+                return;
+            }
             showToast('Measurement saved', 'success');
         }
 
@@ -629,7 +646,10 @@ class MeasurementsView {
             isDangerous: true,
         });
         if (!confirmed) return;
-        this.app.deleteMeasurement(id);
+        if (this.app.deleteMeasurement(id) === false) {
+            showToast('Could not delete this measurement: device storage is full. Free some space and try again.', 'error', 6000);
+            return;
+        }
         showToast('Measurement deleted', 'info');
         this.render();
     }

@@ -13,7 +13,7 @@
 // produces convincing phantom failures (seen while writing this suite).
 import {
   APP, recorder, freshIds, iso, item, trip, dbOf, standardTrip,
-  openApp, readDb, rowCount, overlayOpenId,
+  openApp, readDb, openTripIdOf, rowCount, overlayOpenId,
   tpErrors, menuAct, openAddItem, fillItem, saveItem, addItemViaUi,
   switchView, escape, ctrlKey, expandTimeline, closePage, gotoHard, evaluate,
   clickSel, setValue, waitForExpr,
@@ -59,7 +59,7 @@ export async function run({ base, cdpPort }) {
     await clickSel(s, '#tripSaveBtn', { settle: 700 });
     let db = await readDb(s);
     const created = db.trips.find(x => x.name === 'Honeymoon E2E');
-    await t('tp-core B: trip created and active', !!created && db.activeTripId === created.id && created.currency === 'EUR', JSON.stringify(db.trips.map(x => x.name)), s);
+    await t('tp-core B: trip created and active', !!created && (await openTripIdOf(s)) === created.id && created.currency === 'EUR', JSON.stringify(db.trips.map(x => x.name)), s);
 
     const d = 40;
     await t('tp-core B: flight added via the form', await addItemViaUi(s, {
@@ -86,7 +86,7 @@ export async function run({ base, cdpPort }) {
     await gotoHard(s, base + APP + '#days', { settle: 900 });
     db = await readDb(s);
     const after = db.trips.find(x => x.name === 'Honeymoon E2E');
-    await t('tp-core B: trip and items survive a reload', !!after && after.items.length === 3 && db.activeTripId === after.id, '', s);
+    await t('tp-core B: trip and items survive a reload', !!after && after.items.length === 3 && (await openTripIdOf(s)) === after.id, '', s);
     await t('tp-core B: view survives a reload via its hash', await evaluate(s, `document.getElementById('viewDays').classList.contains('on')`), '', s);
     await t('tp-core B: reloaded Days view shows the stay', await evaluate(s, `document.getElementById('daysList').innerText.includes('Azor Hotel')`), '', s);
   });

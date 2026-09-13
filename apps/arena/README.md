@@ -10,7 +10,7 @@ Two games ship today - **Globe Drop** (pin locations on a 3D globe) and **Trivia
 2. Room state lives in Firestore (collection `triviaRooms/{code}`, with `players` and `chat` subcollections; each player owns a doc at `triviaRooms/{code}/players/{uid}` holding their display name, host flag, score, and streak). Every client subscribes to the room document and to the player docs, so players joining, the timer, scores, and the current question/location all sync live - `js/app.js` is the only file that imports the Firestore SDK directly (via the shared `firebase-config.js`).
 3. The host configures the game in the lobby - game type, round type, difficulty, locations/questions count, and timer - then starts it. The first question/location appears for all players at once.
 4. Each round runs through phases (`idle` → `asking` → `reveal` → `ended`) computed by pure helpers in `js/room-state.js` off server timestamps, so every client agrees on timing. When all players have answered, the host writes an early-reveal flag that collapses the asking window in lockstep.
-5. After the configured number of rounds the game ends with a final scoreboard, a per-question / per-location recap table comparing you against opponents, and detailed per-player stats. Players can rematch or return to the lobby.
+5. After the configured number of rounds the game ends with a final scoreboard, a per-question / per-location recap table comparing you against opponents, and detailed per-player stats. Players can rematch or return to the lobby. If the new questions or locations cannot be fetched when a rematch is agreed (The Trivia API or Wikidata down), the proposal is withdrawn for everyone, the host is told once, and anyone can propose again.
 
 The pure game logic (scoring, room state, location/question normalization) is split into small UMD modules under `js/` that export CommonJS for `node:test` **and** attach to `window.BrainArena.*` for the browser. The DOM/Firestore glue lives in `js/app.js`.
 
@@ -22,11 +22,11 @@ The pure game logic (scoring, room state, location/question normalization) is sp
 | Password-protected rooms | An optional "Private (password required to join)" toggle at creation. Joining a private room (by code or invite link) prompts for the password first. The password itself is never stored: the room keeps only a salted SHA-256 hash in an unreadable subdocument, and Firestore rules verify a joiner's proof server-side (see "Room password security" below). |
 | Real-time Firestore sync | Players joining, the timer, scores, and the active question/location all update live across every client. |
 | Host controls | Host-only, and lobby-only: switch the game type and edit the round settings inline. |
-| Mid-game controls (any player) | Once the room is playing, every player (not just the host) can pause/resume the timer, propose a restart (all players must accept), or end the game. Each action has a per-player allowance for the room (pause 2, restart 3, end 3) so it can't be used to grief, and the button grays out once the allowance is spent. |
+| Mid-game controls (any player) | Once the room is playing, every player (not just the host) can pause/resume the timer, propose a restart (all players must accept), or end the game. The UI gives each player an allowance per room (pause 2, restart 3, end 3) and grays the button out once it is spent; that count lives in the client, while `firestore.rules` bounds what each of those writes may contain (see "Who may write what"). |
 | Spectator / latecomer flow | A friend who joins mid-round spectates and is folded into the next round automatically. |
 | Host handoff | If the host goes away, the earliest remaining joiner deterministically becomes the new host (`pickNextHost`), whether they left through the Leave button or their tab simply disappeared. See "Host handoff" below. |
 | Solo + Daily challenge | Globe Drop can be played solo (a private room of one that auto-starts) or as a Daily challenge that gives every player worldwide the same locations for the UTC calendar day. |
-| Ready to skip (Globe Drop) | During the reveal, any player can hit "Ready" to vote to skip the between-round countdown; once everyone is ready the next round (or the end stage) fires early instead of waiting the window out. |
+| Ready to skip (Globe Drop) | During the reveal, any player can hit "Ready" to vote to skip the between-round countdown; once everyone is ready the next round (or the end stage) fires early instead of waiting the window out. Votes are cleared when a rematch starts. |
 | Custom Trivia packs | Save your own JSON question pack on your profile; it then appears as a question-source option when you create a Trivia room. |
 | In-room chat | Per-room chat (subscribed to `triviaRooms/{code}/chat`) with input sanitization, a client-side rate limit, and local profanity moderation (a word-boundary wordlist, so nothing leaves the browser; fail-open if the filter errors), plus a quick-tap bar of 8 one-click emoji reactions for players who don't want to type. The panel holds a SLIDING window of the newest `Chat.CHAT_WINDOW_SIZE` (80) messages, built in one place (`Chat.buildChatWindowQuery`) and never rebuilt at the call site. |
 | Leaderboard | Global score leaderboard, filterable by time period and sortable on any column (click a header to toggle direction; the default is avg score, descending), plus a separate Daily challenge board scoped to the current UTC day. A finished game is counted exactly once: the profile, the leaderboard row, the room's session tally and the head-to-head pair each carry the game's key (`{roomCode}:{round}`) and skip a repeat, so reloading the recap or reopening its share link adds nothing. |
@@ -70,7 +70,7 @@ Private rooms are gated by a hash, never by a stored password (since 2026-08-15;
 - **Solo / daily rooms** have no password but stay `isPrivate`; they store a random 256-bit hash no password can derive, so nobody else can ever join with the code.
 - **Legacy rooms** created before the migration still carry `data.password` and keep the old client-side compare until they expire; new rooms never write it.
 - **Gate deletion** is the operation that used to be the hole (a stranger with the code could delete the gate and walk in past the `!exists(gate)` branch, 2026-08-22 audit). It is now allowed only for the room HOST while the room doc exists, or for anyone once the room doc is GONE, which is the orphan sweep. See "Cleanup" below for why the teardown deletes the room doc first.
-- **Documented boundary**: a member's `gateHash` is readable by any signed-in user who has the room code (player docs are readable for the scoreboard), so it can be replayed for room ENTRY. What the design guarantees is that the password itself - the secret people reuse across sites - is never recoverable by anyone.
+- **The admission proof cannot be replayed** (since 2026-09-07). A joiner's `gateHash` is cleared off their player doc right after the create, and a scoped room's roster is readable only by its members, so there is nothing to copy (see "Who may write what"). Before that, any signed-in user with the code could read a member's hash and use it to enter. The password itself - the secret people reuse across sites - was never recoverable by anyone.
 
 ## Who may write what (Firestore rules)
 
@@ -116,14 +116,22 @@ the client:
   Until 2026-09-03 all of these were unbounded once a question's window had
   elapsed, which is every round, and indefinitely if the host went away. Rules
   cannot iterate a list, so only the top entry of a ranking is checked, which
-  is the one a griefer has to occupy to appear to have won.
+  is the one a griefer has to occupy to appear to have won. Since 2026-09-13
+  two more: a resume may only move `questionStartedAt` forward, to at most a
+  minute past the server clock, so one resume can no longer end the question
+  or park it; and a rematch vote may only PROPOSE (the proposer as the sole
+  accept), WITHDRAW (everything cleared) or add the caller, once, to one list
+  of a live proposal, because the host restarts the game the moment the
+  accept list is as long as the roster.
 - **Player docs** are owner-write. The host may delete a player doc only when
   it is STALE (see Liveness), so ghosts can be swept but live players cannot
   be kicked.
 - **Chat** is members-only in both directions, and append-only while the room
   lives; deletes are allowed only once the room doc is gone (the orphan
   sweep). The create rule used to check the author's uid and the text length
-  and never whether the author was in the room.
+  and never whether the author was in the room. A message carries exactly
+  `uid`, `displayName` (at most 20 characters, like every other published
+  name), `text` (1 to 280) and `sentAt`.
 - **Persistent rows are bounded.** Scores are computed on the client, so a
   leaderboard row, a daily score and a head-to-head record are CLAIMS - the UI
   and privacy.html say so. What the rules add is the difference between a
@@ -163,9 +171,14 @@ Progression is not the host's private business:
   question index), so every client would choose the same question and the
   race between them is harmless. A decider who picks before the deadline
   always wins, because the room leaves `picking` the moment they do.
-- The advance itself is a transaction with an idempotent precondition (still
+- The TIMED advance is a transaction with an idempotent precondition (still
   playing, same question id and index), so the host and a member's fallback
-  can race without ever double-advancing.
+  can race without ever double-advancing. The host's Ready-skip is a single
+  write, not a transaction, since 2026-09-12: it fires before the server-clock
+  deadline, when the rules let no member advance at all, so there is no race
+  for a transaction to defend, and the transaction's two RPCs were what made
+  it miss its own window (FINDINGS "The Ready-skip advance was two RPCs").
+  Both paths build their payload from `RoomState.nextRoomStateAfterQuestion`.
 
 ## Host handoff
 
@@ -202,12 +215,16 @@ stamp, and `PRESENCE_STALE_MS` after a crash that left no stamp at all.
   is older than the 30 s rejoin grace or the heartbeat is older than 120 s
   (`RoomState.isPlayerLive`, mirrored in `firestore.rules`). The heartbeat is
   what catches a crashed or force-quit tab, which never fires `beforeunload`.
-- Coming BACK clears the disconnect stamp, on both paths: the rejoin write and
-  every subsequent heartbeat. A player whose heart is beating is by definition
-  not disconnected, so clearing it on the heartbeat too makes a dropped or
-  racing rejoin write self-healing. Until 2026-09-03 the URL-rejoin path wrote
-  `lastSeen` alone, so refreshing during a game left the stamp in place and the
-  host swept the player 30 s later, mid-game.
+- Coming BACK clears the disconnect stamp in the write that brings the player
+  back, on every path (the URL rejoin, the post-match rejoin, and the join form
+  both inside the grace and past it), and again on every heartbeat. A player
+  whose heart is beating is by definition not disconnected, so clearing it on
+  the heartbeat too makes a dropped or racing rejoin write self-healing. Until
+  2026-09-03 the URL-rejoin path wrote `lastSeen` alone, so refreshing during a
+  game left the stamp in place and the host swept the player 30 s later,
+  mid-game; until 2026-09-13 the join form's past-grace branch did the same,
+  so a player who closed the tab and came back later by code showed as
+  "Disconnected", and was sweepable, until their first heartbeat 30 s on.
 - Stale players are excluded from early reveal, the Ready vote, the Globe
   Drop Ready-bar counter, the rematch unanimity count, the Start-button
   minimum and the last-leaver check, and they render as "Disconnected"
@@ -262,6 +279,13 @@ stamp, and `PRESENCE_STALE_MS` after a crash that left no stamp at all.
     chat and gate to any signed-in client to sweep, which is the same path the
     last-leaver teardown already uses. A room nobody ever revisits leaves those
     behind, which is what the 269 documents above were.
+
+  Chat has its own expiry since 2026-09-13. Every message carries
+  `expiresAt` (a day, like the room), the chat create rule requires it within
+  48 hours, and a second TTL policy on the `chat` collection group deletes it, so
+  a room nobody revisits no longer keeps its conversation. Enable that policy
+  once: `gcloud firestore fields ttls update expiresAt --collection-group=chat
+  --enable-ttl --project=shevato-site`.
 
   Enabling the policy and Firestore actually deleting anything are separate
   events: the config went ACTIVE immediately, and deletion runs on Google's own
@@ -331,19 +355,23 @@ leftovers of its own (matched on `emulators:start` plus the throwaway project
 id, so a real Firebase emulator for another project is never touched) and says
 so with the PIDs. A busy port owned by anything else is reported, not killed.
 
-- **Unit** (`node --test apps/arena/tests/`): trivia scoring and streaks, Globe Drop distance/multiplier/difficulty scoring, room-code generation and alphabet validation, daily-challenge determinism, Wikidata/Trivia normalization, chat sanitization/moderation, the sliding chat window and its unread bookkeeping, the host-takeover predicate, and the room-gate hash derivation (pinned against independently computed SHA-256 vectors).
-- **Rules** (`apps/arena/tests-rules/`): runs the real `firestore.rules` inside the Firestore emulator via plain REST - player-doc ownership, the hashed password gate, chat caps and append-only, guest exclusions, admin deletes, plus no-regression pins for the shared non-arena sections. Deliberately NOT part of `npm test`: it needs Java plus a one-time firebase-tools/emulator download (pinned version, cached afterwards), which the dependency-free push/PR CI does not have. Skips cleanly when the environment is missing; CI runs it with `ARENA_RULES_REQUIRE=1`, which turns that skip into a hard failure (`.github/workflows/arena-rules.yml`). Rules are loaded through the emulator's `PUT :securityRules` endpoint with a deny-all negative control, because `emulators:start/exec` does not reliably compile updated rules.
+- **Unit** (`node --test apps/arena/tests/`): trivia scoring and streaks, Globe Drop distance/multiplier/difficulty scoring, room-code generation and alphabet validation, daily-challenge determinism, Wikidata/Trivia normalization, chat sanitization/moderation, the sliding chat window and its unread bookkeeping, the host-takeover predicate, and the room-gate hash derivation (pinned against independently computed SHA-256 vectors). `rematch-failure` and `rejoin-disconnect-stamp` run the real `app.js` glue functions in `node:vm` against an in-memory Firestore (`tests/helpers/app-vm.js`), for bugs that live in which write the glue issues rather than in a pure helper.
+- **Rules** (`apps/arena/tests-rules/`): runs the real `firestore.rules` inside the Firestore emulator via plain REST - player-doc ownership, the hashed password gate, the value bounds on every member room write (advance, pick, resume, rematch votes), chat caps and append-only, guest exclusions, admin deletes, plus pins for the shared non-arena sections (including the MapTap Rivals network collections). On Node 20 the npm script finds no files (the `node --test` glob needs Node 21+; `.nvmrc` pins 22), so run it on 22 or run `node --test apps/arena/tests-rules/rules.test.mjs` directly. Deliberately NOT part of `npm test`: it needs Java plus a one-time firebase-tools/emulator download (pinned version, cached afterwards), which the dependency-free push/PR CI does not have. Skips cleanly when the environment is missing; CI runs it with `ARENA_RULES_REQUIRE=1`, which turns that skip into a hard failure (`.github/workflows/arena-rules.yml`). Rules are loaded through the emulator's `PUT :securityRules` endpoint with a deny-all negative control, because `emulators:start/exec` does not reliably compile updated rules.
 - **Multiplayer e2e** (`apps/arena/e2e/`): three real app instances (three origins = three Firebase users) against the Firestore + Auth + RTDB emulators, connected through the opt-in emulator seam in the shared `firebase-config.js` (loopback hostname AND `localStorage['shevato:firebase-emulators'] = '1'` - inert in production by construction, see `sync-system/firebase-emulator-flag.mjs`). Covers the full room lifecycle: create, join by code, start, lockstep question propagation, simultaneous answers with early reveal, score propagation, rematch, host handoff on BOTH paths (the Leave button in S2, and a host tab that simply disappears in S10), the sliding chat window past its 80-message cap (S9), the password gate end-to-end, and invalid-code rejection. It also pins the 2026-08-22 audit's regressions: a first-time guest creating a room with no sync-modal seed, the gate-deletion exploit attempted from a third client's own SDK, a ghost player past the grace, a hidden host tab (trivia and Globe Drop), an answer clicked while offline, the chat rate limit at the call site, a coordinate double-click on Start, a stale rematch prompt, the end screen after the winner leaves, chat/gate/player cleanup after the last leaver, a registered user's leaderboard row matching their profile, and seeded axe scans of the in-room states and modals at 1280 and 360. Production Firebase hosts are intercept-failed on every page as a second line of defense.
 
 **When CI runs the two emulator suites.** `.github/workflows/arena-rules.yml`
 starts on every pull request, every push to master, and weekly, but a "Scope"
 step decides inside the job whether the suites actually run: they run when the
 change touches `firestore.rules`, `firebase.json`, `database.rules.json`,
-`apps/arena/`, `sync-system/` (except `sync-system/tests/`), the
+`firebase-config.js` (the emulator seam every client reaches Firestore
+through), `apps/arena/`, `sync-system/` (except `sync-system/tests/`), the
 `tests/browser/cdp.mjs` driver the e2e imports, `package.json`, `.nvmrc` or the
 workflow itself, and are skipped otherwise. The job reports either way, which
 is what lets `rules` be a required status check: a workflow filtered by
 `on.<event>.paths` reports nothing at all when a change misses the filter, and
 a required check that never reports can never be satisfied. `tests/static/ci-arena-scope.test.mjs`
 drives that Scope script directly and fails if the input list drifts from what
-the suites actually depend on.
+the suites actually depend on. It derives that list from both the e2e
+harness's imports and the app's own import graph; the second walk is what
+would have caught `firebase-config.js` missing from the inputs until
+2026-09-13.

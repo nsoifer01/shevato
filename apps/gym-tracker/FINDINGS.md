@@ -530,6 +530,20 @@ ordering problem, not just a code problem.**
   `controllerchange` and reloads on a controller change when no workout is
   live, or shows an "Update available / Reload now" toast when one is (a
   reload mid-workout loses nothing, but it is still the lifter's call).
+  **The first install is not an update** (audit G-6, fixed 2026-09-13). The
+  guard that tells them apart used to be set from `serviceWorker.ready`,
+  which resolves as soon as the fresh worker STARTS activating; its activate
+  handler only calls `clients.claim()` after pruning old caches, so the guard
+  was already true when the install's own `controllerchange` arrived, and
+  every first visit reloaded itself (page_view, app_open and app_view twice,
+  observed live). The page now records whether it loaded controlled, and a
+  page that did not treats its first `controllerchange` as the install; any
+  later one is an update. Edge worth knowing: a page loaded WITHOUT a
+  controller while a worker is already active (a hard reload) also treats its
+  first controller change as the install, so an update that lands during that
+  one page session waits for the next navigation instead of reloading.
+  `tests/sw-update-reload.test.mjs` runs the real inline script in `node:vm`,
+  with `ready` resolving before the claim, the order the browser uses.
   Regressions: `tests/sw-offline-behavior.test.mjs` (cache mode of both fetch
   paths, the waitUntil hold) and `e2e/audit-2026-08.mjs` block K, which serves
   the app through a proxy that reads its Cache-Control straight out of
@@ -540,6 +554,29 @@ ordering problem, not just a code problem.**
   fetch handler for every navigation the moment the no-cache clone was added -
   every page load silently fell back to the network and offline navigation
   died. The worker catches that and rebuilds the request from its URL.
+- **A navigation must never be answered with a redirected response** (audit
+  G-5, fixed 2026-09-13, `CACHE_VERSION` 1.16.0). Production 301s every
+  `/apps/<app>/index.html` and every `/exercises/.../index.html` to its
+  directory URL (`netlify.toml`). `fetch()` and `cache.addAll()` follow that
+  redirect and hand back a 200 with `redirected: true`, and a navigation's
+  redirect mode is `manual`, so `respondWith()` with that response is a
+  network error. With the worker installed every one of those URLs showed the
+  browser's error page: `./index.html` sat in `PRECACHE_URLS` beside `./` and
+  was stored through the 301, and the runtime path served and cached the
+  redirected answer for the rest. Three changes: `./index.html` is out of the
+  precache (`./` is the shell), nothing redirected is ever `cache.put`, and a
+  redirected response bound for a navigation (from the network or from a
+  cache, including one an older worker stored) is replaced with
+  `Response.redirect(res.url, 301)`, which is what the browser gets from the
+  network without the worker. A request that is not a navigation still takes
+  a redirected response (its redirect mode is `follow`). One consequence:
+  offline, a direct `.../index.html` URL gets the offline page rather than
+  the shell, because only the canonical `./` is precached; online it reaches
+  the shell by way of the redirect. `sw-offline-behavior.test.mjs` drives the
+  fetch handler against a fake origin that applies the REAL redirect rules
+  parsed from `netlify.toml`, and fails if any `PRECACHE_URLS` entry is a URL
+  production redirects. Keep `PRECACHE_URLS` a plain literal with no comments
+  inside it: three test files parse it as JSON.
 - Offline navigations match with `ignoreSearch`, so a launch URL carrying a
   query string (`/?utm_source=x`) finds the cached shell, and a navigation
   that is in no cache at all (a generated `/exercises/` page never visited)
@@ -866,6 +903,40 @@ arrive as strings from an export round trip and numbers from the catalog.
 The old tests encoded the old rule (one was literally "a newer bad does not
 override an older good"), so they were replaced rather than adjusted. The new
 suite fails 8 checks when run against the old implementation.
+
+## A set's number is its slot, not its array position
+
+Audit G-3, fixed 2026-09-13. A logged set carries `slot`, its stable 0-based
+set number within the exercise (`Set.js`; the 1.0 to 2.0 storage migration
+stamped `slot = i` on older sets). The live workout addresses rows by slot:
+`commitPlannedSet` APPENDS the new set to the dense `exercise.sets` array and
+`deleteSet` SPLICES by slot, so the array is in commit order. The two orders
+part company after the most ordinary correction there is (un-tick set 2 to fix
+a typo, tick it again) or when set 3 is ticked before set 2.
+
+The renderer, `deleteSet` and the CSV export already read the slot. Two
+readers used array position:
+
+- Previous-session prefill (`getPreviousExerciseData`) handed planned row `i`
+  the i-th completed set, so after a re-tick set 2 was prefilled from last
+  time's set 3 and the "same as last time" chip compared against the wrong
+  set. It now returns an array indexed by SLOT. A set last time never logged is
+  a hole, and the renderer's existing fallback to the last entry covers it, so
+  "set 2 from set 2" holds even when set 1 was skipped.
+- The history session detail numbered rows `index + 1` over the same array,
+  so it called a set "Set 3" that the CSV of the same session called "Set 2".
+  It now lists sets in slot order, numbered `slot + 1`.
+
+Both go through `completedSetsInSlotOrder(exercise)` in
+`js/utils/session-metrics.js`: completed sets sorted by slot, a set with no
+slot keeping its array index (the fallback every other reader uses), and
+duplicate slots in commit order. An in-order session renders exactly as it did
+before. The CSV still emits rows in array order, so a reordered session's rows
+read Set 1, Set 3, Set 2, each with the right number. Program set rows
+(`normalizeSetRow` in `Program.js`) are a different thing: a plan's rows carry
+no slot because their position IS the set number, which is why `progSets[i]`
+is right. Pinned by `tests/set-slot-order.test.mjs` (reordered, in order,
+ticked out of order, a skipped set, and the detail checked against the CSV).
 
 ## Timed work is time, not weight (GT-04)
 
@@ -1396,8 +1467,9 @@ stylesheet). A fix to the shared pair does nothing here. This has bitten twice:
   Ported, not merged: the divergence is the pill, the dot and a module export
   shape the tests rely on, too much to fold into the classic shared script.
 
-What the widget does now (keep the two copies in step, same wording, same
-state names):
+What the widget does now (keep the two in step: the same state names, labels and
+sentences, except that since 2026-09-13 the shared banner also names the apps a
+failure is in, which Gym's, speaking only for Gym, has no need to):
 
 - Event contract (from the sync engine): `syncWriteRejected`
   `{ namespace, keys, code, retryable }` and `syncWriteRecovered`
@@ -1543,7 +1615,7 @@ hit-sensitive), at 390x844, 320x700 and 1280x900:
   checks. All passing at the end of the round; `npm test` (2430) and
   `npm run test:browser` (190) green.
 
-## A failed write must not be reported as a saved workout
+## A failed write must never be reported as saved
 
 `StorageService.set()` has always returned `false` on a quota error, and every
 caller threw the boolean away. `finishWorkout` pushed the session, called
@@ -1593,6 +1665,45 @@ class cannot outrank, so the danger colours are restated in `refresh.css` too.
 Verified at 1280 and 390 with computed styles: the button renders
 `rgb(255,255,255)`, i.e. the sitewide `button { color:#555 !important }` does
 not win here.
+
+**Every other store, and Pause (audit G-4, fixed 2026-09-13).** That hardening
+stopped at the workout. Saving or deleting a program, saving settings,
+creating or deleting a custom exercise, saving, editing or deleting a
+measurement or a goal, deleting a workout, removing an exercise's history and
+Save as Program all toasted success over a refused write, so the change
+quietly came undone on the next reload and sync never saw it. Pause was worse:
+it discarded the return value and then set `currentWorkoutSession` to null,
+dropping the one copy the storage banner promises is safe.
+
+The contract is now the one Finish already kept, applied at every call site
+that tells the user something happened:
+
+- `app.save*` all return a strict boolean, and only a write that landed emits
+  its change event (`saveCustomExercises` also rebuilds `exerciseDatabase`
+  only then). An event for a refused write made Insights and Measurements
+  render a change the caller was about to roll back. `addMeasurement`,
+  `deleteMeasurement` and `addCustomExercise` restore memory themselves and
+  return false.
+- On `false` the caller puts memory back to what storage still holds (the
+  replaced record restored, the push popped, the deleted record spliced back,
+  settings rebuilt from a `structuredClone` of `toJSON()` taken before the form
+  was read), keeps the editor, form or dialog open with what was entered, shows
+  no success toast, and toasts an error saying device storage is full and to
+  free some space. A refused program save also clears `isSaving`, and a
+  refused measurement save does not arm the 500 ms double-submit guard.
+- Pause undoes `pauseWorkout()` with `resumeWorkout()`, keeps the tab lock, the
+  clock and the workout screen, raises the storage banner and returns false.
+  Every caller that leaves the screen checks it: the Pause button, "Edit
+  program", the in-app navigation guard, and the back-button "Pause and leave"
+  dialog, which also keeps the back trap armed. The unsaved-settings dialog's
+  Save likewise stays on Settings when the save is refused.
+
+Writes that claim nothing still fire and forget: program sort and custom
+order, warm-up settings, the settings the workout screen saves as you use it,
+achievement bookkeeping and the boot-time settings upgrade. Pinned by
+`tests/save-failure-honesty.test.mjs`, which runs the real `StorageService`
+over a `localStorage` whose `setItem` throws `QuotaExceededError`, the real
+`app.js` save methods, and each real view method.
 
 ## The programs store could be blanked by one bad record
 

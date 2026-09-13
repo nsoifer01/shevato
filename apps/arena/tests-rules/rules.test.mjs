@@ -10,7 +10,8 @@
 // NOT part of `npm test`: this suite needs Java plus a one-time
 // firebase-tools/emulator download, which the dependency-free push/PR CI
 // deliberately does not have. Run locally with `npm run test:arena:rules`;
-// CI runs it weekly via .github/workflows/arena-rules.yml with
+// CI runs it on every change that can move its outcome, and weekly, via
+// .github/workflows/arena-rules.yml with
 // ARENA_RULES_REQUIRE=1 so an environment problem fails loudly there
 // instead of skipping.
 //
@@ -21,9 +22,13 @@ import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+
+// A chat message's expiry, as the app sets it (ROOM_TTL_MS, a day): the chat
+// create rule requires one for the chat TTL policy.
+const chatExpiry = () => new Date(Date.now() + 24 * 3600_000);
 import {
     startEmulator, loadRules, loadRulesFile, clearData, authToken, OWNER,
-    createDoc, updateDoc, getDoc, deleteDoc, listDocs,
+    createDoc, updateDoc, getDoc, deleteDoc, listDocs, queryEquals,
     DENY_ALL_RULES, EMULATOR_HOST,
 } from './emulator-harness.mjs';
 
@@ -103,7 +108,7 @@ if (!setup.ok) {
         assert.equal(await createDoc('triviaRooms/SCOPD/players/host1',
             { uid: 'host1', displayName: 'Host', score: 0, gateHash: 'scoped-hash-value' }, OWNER), 200);
         assert.equal(await createDoc('triviaRooms/SCOPD/chat/m0',
-            { uid: 'host1', text: 'private conversation' }, OWNER), 200);
+            { uid: 'host1', text: 'private conversation', expiresAt: chatExpiry() }, OWNER), 200);
     });
 
     /* ---------------- F01: the private-room boundary ---------------- */
@@ -176,9 +181,9 @@ if (!setup.ok) {
 
     test('F01: an outsider cannot post chat into a room they never joined', async () => {
         assert.equal(await createDoc('triviaRooms/SCOPD/chat/intrude',
-            { uid: 'alice', text: 'hello from outside' }, ALICE), 403);
+            { uid: 'alice', text: 'hello from outside', expiresAt: chatExpiry() }, ALICE), 403);
         assert.equal(await createDoc('triviaRooms/PUBAA/chat/intrude2',
-            { uid: 'bob', text: 'hello from outside' }, BOB), 403,
+            { uid: 'bob', text: 'hello from outside', expiresAt: chatExpiry() }, BOB), 403,
             'membership is required in every room, scoped or not');
     });
 
@@ -405,9 +410,8 @@ if (!setup.ok) {
         assert.equal(await updateDoc('triviaRooms/PUBAA/players/alice', { score: 150 }, ALICE), 200);
         assert.equal(await updateDoc('triviaRooms/PUBAA/players/alice', { score: 0 }, BOB), 403,
             'the host cannot rewrite someone else\'s score');
-        // Known modeled limitation: the host-handoff isHost flag write to
-        // the NEXT host's doc is denied by this same ownership rule (the
-        // app swallows it; hostUid on the room doc is the source of truth).
+        // Nobody may set another player's isHost flag either; hostUid on the
+        // room doc is the source of truth for who hosts.
         assert.equal(await updateDoc('triviaRooms/PUBAA/players/alice', { isHost: true }, BOB), 403);
         assert.equal(await deleteDoc('triviaRooms/PUBAA/players/alice', BOB), 403,
             'a live member cannot be kicked by a stranger');
@@ -453,6 +457,78 @@ if (!setup.ok) {
               finalRanking: [{ uid: 'guest1', displayName: 'Guest', score: 0, streak: 0 }] }, GUEST), 200,
             'member end-game-early (with the final ranking snapshot)');
         assert.equal(await updateDoc('triviaRooms/PUBAA', { status: 'lobby' }, HOST), 200);
+    });
+
+    // ---- member VALUE bounds left open by the 2026-09-03 round (audit 2026-09-12) ----
+
+    test('resume bound: a member resume may only move the question clock forward by the pause, not park or end it', async () => {
+        const now = Date.now();
+        const started = new Date(now - 20000);
+        assert.equal(await createDoc('triviaRooms/RESUM',
+            { code: 'RESUM', hostUid: 'host1', status: 'playing', isPrivate: false, questionStartedAt: started,
+              paused: true, pausedAt: new Date(now - 8000), pausedByUid: 'guest1', pausedByName: 'Guest' }, OWNER), 200);
+        assert.equal(await createDoc('triviaRooms/RESUM/players/guest1', { uid: 'guest1', score: 0 }, GUEST), 200);
+        const resume = (questionStartedAt) =>
+            ({ paused: false, pausedAt: null, pausedByUid: null, pausedByName: null, questionStartedAt });
+
+        assert.equal(await updateDoc('triviaRooms/RESUM', resume(new Date(started.getTime() - 60000)), GUEST), 403,
+            'moving the clock BACK ends the current question for everyone');
+        assert.equal(await updateDoc('triviaRooms/RESUM', resume(new Date(now + 3600 * 1000)), GUEST), 403,
+            'an hour ahead parks the question: every client reads it as not started');
+        assert.equal(await updateDoc('triviaRooms/RESUM', resume('later'), GUEST), 403,
+            'the clock is a timestamp');
+        assert.equal(await updateDoc('triviaRooms/RESUM', resume(new Date(started.getTime() + 8000)), GUEST), 200,
+            'the honest resume: the original start plus the time spent paused');
+
+        assert.equal(await updateDoc('triviaRooms/RESUM',
+            { paused: true, pausedAt: new Date(), pausedByUid: 'guest1', pausedByName: 'Guest' }, GUEST), 200);
+        assert.equal(await updateDoc('triviaRooms/RESUM', resume(new Date(Date.now() + 30000)), GUEST), 200,
+            'a device clock half a minute fast still resumes (the stamp is client-computed)');
+    });
+
+    test('rematch bound: each member can only add THEMSELVES to a rematch list, once', async () => {
+        assert.equal(await createDoc('triviaRooms/REMAT',
+            { code: 'REMAT', hostUid: 'host1', status: 'finished', isPrivate: false }, OWNER), 200);
+        for (const [uid, token] of [['guest1', GUEST], ['alice', ALICE], ['bob', BOB]]) {
+            assert.equal(await createDoc(`triviaRooms/REMAT/players/${uid}`, { uid, score: 0 }, token), 200);
+        }
+        // The host's client restarts the game the moment the accept list is
+        // as long as the live roster, so the list is a vote count.
+        assert.equal(await updateDoc('triviaRooms/REMAT',
+            { rematchProposedBy: 'guest1', rematchAcceptedBy: ['guest1', 'alice', 'bob'], rematchDeclinedBy: [],
+              rematchProposedAt: new Date() }, GUEST), 403,
+            'a proposer cannot pre-accept on everyone else\'s behalf');
+        assert.equal(await updateDoc('triviaRooms/REMAT',
+            { rematchProposedBy: 'guest1', rematchAcceptedBy: ['guest1'], rematchDeclinedBy: [],
+              rematchProposedAt: new Date() }, GUEST), 200,
+            'the real proposal (proposeRematch)');
+        assert.equal(await updateDoc('triviaRooms/REMAT',
+            { rematchAcceptedBy: ['guest1', 'guest1'] }, GUEST), 403,
+            'a second copy of yourself would be a forged vote');
+        assert.equal(await updateDoc('triviaRooms/REMAT',
+            { rematchAcceptedBy: ['guest1', 'bob'], rematchDeclinedBy: [] }, ALICE), 403,
+            'nobody accepts for somebody else');
+        assert.equal(await updateDoc('triviaRooms/REMAT',
+            { rematchAcceptedBy: ['guest1', 'alice'], rematchDeclinedBy: [] }, ALICE), 200,
+            'alice accepts (respondToRematch writes both lists)');
+        assert.equal(await updateDoc('triviaRooms/REMAT',
+            { rematchAcceptedBy: ['guest1', 'alice'], rematchDeclinedBy: ['alice'] }, ALICE), 403,
+            'and cannot then decline as well');
+        assert.equal(await updateDoc('triviaRooms/REMAT',
+            { rematchProposedBy: 'bob', rematchAcceptedBy: ['guest1', 'alice', 'bob'] }, BOB), 403,
+            'a response cannot rewrite who proposed');
+        assert.equal(await updateDoc('triviaRooms/REMAT',
+            { rematchAcceptedBy: ['guest1', 'alice'], rematchDeclinedBy: ['bob'] }, BOB), 200,
+            'bob declines');
+        assert.equal(await updateDoc('triviaRooms/REMAT',
+            { rematchProposedBy: null, rematchAcceptedBy: [], rematchDeclinedBy: [] }, BOB), 200,
+            'any member may withdraw a dead proposal (cancelOwnProposal, clearRematchStateSoon)');
+        assert.equal(await updateDoc('triviaRooms/REMAT',
+            { rematchAcceptedBy: ['bob'], rematchDeclinedBy: [] }, BOB), 403,
+            'a vote needs a live proposal to vote on');
+        assert.equal(await updateDoc('triviaRooms/REMAT',
+            { rematchProposedBy: null, rematchAcceptedBy: ['guest1', 'alice', 'bob'], rematchDeclinedBy: [] }, HOST), 200,
+            'the host is not bounded by the member rules');
     });
 
     test('decider category pick: only the current decider, only while picking, only the pick keys', async () => {
@@ -696,6 +772,24 @@ if (!setup.ok) {
         assert.equal(await deleteDoc('triviaRooms/PUBAA/players/bob', BOB), 200);
     });
 
+    test('rejoin (audit 2026-09-12 K-2): a returning player clears their own stale stamp, and is not sweepable after', async () => {
+        const closedAt = Date.now() - 45000;
+        assert.equal(await createDoc('triviaRooms/RJOIN',
+            { code: 'RJOIN', hostUid: 'host1', status: 'playing', isPrivate: false }, OWNER), 200);
+        for (const uid of ['alice', 'bob']) {
+            assert.equal(await createDoc(`triviaRooms/RJOIN/players/${uid}`,
+                { uid, score: 0, lastSeen: new Date(closedAt), disconnectedAt: closedAt }, OWNER), 200);
+        }
+        assert.equal(await deleteDoc('triviaRooms/RJOIN/players/bob', HOST), 200,
+            'precondition: past the grace the host sweeps a closed tab\'s doc');
+        assert.equal(await updateDoc('triviaRooms/RJOIN/players/alice',
+            { uid: 'alice', displayName: 'Alice', lastSeen: new Date() }, ALICE,
+            { deleteFields: ['disconnectedAt'] }), 200,
+            'the join write that clears the stamp is the player\'s own doc, so it is allowed');
+        assert.equal(await deleteDoc('triviaRooms/RJOIN/players/alice', HOST), 403,
+            'with the stamp gone the returning player cannot be swept');
+    });
+
     test('F01: the admission proof is no longer readable, so it cannot be replayed', async () => {
         // This test used to assert the OPPOSITE, under the name "gateHash
         // replay boundary is real and documented". Player docs were readable
@@ -729,21 +823,21 @@ if (!setup.ok) {
         assert.ok([200, 409].includes(await createDoc('triviaRooms/PUBAA/players/guest1',
             { uid: 'guest1', displayName: 'Guest', score: 0 }, GUEST)));
         assert.equal(await createDoc('triviaRooms/PUBAA/chat/m1',
-            { uid: 'alice', text: 'hello' }, ALICE), 200);
+            { uid: 'alice', text: 'hello', expiresAt: chatExpiry() }, ALICE), 200);
         assert.equal(await createDoc('triviaRooms/PUBAA/chat/m2',
-            { uid: 'alice', text: 'x'.repeat(280) }, ALICE), 200,
+            { uid: 'alice', text: 'x'.repeat(280), expiresAt: chatExpiry() }, ALICE), 200,
             'exactly 280 chars is the last allowed length');
         assert.equal(await createDoc('triviaRooms/PUBAA/chat/m3',
-            { uid: 'alice', text: 'x'.repeat(281) }, ALICE), 403,
+            { uid: 'alice', text: 'x'.repeat(281), expiresAt: chatExpiry() }, ALICE), 403,
             '281 chars breaches the cap');
         assert.equal(await createDoc('triviaRooms/PUBAA/chat/m4',
-            { uid: 'alice', text: '' }, ALICE), 403, 'empty text denied');
+            { uid: 'alice', text: '', expiresAt: chatExpiry() }, ALICE), 403, 'empty text denied');
         assert.equal(await createDoc('triviaRooms/PUBAA/chat/m5',
-            { uid: 'bob', text: 'spoof' }, ALICE), 403, 'uid must match the author');
+            { uid: 'bob', text: 'spoof', expiresAt: chatExpiry() }, ALICE), 403, 'uid must match the author');
         assert.equal(await createDoc('triviaRooms/PUBAA/chat/m6',
-            { uid: 'alice', text: 42 }, ALICE), 403, 'text must be a string');
+            { uid: 'alice', text: 42, expiresAt: chatExpiry() }, ALICE), 403, 'text must be a string');
         assert.equal(await createDoc('triviaRooms/PUBAA/chat/m7',
-            { uid: 'guest1', text: 'guests can chat' }, GUEST), 200,
+            { uid: 'guest1', text: 'guests can chat', expiresAt: chatExpiry() }, GUEST), 200,
             'chat requires sign-in, not registration');
         assert.equal(await updateDoc('triviaRooms/PUBAA/chat/m1', { text: 'edited' }, ALICE), 403,
             'no edits, even by the author');
@@ -753,10 +847,48 @@ if (!setup.ok) {
             'not even the host can delete chat while the room lives');
     });
 
+    test('chat create: every message carries a bounded expiresAt for the chat TTL policy', async () => {
+        // The room TTL deletes the room DOCUMENT only. Without an expiry of its
+        // own, a room nobody revisited kept its chat indefinitely (112 of 113
+        // stored messages on 2026-09-13), although privacy.html says an
+        // abandoned room is removed within a day. Runs after the test above has
+        // made alice a member, and proves the accepted case first, so the
+        // refusals below are about the expiry and nothing else.
+        assert.equal(await createDoc('triviaRooms/PUBAA/chat/x4',
+            { uid: 'alice', text: 'a day', expiresAt: chatExpiry() }, ALICE), 200,
+            "the app's one-day expiry is accepted");
+        assert.equal(await createDoc('triviaRooms/PUBAA/chat/x1',
+            { uid: 'alice', text: 'no expiry' }, ALICE), 403, 'a message with no expiry is refused');
+        assert.equal(await createDoc('triviaRooms/PUBAA/chat/x2',
+            { uid: 'alice', text: 'expired', expiresAt: new Date(Date.now() - 1000) }, ALICE), 403,
+            'an expiry in the past is refused');
+        assert.equal(await createDoc('triviaRooms/PUBAA/chat/x3',
+            { uid: 'alice', text: 'far', expiresAt: new Date(Date.now() + 90 * 3600_000) }, ALICE), 403,
+            'an expiry beyond 48 hours is refused');
+    });
+
+    test('chat bound (audit 2026-09-12): the display name is capped, and nothing but the four message fields rides along', async () => {
+        assert.equal(await createDoc('triviaRooms/CHATB',
+            { code: 'CHATB', hostUid: 'host1', status: 'lobby', isPrivate: false }, OWNER), 200);
+        assert.equal(await createDoc('triviaRooms/CHATB/players/alice', { uid: 'alice', score: 0 }, ALICE), 200);
+        assert.equal(await createDoc('triviaRooms/CHATB/chat/c1',
+            { uid: 'alice', displayName: 'x'.repeat(20), text: 'hi', sentAt: new Date(), expiresAt: chatExpiry() }, ALICE), 200,
+            'exactly what sendChatMessage writes, with a name at the 20-character cap');
+        assert.equal(await createDoc('triviaRooms/CHATB/chat/c2',
+            { uid: 'alice', displayName: 'x'.repeat(21), text: 'hi', sentAt: new Date(), expiresAt: chatExpiry() }, ALICE), 403,
+            'every client in the room downloads and renders this name');
+        assert.equal(await createDoc('triviaRooms/CHATB/chat/c3',
+            { uid: 'alice', displayName: 42, text: 'hi', expiresAt: chatExpiry() }, ALICE), 403,
+            'the name is a string');
+        assert.equal(await createDoc('triviaRooms/CHATB/chat/c4',
+            { uid: 'alice', displayName: 'Alice', text: 'hi', padding: 'x'.repeat(5000), expiresAt: chatExpiry() }, ALICE), 403,
+            'no other field: the 280-character text cap is pointless if anything else can be attached');
+    });
+
     test('teardown sweep (audit D6): once the room doc is deleted, chat and leftover player docs are sweepable by any signed-in user', async () => {
         assert.equal(await createDoc('triviaRooms/TORN',
             { code: 'TORN', hostUid: 'host1', status: 'finished', isPrivate: false }, OWNER), 200);
-        assert.equal(await createDoc('triviaRooms/TORN/chat/c1', { uid: 'alice', text: 'bye' }, OWNER), 200);
+        assert.equal(await createDoc('triviaRooms/TORN/chat/c1', { uid: 'alice', text: 'bye', expiresAt: chatExpiry() }, OWNER), 200);
         assert.equal(await createDoc('triviaRooms/TORN/players/alice', { uid: 'alice', score: 1 }, OWNER), 200);
         assert.equal(await deleteDoc('triviaRooms/TORN/chat/c1', HOST), 403, 'room still exists: chat stays');
         assert.equal(await deleteDoc('triviaRooms/TORN/players/alice', HOST), 403, 'room still exists, alice is live');
@@ -919,6 +1051,25 @@ if (!setup.ok) {
         assert.equal(await createDoc('maptapRivalsHandles/ghosty',
             { uid: 'guest1' }, GUEST), 403);
         assert.equal(await getDoc('maptapRivalsHandles/nikita', BOB), 200);
+    });
+
+    test('R-3: the handle directory answers an exact lookup for account holders only, and cannot be listed', async () => {
+        // 'nikita' is claimed by alice in the test above.
+        assert.equal(await getDoc('maptapRivalsHandles/nikita', BOB), 200,
+            'finding a rival by handle (tryLinkRival) still works');
+        assert.equal(await getDoc('maptapRivalsHandles/nobody-claimed-this', BOB), 404,
+            'an unclaimed handle answers not-found, which is how "not a member" is decided');
+        assert.equal(await getDoc('maptapRivalsHandles/nikita', GUEST), 403,
+            'an anonymous sign-in (Arena guest play) has no use for the directory');
+        assert.equal(await listDocs('maptapRivalsHandles', BOB), 403,
+            'nobody can enumerate every claimed handle with its account id');
+        assert.equal(await listDocs('maptapRivalsHandles', GUEST), 403);
+        assert.equal(await queryEquals('maptapRivalsHandles', 'uid', 'alice', ALICE), 200,
+            'account deletion finds its own claims (eraseRivalNetworkIdentity)');
+        assert.equal(await queryEquals('maptapRivalsHandles', 'uid', 'alice', BOB), 403,
+            'but nobody can query for another account\'s claims');
+        assert.equal(await deleteDoc('maptapRivalsHandles/nikita', ALICE), 200,
+            'leaving the network releases the claim');
     });
 
     test('F03: a stranger can no longer self-grant a read of a private profile', async () => {

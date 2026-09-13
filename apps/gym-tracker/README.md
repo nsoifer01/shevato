@@ -19,7 +19,7 @@ A comprehensive, mobile-first workout tracking application built with vanilla Ja
 - **Workout History**: Complete history of all workouts with detailed stats, numbered pagination, and clickable workout details; each exercise in the session detail shows a small inline strength-trend chart of its top-set weight over recent sessions, plus any per-exercise notes you logged
 - **Progress Tracking**: View previous workout data (all sets) during the current workout
 - **Your edits are session state**: Typing a weight, reps or hold into an unfinished set records it on the active workout immediately. Prefill and carry-down only ever INITIALIZE an untouched row; once you have edited one, no later re-render (completing or un-completing another set, adding a set, collapsing the card, the feel prompt appearing) rebuilds it from defaults, and it survives an unexpected reload and Resume
-- **Previous-session prefill**: A planned set starts from the lifter's OWN last session, set for set - set 1 from set 1, set 2 from set 2, falling back to the most recent set when the count differs. The app does not decide what you should lift: the automatic next-weight recommendation ("+X suggested" / deload badges, "Use last weight", the per-set "Repeat weight" warning) was removed on 2026-08-20 at the owner's request. Historical analytics are unaffected - Best Set, Top weight, e1RM, the 90-day e1RM sparkline and the "N sessions - +X% vs N ago" progression figure all remain
+- **Previous-session prefill**: A planned set starts from the lifter's OWN last session, set for set - set 1 from set 1, set 2 from set 2, matched by set NUMBER rather than by the order the sets were ticked, so un-ticking and re-ticking a set (or ticking set 3 before set 2) never shifts them; a set that session did not have falls back to its last set. The app does not decide what you should lift: the automatic next-weight recommendation ("+X suggested" / deload badges, "Use last weight", the per-set "Repeat weight" warning) was removed on 2026-08-20 at the owner's request. Historical analytics are unaffected - Best Set, Top weight, e1RM, the 90-day e1RM sparkline and the "N sessions - +X% vs N ago" progression figure all remain
 - **Weight/Rep Steppers**: One-tap minus/plus buttons flank every planned row's weight and reps inputs; weight steps by the exercise's increment, reps by 1 (floored at 0), without raising the phone keyboard, and plate hints plus the "same as last time" chip stay live
 - **In-Workout Exercise Swap**: A swap button on each exercise header substitutes a different exercise for THIS session only (searchable picker pre-filtered to the same category); the saved program is never touched, swapping with logged sets asks for confirmation, and the substitute's sets count toward its own history and PRs
 - **Warm-Up Ramp**: Barbell and trap-bar exercises whose working weight meets a configurable threshold show a collapsed warm-up strip above set 1 (empty bar, then percentage steps rounded to loadable plates) with one-tap ticks; warm-ups never count toward set completion, volume, or PRs
@@ -109,7 +109,7 @@ treated differently on purpose:
 | Pages | Count | Robots | In `sitemap-exercises.xml` |
 |---|---:|---|---|
 | Individual exercises | 514 | `noindex, follow` | no |
-| Muscle + equipment taxonomy | 51 | `index, follow` | yes |
+| Muscle + equipment taxonomy | 54 | `index, follow` | yes |
 | `/exercises/` directory index | 1 | `index, follow` | yes |
 
 The individual pages are templated, roughly 2,500 characters each, and compete
@@ -123,8 +123,9 @@ The `follow` half matters: these pages link to the app, the taxonomy pages and
 the index, all of which stay indexable, so their internal link equity keeps
 flowing to pages that can realistically rank. They are also kept OUT of the
 sitemap, because a sitemap is a request to index and listing a page you have
-told the crawler to skip is a contradiction that wastes crawl budget. That took
-the exercise sitemap from 565 URLs to 52.
+told the crawler to skip is a contradiction that wastes crawl budget. That keeps
+the exercise sitemap to 55 URLs (the index and the 54 taxonomy pages) instead
+of 569.
 
 The taxonomy and index pages are deliberately exempt: they are list/hub pages
 that aggregate content, the same role the Rising Shows shape hubs play. The
@@ -273,7 +274,15 @@ Designed for gym environments with low lighting:
   (device storage full, evicted storage, private mode), a persistent red
   banner appears at the top of the workout saying the workout is not being
   saved, and offers a backup download that includes the in-progress session
-  itself. It stays until a write succeeds, because the condition does
+  itself. It stays until a write succeeds, because the condition does.
+  Pause is refused the same way: the workout stays running with the banner up
+  rather than being dropped
+- Every other store reports a refused write too. Saving or deleting a
+  program, saving settings, creating or deleting a custom exercise, saving or
+  deleting a measurement or a goal, deleting a workout or an exercise's
+  history, and Save as Program all say that device storage is full instead of
+  claiming success, keep the editor or form open with what was entered, and
+  leave what is on screen matching what is stored
 - `gymTrackerActiveWorkoutLock` ({ tabId, at }) records which tab is driving
   the live workout, refreshed on a 5 s heartbeat and released on pause,
   finish and discard. A second tab with a fresh foreign lock is told the
@@ -492,8 +501,10 @@ Five loading patterns are in use; pick the first that fits:
    a name into a `showConfirmModal` message without `escapeHtml()`, since that
    message is rendered with `innerHTML`.
 5. **`node:vm` harnesses** for classic scripts like `sw.js`
-   (`sw-offline-behavior`, plus the cross-app activate pins in
-   `apps/trip-planner/tests/sw-activate.test.mjs`).
+   (`sw-offline-behavior`, which also replays the real `netlify.toml`
+   redirect rules, plus the cross-app activate pins in
+   `apps/trip-planner/tests/sw-activate.test.mjs`) and the inline update
+   script in `index.html` (`sw-update-reload`).
 
 Browser regressions that no node layer can reach live in
 `e2e/audit-2026-08.mjs` (registered in `tests/browser/run.mjs`, run with

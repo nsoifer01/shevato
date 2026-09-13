@@ -40,7 +40,10 @@ export async function run({ base, cdpPort }) {
     const switched = await waitForExpr(s, `document.getElementById('board').innerText.includes('Beta kickoff') && !document.getElementById('board').innerText.includes('Alpha base camp')`, { timeout: 6000 });
     await t('tp-trips F: switching renders the other trip', switched, '', s);
     db = await readDb(s);
-    await t('tp-trips F: switch persists as the active trip', db.activeTripId === tripB.id, '', s);
+    // navigation stays on this device: remembered locally, never written into the synced trips value
+    await t('tp-trips F: switch is remembered on this device, not in the synced value',
+      (await evaluate(s, `localStorage.getItem('trip-planner:open-trip')`)) === tripB.id && db.activeTripId === tripA.id,
+      `open-trip=${await evaluate(s, `localStorage.getItem('trip-planner:open-trip')`)} synced=${db.activeTripId}`, s);
 
     await addItemViaUi(s, { type: 'note', title: 'Added on Beta', start: iso(51) });
     db = await readDb(s);
@@ -80,19 +83,28 @@ export async function run({ base, cdpPort }) {
     const sawBack = await waitForExpr(s1, `(()=>{ const r=document.querySelector('.tp-row[data-id="${ramenId}"] .status-sel'); return r && r.value === 'booked' })()`, { timeout: 6000 });
     await t('tp-trips H: tab A re-renders after a save in tab B', sawBack, '', s1);
 
-    /* G1: settings dialog opened on Alpha; active trip switched to Beta
-       externally; Save must edit Alpha, never Beta */
+    /* G1: settings dialog opened on Alpha in tab A; tab B switches to Beta and
+       renames it. Which trip is open belongs to each page (2026-09-12 audit,
+       T-2), so tab A stays on Alpha while Beta's rename still reaches it, and
+       Save edits Alpha, never Beta */
     await menuAct(s1, 'rename-trip');
     await t('tp-trips G: Trip settings opens', (await overlayOpenId(s1)) === 'tripOverlay', '', s1);
-    await setValue(s2, '#tripSelect', tripB.id); // external switch while the dialog is open
-    await waitForExpr(s1, `document.getElementById('tripSelect').value === ${JSON.stringify(tripB.id)}`, { timeout: 6000 });
+    await setValue(s2, '#tripSelect', tripB.id); // the other tab switches while the dialog is open
+    await waitForExpr(s2, `document.getElementById('board').innerText.includes('Beta kickoff')`, { timeout: 6000 });
+    await menuAct(s2, 'rename-trip');
+    await setValue(s2, '#inTripName', 'Beta renamed');
+    await clickSel(s2, '#tripSaveBtn', { settle: 800 });
+    const sawRename = await waitForExpr(s1, `[...document.getElementById('tripSelect').options].some(o => o.textContent.includes('Beta renamed'))`, { timeout: 6000 });
+    await t('tp-trips G: the other tab\'s edit reaches tab A', sawRename, '', s1);
+    await t('tp-trips G: ...while tab A stays on the trip it had open',
+      (await evaluate(s1, `document.getElementById('tripSelect').value`)) === tripA.id, '', s1);
     await setValue(s1, '#inTripName', 'Alpha renamed');
     await clickSel(s1, '#tripSaveBtn', { settle: 800 });
     let db = await readDb(s1);
     await t('tp-trips G: stale settings dialog edits the trip it was opened on',
       db.trips.find(x => x.id === tripA.id).name === 'Alpha renamed', JSON.stringify(db.trips.map(x => x.name)), s1);
-    await t('tp-trips G: ...and never the trip that became active meanwhile',
-      db.trips.find(x => x.id === tripB.id).name === 'Trip Beta', JSON.stringify(db.trips.map(x => x.name)), s1);
+    await t('tp-trips G: ...and never the other tab\'s trip',
+      db.trips.find(x => x.id === tripB.id).name === 'Beta renamed', JSON.stringify(db.trips.map(x => x.name)), s1);
 
     /* G2: item edit dialog open while the item is deleted externally */
     await setValue(s1, '#tripSelect', tripA.id);
@@ -123,7 +135,7 @@ export async function run({ base, cdpPort }) {
     await clickSel(s1, '#tripSaveBtn', { settle: 800 });
     db = await readDb(s1);
     await t('tp-trips G: saving settings of an externally deleted trip mutates nothing',
-      !db.trips.some(x => x.name === 'Ghost trip') && db.trips.find(x => x.id === tripB.id).name === 'Trip Beta',
+      !db.trips.some(x => x.name === 'Ghost trip') && db.trips.find(x => x.id === tripB.id).name === 'Beta renamed',
       JSON.stringify(db.trips.map(x => x.name)), s1);
     await t('tp-trips G: ...and reports the trip is gone', /no longer/i.test(await toastText(s1) || ''), await toastText(s1), s1);
 

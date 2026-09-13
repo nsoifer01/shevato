@@ -1641,7 +1641,8 @@ export async function run({ base, cdpPort, base2 = null }) {
       // reason the ghost scenario does: a browser may cancel an unload-time
       // write, and this is about what happens AFTER the stamp exists.
       const stampPath8 = `triviaRooms/${code8}/players/${bUid8}`;
-      await ownerPatch(stampPath8, { disconnectedAt: Date.now() });
+      const stampedAt8 = Date.now();
+      await ownerPatch(stampPath8, { disconnectedAt: stampedAt8 });
       const stamped8 = !!(await ownerGetDocRaw(stampPath8, PAGE_PROJECT)).doc?.fields?.disconnectedAt;
       t('emulator (refresh mid-game): the outgoing tab\'s disconnect stamp is in place before the reload', stamped8);
 
@@ -1669,9 +1670,17 @@ export async function run({ base, cdpPort, base2 = null }) {
       t('emulator (refresh mid-game): rejoining CLEARS the disconnect stamp instead of carrying it',
         cleared8 === true, `result=${cleared8}`);
 
-      // The moment the sweep used to fire.
-      await sleep(31000);
-      const doc8 = await ownerGetDocRaw(stampPath8, PAGE_PROJECT);
+      // Watch the doc across the moment the sweep used to fire: the original
+      // stamp's 30 s grace, plus slack for the host's 500 ms clock and the
+      // delete round-trip. Anchored on the stamp itself rather than a fixed
+      // 31 s sleep after the rejoin, and it stops at the first sign of the
+      // regression (the doc swept, or stamped again).
+      const sweepDeadline8 = stampedAt8 + 30000 + 5000;
+      let doc8 = await ownerGetDocRaw(stampPath8, PAGE_PROJECT);
+      while (Date.now() < sweepDeadline8 && doc8.status === 200 && !doc8.doc?.fields?.disconnectedAt) {
+        await sleep(500);
+        doc8 = await ownerGetDocRaw(stampPath8, PAGE_PROJECT);
+      }
       t('emulator (refresh mid-game): past the 30s grace the refreshed player is still in the room',
         doc8.status === 200 && !doc8.doc?.fields?.disconnectedAt,
         `status=${doc8.status} stamp=${JSON.stringify(doc8.doc?.fields?.disconnectedAt || 'absent')}`);

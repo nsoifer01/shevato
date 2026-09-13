@@ -26,6 +26,7 @@ Plans are scored over a rolling horizon, and the default is **5 gameweeks**. It 
 - It does **not** publish selling prices. `now_cost` is the wrong number to spend against: FPL takes half the profit on any player who has risen since you bought him. Purchase prices are reconstructed from `entry/{id}/transfers` and the sell-on rule is applied on top (`js/engine/squad.js`).
 - Its `entry_history.value` is the fifteen at their **listed** prices plus the bank, as a **snapshot frozen at that gameweek's deadline**: it is not what the squad would sell for, and it does not move when prices do. SQUAD VALUE in the header is therefore the reconstructed total (the fifteen at their selling prices, plus the bank), which sits below FPL's figure whenever an owned player has risen since purchase. The `value_mismatch` check compares like with like: the fifteen at their listed prices rolled back to the deadline with `cost_change_event` (raw listed prices when the picks are not the current gameweek's), plus the bank, against `value`. An owned riser and an ordinary overnight move are therefore silent, while a squad or bank that disagrees with FPL (a transfer missing from the payload) is reported. It checks the fifteen and the bank only: `value` carries no purchase prices, so nothing FPL serves can validate the selling-price reconstruction. The frozen figure is used for display in one case only: an in-season payload that arrives with no picks, where there is nothing to reconstruct from.
 - It does **not** publish your free transfer count. That is replayed from `entry/{id}/history` by `js/engine/transfer-state.js`, the ONE module allowed to know the transfer arithmetic: unlimited before the GW1 deadline (a state, not a number), then 1 per gameweek, rolling to a cap of 5, with wildcard and free hit weeks preserving the banked count. Every other module (planner, transfer search, chips, replay, UI wording) consumes it rather than re-deriving it; the off-by-one that lived in the scattered copies contaminated every replay until 2026-08-11.
+- It does **not** show a gameweek's transfers or chip until that gameweek's deadline. `entry/{id}/transfers` and `history.chips` list a move or an activated chip only once its deadline has passed (measured 2026-09-13), so transfers made, or a Wildcard or Free Hit activated, for the gameweek being planned are invisible to the app. See "The squad you own, not the squad you fielded".
 - It **does** publish its own short-term price-change predictions, per player, and the app reads them rather than calling any predictor site. `price_change_percent` is signed progress towards a change, `price_change_projections` is three entries (`offset` 0, 1, 2 = tonight, tomorrow, the day after) of `projected_percent` and an integer `likelihood`, `price_change_locked_until` marks a player who recently moved and cannot move again yet, and `price_change_calibrating` says the prediction is still settling. `game_config.settings.price_change_deadlines` gives the exact moments changes are applied, so no time of day is ever hardcoded. See "Price changes" below.
 - Two rules genuinely are not in the payload and are the only hardcoded ones, both in `js/engine/rules.js` with a comment saying so: the defensive-contribution thresholds (10 actions for a defender, 12 for a midfielder or forward) and the 4-point transfer hit. Everything else, including the scoring table, squad size, budget, club limit, sell-on fee, free-transfer cap, position limits, chip windows and the season label, is read from `bootstrap-static`.
 
@@ -256,14 +257,18 @@ Responses are cached in Netlify Blobs, so a thousand visitors cost roughly one u
 
 The browser cache mirrors the proxy's deadline policy: inside the six hours
 before a deadline its TTLs collapse to two minutes as well, read from the
-deadline in the bootstrap it already holds, so a stale local copy cannot mask a
-fresher shared one in the hour that matters. Freshness is measured from a
+deadline in the bootstrap it already holds (on a cold page load a stored copy
+old enough for the collapse to expire waits for the bootstrap already on its
+way), so a stale local copy cannot mask a fresher shared one in the hour that
+matters. Freshness is measured from a
 locally recorded receipt time rather than by subtracting a server timestamp from
 the device clock, so a device with a wrong clock neither pins the cache forever
 nor expires good data instantly; the age SHOWN is still the data's age. A
 transient 5xx or aborted request is retried once with jitter, inside the same
-timeout budget. The bootstrap is held in memory only, because at 2.6 MB it is
-over half the origin's localStorage budget and every other app on the domain
+timeout budget. A 429 is not: from the proxy it is always the function's own
+quota, which a retry half a second later is certain to meet again. The
+bootstrap is held in memory only, because at 2.6 MB it is over half the
+origin's localStorage budget and every other app on the domain
 shares it; when a write does fail, the oldest cached endpoint is evicted rather
 than the whole cache.
 
@@ -440,8 +445,10 @@ from a match that was over. Every count of matches played now counts a
 provisional full time, because a match that has been played has been played.
 
 Clubs do not move through a gameweek together, either. `clubsLevel` says whether
-every club has played the same number of matches; until it is true, players are
-not comparable across the league.
+every club has played at least once (or none has); until it is true, some clubs'
+players carry observed rates while the rest carry untouched priors, so players
+are not comparable across the league. Later in a season clubs are routinely a
+match apart, and each player is read against his own club's matches.
 
 ## Which season the numbers describe
 
@@ -617,15 +624,23 @@ ticking.
 
 ## The squad you own, not the squad you fielded
 
-`entry/{id}/event/{gw}/picks` is frozen at that gameweek's deadline. A transfer
-made for the next gameweek shows up immediately on `entry/{id}/transfers` and
-nowhere else, so the picks alone describe a squad the manager no longer has.
-`buildSquadState` overlays the transfers belonging to the gameweek being
-planned: the players change, the bank moves by the prices in the transfer rows,
-and the free transfers already spent come off the count through
-`transfer-state.js`. Without it the planner recommends a move that has already
-been made and understates a hit by four points for every free transfer already
-used.
+`entry/{id}/event/{gw}/picks` is frozen at that gameweek's deadline. When the
+payloads carry transfers belonging to the gameweek being planned,
+`buildSquadState` overlays them: the players change, the bank moves by the
+prices in the transfer rows, and the free transfers already spent come off the
+count through `transfer-state.js`. Without it the planner would recommend a move
+that has already been made and understate a hit by four points for every free
+transfer already used.
+
+**What it cannot see.** FPL's public `entry/{id}/transfers` and
+`entry/{id}/history` do not list a gameweek's transfers or its chip until that
+gameweek's deadline has passed (measured 2026-09-13; FINDINGS "What the public
+endpoints hide until a deadline"). Before the deadline the planner therefore
+works from the squad and free transfers as they stood at the LAST deadline: a
+manager who has already transferred, or activated a Wildcard or Free Hit, for
+the gameweek being planned is not told about it, and may be recommended a move
+he has already made. The overlay applies in the minutes after a deadline while
+the cached bootstrap still names that gameweek as next.
 
 ## Answering "why", "why not" and "how sure"
 
@@ -750,6 +765,9 @@ Four keys, all in the `fplPlannerApp` sync namespace registered in
 `fplPlannerSquadSnapshot`. The bulk FPL data is NOT synced: it is large, public
 and identical for every user, so `js/data/api.js` caches it under the unsynced
 `fpl-planner:cache:` prefix. Signed out, everything works from localStorage.
+One more key sits outside the namespace: `fplPlannerSeasonBaseline.v1`
+(`js/engine/baseline.js`), the last complete season's public per-player totals
+kept as the baseline. It is not synced, and neither removal below clears it.
 
 Sync trouble is shown by the site's shared widget, `assets/js/sync-status.js`,
 loaded as a classic script before `firebase-config.js` exactly as the other apps

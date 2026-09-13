@@ -51,6 +51,17 @@ A first draft of that copy over-promised against `privacy.html`, which is bindin
   applying a merge - was published over and gone, with nothing to undo from in
   the tab that made the edit. Never reintroduce a parked copy of the db;
   storage is the owner for exactly as long as the view is not.
+- **Closing a control in the shared view means closing the FUNCTION, not only
+  hiding it.** The phone More menu proxies a programmatic `click()` to toolbar
+  controls, and a `display:none` button still fires on a programmatic click (a
+  disabled one does not), so the assistant and the whole-trip shift stayed
+  reachable on every shared link until 2026-09-13 (audit T-4): "Add to trip"
+  painted an item that existed nowhere, and each message spent the site's
+  shared assistant quota on a trip the visitor cannot edit. `openAssist`,
+  `sendMessage`, `acceptProposal`, `openShiftModal` and the visa checker's add,
+  remove and reminder writes refuse in shared mode, and CSS hides the matching
+  More menu rows and the add-a-country field. Pinned by
+  `tests/shared-view-writes.test.mjs`.
 - **Share links are code**: the whole trip rides deflate+base64url in the URL
   fragment. `slimTripForShare` is an explicit field allowlist; essentials,
   packing, documents and passport data stay out BY that allowlist, so adding
@@ -291,13 +302,54 @@ and coordinate have different rules and must never be given one lifetime.
 
 ## Sync model (and its sharp edges)
 
-- One synced key for the whole planner (`trip-planner:v1`) plus
-  `trip-planner:timefmt`, per-key last-writer-wins via `sync-system/`. There
-  is NO structural merge: two devices editing different trips concurrently
-  lose one device's whole edit set. Softening on the receive side: db reload,
-  undo-history reset, dialogs stay open but their SAVE paths re-check the
-  target still exists (`ui.editingId` for items, `ui.tripEditId` for the trip
-  dialog - both added guards, keep them when adding dialogs).
+- One synced key for the whole planner (`trip-planner:v1`) plus the time,
+  distance and temperature preferences, through `sync-system/`. Since
+  2026-09-05 the engine orders writes by revision, resolves a disagreement
+  with a three-way merge, keeps the losing side as a recovery copy under
+  `shevato:sync-conflict:*` and raises a conflict notice (root FINDINGS). For
+  THIS app that merge works on the top-level keys of `{version, activeTripId,
+  trips}`, so `trips` is ONE value: two devices editing different trips
+  concurrently still cannot both keep their edits, but the lost side is now
+  recoverable and announced instead of silently gone. A per-trip merge would
+  need the trips stored as a record collection, which this schema is not.
+  Softening on the receive side: db reload, undo-history reset, and dialogs
+  stay open while every SAVE path re-checks its target by id (next bullet).
+- **A dialog writes to the trip it was opened for, or to nothing (2026-09-13,
+  audit T-1).** `ui.editingId` (items) and `ui.tripEditId` (trip settings)
+  were the first guards and `ui.packingTripId` followed on 2026-08-22, while
+  the rest still read `activeTrip()` at the moment Save was pressed:
+  essentials, shift (whole trip, and one item, whose missing anchor closed the
+  dialog in silence), copy day, visa (add or remove a country, add a
+  reminder), the item form's ADD path, and accepted proposal cards, where the
+  booking reader's cards had no guard of any kind. After a delivery that
+  switched the open trip, or deleted it, each of those saved onto a bystander
+  trip. They all go through `tripForWrite(id, overlay)` now: the id is pinned
+  when the dialog opens (a proposal card carries `data-trip-id` from the render
+  that validated it) and resolved at the write, and a trip that is gone refuses
+  with "That trip is no longer here, so nothing was saved" and writes nothing.
+  A new dialog that writes to a trip uses it too. Pinned by
+  `tests/dialog-trip-pins.test.mjs`, which drives the real app.js (see Testing).
+- **Which trip is open is device-local navigation (2026-09-13, audit T-2).**
+  It used to be `activeTripId` inside the synced value, so any save on another
+  device silently switched the trip on this screen (which is also what made
+  the wrong-trip writes above reachable without any deletion), and every trip
+  switch was itself an upload. The page now holds `openTripId`, remembered
+  under `trip-planner:open-trip`, which is deliberately NOT in
+  app-sync-init.js's key list (the engine queues only registered keys). When
+  it is unset or names a trip that is gone, `openTripFallback()` takes this
+  device's last choice, then the synced `activeTripId`, then the first trip: a
+  device with no choice of its own opens the trip the value names, and a
+  device whose open trip is deleted elsewhere moves and says so ("The trip you
+  had open was deleted on another device"). Receiving a value never writes the
+  synced key. Compatibility is why `activeTripId` is still in the value: copies
+  of the app from before this read it, and their `ensureTrip()` rewrites a
+  missing or dangling one on receipt. New code leaves it exactly as it arrived,
+  so it never moves an old-code device and ignores what one writes there, and
+  `save()` repairs it only when it names no trip. Tabs of one browser no longer
+  follow each other's switches either: the key only decides the NEXT page load
+  on the device. Never add `trip-planner:open-trip` to the synced list, and do
+  not drop `activeTripId` from the value while a pre-2026-09-13 copy can still
+  be running. Pinned by `tests/open-trip-device-local.test.mjs`.
 - Same-device multi-tab (esp. signed out) is covered by a foreign-change
   handler (added 2026-08-13 as a raw `storage` listener) that mirrors
   remote-merge handling. The `localStorageSync` event only fires signed-in
@@ -333,6 +385,13 @@ and coordinate have different rules and must never be given one lifetime.
 - Known remaining edge (documented, not fixed): a repair write during remote
   apply is swallowed by the sync echo lock, and the next reconcile can fire a
   spurious `remote` event that clears undo history. Rare, self-heals.
+- Known remaining edge (audit F9, P3, not fixed): the confirm dialogs for an
+  item delete, clear day, bulk delete and bulk currency change capture the
+  trip and item OBJECTS when they open. If a delivery replaces the db before
+  Yes, the action mutates those orphans, `save()` writes the new db unchanged,
+  and the success toast still fires. No wrong-trip write, but a delete that
+  did not happen reads as done. The fix is to re-resolve by id inside the
+  confirm's action, the way `tripForWrite` does.
 - **The floor trip is a placeholder, and an early edit never overwrites unread
   trips (2026-09-13, audit T-3).** On a fresh device `ensureTrip()` saves "My
   trip" at boot, before any user gesture, so the sync engine records it as the
@@ -353,7 +412,15 @@ and coordinate have different rules and must never be given one lifetime.
 - Negative cost = refund, deliberately legal everywhere; display always says
   "Refund" with magnitude (`refundParts`), storage keeps the sign.
 - `roundMoney` is symmetric half-away-from-zero; every entry point rounds to
-  cents so displayed rows always sum to displayed totals.
+  cents, so within ONE currency displayed rows always sum to displayed totals.
+- Mixed currencies are a stated property, not a bug: each foreign row is
+  converted and shown rounded, while the total sums the unrounded conversions
+  (`sumInCurrency`; the CSV's `costIn<base>` is `toFixed(2)` per row). Measured
+  in the 2026-09-12 audit over 200 random trips at live-shaped rates: 10
+  all-foreign items drift by up to 3 cents, 40 by up to 5, 100 by up to 9 and
+  340 by up to 18; trips priced mostly in their own currency drift far less.
+  Summing rounded rows instead would disagree with a converted budget by the
+  same cents. Leave it.
 - Unconvertible amounts are NEVER silently dropped from a claim: every block
   (Confirmed, per-traveler, cost-by-type, budget verdict) carries an
   `unconverted` side channel and flags amber.
@@ -2910,10 +2977,11 @@ seventh storage type looks obviously right and is a data-loss bug:
 
 - `repairTrips` coerces an unknown `type` to `'note'` - in EVERY already
   deployed copy of app.js, including the one in a tab someone left open.
-- Sync is whole-key last-writer-wins over the entire db (see "Sync model").
+- Sync treats the whole trip db as one value (see "Sync model"), so whichever
+  side a disagreement resolves to replaces the other's items wholesale.
 
 So one stale client seeing `type: 'food'` would rewrite the item to a note,
-losing the type AND the category, and LWW would push that back over the good
+losing the type AND the category, and sync would push that back over the good
 copy. An unknown FIELD survives all of it: old `repairTrips` never looks at
 `meal`, old saves round-trip it, old sync carries it. The cost is one
 indirection (`storageTypeOf`, `MODAL_TYPE_META`) and it is worth it.
@@ -3577,12 +3645,15 @@ selected". Filters are deliberately NOT reset by it.
 edited a stranger's list or threw on `undefined.push` and saved nothing in
 silence. It now records `ui.packingTripId` and re-checks it on every write, the
 same contract `ui.editingId` and `ui.tripEditId` already follow: the dialog stays
-open, the WRITE re-checks its target.
+open, the WRITE re-checks its target. Six more writing paths still had the bug
+until 2026-09-13; they all share `tripForWrite` now (see "Sync model").
 
-**A promise an undo cannot keep.** Deleting a trip purges its attached documents
-immediately (they live in IndexedDB against the item ids), while the confirm
-said only "You can undo this until you reload the page". The item and bulk
-deletes had always named that cost; the trip delete now does too.
+**A promise an undo cannot keep.** Deleting a trip used to purge its attached
+documents immediately (they live in IndexedDB against the item ids), while the
+confirm said only "You can undo this until you reload the page". This round
+made the confirm name that cost; the D2 fix after it removed the cost instead:
+the delete keeps the documents and `purgeOrphanDocs()` sweeps them at the next
+boot, so Undo hands the trip back with its attachments (see "Sync model").
 
 **Two failures wearing one symptom.** "No exchange rate for JPY ... re-enter it
 in a currency the rates cover" was printed when the rate table had simply never
@@ -3821,6 +3892,17 @@ product defect - production returns them correctly.
   `netlify/functions` or root `npm test`), and `npm run test:trip-planner:e2e`
   (browser E2E under `e2e/`, below). Never move a pure-logic assertion into
   E2E just because E2E exists.
+- **app.js is no longer browser-only to test.** `tests/app-harness.mjs` boots
+  the REAL `js/app.js` and `js/trip-logic.js` in a small fake DOM under
+  node:vm, for decisions that live only in app.js: which trip a dialog writes
+  to, what a sync delivery or another tab does to the open trip, what a shared
+  view may do. It drives the listeners a click reaches and observes storage,
+  the innerHTML strings the app assigns and the toasts it appends, never
+  layout. Timers run only on `runTimers()`, fetch is recorded and refused, and
+  the device is offline, so a run is deterministic. Its `target()` answers
+  `closest()` for the exact selector strings a handler asks for, so renaming a
+  selector in app.js fails those tests loudly rather than passing them
+  vacuously. Layout, focus and real CSS still belong to e2e.
 - When touching an item field, walk the full pathway list: render (both
   views), edit modal round-trip, duplicate, undo, JSON/CSV/ICS export,
   share link, sync, filters, search, AI proposals, templates, repairDb.
@@ -3911,10 +3993,11 @@ product defect - production returns them correctly.
   the leaked-storage trap in the Places section).
 - **What stays out of E2E**: activate-event cache eviction and update-toast
   messaging (tests/sw-activate.test.mjs, driving a real redeploy is flaky),
-  cross-DEVICE sync (whole-key LWW via Firestore is a structural limit, see
-  "Sync model"; E2E covers the same-browser two-tab reconciliation and the
-  stale-dialog guards, which are the parts testable locally), and anything
-  computable (trip-logic tests own it).
+  cross-DEVICE sync (the whole trip db is one synced value, a structural
+  limit, see "Sync model"; E2E covers the same-browser two-tab reconciliation
+  and the stale-dialog guards, and the app-harness suites deliver another
+  device's value to the real app.js in node), and anything computable
+  (trip-logic tests own it).
 - Failure artifacts: one screenshot per failing check in
   `.screenshots/e2e-trip-planner/` (gitignored), path printed in the result
   detail. Green runs write nothing.

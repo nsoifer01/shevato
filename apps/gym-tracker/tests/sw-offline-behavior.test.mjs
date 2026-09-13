@@ -41,9 +41,19 @@ class FakeRequest {
     }
 }
 
+/**
+ * Minimal Response: only the static `redirect()` the worker uses to hand a
+ * navigation its redirect. A real one has no URL list and `redirected: false`.
+ */
+class FakeResponse {
+    static redirect(url, status = 302) {
+        return { status, url: '', redirected: false, ok: false, headers: new Map([['Location', url]]) };
+    }
+}
+
 const stripSearch = (href) => href.split('?')[0];
 
-function makeFakeCaches() {
+function makeFakeCaches(network = null) {
     const stores = new Map(); // cacheName -> Map(url -> response)
     const addAllRequests = [];
     const storeFor = (name) => {
@@ -58,12 +68,17 @@ function makeFakeCaches() {
             const store = storeFor(name);
             return {
                 addAll: async (reqs) => {
-                    // Real addAll fetches each URL; here every fetch "succeeds"
-                    // with a synthetic response so install can complete.
+                    // Real addAll fetches each URL (following redirects) and
+                    // stores what came back. By default every fetch "succeeds"
+                    // with a synthetic response so install can complete; with
+                    // a `network` it stores that network's answer, redirects
+                    // included.
                     reqs.forEach((r) => {
                         addAllRequests.push(r);
                         const u = typeof r === 'string' ? r : r.url;
-                        store.set(keyOf(r), { ok: true, body: `precached:${u}`, clone() { return this; } });
+                        store.set(keyOf(r), network
+                            ? network(keyOf(r))
+                            : { ok: true, body: `precached:${u}`, clone() { return this; } });
                     });
                 },
                 match: async (req, opts = {}) => {
@@ -82,9 +97,12 @@ function makeFakeCaches() {
     return { caches, stores, storeFor, addAllRequests };
 }
 
-/** Load sw.js into a vm sandbox. `online` is a mutable switch for fetch. */
-function loadWorker() {
-    const { caches, stores, storeFor, addAllRequests } = makeFakeCaches();
+/**
+ * Load sw.js into a vm sandbox. `online` is a mutable switch for fetch;
+ * `network(url)` replaces the default always-200 origin.
+ */
+function loadWorker({ network = null } = {}) {
+    const { caches, stores, storeFor, addAllRequests } = makeFakeCaches(network);
     const listeners = {};
     const state = { online: true, fetches: [] };
     const sandbox = {
@@ -97,10 +115,13 @@ function loadWorker() {
         caches,
         URL,
         Request: FakeRequest,
+        Response: FakeResponse,
         fetch: async (req) => {
             state.fetches.push(req);
             if (!state.online) throw new TypeError('Failed to fetch (offline)');
-            return { ok: true, body: `network:${typeof req === 'string' ? req : req.url}`, clone() { return this; } };
+            const url = typeof req === 'string' ? req : req.url;
+            if (network) return network(url);
+            return { ok: true, body: `network:${url}`, clone() { return this; } };
         },
         console,
     };
@@ -303,4 +324,130 @@ test('the background refresh is held open with waitUntil so an idle worker canno
     assert.equal(extended.length, 1, 'exactly one extend-lifetime promise: the refresh');
     assert.equal(worker.storeFor(RUNTIME_NAME).get(url).body, `network:${url}`,
         'and the refresh has landed in the runtime cache by the time it settles');
+});
+
+// ---------------------------------------------------------------------------
+// Redirected responses must never answer a navigation (audit G-5).
+//
+// Production 301s every `/apps/<app>/index.html` and every
+// `/exercises/.../index.html` to its directory URL (netlify.toml). fetch() and
+// cache.addAll() FOLLOW that redirect, so what comes back is a 200 with
+// `redirected: true`. A navigation request's redirect mode is 'manual', and
+// respondWith() with a redirected response is a network error, so with the
+// worker installed every one of those URLs showed the browser's error page:
+// `./index.html` was precached through the 301, and the runtime path served
+// and cached the redirected answer for the rest.
+//
+// The fake origin below applies the REAL redirect rules read from
+// netlify.toml, so a new rule or a new precache entry is judged the way
+// production would judge it.
+// ---------------------------------------------------------------------------
+
+const TOML = fs.readFileSync(path.join(path.dirname(SW_PATH), '..', '..', 'netlify.toml'), 'utf8');
+const REDIRECTS = [...TOML.matchAll(/\[\[redirects\]\]([\s\S]*?)(?=\n\[|$)/g)]
+    .map(([, block]) => ({
+        from: /\bfrom\s*=\s*"([^"]+)"/.exec(block)?.[1],
+        to: /\bto\s*=\s*"([^"]+)"/.exec(block)?.[1],
+        status: Number(/\bstatus\s*=\s*(\d+)/.exec(block)?.[1] || 301),
+    }))
+    .filter(r => r.from && r.to && r.status >= 300 && r.status < 400);
+
+/**
+ * Where production redirects `pathname`, or null. Netlify's first matching
+ * rule wins; `:name` matches one path segment and a trailing `*` the rest.
+ */
+function redirectTarget(pathname) {
+    const segs = pathname.split('/');
+    for (const rule of REDIRECTS) {
+        const pat = rule.from.split('/');
+        const splat = pat.at(-1) === '*';
+        if (splat ? segs.length < pat.length - 1 : segs.length !== pat.length) continue;
+        const params = {};
+        const matched = pat.every((part, i) => {
+            if (splat && i === pat.length - 1) { params.splat = segs.slice(i).join('/'); return true; }
+            if (part.startsWith(':')) { params[part.slice(1)] = segs[i]; return segs[i] !== ''; }
+            return part === segs[i];
+        });
+        if (matched) return rule.to.replace(/:(\w+)/g, (_, k) => params[k] ?? `:${k}`);
+    }
+    return null;
+}
+
+/** The production origin: a followed redirect comes back as a redirected 200. */
+function netlify(url) {
+    const u = new URL(url);
+    const target = redirectTarget(u.pathname);
+    const finalUrl = target ? new URL(target, ORIGIN).href : u.href;
+    return { ok: true, status: 200, redirected: !!target, url: finalUrl, body: `network:${finalUrl}`, clone() { return this; } };
+}
+
+test('sanity: the fake origin redirects exactly what production redirects', () => {
+    assert.equal(netlify(`${ORIGIN}/apps/gym-tracker/index.html`).url, `${ORIGIN}/apps/gym-tracker/`);
+    assert.equal(netlify(`${ORIGIN}/apps/gym-tracker/exercises/index.html`).url, `${ORIGIN}/apps/gym-tracker/exercises/`);
+    assert.equal(netlify(`${ORIGIN}/apps/gym-tracker/exercises/ab-wheel-rollout/index.html`).url,
+        `${ORIGIN}/apps/gym-tracker/exercises/ab-wheel-rollout/`);
+    // The offline fallback is a direct 200 (`:app` is one segment).
+    assert.equal(netlify(`${ORIGIN}/apps/gym-tracker/offline/index.html`).redirected, false);
+    assert.equal(netlify(`${ORIGIN}/apps/gym-tracker/`).redirected, false);
+});
+
+test('no precached URL is one production redirects (addAll would store the redirected answer)', () => {
+    const redirected = PRECACHE_URLS
+        .map(u => new URL(u, `${ORIGIN}/apps/gym-tracker/`).pathname)
+        .filter(p => redirectTarget(p) !== null);
+    assert.deepEqual(redirected, [],
+        'precache the canonical URL instead; `./` already is the app shell');
+});
+
+const isRedirectTo = (response, url) => !!response
+    && response.redirected !== true
+    && response.status >= 300 && response.status < 400
+    && response.headers.get('Location') === url;
+
+test('navigating to /apps/gym-tracker/index.html hands the browser the redirect, never a redirected response', async () => {
+    const worker = loadWorker({ network: netlify });
+    await install(worker);
+    const { response } = await driveFetch(worker, `${ORIGIN}/apps/gym-tracker/index.html`, { mode: 'navigate' });
+    assert.ok(isRedirectTo(response, `${ORIGIN}/apps/gym-tracker/`),
+        `a redirected response is a network error for a navigation; got ${JSON.stringify(response)}`);
+});
+
+test('a redirected navigation fetched from the network is redirected, and never cached under the old URL', async () => {
+    const worker = loadWorker({ network: netlify });
+    await install(worker);
+    const url = `${ORIGIN}/apps/gym-tracker/exercises/ab-wheel-rollout/index.html`;
+    const { response } = await driveFetch(worker, url, { mode: 'navigate' });
+    assert.ok(isRedirectTo(response, `${ORIGIN}/apps/gym-tracker/exercises/ab-wheel-rollout/`),
+        `got ${JSON.stringify(response)}`);
+    assert.equal(worker.storeFor(RUNTIME_NAME).get(url), undefined,
+        'the next navigation to this URL would be served the redirected copy');
+});
+
+test('a redirected response already in a cache (put there by an older worker) is still not served to a navigation', async () => {
+    const worker = loadWorker({ network: netlify });
+    await install(worker);
+    const url = `${ORIGIN}/apps/gym-tracker/exercises/index.html`;
+    worker.storeFor(RUNTIME_NAME).set(url, netlify(url));
+    worker.state.online = false;
+    const { response } = await driveFetch(worker, url, { mode: 'navigate' });
+    assert.ok(isRedirectTo(response, `${ORIGIN}/apps/gym-tracker/exercises/`), `got ${JSON.stringify(response)}`);
+});
+
+test('canonical navigations are untouched: the directory URL gets the precached shell', async () => {
+    const worker = loadWorker({ network: netlify });
+    await install(worker);
+    const { response } = await driveFetch(worker, `${ORIGIN}/apps/gym-tracker/`, { mode: 'navigate' });
+    assert.equal(response.redirected, false);
+    assert.equal(response.status, 200);
+    assert.equal(response.url, `${ORIGIN}/apps/gym-tracker/`);
+});
+
+test('a non-navigation request may still take a redirected response (its redirect mode is follow)', async () => {
+    const worker = loadWorker({ network: netlify });
+    await install(worker);
+    const url = `${ORIGIN}/apps/gym-tracker/exercises/index.html`;
+    const { response } = await driveFetch(worker, url);
+    assert.equal(response.redirected, true, 'only navigations need the redirect handed back');
+    assert.equal(worker.storeFor(RUNTIME_NAME).get(url), undefined,
+        'but it is still not cached under a URL it did not come from');
 });

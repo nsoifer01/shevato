@@ -28,6 +28,7 @@ import {
     buildWarmupRamp,
 } from '../utils/warmup.js';
 import { track } from '../utils/analytics.js';
+import { completedSetsInSlotOrder } from '../utils/session-metrics.js';
 import {
     displayWeight, formatDuration, formatDurationLong, normalizeWeightUnit,
     roundForDisplay, toCanonicalWeight, volumeIn,
@@ -806,8 +807,10 @@ case 'toggle-warmup':
         const onStay = () => { cleanup(); };
         const onLeave = () => {
             cleanup();
+            // A refused pause leaves the workout running: stay on it, with
+            // the back trap still armed (a pause that lands disarms it).
+            if (this.pauseAndSaveWorkout() === false) return;
             this.disarmBackGuard();
-            this.pauseAndSaveWorkout();
             this.app.showView('home');
         };
 
@@ -844,8 +847,9 @@ case 'toggle-warmup':
                         // User wants to stay
                         return;
                     } else if (result === 'pause') {
-                        // Pause and save, then navigate
-                        this.pauseAndSaveWorkout();
+                        // Pause and save, then navigate. A refused pause
+                        // leaves the workout running, so stay on it.
+                        if (this.pauseAndSaveWorkout() === false) return;
                     } else if (result === 'discard') {
                         // Discard workout
                         this.discardWorkout();
@@ -1096,6 +1100,10 @@ case 'toggle-warmup':
         this.persistActiveWorkout();
     }
 
+    /**
+     * Returns false, with the workout still running, when storage refused
+     * the write. Every caller that leaves the workout screen must check it.
+     */
     pauseAndSaveWorkout() {
         if (!this.currentWorkoutSession || this.currentWorkoutSession.completed) {
             return;
@@ -1108,8 +1116,25 @@ case 'toggle-warmup':
         this.flushPendingPersist();
         this.currentWorkoutSession.pauseWorkout(elapsed);
 
-        // Save to storage
-        storageService.saveActiveWorkout(this.currentWorkoutSession.toJSON());
+        // Save to storage. On a refused write the in-memory session is the
+        // only copy of everything logged since the last write that landed,
+        // and the storage banner promises it is safe until the tab closes.
+        // Pause used to drop it here regardless (audit G-4): undo the pause
+        // and keep the lock, the clock and the screen. Safari's private mode
+        // throws instead of returning false.
+        let saved;
+        try {
+            saved = storageService.saveActiveWorkout(this.currentWorkoutSession.toJSON()) !== false;
+        } catch (error) {
+            console.error('Could not pause the workout:', error);
+            saved = false;
+        }
+        if (!saved) {
+            this.currentWorkoutSession.resumeWorkout();
+            this.setWorkoutStorageFailed(true);
+            showToast('Could not pause: device storage is full. Your workout is still running, free some space and pause again.', 'error', 6000);
+            return false;
+        }
         // A paused workout is meant to be picked up anywhere, so release
         // this tab's claim on it.
         this.releaseWorkoutLock();
@@ -1143,7 +1168,7 @@ case 'toggle-warmup':
             return;
         }
 
-        this.pauseAndSaveWorkout();
+        if (this.pauseAndSaveWorkout() === false) return;
         this.app.showView('home');
     }
 
@@ -1166,8 +1191,9 @@ case 'toggle-warmup':
         }
 
         // Pause + save silently (same effect as the pause flow, no dialog).
+        // A refused pause leaves the workout running, so stay on it.
         this.skipRest();
-        this.pauseAndSaveWorkout();
+        if (this.pauseAndSaveWorkout() === false) return;
 
         const programsCtrl = this.app.viewControllers.programs;
         if (programsCtrl) programsCtrl.enteredFromWorkout = true;
@@ -3335,7 +3361,7 @@ case 'toggle-warmup':
             if (exercise && exercise.sets && exercise.sets.length > 0) {
                 const completedSets = exercise.sets.filter(set => set.completed);
                 if (completedSets.length > 0) {
-                    recentSessions.push({ session, exercise, completedSets });
+                    recentSessions.push({ session, exercise });
                     if (recentSessions.length === 2) break;
                 }
             }
@@ -3343,7 +3369,7 @@ case 'toggle-warmup':
 
         if (recentSessions.length === 0) return null;
 
-        const { session: lastSession, exercise: lastExercise, completedSets: lastSets } = recentSessions[0];
+        const { session: lastSession, exercise: lastExercise } = recentSessions[0];
         const prev = recentSessions[1] || null;
 
         // The prefill is the lifter's OWN last session, set for set. The app
@@ -3351,12 +3377,21 @@ case 'toggle-warmup':
         // recommendation used to sit here, and besides being unwanted it added
         // a display-unit increment to a canonical-kg weight, so a 60 lb bench
         // came back as 71 lb ("+11lb suggested" = 5 read as 5 kg).
-        const sets = lastSets.map(set => ({
-            weight: set.weight,
-            reps: set.reps,
-            duration: set.duration,
-            originalWeight: set.weight,
-        }));
+        //
+        // Indexed by SLOT, because the renderer reads `previousSets[i]` for
+        // planned row i. The stored array is in commit order, so indexing it
+        // directly prefilled set 2 from last time's set 3 after an un-tick and
+        // re-tick (audit G-3). A set last time never logged is a hole, and the
+        // renderer's fallback to the last entry covers it.
+        const sets = [];
+        completedSetsInSlotOrder(lastExercise).forEach(({ set, slot }) => {
+            sets[slot] = {
+                weight: set.weight,
+                reps: set.reps,
+                duration: set.duration,
+                originalWeight: set.weight,
+            };
+        });
 
         return sets;
     }

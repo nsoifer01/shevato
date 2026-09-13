@@ -101,7 +101,7 @@ Things worth knowing about it:
   arrive verbatim from a synced payload; reading `obj['__proto__']` back off
   a plain object hands out `Object.prototype`. Same reasoning as
   `mapTapHistoryToRounds`.
-- **Migration runs at boot AND on every remote delivery** (`migrateInlineCities`
+- **Migration runs at boot AND on every remote delivery** (`normalizeStoredGames`
   in js/app.js). Boot alone is not enough: the pre-migration Firestore
   document wins the first snapshot of a session (remote wins on a fresh local
   revision map), so the fat copy lands back in localStorage right after the
@@ -318,21 +318,77 @@ Update semantics worth knowing:
   only refreshes scores on games whose note is `'synced from MapTap'`, so a
   hand-pasted correction must shed that marker or the next sync would
   silently clobber it back.
-- Duplicates already sitting in a log (written before the fix, or imported
-  from a backup) are NOT pruned, on purpose: the app never silently deletes
-  rows the user can see and delete themselves. The upsert updates the first
-  match and leaves the rest. Measured behaviour of such a pair (two records,
-  same rival, same date): `overallRecord` reports `games: 2, wins: 2, days: 1`
-  - the W-L-T tally counts both records, the DAY-based figures dedupe by date
-  (`myAvgByDay`, the heatmap, `myAvgByContinent`, the predictions
-  distribution). That split is deliberate, not a rounding accident: a day is a
-  calendar fact, a game row is a stored record. `tests/stats.test.js`
-  ("repeat paste") pins the stats-layer behaviour.
+- The upsert updates the first match, and since 2026-09-13 there is only ever
+  one: every game list is collapsed to one row per `(rival, date)` on its way
+  into the app (next section), old backups and two-device merges included.
+  The stats functions themselves stay id-agnostic and still count a pair
+  twice (`overallRecord` reports `games: 2, wins: 2, days: 1` for one: the
+  W-L-T tally counts rows, the DAY-based figures dedupe by date).
+  `tests/stats.test.js` ("repeat paste") pins that, and it is why the
+  collapse lives at the boundary rather than in each aggregate.
 
 The upsert is unit-tested through the `window._testExports` seam
 (`tests/app-helpers.test.js`) and at browser level (the repeat-paste check in
 `tests/browser/suites/apps.mjs` asserts one record with the corrected
 scores).
+
+## Two devices, one day (fixed 2026-09-13, audit R-1)
+
+The paste upsert and the sync merge keep one row per `(rival, date)` on ONE
+device. Across devices they could not. Each device mints its own row id
+(`uid()`), and since the 2026-09-05 sync rewrite `maptapRivalsGames` merges as
+a record collection keyed by id (`mergeRecordCollections` in
+`sync-system/sync-helpers.mjs`: an id on one side only, not in the base, is an
+addition and is kept). Two devices that log the same day before seeing each
+other's push therefore both kept their row. The audit's repro, two phones
+pressing "Sync all rivals" the same morning, merged to 5 rows for 3 days and
+`overallRecord` read 5 games, 3-2, with nothing on screen to say so. The old
+"duplicates are never auto-pruned" stance predated that merge, when a
+duplicate could only come from an old backup.
+
+**Why not deterministic ids.** `${date}-${rivalId}` ids would make the engine
+fold the rows, but by ITS rule: two contents under one id are a conflict,
+settled by content hash, with the loser parked as a recovery copy and the sync
+banner raised. Every synced row carries `createdAt: now + n`, so two devices
+syncing the SAME MapTap day always differ: every shared day would raise a
+banner and hand the choice of scores to a hash. Random ids keep both rows
+visible to the app, which reconciles them deliberately.
+
+**The rule** (`collapseDuplicateDays`, js/stats.js). `sanitizeBackup` applies
+it, so boot, another tab, a sync delivery and a backup import all get it, and
+`reassignGames` (app.js) applies it when orphans are reassigned onto a rival
+who already has those days (the usual case: a rival deleted on one device and
+re-added on another):
+- the row kept, with its id and position: hand-entered (any note but
+  `synced from MapTap`) before synced, then earliest `createdAt`, then smaller
+  id, then content;
+- each side separately: round scores from the first row in that order that has
+  them, else its total, so round scores always beat a totals-only side;
+- `cities`: the first row carrying all five;
+- note: every distinct manual note, joined with " / "; `synced from MapTap`
+  only when every row was synced, because that note is also what lets the next
+  sync overwrite the scores, and a hand-entered side must keep that protection;
+- `createdAt`: the earliest.
+
+The group is read as a set, so two devices collapsing the same merged log write
+identical rows. `normalizeStoredGames` then writes the collapse back, at boot
+and on this page's own sync delivery but never on another tab's write (same
+reason as the inline-cities migration): both devices drop the same duplicate
+ids and hold identical survivors, so the next three-way merge sees no conflict
+and resurrects nothing. An import discloses each merge in its "Repaired" line;
+it is not counted as a skipped row.
+
+What the rule cannot do: two rows with DIFFERENT round scores for the same side
+keep one. MapTap reports a day identically to every device, so that pair only
+comes from a hand edit on one of them, and the hand-entered row wins, exactly
+as a paste over a synced day does on one device.
+
+Pinned in `tests/app-helpers.test.js` (two devices through the real
+`mergeMapTapSync` and the real `mergeValues`: one row per day and 2-1-0 on
+both, the same stored rows, a second exchange that settles; re-paste and
+re-sync after a collapse; a doubled stored log collapsing on boot; another
+tab's write left alone; orphan reassignment) and `tests/stats.test.js` (the
+rule, order independence, idempotence, the import disclosure).
 
 ## Geo data exists only on MapTap-synced games
 
@@ -350,7 +406,7 @@ render an empty shell.
 **Null coordinates became Africa (fixed 2026-08-15).** `Number(null)` and
 `Number('')` are `0`, not `NaN`, so a coordinate-less city used to arrive at
 the classifier as the valid point (0, 0), land inside Africa's
-`lat -35..38 / lng -20..52` box, and be averaged into the Africa chip and its
+`lat -35..38 / lng -20..52` box (the classifier's Africa rule at the time), and be averaged into the Africa chip and its
 round count. The fix lives at the coercion, exactly where a `null` becomes a
 `0`: `coordNum` (js/stats.js, exported) maps everything except actual numbers
 and non-empty numeric strings to `NaN`, and BOTH continent aggregates -
@@ -374,8 +430,9 @@ classifier that must never see a non-finite pair) and
 `tests/app-helpers.test.js` (the real `continentBreakdown` +
 `classifyContinent` through the test seam).
 
-The classifier stub in `tests/stats.test.js` still copies the real Africa box
-verbatim so the genuine-(0, 0) case stays honest. Before 2026-08-15 the stub
+The classifier stub in `tests/stats.test.js` keeps a box containing (0, 0),
+standing in for the real Africa polygon, so the genuine-(0, 0) case stays
+honest. Before 2026-08-15 the stub
 answered `'Unknown'` for anything it did not like, which made the null case
 look handled; a stub that cannot express a defect is worse than no test.
 
@@ -396,8 +453,8 @@ the lowest latitude floor left is South America's -56; verified for
 (-70, 0), (-70, 170), (-89, -60), (-61, -70) and (-90, 0). Do not add the
 bucket back without asking.
 
-Why not move the table into stats.js: the boxes are tuned against real MapTap
-rounds and are shared with the per-rival `continentBreakdown` in app.js;
+Why not move the table into stats.js: the rules are shared with the
+per-rival `continentBreakdown` in app.js;
 duplicating them would let the two views drift apart, and moving them would
 drag a lump of presentation-adjacent geography into the pure module. The
 injected form also lets the unit tests use a trivial stub classifier, which
@@ -411,6 +468,43 @@ dead code, and every Icelandic round classified as North America (found the
 day the seam tests reached the real table). The only other land in Iceland's
 box is open sea; East Greenland's coast is west of -25 and still hits the
 Greenland rule.
+
+**Boxes could not draw the Old World (fixed 2026-09-13, audit R-1's sibling
+R-2).** The table used to be rectangles in order, and two of them did most of
+the damage. The Africa box (`lat -35..38, lng -20..52`) was tested before
+Anatolia, Europe and Asia, so it swallowed the whole southern Mediterranean
+rim and the Middle East: Gibraltar, Malta, Athens, Crete, Rhodes, Cyprus,
+Israel, Jordan, Lebanon, Arabia, Yemen and Iran all came out Africa. The North
+America box started at 7N and was tested before South America, so Colombia's
+Caribbean coast and all of Venezuela came out North America. Smaller misses:
+the 60E Europe meridian put Baku, Kazakhstan's Caspian coast and Ashgabat in
+Europe, the Anatolia box put European Istanbul and Edirne in Asia, Kupang
+(Timor) and Jayapura were Oceania, Palau and Guam were Asia, and Cape Verde,
+Mauritius and the Seychelles fell outside every box. A city fixture of 69
+boundary cities had 29 wrong; the comment claiming the table was "verified
+against 250 real MapTap rounds" was not evidence of anything the rounds did
+not happen to contain, and is gone.
+
+Europe and Africa are now polygons (`EUROPE_POLYGON`, `AFRICA_POLYGON`,
+sharing `MEDITERRANEAN_LINE` so no sea point belongs to both or neither), and
+whatever the Old World leaves outside both is Asia. The Americas and Oceania
+stay boxes with two carve-outs: South America's Caribbean coast (south of 12N,
+and of 10N east of 62W, so Aruba, Curacao, Bonaire, Trinidad and Tobago stay
+North America) and Micronesia (0..24.5N east of 129E). The boundaries follow
+convention, and these are the calls a future reader might question:
+- Istanbul is split at the Bosporus, so its historic centre is Europe;
+- the Caucasus follows the Greater Caucasus ridge that Russia's southern
+  border follows, so Sochi and Grozny are Europe, Tbilisi and Baku Asia;
+- Kazakhstan west of the Ural River and the Caspian's northern shore up to it
+  are Europe; Aktau, Aktobe and Ashgabat are Asia;
+- Cyprus is Asia (it sits on the Levant, not in Europe's seas);
+- the Canaries, Madeira, Cape Verde, the Seychelles and Mauritius are Africa;
+- New Guinea splits at the 141E border, and Indonesia (Timor, Papua) is Asia;
+  Australia's line with it is 11S.
+The lines are traced to within about 20 km, so every city lands on the right
+side while a cape or islet on a strait (Knidos, Kastellorizo, Punta Gallinas)
+may not. Adjust a vertex only against `CONTINENT_CITIES` in
+`tests/app-helpers.test.js`, which pins real cities on every boundary.
 
 ## Dashboard DOM order is the markup order
 
@@ -851,10 +945,11 @@ Both were proven to fail against the old halved figure before being kept.
 Collected so a future audit does not re-file them. Each was verified, judged
 and kept as-is:
 
-- **Duplicate `(rival, date)` rows are never auto-pruned.** See the paste
-  section above for the measured split (two games, one day). The app does not
-  silently delete rows a user can see and delete themselves; the same rule is
-  why History still lists orphaned games.
+- **Duplicate `(rival, date)` rows are merged, not listed.** This used to
+  read "never auto-pruned"; it was reversed on 2026-09-13 once the sync
+  record merge made duplicates an ordinary two-device outcome. See "Two
+  devices, one day". Orphaned games (below) are a different case and still
+  stay visible.
 - **A stale rival id in the saved matrix selection is left alone.**
   `confirmDeleteRival` prunes the deleted id from `state.matrixSelection`, but
   only on the device that did the delete: the rival list and the selection sync
@@ -1152,9 +1247,9 @@ Two more heatmap fixes ride along:
 - **Signed-out "Join rival network" was silent** (`joinNetwork()` returned
   early when the user was not registered). The button is no longer disabled:
   it opens the shared sign-in modal via `window.authUI.showAuthModal()`, and
-  falls back to a status line when that global is not loaded. Unverified but
-  signed-in users get "Verify your MapTap profile (the card above) before
-  joining" instead of nothing.
+  falls back to a status line when that global is not loaded. Signed-in users
+  with no linked profile get "Look up your MapTap profile first." (the
+  wording since 2026-09-05 F03) instead of nothing.
 - **Accessibility with data present.** The a11y browser suite scans this app
   with EMPTY storage, which is why it read zero while seeded views carried
   serious and critical violations. Fixed at the source: `.pred-day-tabs` is
@@ -1200,12 +1295,14 @@ Two more heatmap fixes ride along:
   and resize).
 
 Still open from that audit, deliberately: the backup export still omits the
-verified MapTap profile and the matrix preferences (a restore on another
-device lands unverified); "Sync all rivals" still uses native `alert()`
+linked MapTap profile and the matrix preferences (a restore on another
+device lands unlinked); "Sync all rivals" still uses native `alert()`
 while every other confirmation is a styled modal; predictions still show
 "avg 0%" for a single-loss rival and Reveal buttons to users with no
-verified profile; the leaderboard and History still hide their right-hand
-columns behind an unhinted horizontal scroll on phones.
+linked profile. (The leaderboard and History tables still scroll sideways
+on phones, but no longer unhinted: `updateScrollEdges` stamps `data-scroll`
+on `.leaderboard-wrap` and `.games-table-wrap` so the edge with more content
+fades; see "Responsive containment".)
 
 ## The heatmap walk broke in DST-at-midnight zones
 

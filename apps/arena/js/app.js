@@ -2032,6 +2032,12 @@ async function joinPlayer(code, displayName, isHost, joinedAtQuestionIndex, gate
         round: currentRound,
         joinedAt: serverTimestamp(),
         lastSeen: serverTimestamp(),
+        // A player coming back PAST the grace lands here, on top of the doc
+        // their closed tab stamped, and a merge keeps every field it does not
+        // name. The stamp used to outlive the join until the first heartbeat
+        // 30 s later: "Disconnected" on every screen, and sweepable by the
+        // host mid-game (audit 2026-09-12 K-2).
+        disconnectedAt: deleteField(),
         currentAnswerIndex: null,
         currentAnswerAt: null,
         currentAnsweredFor: null,
@@ -2196,7 +2202,12 @@ async function maybeResetForNewRound() {
             currentGuess: null,
             currentAnswerAt: null,
             currentAnsweredFor: null,
-            answers: []
+            answers: [],
+            // The Globe Drop Ready vote names a location id, and ids repeat
+            // across games (a capital round's id is the country), so a vote
+            // left over from the last game skipped the reveal of that same
+            // location the moment a rematch re-drew it.
+            readyAfterQId: null
         });
     } catch (e) {
         console.warn('Round reset failed:', e);
@@ -2730,13 +2741,17 @@ async function sendChatMessage() {
     if (!modResult.ok) {
         console.warn('chat profanity filter errored (fail-open):', modResult.error);
     }
-    const displayName = (state.profile && state.profile.displayName) || deriveInitialDisplayName();
+    // Capped like the player doc: firestore.rules refuses a longer chat name.
+    const displayName = String((state.profile && state.profile.displayName) || deriveInitialDisplayName())
+        .slice(0, Config.MAX_DISPLAY_NAME);
     try {
         await addDoc(collection(db, 'triviaRooms', state.roomCode, 'chat'), {
             uid: state.user.uid,
             displayName,
             text,
-            sentAt: serverTimestamp()
+            sentAt: serverTimestamp(),
+            // Deleted by the TTL policy on the chat collection group (firestore.rules).
+            expiresAt: new Date(Date.now() + ROOM_TTL_MS)
         });
         input.value = '';
     } catch (e) {
@@ -2789,13 +2804,17 @@ async function sendChatEmoji(emoji) {
         return;
     }
     chatState.lastSentAt = Date.now();
-    const displayName = (state.profile && state.profile.displayName) || deriveInitialDisplayName();
+    // Capped like the player doc: firestore.rules refuses a longer chat name.
+    const displayName = String((state.profile && state.profile.displayName) || deriveInitialDisplayName())
+        .slice(0, Config.MAX_DISPLAY_NAME);
     try {
         await addDoc(collection(db, 'triviaRooms', state.roomCode, 'chat'), {
             uid: state.user.uid,
             displayName,
             text: emoji,
-            sentAt: serverTimestamp()
+            sentAt: serverTimestamp(),
+            // Deleted by the TTL policy on the chat collection group (firestore.rules).
+            expiresAt: new Date(Date.now() + ROOM_TTL_MS)
         });
     } catch (e) {
         console.warn('sendChatEmoji failed:', e);
@@ -6044,9 +6063,11 @@ function maybeTakeOverHost(room) {
  * advance/finish. The host does all three; any other member performs the
  * timed advance once the window has elapsed plus ADVANCE_FALLBACK_SLACK_MS
  * (firestore.rules re-checks the deadline on the server clock). Every write
- * is keyed by clockKey so it fires once per question per client, and the
- * advance itself is a transaction with an idempotent precondition, so two
- * clients racing can never double-advance.
+ * is keyed by clockKey so it fires once per question per client. The timed
+ * advance is a transaction with an idempotent precondition, so two clients
+ * racing can never double-advance; the host's Ready-skip is a single write,
+ * safe because no member may advance before the deadline (see
+ * advanceQuestionOrFinish).
  */
 function progressRoomClock() {
     const room = state.roomData;
@@ -7780,11 +7801,28 @@ async function playAgain() {
         endStageWrittenForRoom = null;
     } catch (err) {
         console.warn('Play again failed:', err);
-        alert(
-            (isGlobeDrop ? 'Could not refresh locations: ' : 'Could not refresh questions: ')
-            + (err && err.message ? err.message : 'unknown error')
-            + '. Try again in a moment.'
+        // WITHDRAW THE PROPOSAL, or the room wedges (audit 2026-09-12 K-1).
+        // The rematch fields used to be cleared only by the successful update
+        // above, so a failed fetch left the room doc saying "everyone
+        // accepted": the next snapshot re-rendered, saw that unanimity and
+        // called playAgain again on every heartbeat, behind a blocking alert()
+        // that also froze this tab's own heartbeat. Clearing them is the write
+        // cancelOwnProposal makes, and it puts the Rematch control back in
+        // front of everyone, which is the retry path. Awaited before the
+        // finally re-arms rematchInFlight, so no render in between can act on
+        // the old unanimity.
+        showToast(
+            (isGlobeDrop ? 'Could not load new locations' : 'Could not load new questions')
+            + ' for the rematch. Try again in a moment.',
+            { icon: '⚠️', key: 'rematch-failed', ttlMs: 8000 }
         );
+        try {
+            await updateDoc(doc(db, 'triviaRooms', state.roomCode), {
+                rematchProposedBy: null,
+                rematchAcceptedBy: [],
+                rematchDeclinedBy: []
+            });
+        } catch (_) { /* best-effort, as in cancelOwnProposal */ }
     } finally {
         state.rematchInFlight = false;
     }

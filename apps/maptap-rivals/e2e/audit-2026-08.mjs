@@ -263,10 +263,16 @@ export async function run({ base, cdpPort }) {
       await evaluate(s, "(()=>{const sel=document.querySelector('#history-orphans-rival'); sel.value='r1'; sel.dispatchEvent(new Event('change')); return 1})()");
       await click(s, '#history-orphans-reassign');
       const stored = JSON.parse(await ls(s, 'maptapRivalsGames'));
+      // r1 already has yesterday, so the reassigned ghost day folds into it:
+      // one row per rival and day (audit 2026-09-12 R-1). Before that rule this
+      // stored three r1 rows and counted yesterday twice.
+      const yesterday = daysAgo(1);
       await rec('D2: Reassign moves the orphans to the chosen rival and persists',
-        stored.every(g => g.rivalId !== 'ghost') && stored.filter(g => g.rivalId === 'r1').length === 3
+        stored.every(g => g.rivalId !== 'ghost') && stored.filter(g => g.rivalId === 'r1').length === 2
+        && stored.filter(g => g.rivalId === 'r1' && g.date === yesterday).length === 1
+        && stored.length === 3
         && !(await evaluate(s, "!!document.querySelector('#history-orphans')"))
-        && (await evaluate(s, "document.querySelectorAll('#history-table tbody tr.history-day-row').length")) === 4, JSON.stringify(stored.map(g => g.rivalId)), s);
+        && (await evaluate(s, "document.querySelectorAll('#history-table tbody tr.history-day-row').length")) === 3, JSON.stringify(stored.map(g => g.rivalId)), s);
     } finally { await closePage(cdpPort, s); }
   }
 

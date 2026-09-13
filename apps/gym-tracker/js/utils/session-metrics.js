@@ -31,6 +31,27 @@ export function completedSets(session) {
     return allSets(session).filter(s => s && s.completed);
 }
 
+/**
+ * One exercise's completed sets in SET order, each paired with its slot.
+ *
+ * `slot` is the stable 0-based set number the live workout addresses rows by.
+ * The array itself is in commit order: `commitPlannedSet` appends and
+ * `deleteSet` splices, so after an un-tick and re-tick (or ticking set 3
+ * before set 2) array position is not the set number (audit G-3). A legacy set
+ * with no slot keeps its array position, exactly as the renderer, `deleteSet`
+ * and the CSV export read it. The sort is stable, so duplicate slots keep
+ * commit order.
+ */
+export function completedSetsInSlotOrder(exercise) {
+    return (exercise?.sets || [])
+        .map((set, index) => {
+            const n = Number(set?.slot);
+            return { set, slot: set?.slot != null && Number.isFinite(n) ? n : index };
+        })
+        .filter(({ set }) => set && set.completed)
+        .sort((a, b) => a.slot - b.slot);
+}
+
 /** How many sets the lifter marked complete. */
 export function completedSetCount(session) {
     return completedSets(session).length;

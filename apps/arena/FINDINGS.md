@@ -29,15 +29,13 @@ The room password is never persisted anywhere. Full design in the README
   condition reads it server-side regardless of client read permissions.
 - **Why the hash is salted with the room code**: identical passwords in
   two rooms must not produce identical gate hashes.
-- **Accepted replay boundary**: the joiner's proof (`gateHash` on their
-  player doc) is readable by any signed-in user with the code and can be
-  replayed for room ENTRY. Closing that would mean either restricting
-  player-doc reads to members (breaks the pre-join capacity check and
-  the post-match spectator view) or a per-join challenge (needs a
-  server). The defect being fixed was cleartext PASSWORD disclosure -
-  users reuse passwords - and that is fully closed. Do not "fix" the
-  replay boundary casually; it is pinned by a rules test that documents
-  it.
+- **The replay boundary is CLOSED (2026-09-07, F01).** This bullet used to
+  call the joiner's readable `gateHash` an accepted boundary and warn against
+  fixing it, on the grounds that members-only player reads would break the
+  pre-join capacity check. F01 closed it anyway, by moving those checks below
+  the join: scoped rooms keep the roster to their members, and the client
+  deletes `gateHash` right after the create. The rules test that used to pin
+  the hole now asserts the opposite. See "The private-room boundary" below.
 - **Gate deletion is a lifecycle-gated operation (fixed 2026-08-23).** It
   used to be `allow delete: if request.auth != null`, which was a full
   password bypass, not a cleanup convenience: a stranger with the code could
@@ -148,13 +146,13 @@ Gotchas that cost time, so they are recorded:
   substring block on production hosts would kill emulator traffic too -
   match on the URL's host portion only.
 - **Rematch UI reality**: the propose control that exists in the markup
-  is the header `#room-end-again-btn`; `renderRematchUI`'s
-  `#end-again-btn` (and the `#rematch-strip` accept buttons it drives)
-  reference an element that is NOT in index.html - the propose button it
-  toggles is always null (null-guarded, silent). The accept path users
-  actually see is the shared confirm modal (`#confirm-modal-confirm`,
-  10s auto-decline). Latent dead code, left as-is (out of scope this
-  round).
+  is the header `#room-end-again-btn`. `#end-again-btn`, the propose button
+  `renderRematchUI` toggles, is NOT in index.html and is always null
+  (null-guarded, silent); `#rematch-strip`, `#rematch-status` and
+  `#rematch-actions` do exist. The accept path users actually see is the
+  shared confirm modal (`#confirm-modal-confirm`, 10s auto-decline). The
+  `#end-again-btn` references are latent dead code, recorded rather than
+  removed.
 - **Leaving always routes through the confirm modal** - a bare
   `#leave-room-btn` click does nothing until `#confirm-modal-confirm`.
 - Dropped as flaky-by-design rather than shipped flaky: console-error
@@ -266,13 +264,6 @@ call.
 
 ## Known modeled limitations (pinned by tests, not bugs introduced here)
 
-- **Host-handoff `isHost` flag write is dead**: `leaveRoom` tries to set
-  `isHost: true` on the NEXT host's player doc, which the ownership rule
-  denies (only you write your doc). The app swallows the error and the
-  UI keys off `roomData.hostUid`, which the room-doc update does change.
-  Pinned in the rules suite; fixing it would need a rules carve-out or
-  removing the write.
-- The gateHash replay boundary (see above).
 - **Non-host room-doc writes are now an enumerated allow-list, not "client
   of truth" (changed 2026-08-23).** A non-host could set `hostUid`, delete the
   room ("Room closed." for everyone) or write `currentQuestionIndex: -3` /
@@ -320,11 +311,13 @@ call.
   the room lives - the rules only permit chat deletes once the room doc is
   gone, which is what makes the sweep possible at all without handing anyone
   a mid-game message-recall power.
-- **Still not covered: rooms abandoned with no live client left** (everyone
-  force-quits, or the last leaver's sweep write fails). Nothing on the client
-  can delete them, because the sweep needs a signed-in caller. That is the
-  one remaining orphan path and it needs a scheduled server-side job; see the
-  note in README "Cleanup".
+- **Rooms abandoned with no live client left** (everyone force-quits, or the
+  last leaver's sweep write fails) are reaped by the server now: every room
+  carries `expiresAt`, and the Firestore TTL policy on it has been ACTIVE
+  since 2026-09-08. TTL deletes the room DOC only; its leftover players, chat
+  and gate become orphans any signed-in client may sweep, and a room nobody
+  revisits leaves those few documents behind. See "Cleanup no longer depends
+  on somebody's browser" below and README "Liveness and cleanup".
 - **Chat moderation is local.** `chat.js` is a word-boundary wordlist; six
   chat sends produced zero external requests. The user-facing copy now says
   "blocked by the profanity filter" instead of naming a moderation service.
@@ -575,6 +568,22 @@ dropped or racing rejoin write self-heals on the next beat instead of being
 fatal half a minute later. The player-doc rules already allow a player to
 update their own doc, so no rules change was needed.
 
+**It missed one path, found by the 2026-09-12 audit (K-2).** A player who
+closed the tab and came back LATER, through the join form in a fresh tab,
+reached `joinPlayer`'s past-grace branch: a `setDoc(..., { merge: true })`
+naming every field of a fresh player except `disconnectedAt`, so the merge
+kept the stamp. The heartbeat would have cleared it, but the first beat comes
+30 s after entering, and for that window the player rendered as
+"Disconnected", was left out of the early reveal, the Ready vote, the rematch
+count and the Start minimum, and with a game playing the host's clock swept
+their doc, which the rules agreed was stale. The join payload now carries
+`disconnectedAt: deleteField()` itself (valid in a merged set, and a no-op on
+a brand-new doc). `tests/rejoin-disconnect-stamp.test.js` runs the real
+`joinPlayer` and `sweepStalePlayers`; the rules suite pins that the clearing
+write is the player's own to make and that the host cannot sweep them after
+it. The S8 e2e scenario joins by code, so the sentinel on a brand-new doc runs
+against the real SDK and rules.
+
 ## The emulator e2e is FLAKY on a loaded workstation, and what that costs
 
 Three full runs on 2026-09-03 produced 55/76, 48/80 and (S1 only) 8/21, all
@@ -591,14 +600,15 @@ these runs was ruined by a concurrent `npm test`.
 
 Two consequences worth keeping:
 
-- **Filtered runs are for iteration only.** `ARENA_E2E_ONLY` (added this round)
-  takes a comma-separated list, but the scenarios are sequential: S1 opens the
-  three browser pages and each scenario leaves the clients where the next
-  expects them. `ARENA_E2E_ONLY=S1:,S5:` puts only two players in the lobby, so
-  the game never starts. Any filter must therefore include `S1`, or the
-  scenario dies on a null page. **S10 must stay last**: it models a host tab
-  that simply disappears, and the only faithful way to do that is
-  `closePage`, after which that client is gone for the rest of the run.
+- **Filtered runs are for iteration only.** `ARENA_E2E_ONLY` takes a
+  comma-separated list. Since 2026-09-12 `guard()` opens whatever pages a
+  filtered run is missing, so any single scenario runs standalone (the
+  "include S1 or die on a null page" rule this bullet used to state is gone;
+  see "One scenario should cost one scenario"). Scenarios still share one
+  live session, so read a filtered run's preconditions before believing it.
+  **S10 must stay last**: it models a host tab that simply disappears, and
+  the only faithful way to do that is `closePage`, after which that client is
+  gone for the rest of the run.
 - **Assertions that compare a number against itself must state a
   precondition.** The idempotency checks ask "is this counter unchanged after a
   reload", which 0 -> 0 -> 0 satisfies perfectly. On a filtered run they went
@@ -665,9 +675,11 @@ register* and *that makes the round advance early* are different claims, and
 folding them together told you neither when it went red. `readyB` had only ever
 meant "the button was clickable".
 
-`readyAfterQId` is only ever set, never cleared, which is what made the
-diagnosis possible: a `-` in the flags is proof the write never arrived, not
-evidence that something reset it.
+Within a game `readyAfterQId` is only ever set, never cleared, which is what
+made the diagnosis possible: a `-` in the flags is proof the write never
+arrived, not evidence that something reset it. Between games it IS cleared
+now, by the round reset a rematch triggers (see "Rematch and rejoin edges"
+at the end of this file).
 
 **Result on two cores, nothing else on the box: 97/97, exit 0** - from 95/96
 with the Globe Drop section red. The two extra checks are the globe warm-up and
@@ -835,6 +847,35 @@ a question over at most 10 questions, Globe Drop at 100 x 3.0 round x 1.5
 streak x ~3.0 difficulty = 1,350 a round over at most 10, so 100k is about a
 7x margin over anything reachable. A tighter cap would start refusing real
 games the first time the scoring constants move.
+
+**Three bounds this round left open, closed 2026-09-13** (site-wide audit
+2026-09-12):
+
+- *Resume.* `memberResume` bounded keys only, so one resume could move
+  `questionStartedAt` into the past (ending the question for everyone) or far
+  ahead (every client reads the question as not started). A resume may now
+  only move it forward, and to no more than a minute past `request.time`. The
+  honest write is the original start plus the pause, computed on the resuming
+  client (`togglePauseRoom`), so it never goes backwards; the minute is slack
+  for that client's clock. Pausing itself stays unbounded by the rules (the
+  per-player allowance is client-side), so the most one resume can now do is
+  what one pause already could.
+- *Rematch votes.* The host's client restarts the game the moment
+  `rematchAcceptedBy.length` reaches the live roster, and the rule bounded
+  keys only, so one member could write an accept list naming everyone, or
+  themselves twice, and restart the game (mid-game, discarding every score).
+  A member may now PROPOSE (they propose and are the sole accept), WITHDRAW
+  (all three fields cleared), or RESPOND to a live proposal by appending
+  themselves once to one list. A response to a proposal that has already been
+  withdrawn is refused; the only client write that can hit that is a stale
+  `respondToRematch` transaction, which logs a warning. The host is unbounded
+  as before.
+- *Chat.* The create rule capped `text` and nothing else, so a ~1 MB
+  `displayName` or any extra field rode along into every client's 80-message
+  window. A message now carries exactly `uid`, `displayName` (a string of at
+  most 20, `Config.MAX_DISPLAY_NAME`), `text` and `sentAt`, and the client
+  slices the name to that cap before sending, as it already did for the
+  player doc, so a longer profile name can never make chat fail.
 
 
 - **A Globe Drop round cannot be screenshotted headlessly.** The lobby has a
@@ -1190,6 +1231,12 @@ Two things that were wrong in the old trigger and are fixed in the new list:
   imports the CDP driver from `../../../tests/browser/cdp.mjs`, so the driver
   the entire multiplayer suite runs on could be rewritten without this job ever
   running. It was, on 2026-09-08, in the very round that fixed this suite.
+- **`firebase-config.js` was missing too, and stayed missing until
+  2026-09-13** (site-wide audit C-4). It is the emulator seam every client in
+  both suites reaches Firestore through, but the static test's derived-inputs
+  check walked only the e2e HARNESS's imports, and the harness never imports
+  it: the page does. The test now also walks the app's own import graph,
+  transitively, and the file is an input.
 - **`sync-system/**` was too coarse.** It swept in `sync-system/tests/`, which
   is node tests and their stubs that neither the app nor either emulator suite
   loads. PR #511 deleted an unrelated app, touched one app-count line in that
@@ -1288,3 +1335,70 @@ Two rules follow:
   not take the skip path, and that gap was known and noted at the time and
   shipped anyway. The skip path's first real execution was on a bot PR against
   production, which is where it failed.
+
+## Rematch and rejoin edges (2026-09-13, site-wide audit K-1, K-2)
+
+**A failed rematch fetch wedged the room for everyone (K-1).** `playAgain`
+cleared the three rematch fields only inside its SUCCESSFUL update. When the
+fetch failed (Wikidata or The Trivia API down, or an unusable result) the
+catch raised a blocking `alert()` and the `finally` re-armed
+`rematchInFlight`, while the room doc still said everyone had accepted. The
+next render, which any snapshot triggers and a 30 s heartbeat guarantees, saw
+that unanimity and called `playAgain` again: another fetch, another alert,
+indefinitely. Everyone else sat on "Rematch - N / N players ready" with
+nothing to press, and `alert()` froze the host's own heartbeat, so past 120 s
+a survivor took the room over and inherited the loop. Capitals and countries
+rounds were immune (bundled data).
+
+The catch now shows one toast and withdraws the proposal with the write
+`cancelOwnProposal` makes, awaited before `rematchInFlight` re-arms. The
+withdrawal is the retry path: the Rematch control comes back for everyone.
+No per-proposal latch was added, on purpose: the withdrawal applies to the
+host's own listener copy at once, even offline, so no later render can see
+the old unanimity, and while the room exists the rules cannot refuse it (the
+host may write anything, and a member may withdraw).
+
+**A Ready vote from the previous game skipped a reveal (P3).** The round
+reset a rematch triggers zeroed nine per-game player fields and not
+`readyAfterQId`. Location ids are deterministic (a capitals round's id is the
+country), so when a rematch re-drew the location everyone had last voted
+Ready on, the Ready-skip fired the moment its reveal opened. The reset now
+clears the vote.
+
+**Testing glue that cannot be imported.** Both bugs, and K-2 above, live in
+which write `app.js` issues, not in a pure helper, and `app.js` cannot be
+required (it imports the Firebase SDK and touches the DOM at import time).
+`tests/helpers/app-vm.js` lifts named top-level functions out of the source by
+bracket matching and runs them in `node:vm` with an in-memory Firestore that
+honours merged sets, `deleteField()` and `serverTimestamp()`. Every
+collaborator is supplied explicitly, so a missing one is a ReferenceError
+rather than a silent pass. Two traps: objects built inside the vm come from
+another realm, so `assert.deepStrictEqual` against a main-realm literal fails
+on the prototype (compare fields instead); and `renderRematchUI` fires
+`playAgain` without awaiting it, so the test wraps `playAgain` to collect its
+promise before the next simulated snapshot.
+
+**Local gotcha: `npm run test:arena:rules` needs Node 21+.** On Node 20 the
+npm script prints `Could not find '.../tests-rules/**/*.test.*'`, runs
+nothing and exits 1, because `node --test` only expands globs from Node 21.
+`.nvmrc` pins 22, so CI is unaffected. On an older default, run the file
+directly (`node --test apps/arena/tests-rules/rules.test.mjs`) and read the
+TAP summary for executed tests.
+
+## Chat expires on its own TTL (2026-09-13)
+
+The room TTL policy on `triviaRooms.expiresAt` deletes the room DOCUMENT only.
+Subcollections are left to the orphan sweep, which runs only when a signed-in
+client opens that room code again, so a room nobody revisits kept its chat
+indefinitely. Counted read-only in production on 2026-09-13: 113 chat messages,
+112 of them in 23 rooms that no longer existed. privacy.html says an abandoned
+room is removed within a day, so the chat was the part that made that untrue.
+
+Every message now carries `expiresAt` (`ROOM_TTL_MS`, a day, set on both the
+text and the emoji send), `firestore.rules` requires it on create within 48
+hours exactly like the room, and a TTL policy on the `chat` collection group
+deletes it. The orphan sweep stays: it clears leftover players and gates, and
+it still removes chat sooner when someone revisits. Pinned by
+`tests/chat-expiry.test.mjs` (both send paths) and the rules suite ("every
+message carries a bounded expiresAt").
+

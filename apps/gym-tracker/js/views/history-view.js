@@ -4,7 +4,7 @@
 import { app } from '../app.js';
 import { formatDate, showToast, showConfirmModal, formatSessionDateTime, escapeHtml, pluralize } from '../utils/helpers.js';
 import { displayWeight, formatDurationLong, normalizeWeightUnit, volumeIn } from '../utils/units.js';
-import { performedExerciseCount, sessionTimedSeconds } from '../utils/session-metrics.js';
+import { completedSetsInSlotOrder, performedExerciseCount, sessionTimedSeconds } from '../utils/session-metrics.js';
 import { trapModalFocus } from '../utils/modal-focus.js';
 import { DarkCalendar } from '../utils/dark-calendar.js';
 import { DarkSelect } from '../utils/dark-select.js';
@@ -492,10 +492,14 @@ class HistoryView {
         session.exercises.forEach(exercise => {
             const exerciseData = this.app.getExerciseById(exercise.exerciseId);
             const exerciseName = exerciseData ? exerciseData.name : exercise.exerciseName || 'Unknown Exercise';
-            const completedSets = exercise.sets ? exercise.sets.filter(s => s.completed) : [];
+            // In set order and numbered by slot, the numbering the live
+            // workout and the CSV export use. Array order is commit order, so
+            // after an un-tick and re-tick `index + 1` called a set "Set 3"
+            // that the CSV called "Set 2" (audit G-3).
+            const completedSets = completedSetsInSlotOrder(exercise);
 
             if (completedSets.length > 0) {
-                const isDuration = completedSets[0].duration > 0;
+                const isDuration = completedSets[0].set.duration > 0;
 
                 html += `
                     <div class="detail-exercise">
@@ -524,8 +528,8 @@ class HistoryView {
                             <tbody>
                 `;
 
-                completedSets.forEach((set, index) => {
-                    html += `<tr><td>${index + 1}</td>`;
+                completedSets.forEach(({ set, slot }) => {
+                    html += `<tr><td>${slot + 1}</td>`;
 
                     if (set.duration > 0) {
                         const mins = Math.floor(set.duration / 60);
@@ -700,7 +704,11 @@ class HistoryView {
         }
 
         this.app.programs.push(program);
-        this.app.savePrograms();
+        if (this.app.savePrograms() === false) {
+            this.app.programs.pop();
+            showToast('Could not create this program: device storage is full. Free some space and try again.', 'error', 6000);
+            return;
+        }
         showToast(`Program "${name}" created`, 'success');
         document.getElementById('workout-detail-modal').classList.remove('active');
     }
@@ -726,8 +734,12 @@ class HistoryView {
         const index = this.app.workoutSessions.findIndex(s => sameId(s.id, sessionId));
         if (index < 0) return;
 
-        this.app.workoutSessions.splice(index, 1);
-        this.app.saveWorkoutSessions();
+        const [removed] = this.app.workoutSessions.splice(index, 1);
+        if (this.app.saveWorkoutSessions() === false) {
+            this.app.workoutSessions.splice(index, 0, removed);
+            showToast('Could not delete this workout: device storage is full. Free some space and try again.', 'error', 6000);
+            return;
+        }
         this.app.updateAchievements();
         this.render();
         showToast('Workout deleted', 'info');

@@ -9,9 +9,9 @@
 // without needing clipboard access.
 import {
   APP, LS_KEY, recorder, freshIds, iso, item, trip, dbOf, standardTrip,
-  openApp, readDb, overlayOpenId, tpErrors, openMenu, menuState,
+  openApp, readDb, openTripIdOf, overlayOpenId, tpErrors, openMenu, menuState,
   addItemViaUi, buildShareHash, expandTimeline, gotoHard,
-  closePage, evaluate, clickSel, setValue, pressKey, sleep, waitForExpr,
+  closePage, evaluate, clickSel, setValue, pressKey, sleep, waitForExpr, setViewport,
 } from './helpers.mjs';
 
 // Rows the trip menu must keep live on a shared trip. export-gpx is on the
@@ -96,13 +96,23 @@ export async function run({ base, cdpPort }) {
     const bytesAfterVisit = await evaluate(s, `localStorage.getItem(${JSON.stringify(LS_KEY)})`);
     await t('tp-share I: visiting a share never touches local data', bytesAfterVisit === ownedBytes, '', s);
 
+    // On a phone the shared view has no Add item or undo, so More is the first
+    // toolbar control; its menu used to open off the left edge (x -127 at 390).
+    await setViewport(s, 390, 844, true);
+    await evaluate(s, `document.getElementById('tbMoreBtn').click()`);
+    await sleep(300);
+    const moreBox = await evaluate(s, `(()=>{const m=document.getElementById('tbMoreMenu'); if (!m || m.hidden) return null; const b=m.getBoundingClientRect(); return { left: Math.round(b.left), right: Math.round(b.right), vw: innerWidth };})()`);
+    await t('tp-share I: the More menu opens inside a 390 px screen', !!moreBox && moreBox.left >= 0 && moreBox.right <= moreBox.vw, JSON.stringify(moreBox), s);
+    await evaluate(s, `document.getElementById('tbMoreBtn').click()`);
+    await setViewport(s, 1280, 900);
+
     /* -------------------- J. import as my trip --------------------------- */
     await clickSel(s, '#sharedImport', { settle: 900 });
     let db = await readDb(s);
     const imported = db.trips.find(x => x.name === 'Strangers weekend');
     await t('tp-share J: import lands the trip in local data', !!imported && imported.items.length === 3, JSON.stringify(db.trips.map(x => x.name)), s);
     await t('tp-share J: import keeps the owner trips intact', !!db.trips.find(x => x.name === 'My own plans'), '', s);
-    await t('tp-share J: imported trip becomes the active one', db.activeTripId === imported.id, '', s);
+    await t('tp-share J: imported trip becomes the active one', (await openTripIdOf(s)) === imported.id, '', s);
     await t('tp-share J: share fragment cleared after import', await evaluate(s, `!location.hash.toLowerCase().includes('share=')`), '', s);
     await t('tp-share J: imported trip is editable', await evaluate(s, `(()=>{const b=document.getElementById('addBtn'); return !!b && b.offsetParent !== null && !b.disabled})()`), '', s);
     await addItemViaUi(s, { type: 'note', title: 'My note on their plan', start: iso(71) });
