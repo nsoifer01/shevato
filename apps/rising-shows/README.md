@@ -110,9 +110,22 @@ is never labelled Big finale, Bad finale, U-shaped or Saved best for last, and
 its show is never labelled from it either: there is no finale yet to be good or
 bad. The shapes that describe what has aired so far (rising, consistent, slow
 burn, front-loaded, declining, rebound, rollercoaster, mid-peak) still apply.
-409 of 66,380 seasons carry the flag on the 2026-08-22 build, every one of
-them a 2026 season. See FINDINGS.md
-for how the rule was derived and what it deliberately does not catch.
+517 of 66,661 seasons carry the flag on the 2026-09-08 build (409 of 66,380 on
+2026-08-22, every one of them a 2026 season). See FINDINGS.md for how the rule
+was derived and what it deliberately does not catch.
+
+The shapes that do survive are still decided in part by a partial season, so
+since 2026-09-13 every surface says the run is not over, without changing what
+the formula picked. The finder card and list row put a **Still airing** chip
+beside the dominant-shape badge (whose tooltip then starts "Provisional:
+season N is still airing"), the show modal carries the chip in its shape row,
+the season row and the season modal subtitle add "still airing", and the static
+show page adds a "Status: Still airing" line plus a Still airing marker in that
+season's header. `split-data.js` carries the flag into `shows-index.json` on the
+season's `seasonAvgs` entry. On the 2026-09-08 build 158 of the 517 airing shows
+carry a dominant badge, and 92 of those would read differently without the
+partial season (Ted Lasso: Declining on five episodes of season 4, Consistent
+without them). The Kometa and MDBList exports are unchanged.
 
 ## Browser app features
 

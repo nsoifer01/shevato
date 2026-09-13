@@ -1329,6 +1329,7 @@ function fallbackSeasonsFromShow(seriesId) {
     seasonYear: a.year,
     avgRating: a.avg,
     episodeCount: Number.isFinite(a.episodeCount) ? a.episodeCount : 0,
+    inProgress: a.inProgress === true,
     genres: show.genres || [],
     language: show.language,
     poster: show.poster,
@@ -1928,7 +1929,12 @@ function makeShapeTag(shape, confidence = null) {
 // were reordered by fit, so an undimmed badge was routinely asserting a
 // pattern that is barely there. Pass null for a categorical tag, which has no
 // confidence and is not a weak claim.
-function makeShowShapeBadge(shape, confidence = null) {
+//
+// `airing` is the show's still-airing season (airingSeasonOf), when it has
+// one: the badge is then decided in part by a season that has not finished,
+// and its tooltip says so. The visible "Still airing" chip beside it is
+// makeAiringTag; the shape named is unchanged either way.
+function makeShowShapeBadge(shape, confidence = null, airing = null) {
   const label = SHAPE_LABELS[shape] || shape;
   const icon = FINDER_SHAPE_ICONS[shape] || '';
   const el = document.createElement('span');
@@ -1947,6 +1953,36 @@ function makeShowShapeBadge(shape, confidence = null) {
     el.classList.add('is-low-confidence');
     el.title = `Low confidence (${confidence.toFixed(2)}): the ${label} pattern is only just there. ${el.title}`;
   }
+  if (airing) {
+    el.title = `Provisional: season ${airing.season} is still airing. ${el.title}`;
+  }
+  return el;
+}
+
+// The show's still-airing season, or null. split-data stamps `inProgress` on
+// the seasonAvgs entry of a season build-data saw unfinished, and only the
+// newest season can be one, so only the last entry is read.
+//
+// A badge that season decides is not settled (2026-09-12 audit N-2): Ted
+// Lasso read "Declining" off five episodes of season 4, and "Consistent"
+// without them; 92 of the 158 badged airing shows on the 2026-09-08 build
+// flip the same way. The formula is right to use what has aired. The card
+// was wrong to present the answer as final, and nothing said "still airing".
+function airingSeasonOf(row) {
+  const avgs = row && Array.isArray(row.seasonAvgs) ? row.seasonAvgs : [];
+  const last = avgs[avgs.length - 1];
+  return last && last.inProgress === true ? last : null;
+}
+
+// "Still airing", beside a badge the unfinished season decides and in the show
+// modal's shape row. A span, like the badge: on a tile the tile is the control.
+function makeAiringTag(airing) {
+  const el = document.createElement('span');
+  el.className = 'airing-tag';
+  el.textContent = 'Still airing';
+  const n = Number.isFinite(airing.episodeCount) ? airing.episodeCount : 0;
+  const soFar = n ? ` (${n} episode${n === 1 ? '' : 's'} so far)` : '';
+  el.title = `Season ${airing.season} is still airing${soFar}, so this show's shape can still change.`;
   return el;
 }
 
@@ -1960,11 +1996,12 @@ function makeShowShapeBadge(shape, confidence = null) {
 // ship, and makes the app agree with a freshly built static page immediately
 // rather than at the next data refresh.
 //
-// The row carries no inProgress flag, so every show is scored as finished.
-// That is safe by construction: inProgress only suppresses the three
-// finale-dependent shapes at CLASSIFICATION time, and a show whose newest
-// season was airing never had one emitted, so the extra score has nothing in
-// `shapes` to attach to. Pinned in tests/finder-lib.test.js.
+// Every show is scored as finished, including one whose newest season carries
+// `inProgress` (that flag is read only for the "Still airing" label; see
+// airingSeasonOf). That is safe by construction: inProgress only suppresses
+// the three finale-dependent shapes at CLASSIFICATION time, and a show whose
+// newest season was airing never had one emitted, so the extra score has
+// nothing in `shapes` to attach to. Pinned in tests/finder-lib.test.js.
 function showShapeConfidencesOf(row) {
   return RisingShowsFinder.showShapeConfidence(
     (row.seasonAvgs || []).map((a) => a.avg),
@@ -3147,7 +3184,7 @@ async function openModal(m, opts = {}) {
   // to the index's episodeCount: a failed detail fetch used to read
   // "0 episodes", and so did a season whose episodes are all still unrated.
   const subtitleEps = seasonRatedFold(m).count || seasonEpisodeCount(m);
-  els.modalSubtitle.textContent = `Season ${m.season} · ${subtitleEps} episodes${yearStr} · ${m.genres.join(', ') || 'No genre listed'}`;
+  els.modalSubtitle.textContent = `Season ${m.season} · ${subtitleEps} episodes${yearStr}${m.inProgress === true ? ' · still airing' : ''} · ${m.genres.join(', ') || 'No genre listed'}`;
 
   // Shape pills + streaming chips in the modal-shapes row, matching the
   // chip row rendered on every result tile. Same suppression rule as
@@ -3516,6 +3553,8 @@ async function openShowModal(seriesId, opts = {}) {
   // filter row. Per-SEASON shapes still live on the season rows below.
   els.showModalShapes.replaceChildren();
   fillShapeTags(els.showModalShapes, showShapesBySeries.get(seriesId) || []);
+  const modalAiring = airingSeasonOf(showAggBySeries.get(seriesId));
+  if (modalAiring) els.showModalShapes.appendChild(makeAiringTag(modalAiring));
 
   renderShowModalWatchRow(meta);
 
@@ -3713,7 +3752,7 @@ function buildShowSeasonRow(m, bestSeason, worstSeason, mostRatedSeason) {
   // Rated-episode count from the index record, not from the loaded episode
   // array: a failed detail fetch used to make every row read "0 eps", and so
   // did a season whose episodes are all still unrated (seasonEpisodeCount).
-  eps.textContent = `${seasonRatedFold(m).count || seasonEpisodeCount(m)} eps${yearStr}${ssRuntimeBit}`;
+  eps.textContent = `${seasonRatedFold(m).count || seasonEpisodeCount(m)} eps${yearStr}${ssRuntimeBit}${m.inProgress === true ? ' · still airing' : ''}`;
   meta.appendChild(eps);
   // Per-season shape labels inside the show modal's season list — these
   // belong to an individual season, not the show as a whole, so they stay
@@ -4629,7 +4668,9 @@ function buildFinderTable(page) {
     if (rowShape) {
       const badgeWrap = document.createElement('span');
       badgeWrap.className = 'finder-row-badges';
-      badgeWrap.appendChild(makeShowShapeBadge(rowShape, dominantShapeConfidenceOf(s)));
+      const rowAiring = airingSeasonOf(s);
+      badgeWrap.appendChild(makeShowShapeBadge(rowShape, dominantShapeConfidenceOf(s), rowAiring));
+      if (rowAiring) badgeWrap.appendChild(makeAiringTag(rowAiring));
       const rowProv = firstMainstreamProvider(s);
       if (rowProv) {
         const tag = document.createElement('span');
@@ -4756,7 +4797,11 @@ function buildFinderCard(s) {
   const badges = node.querySelector('.finder-card-badges');
   badges.replaceChildren();
   const domShape = dominantShapeOf(s);
-  if (domShape) badges.appendChild(makeShowShapeBadge(domShape, dominantShapeConfidenceOf(s)));
+  if (domShape) {
+    const airing = airingSeasonOf(s);
+    badges.appendChild(makeShowShapeBadge(domShape, dominantShapeConfidenceOf(s), airing));
+    if (airing) badges.appendChild(makeAiringTag(airing));
+  }
   const prov = firstMainstreamProvider(s);
   if (prov) {
     const tag = document.createElement('span');
@@ -7063,6 +7108,10 @@ if (typeof window !== 'undefined') {
     // a card's shape badge is dimmed, and the badge builder that dims it.
     dominantShapeConfidenceOf,
     makeShowShapeBadge,
+    // "Still airing" (2026-09-12 audit N-2): which season is unfinished, and
+    // the label that says so beside the badge it decides.
+    airingSeasonOf,
+    makeAiringTag,
     isAnimated,
     isUnscripted,
     // Best / worst / most-rated highlights, shared by the season list and the

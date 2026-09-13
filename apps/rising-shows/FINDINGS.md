@@ -617,6 +617,57 @@ over the identical episode data (so the two differ only by these rules):
 The show-level big-finale drop is mostly not the in-progress rule: 79 of
 the 101 are the 2 dp margin fix below.
 
+### A badge decided by a partial season now says "Still airing" (2026-09-13, audit N-2)
+
+The rule above withholds the finale shapes, but the shapes that survive are
+still computed over the partial season's average, and until this round no
+surface said so. The flag also stopped at the show fold: `shows-index.json`
+carried no trace of it, so the card could not have said it if it tried.
+
+Measured on the 2026-09-08 `data.json` with the real `computeDominantShape`,
+once with every season and once without the in-progress one: 517 shows have an
+in-progress newest season, 158 of them carry a dominant badge, and **92 of those
+158 would read differently without the partial season** (a different shape or
+none). 59 of the 517 partial seasons have 3 or fewer rated episodes. Examples:
+Ted Lasso (463,611 votes) Declining on five episodes of season 4, Consistent
+without them; Family Guy Front-loaded vs Bad finale without season 24;
+Star Trek: Strange New Worlds Front-loaded on seven episodes at 6.16, no badge
+without them; Frieren Consistent vs none. The audit's figure was 141 of 161;
+it did not reproduce with this method, and 92 of 158 is the number measured.
+
+**The formula is unchanged, deliberately.** What has aired is real data, and a
+rule that dropped the partial season would hide a collapse that is already
+visible (Strange New Worlds). The fix is presentation:
+
+- `split-data.js` stamps `inProgress: true` on the airing season's
+  `seasonAvgs` entry in `shows-index.json` (only where true; the 517 flags cost
+  9,306 bytes raw on a 16,747,212-byte file, and no measurable brotli). `airingSeasonOf(row)` reads the LAST entry
+  only, because build-data can only flag the newest season.
+- Finder card and list row: a hueless **Still airing** chip beside the badge
+  (`makeAiringTag`), and the badge tooltip starts "Provisional: season N is
+  still airing." It composes with the low-confidence note. No chip on a tile
+  without a badge: nothing is presented as settled there.
+- Show modal: the chip in the shape row; the season row and the season modal
+  subtitle add "still airing"; the degraded (detail-failed) season rows keep
+  the flag.
+- Static page: a "Status: Still airing" line in the hero stats and a Still
+  airing marker in that season's header. Hub membership, the CTA, JSON-LD and
+  the OG text are unchanged.
+- Not the exports: the Kometa and MDBList files list seasons by their own
+  season-level shapes and confidence, where the finale shapes are already
+  withheld, and a "provisional" notion has no field in either format.
+
+The chip is neutral on purpose (see "Every hue in this app already means
+something"): `--muted` on a solid `--border-strong` edge, 8.07:1 on
+`--surface` and 7.54:1 on `--surface-2`, and solid so it cannot be mistaken for
+the dashed low-confidence treatment.
+
+Pinned by `split-data.test.js` (flag on the right season only, absent
+elsewhere), `render-show-page.test.js` and `app-features.test.js` (Ted Lasso's
+real averages: the shape stays Declining, every surface labels it), and a
+data-gated `shows-index-parity.test.js` check that the show index flags exactly
+the seasons the season file does, and only ever the newest.
+
 ## One definition of "avg episode" (2026-08-22)
 
 The show modal computed an unweighted mean of the per-season averages

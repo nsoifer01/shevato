@@ -656,3 +656,56 @@ test('computeDominantShape is unchanged for a show that fits exactly one shape',
     { dominantShape: null, dominantShapeSlug: null },
   );
 });
+
+// ---------------------------------------------------------------------------
+// Still airing (2026-09-12 audit N-2)
+//
+// A show whose newest season is unfinished keeps the classification the
+// formula gives it; the page stops presenting that label as settled.
+// ---------------------------------------------------------------------------
+
+// Real season averages from the 2026-09-08 catalogue: Ted Lasso, season 4 five
+// episodes deep. With the partial season the show fits Declining; without it,
+// Consistent. 92 of the 158 badged airing shows on that build flip like this.
+const TED_LASSO_AVGS = [8.54, 8.27, 8.23, 7.72];
+
+function airingShow() {
+  const seasons = TED_LASSO_AVGS.map((avg, i) => ({
+    season: i + 1,
+    seasonYear: 2020 + i,
+    avgRating: avg,
+    firstRating: avg,
+    lastRating: avg,
+    shapes: [],
+    episodes: Array.from({ length: i === 3 ? 5 : 10 }, (_, e) => ({ episode: e + 1, rating: avg, votes: 1000, name: `Episode ${e + 1}` })),
+    ...(i === 3 ? { inProgress: true } : {}),
+  }));
+  return { ...BREAKING_BAD, seriesId: 'tt10986410', title: 'Ted Lasso', year: 2020, seasons };
+}
+
+test('a still-airing show keeps the shape its partial season decides, and its page says it is still airing', () => {
+  const show = airingShow();
+  // The premise: this label IS decided by the unfinished season.
+  assert.equal(computeDominantShape(show).dominantShape, 'declining');
+  assert.equal(computeDominantShape({ ...show, seasons: show.seasons.slice(0, 3) }).dominantShape, 'consistent');
+
+  const html = renderShowPage({ ...show, ...computeDominantShape(show) });
+  // The classification is not touched by labelling it...
+  assert.match(html, /Browse all Declining shows/);
+  // ...the page just says the run is not over.
+  const hero = html.slice(html.indexOf('class="show-stats"'), html.indexOf('</dl>'));
+  assert.match(hero, /<dt>Status<\/dt><dd>Still airing<\/dd>/);
+  const seasonHead = (n) => {
+    const start = html.indexOf(`id="season-${n}"`);
+    return html.slice(start, html.indexOf('</header>', start));
+  };
+  assert.match(seasonHead(4), /Still airing/);
+  for (const n of [1, 2, 3]) assert.doesNotMatch(seasonHead(n), /Still airing/);
+});
+
+test('a finished show carries no still-airing marker anywhere on its page', () => {
+  const finished = airingShow();
+  delete finished.seasons[3].inProgress;
+  assert.doesNotMatch(renderShowPage({ ...finished, ...computeDominantShape(finished) }), /Still airing/);
+  assert.doesNotMatch(renderShowPage({ ...BREAKING_BAD, ...computeDominantShape(BREAKING_BAD) }), /Still airing/);
+});

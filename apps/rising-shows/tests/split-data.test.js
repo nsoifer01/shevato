@@ -424,6 +424,25 @@ test('split-data: inProgress survives the split and still suppresses the show-le
   assert.deepEqual(Object.keys(AIRING_SPLIT.detail.tt0000030.seasons['4']), ['episodes']);
 });
 
+test('split-data: the show index marks the still-airing season, and only that one', () => {
+  // The boot payload is what the finder cards read, and until 2026-09-13 it
+  // dropped the flag at the show fold: a badge decided by a season four
+  // episodes deep rendered exactly like a settled one (Ted Lasso, "Declining"
+  // on five episodes of season 4). The card can only say "still airing" if
+  // the index says so.
+  const shows = JSON.parse(fs.readFileSync(path.join(AIRING_SPLIT.appDir, 'shows-index.json'), 'utf8')).shows;
+  const [row] = shows.filter((s) => s.seriesId === 'tt0000030');
+  assert.deepEqual(row.seasonAvgs.map((a) => a.season), [1, 2, 3, 4]);
+  assert.deepEqual(row.seasonAvgs.filter((a) => a.inProgress === true).map((a) => a.season), [4]);
+  // Absent, not false, on every finished season: the flag costs bytes on the
+  // one file every visitor downloads, so it ships only where it is true.
+  assert.equal(row.seasonAvgs.filter((a) => 'inProgress' in a).length, 1);
+
+  const finished = JSON.parse(fs.readFileSync(path.join(SPLIT.appDir, 'shows-index.json'), 'utf8')).shows;
+  assert.equal(finished.some((s) => s.seasonAvgs.some((a) => 'inProgress' in a)), false,
+    'a catalogue with no airing season carries no flag anywhere');
+});
+
 /* ---------------------------------------------------------------------------
  * The search fold is SHARED, not copied (2026-09-05 audit F08).
  *

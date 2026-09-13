@@ -201,6 +201,11 @@ function renderShowPage({ seriesId, title, year, type, genres, seriesRating, ser
   const exposePoster = !!posterUrl && !isAdult;
   const ogImage = exposePoster ? posterUrl : `${SITE}/images/og-card.png`;
 
+  // The newest season is unfinished, so the shapes on this page describe what
+  // has aired so far, not the run (2026-09-12 audit N-2). Found by season
+  // number, as computeDominantShape does, so the caller need not have sorted.
+  const newestSeason = (seasons || []).reduce((best, s) => (best && best.season > s.season ? best : s), null);
+  const stillAiring = !!(newestSeason && newestSeason.inProgress);
   const dominantShapeLabel = dominantShape ? (SHAPE_LABELS[dominantShape] || dominantShape) : null;
   const overallAvgRating = computeOverallAvgRating(seasons);
   const mainstreamProviders = normalizeProviders(providers);
@@ -313,6 +318,7 @@ ${seasonSchemas}
         <dl class="show-stats">
           ${seriesRating ? `<div><dt>IMDb rating</dt><dd><strong>${seriesRating.toFixed(1)}</strong>${seriesVotes ? ` <span class="muted">(${seriesVotes.toLocaleString()} votes)</span>` : ''}</dd></div>` : ''}
           <div><dt>Seasons</dt><dd>${numberOfSeasons}</dd></div>
+          ${stillAiring ? '<div><dt>Status</dt><dd>Still airing</dd></div>' : ''}
           ${mainstreamProviders.length ? `<div><dt>Streaming (US)</dt><dd>${mainstreamProviders.map(escapeHtml).join(' · ')}</dd></div>` : ''}
           ${language ? `<div><dt>Language</dt><dd>${escapeHtml(language.toUpperCase())}</dd></div>` : ''}
           ${type ? `<div><dt>Type</dt><dd>${escapeHtml(formatType(type))}</dd></div>` : ''}
@@ -416,6 +422,7 @@ function renderSeasonSection(season, seriesId) {
           <p class="season-summary">
             <span><strong>${season.avgRating.toFixed(2)}</strong> avg</span>
             <span>${season.episodes.length} episodes</span>
+            ${season.inProgress ? '<span class="season-airing">Still airing</span>' : ''}
             <span>${season.firstRating.toFixed(1)} → ${season.lastRating.toFixed(1)}</span>
             ${season.avgRuntime ? `<span>${season.avgRuntime} min avg</span>` : ''}
           </p>

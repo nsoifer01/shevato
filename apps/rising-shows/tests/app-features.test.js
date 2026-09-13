@@ -28,6 +28,8 @@ test('vm harness: app.js exports every helper these tests drive', () => {
     'weightedAvgEpisode', 'isAnimated', 'isUnscripted',
     // Strongest-fit dominant shape and the confidence that dims its badge.
     'dominantShapeOf', 'dominantShapeConfidenceOf', 'makeShowShapeBadge',
+    // "Still airing": the unfinished season and the label beside its badge.
+    'airingSeasonOf', 'makeAiringTag',
   ];
   const missing = expected.filter((name) => helpers[name] == null);
   assert.deepEqual(missing, [], `js/app.js stopped exporting: ${missing.join(', ')}`);
@@ -1310,4 +1312,49 @@ test('season most-rated: a show whose detail failed gets no badge anywhere', () 
   // Best and worst still come from the index-backed averages, which survive.
   assert.equal(out.best, 1);
   assert.equal(out.worst, 2);
+});
+
+// ---------------------------------------------------------------------------
+// Still airing (2026-09-12 audit N-2)
+// ---------------------------------------------------------------------------
+
+// A shows-index.json row as split-data writes it for Ted Lasso (real season
+// averages, 2026-09-08 catalogue): season 4 is five episodes deep and flagged.
+const TED_LASSO_ROW = {
+  seriesId: 'tt10986410',
+  title: 'Ted Lasso',
+  shapes: ['declining'],
+  seasonAvgs: [
+    { season: 1, year: 2020, avg: 8.54, episodeCount: 10 },
+    { season: 2, year: 2021, avg: 8.27, episodeCount: 12 },
+    { season: 3, year: 2023, avg: 8.23, episodeCount: 12 },
+    { season: 4, year: 2026, avg: 7.72, episodeCount: 5, inProgress: true },
+  ],
+};
+
+test('airingSeasonOf: the newest season, only when the index flags it as still airing', () => {
+  const airing = helpers.airingSeasonOf(TED_LASSO_ROW);
+  assert.equal(airing.season, 4);
+  assert.equal(airing.episodeCount, 5);
+  const finished = { ...TED_LASSO_ROW, seasonAvgs: TED_LASSO_ROW.seasonAvgs.map(({ inProgress, ...a }) => a) };
+  assert.equal(helpers.airingSeasonOf(finished), null);
+  assert.equal(helpers.airingSeasonOf({ seasonAvgs: [] }), null);
+  assert.equal(helpers.airingSeasonOf({}), null);
+});
+
+test('a badge decided by a still-airing season says so, and the shape it names is unchanged', () => {
+  // Declining is what the formula gives Ted Lasso over all four seasons
+  // (Consistent without the partial one); labelling it must not re-rank it.
+  assert.equal(helpers.dominantShapeOf(TED_LASSO_ROW), 'declining');
+  const airing = helpers.airingSeasonOf(TED_LASSO_ROW);
+  const badge = helpers.makeShowShapeBadge('declining', 0.5, airing);
+  assert.equal(badge.dataset.shape, 'declining');
+  assert.match(badge.title, /^Provisional: season 4 is still airing\./);
+  assert.equal(/Provisional/.test(helpers.makeShowShapeBadge('declining', 0.5).title), false);
+  // Still dims on low confidence as well: the two notes compose.
+  assert.match(helpers.makeShowShapeBadge('declining', 0.1, airing).title, /^Provisional: .*Low confidence \(0\.10\)/);
+
+  const tag = helpers.makeAiringTag(airing);
+  assert.equal(tag.textContent, 'Still airing');
+  assert.match(tag.title, /^Season 4 is still airing \(5 episodes so far\), so this show's shape can still change\.$/);
 });
