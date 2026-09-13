@@ -33,7 +33,7 @@
  * feature rather than the page.
  */
 
-const CACHE_VERSION = '2.7.0';
+const CACHE_VERSION = '2.7.1';
 const PRECACHE = `trip-precache-${CACHE_VERSION}`;
 const RUNTIME = `trip-runtime-${CACHE_VERSION}`;
 
@@ -46,9 +46,9 @@ const RUNTIME = `trip-runtime-${CACHE_VERSION}`;
 const ESSENTIAL_URLS = [
   './',
   './index.html',
-  './css/styles.css?v=68',
+  './css/styles.css?v=69',
   './js/trip-logic.js?v=53',
-  './js/app.js?v=79',
+  './js/app.js?v=80',
   '../../assets/css/main.css',
   // The shared auth modal's stylesheet. index.html links it unconditionally,
   // so without it an offline load paints an unstyled auth card over the app.

@@ -23,8 +23,13 @@
   // js/app.js, in index.html and in sw.js's PRECACHE list alike. Bumping the
   // cache-buster without bumping this number is what made "build 31" outlive
   // v=32..38 and stop identifying anything.
-  const TP_BUILD = 79;
+  const TP_BUILD = 80;
   const LS_KEY = 'trip-planner:v1';
+  // Which trip THIS DEVICE has open. Navigation, not data: it is not part of
+  // the synced value and is deliberately absent from app-sync-init.js's key
+  // list, so another device's save cannot switch the trip on this screen and a
+  // trip switch here uploads nothing (2026-09-12 audit, T-2). See openTripId.
+  const OPEN_TRIP_KEY = 'trip-planner:open-trip';
   const TIMEFMT_KEY = 'trip-planner:timefmt';
   // Miles or kilometers, everywhere a distance prints. Same architecture as
   // TIMEFMT_KEY in every respect: a display preference on its own key, never
@@ -159,7 +164,16 @@
 
   // ---------- state ----------
   let db = loadDb();
-  const ui = { search: '', filterType: '', filterStatus: '', filterTraveler: '', packingFilter: '', packingTripId: null, editingId: null, shiftTarget: null, tripModalMode: 'new', confirmAction: null, flashId: null, view: 'timeline', filtersOpen: false };
+  // The trip on screen. `db.activeTripId` used to be how the page knew, and it
+  // rides inside the synced value, so every save on another device switched
+  // the trip under the traveller here. The field is still in the value, left
+  // exactly as it arrived, because copies of the app from before 2026-09-13
+  // read it (and rewrite a missing one on receipt); save() only repairs it when
+  // it names no trip. ensureTrip() resolves this id when it is unset or gone.
+  let openTripId = null;
+  // The *TripId pins: the trip each dialog was opened FOR. A save commits to
+  // that trip or refuses (tripForWrite), whatever is open by the time it runs.
+  const ui = { search: '', filterType: '', filterStatus: '', filterTraveler: '', packingFilter: '', packingTripId: null, essentialsTripId: null, shiftTripId: null, visaTripId: null, itemTripId: null, editingId: null, shiftTarget: null, tripModalMode: 'new', confirmAction: null, flashId: null, view: 'timeline', filtersOpen: false };
   // the phone breakpoint the stylesheet folds the toolbar and stay groups at
   const MOBILE_MQ = window.matchMedia('(max-width: 560px)');
 
@@ -257,6 +271,10 @@
     resetPlaceContext();
     let ok = true;
     try {
+      // The synced activeTripId is left as it arrived (see openTripId) unless
+      // it names a trip that no longer exists: older copies of the app answer a
+      // dangling id with a write of their own on receipt.
+      if (!db.trips.some(t => t.id === db.activeTripId)) db.activeTripId = (activeTrip() || db.trips[0] || { id: null }).id;
       const next = JSON.stringify(db);
       const key = historyKey();
       // The write lands FIRST. Booking the history before it did meant a
@@ -314,17 +332,16 @@
 
   function restoreSnapshot(snapshot) {
     lastSaved = snapshot;
-    const viewing = db.activeTripId;
     const had = new Set(db.trips.map(t => t.id));
     db = JSON.parse(snapshot);
     // Undo restores DATA. It must never move you to a different trip than the
     // one on screen, which is the other half of keeping trip switches out of
-    // the history. The one exception is a trip this step brings BACK: undoing
-    // a trip delete used to leave the picker parked on whichever trip took its
-    // place, with the restored trip off screen (2026-08-22 audit, D2 note).
+    // the history, and openTripId lives outside the snapshot, so it simply
+    // stays. The one exception is a trip this step brings BACK: undoing a trip
+    // delete used to leave the picker parked on whichever trip took its place,
+    // with the restored trip off screen (2026-08-22 audit, D2 note).
     const restored = db.trips.find(t => !had.has(t.id));
-    if (restored) db.activeTripId = restored.id;
-    else if (db.trips.some(t => t.id === viewing)) db.activeTripId = viewing;
+    if (restored) setOpenTrip(restored.id);
     lastSavedKey = historyKey();
     try { localStorage.setItem(LS_KEY, JSON.stringify(db)); setSaveFailed(false); }
     catch { setSaveFailed(true); }
@@ -508,7 +525,7 @@
     }
   }
 
-  function activeTrip() { return db.trips.find(t => t.id === db.activeTripId) || null; }
+  function activeTrip() { return db.trips.find(t => t.id === openTripId) || null; }
 
   // Both repairs save outsideHistory. Auto-creating the fallback trip is the
   // app restoring its own floor, not something the traveller did, and as a
@@ -534,7 +551,30 @@
       db.activeTripId = t.id;
       if (write) save(null, null, true);
     }
-    if (!activeTrip()) { db.activeTripId = db.trips[0].id; if (write) save(null, null, true); }
+    if (!activeTrip()) {
+      // Picking the trip to show is navigation, so nothing that syncs is
+      // saved. It is remembered on this device, except from the cross-tab
+      // handler (persist === false), which must not write at all.
+      const id = openTripFallback();
+      if (write) setOpenTrip(id); else openTripId = id;
+    }
+  }
+  // This device's last choice; then the trip the synced value names, so a
+  // device with no choice of its own opens where the account was last left;
+  // then the first trip.
+  function openTripFallback() {
+    let mine = null;
+    try { mine = localStorage.getItem(OPEN_TRIP_KEY); } catch { /* storage unavailable */ }
+    const exists = id => !!id && db.trips.some(t => t.id === id);
+    if (exists(mine)) return mine;
+    if (exists(db.activeTripId)) return db.activeTripId;
+    return db.trips[0].id;
+  }
+  function setOpenTrip(id) {
+    openTripId = id;
+    // a shared trip is someone else's, with a fresh id per visit: never remembered
+    if (sharedMode || id == null) return;
+    try { localStorage.setItem(OPEN_TRIP_KEY, id); } catch { /* best effort */ }
   }
 
   // ---------- date display ----------
@@ -1501,11 +1541,11 @@
 
   function renderTripSelect() {
     const sel = $('#tripSelect');
-    sel.innerHTML = db.trips.map(t => `<option value="${t.id}" ${t.id === db.activeTripId ? 'selected' : ''}>${esc(t.name)}${OPTION_PAD}</option>`).join('');
+    sel.innerHTML = db.trips.map(t => `<option value="${t.id}" ${t.id === openTripId ? 'selected' : ''}>${esc(t.name)}${OPTION_PAD}</option>`).join('');
     // Truncation contract: anything this app clips must be recoverable on hover
     // or long-press, the same way the day-card city chips already are. The
     // select clips at 260px, so it carries the full name as its own title.
-    const active = db.trips.find(t => t.id === db.activeTripId);
+    const active = activeTrip();
     sel.title = active ? active.name : '';
     // A11: shared mode used to block this with pointer-events only, which stops
     // the mouse and nothing else - it stayed in the tab order and changed with
@@ -1887,8 +1927,8 @@
   // deliberately NOT reset: they are a view the traveller set, and surviving a
   // switch is what the overlap warning's link promises.
   function setActiveTrip(id) {
-    if (db.activeTripId !== id) exitSelectMode();
-    db.activeTripId = id;
+    if (openTripId !== id) exitSelectMode();
+    setOpenTrip(id);
   }
 
   // The toolbar toggle and the bulk bar, brought in line with the rows the
@@ -3073,7 +3113,7 @@
     // The toast outlives a trip switch, so this restore can land in a trip that
     // is not on screen. Going there is the only way the traveller sees it
     // happen; restoring invisibly reads as the button doing nothing.
-    const elsewhere = t2.id !== db.activeTripId;
+    const elsewhere = t2.id !== openTripId;
     if (elsewhere) setActiveTrip(t2.id);
     save(elsewhere ? `Restored "${lastDeleted.item.title}" in "${t2.name}"` : '');
     render();
@@ -3118,11 +3158,13 @@
   // breakfast, something to do, dinner - and only the venues change, so the
   // copy is the cheap way to build the next one.
   let dupDaySource = null;
+  let dupDayTripId = null;
   function openDupDayModal(date) {
     const trip = activeTrip();
     const n = trip.items.filter(it => it.startDate === date).length;
     if (!n) return;
     dupDaySource = date;
+    dupDayTripId = trip.id;
     $('#fDupDayDate').classList.remove('invalid');
     $('#dupDayDate').value = addDays(date, 1);
     $('#dupDayHint').textContent = `${n} item${n === 1 ? '' : 's'} from ${fmtDate(date)} are copied to the date you pick. The originals stay where they are, and a stay keeps the same number of nights.`;
@@ -3151,17 +3193,18 @@
       $('#dupDayErr').textContent = 'Pick a different day: this is the day you are copying from.';
       return;
     }
+    const trip = tripForWrite(dupDayTripId, '#dupDayOverlay');
+    if (!trip) return;
     const source = dupDaySource;
     closeAllOverlays();
-    duplicateDay(source, target);
+    duplicateDay(trip, source, target);
   }
 
   // A copy, never a move: the source day is untouched and whatever the target
   // day already holds is kept. Every clone is shifted by the same day delta, so
   // a 3-night stay copied forward is still 3 nights. One save() means one undo
   // takes the whole copied day back out again.
-  function duplicateDay(date, targetDate) {
-    const trip = activeTrip();
+  function duplicateDay(trip, date, targetDate) {
     const sources = trip.items.filter(it => it.startDate === date);
     if (!sources.length) return;
     const delta = diffDays(date, targetDate);
@@ -4079,6 +4122,7 @@
   // lands in a field that would otherwise have opened empty.
   function openItemModal(itemId, preset) {
     ui.editingId = itemId;
+    ui.itemTripId = openTripId;
     const pre = typeof preset === 'string' ? { startDate: preset } : (preset || {});
     const it = itemId ? activeTrip().items.find(x => x.id === itemId) : null;
     const preStay = !it && pre.type === 'stay';
@@ -4579,8 +4623,11 @@
     const travel = !!TRAVEL_TYPES[modalType];
     // the form rebuilds the item from scratch, so anything it does not expose
     // has to be read off the item being edited or it is lost on save
-    const prev = ui.editingId
-      ? (activeTrip().items.find(x => x.id === ui.editingId) || {}) : {};
+    // the trip this dialog was opened for, never whichever is open by the time
+    // Save is pressed (refused out loud just before the write if it is gone)
+    const trip = db.trips.find(t => t.id === ui.itemTripId) || null;
+    const prev = ui.editingId && trip
+      ? (trip.items.find(x => x.id === ui.editingId) || {}) : {};
     // An activity or a note can legitimately carry an end date (import, a share
     // link, the assistant), but the arrival row is hidden for those types, so
     // there is no field to round-trip it through and a no-op edit wrote it
@@ -4646,7 +4693,7 @@
     let splitErr = '';
     const whoFor = $('#whoFor');
     if (whoFor) {
-      const names = normalizeTravelers(activeTrip().travelers);
+      const names = normalizeTravelers(trip ? trip.travelers : []);
       const picked = pickedTravelers();
       if (picked.length && picked.length < names.length) it.travelers = picked;
       // A hand-entered split is only stored when it still accounts for the whole
@@ -4762,7 +4809,11 @@
       return;
     }
 
-    const trip = activeTrip();
+    if (!trip) {
+      toastError(TRIP_GONE);
+      closeAllOverlays();
+      return;
+    }
     if (ui.editingId) {
       const idx = trip.items.findIndex(x => x.id === ui.editingId);
       // A remote merge replaces `db` under an open dialog on purpose (it does
@@ -4831,8 +4882,11 @@
   const MAX_SHIFT_DAYS = diffDays(DATE_MIN, DATE_MAX);
 
   function openShiftModal(target) {
+    // a shared trip is read-only, and the phone More menu still proxies a click here
+    if (sharedMode) return;
     // target: item id, or null for whole trip
     ui.shiftTarget = target;
+    ui.shiftTripId = openTripId;
     $('#shiftTitle').textContent = target ? 'Shift item dates' : 'Shift entire trip';
     $('#shiftScopeField').style.display = target ? '' : 'none';
     $('#fShiftDays').classList.remove('invalid');
@@ -4871,14 +4925,17 @@
     // wider than the whole supported calendar, so no date could survive it and
     // addDays would be asked for one the Date object cannot even serialise
     if (Math.abs(days) > MAX_SHIFT_DAYS) { shiftError(rangeMsg); return; }
-    const trip = activeTrip();
+    const trip = tripForWrite(ui.shiftTripId, '#shiftOverlay');
+    if (!trip) return;
     let targets;
     if (!ui.shiftTarget) {
       targets = trip.items;
     } else {
       const scope = document.querySelector('input[name="shiftScope"]:checked').value;
       const anchor = trip.items.find(x => x.id === ui.shiftTarget);
-      if (!anchor) { closeAllOverlays(); return; }
+      // said out loud, as the item form does: closing in silence read exactly
+      // like a shift that had worked
+      if (!anchor) { toastError('That item is no longer in this trip, so nothing was moved'); closeAllOverlays(); return; }
       if (scope === 'one') targets = [anchor];
       else if (scope === 'all') targets = trip.items;
       else {
@@ -5012,7 +5069,7 @@
     const existing = mode !== 'new' && t;
     // The trip this dialog is ABOUT, pinned at open. A remote sync merge can
     // replace db under an open dialog (deliberately, without closing it) and
-    // ensureTrip may then re-point activeTripId at a different trip; resolving
+    // ensureTrip may then open a different trip; resolving
     // activeTrip() again at submit time renamed and re-rostered THAT trip.
     // Same guard the item form has (see submitItemForm's editingId check).
     ui.tripEditId = existing ? t.id : null;
@@ -5287,6 +5344,7 @@
   function openEssentialsModal() {
     const trip = activeTrip();
     if (!trip) return;
+    ui.essentialsTripId = trip.id;
     const vals = readEssentials(trip);
     for (const f of ESSENTIAL_FIELDS) $(f.input).value = vals[f.key];
     syncEssentialsEmpty();
@@ -5303,7 +5361,7 @@
 
   function submitEssentialsForm(e) {
     e.preventDefault();
-    const trip = activeTrip();
+    const trip = tripForWrite(ui.essentialsTripId, '#essentialsOverlay');
     if (!trip) return;
     const before = JSON.stringify(trip.essentials || null);
     const next = packEssentials(formEssentials());
@@ -5489,7 +5547,7 @@
   function jumpToSearchResult(tripId, itemId) {
     const trip = db.trips.find(t => t.id === tripId);
     if (!trip) return;
-    if (db.activeTripId !== tripId) { setActiveTrip(tripId); save(); }
+    if (openTripId !== tripId) setActiveTrip(tripId);
     popoverReturnFocus = null; // the jump, not the search button, is where you now are
     closeTripSearch();
     // the same jump the Issues list, the night strip and the Up next chip use
@@ -6343,6 +6401,7 @@
     const st = buildImportedTrip(trip, drops);
     sharedTrip = st;
     db = { version: 1, activeTripId: st.id, trips: [st] };
+    openTripId = st.id;
     document.body.classList.add('tp-shared');
     render();
     showSharedBanner(st);
@@ -8721,6 +8780,7 @@
 
   async function openVisaModal() {
     const token = ++visaToken;
+    ui.visaTripId = openTripId;
     openOverlay('#visaOverlay');
     // Before any awaiting: the expiry check needs no dataset and no network, so
     // it must still be filled in and answered on the offline and failed-fetch
@@ -8860,7 +8920,8 @@
   // itinerary countries + manually added ones (layovers, land borders)
   function combinedVisaDests() {
     const auto = new Set(visaDests.map(d => d.cc));
-    const extras = (activeTrip().visaExtras || [])
+    const trip = db.trips.find(t => t.id === ui.visaTripId);
+    const extras = ((trip && trip.visaExtras) || [])
       .filter(cc => !auto.has(cc))
       .map(cc => ({ cc, name: regionName(cc), places: [], manual: true }));
     return [...visaDests, ...extras];
@@ -8891,8 +8952,9 @@
       const info = classifyVisa(row[d.cc]);
       const wiki = 'https://en.wikipedia.org/wiki/Special:Search?search=' + encodeURIComponent('Visa policy of ' + d.name);
       const sub = d.manual ? 'added manually · transit / overland' : d.places.join(', ');
-      const remove = d.manual ? `<button type="button" class="visa-remove" data-remove-cc="${esc(d.cc)}" title="Remove ${esc(d.name)}" aria-label="Remove ${esc(d.name)}">✕</button>` : '';
-      const remind = (info.cls === 'evisa' || info.cls === 'required')
+      // a shared trip can be read here but not changed: no remove, no reminder
+      const remove = d.manual && !sharedMode ? `<button type="button" class="visa-remove" data-remove-cc="${esc(d.cc)}" title="Remove ${esc(d.name)}" aria-label="Remove ${esc(d.name)}">✕</button>` : '';
+      const remind = !sharedMode && (info.cls === 'evisa' || info.cls === 'required')
         ? `<button type="button" class="row-btn visa-remind" data-remind-cc="${esc(d.cc)}" data-remind-name="${esc(d.name)}">➕ Add reminder</button>`
         : '';
       return `
@@ -8961,6 +9023,12 @@
   let assistReturnFocus = null;
 
   function openAssist(focusDate) {
+    // Never on a shared trip (2026-09-12 audit, T-4): nothing it proposes can
+    // be saved there, and every message would spend the site's shared quota on
+    // a trip the visitor cannot edit. CSS hides the toolbar button and the
+    // day-card robot; this also closes the doors CSS cannot, such as the phone
+    // More menu's proxied click. Importing the trip opens it again.
+    if (sharedMode) return;
     // The assistant is the app's only paid dependency, so knowing how often it
     // is opened at all is worth one event. The prompt and the reply are never
     // touched here - they contain the trip.
@@ -9694,7 +9762,7 @@
   // to the turn the picker sent and to nothing after it, so a follow-up typed
   // into the composer is answered as free-form even mid-thread.
   async function sendMessage(text, mode, plan) {
-    if (assistSending) return;
+    if (assistSending || sharedMode) return;
     const trip = activeTrip();
     if (!trip) return;
     const tripId = trip.id;
@@ -11798,6 +11866,7 @@
     const card = document.createElement('div');
     card.className = 'assist-proposal assist-set';
     card.dataset.setGroup = entry.group;
+    card.dataset.tripId = trip ? trip.id : '';
     // Every candidate of a set is an add for the same slot, so the first one's
     // type is the set's type (see the date, just below, for the same reason).
     card.dataset.type = (entry.candidates[0].fields || {}).type || '';
@@ -11836,6 +11905,8 @@
     card.className = 'assist-proposal';
     card.dataset.op = p.op;
     card.dataset.proposalId = pid;
+    // the trip it was validated against, and the only one accepting it may write to
+    card.dataset.tripId = trip ? trip.id : '';
     // read by the route pass, which routes places and not travel legs
     card.dataset.type = (p.fields || {}).type || '';
     // the day this card would land on: the shortest-route footer is per day,
@@ -12089,10 +12160,16 @@
   }
 
   function acceptProposal(pid, card, restore) {
+    // A shared trip is read-only: the item would paint as added and exist
+    // nowhere. The assistant cannot be opened there either (see openAssist).
+    if (sharedMode) { toast('This is a shared copy. Import it as your trip to add to it.'); return; }
     const action = assistActions.get(pid);
     if (!action) return;
     const putCardBack = restore || assistCardSnapshot(card);
-    const trip = activeTrip();
+    // The trip the card was made for (stamped by proposalCard and
+    // alternativeSetCard), never whichever trip is open by now.
+    const trip = db.trips.find(t => t.id === card.dataset.tripId) || null;
+    if (!trip) { toastError(TRIP_GONE); assistActions.delete(pid); markProposalStale(card); return; }
     const res = validateTripAction(action, trip); // re-validate against CURRENT state
     if (!res.ok) { assistActions.delete(pid); markProposalStale(card); return; }
     const p = res.proposal;
@@ -12297,13 +12374,22 @@
     return db.trips.find(t => t.id === ui.packingTripId) || null;
   }
   function packingTripForWrite() {
-    const t = packingTrip();
+    const t = tripForWrite(ui.packingTripId, '#packingOverlay');
+    if (t) ensurePacking(t);
+    return t;
+  }
+  // The packing dialog's contract is every writing dialog's now: essentials,
+  // shift, copy day, visa, the item form and accepted proposal cards pin the
+  // trip they were opened for and resolve it BY ID when they write. A trip
+  // that is gone means nothing is written anywhere and the traveller is told;
+  // it never means "whichever trip is open now" (2026-09-12 audit, T-1).
+  const TRIP_GONE = 'That trip is no longer here, so nothing was saved';
+  function tripForWrite(tripId, overlaySel) {
+    const t = db.trips.find(x => x.id === tripId) || null;
     if (!t) {
-      toastError('That trip is no longer here, so nothing was saved');
-      closeOverlay($('#packingOverlay'));
-      return null;
+      toastError(TRIP_GONE);
+      if (overlaySel) closeOverlay($(overlaySel));
     }
-    ensurePacking(t);
     return t;
   }
 
@@ -12311,7 +12397,7 @@
     const trip = activeTrip();
     if (!trip) return;
     // the dialog is opened for THIS trip and keeps editing it, whatever
-    // happens to db.activeTripId while it is open
+    // trip is open by the time it saves
     ui.packingTripId = trip.id;
     ensurePacking(trip);
     // a filter left pointing at somebody who is no longer on the trip would open
@@ -12822,10 +12908,10 @@
     // keeps its menu up so the item's own checkmark flash is seen (the
     // document-level outside-click closes it the moment attention moves on).
     if (act !== 'share-day') closeDayMenus();
-    if (act === 'ask-day') openAssist(date);
-    // read-only, like ask-day: a shared trip's visitor can look at the route
-    else if (act === 'day-route') openDayRoute(date);
+    // read-only: a shared trip's visitor can look at the route
+    if (act === 'day-route') openDayRoute(date);
     else if (sharedMode) return;
+    else if (act === 'ask-day') openAssist(date);
     else if (act === 'add-day') openItemModal(null, date);
     else if (act === 'share-day') shareDay(date);
     else if (act === 'duplicate-day') openDupDayModal(date);
@@ -12863,8 +12949,10 @@
   $('#visaAddSel').addEventListener('change', () => {
     const cc = $('#visaAddSel').value;
     $('#visaAddSel').value = '';
-    if (!cc) return;
-    const trip = activeTrip();
+    // read-only on a shared trip, where the field is hidden (see styles.css)
+    if (!cc || sharedMode) return;
+    const trip = tripForWrite(ui.visaTripId, '#visaOverlay');
+    if (!trip) return;
     if (!Array.isArray(trip.visaExtras)) trip.visaExtras = [];
     if (!trip.visaExtras.includes(cc)) {
       trip.visaExtras.push(cc);
@@ -12876,15 +12964,18 @@
     const rem = e.target.closest('button[data-remind-cc]');
     if (rem) { addVisaReminder(rem.dataset.remindName); return; }
     const btn = e.target.closest('button[data-remove-cc]');
-    if (!btn) return;
-    const trip = activeTrip();
+    if (!btn || sharedMode) return;
+    const trip = tripForWrite(ui.visaTripId, '#visaOverlay');
+    if (!trip) return;
     trip.visaExtras = (trip.visaExtras || []).filter(c => c !== btn.dataset.removeCc);
     save();
     renderVisaRows();
   });
 
   function addVisaReminder(country) {
-    const trip = activeTrip();
+    if (sharedMode) return;
+    const trip = tripForWrite(ui.visaTripId, '#visaOverlay');
+    if (!trip) return;
     const title = `Apply for ${country} visa`;
     if (trip.items.some(it => it.title === title)) { toast('Reminder already added'); return; }
     const start = tripStats(trip).start;
@@ -13102,10 +13193,10 @@
 
   // a selection belongs to the rows it was made from, so a trip switch drops it
   // exactly as a filter change does: the bulk bar could otherwise sit over
-  // another trip's board reading "0 selected"
+  // another trip's board reading "0 selected". A switch is navigation, so it
+  // writes nothing that syncs (see OPEN_TRIP_KEY).
   $('#tripSelect').addEventListener('change', e => {
     setActiveTrip(e.target.value);
-    save();
     render();
   });
 
@@ -13298,7 +13389,6 @@
     const t = e.target.closest('button[data-trip]');
     if (t && db.trips.some(x => x.id === t.dataset.trip)) {
       setActiveTrip(t.dataset.trip);
-      save();
       render();
     }
   });
@@ -13459,7 +13549,7 @@
       // reload so the notice below can tell a real change from a no-op, and
       // read off the active trip rather than the whole db: another device
       // editing a different trip is not something to interrupt anyone about.
-      const beforeId = (db && db.activeTripId) || null;
+      const beforeId = openTripId;
       const findTrip = (id) => (db && Array.isArray(db.trips) ? db.trips.find(t => t.id === id) : null) || null;
       const beforeTrip = beforeId ? JSON.stringify(findTrip(beforeId)) : null;
 
@@ -13486,7 +13576,11 @@
       // lines. Compared on bytes, so a byte-identical echo says nothing, and
       // only for the trip actually on screen.
       const afterTrip = beforeId ? JSON.stringify(findTrip(beforeId)) : null;
-      if (beforeTrip !== null && afterTrip !== beforeTrip) {
+      // The one delivery that DOES change the trip on screen: the trip open here
+      // is gone, and ensureTrip above has already moved to another one.
+      if (beforeTrip !== null && beforeTrip !== 'null' && afterTrip === 'null') {
+        toast('The trip you had open was deleted on another device');
+      } else if (beforeTrip !== null && afterTrip !== beforeTrip) {
         toast('Updated from another device');
       }
       // A trip deleted on ANOTHER device never went through this device's
