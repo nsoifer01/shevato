@@ -85,9 +85,14 @@ test('every PRECACHE_URLS entry exists on disk (addAll is atomic)', () => {
 });
 
 test('the app shell entries themselves are present', () => {
-    for (const u of ['./', './index.html', './manifest.webmanifest']) {
+    for (const u of ['./', './manifest.webmanifest']) {
         assert.ok(precached.has(u), `${u} precached`);
     }
+    // './' IS the shell. Production 301s './index.html' to it, so precaching
+    // that URL stored a redirected response a navigation cannot use (audit
+    // G-5; the redirect rules are checked against netlify.toml in
+    // sw-offline-behavior.test.mjs).
+    assert.ok(!precached.has('./index.html'), './index.html must not be precached');
 });
 
 test('CACHE_VERSION is strict semver and names both caches', () => {
