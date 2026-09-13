@@ -548,49 +548,64 @@ class GymTrackerApp {
     }
 
     /**
-     * Save data to storage
+     * Save data to storage.
+     *
+     * Every save returns false when the write did not land (quota exhausted,
+     * private mode, evicted storage), and only a write that landed announces
+     * a change. Callers that tell the user something was saved MUST check it
+     * and put memory back on false, the way finishWorkout does: it used to
+     * clear the active-workout blob and congratulate the lifter on a session
+     * that existed only in memory, and every other store toasted success over
+     * a refused write that quietly came undone on reload (audit G-4). An event
+     * fired for a refused write had listeners render a change storage never
+     * took.
      */
     savePrograms() {
-        const ok = storageService.savePrograms(this.programs.map(p => p.toJSON()));
-        emit(EVENTS.PROGRAMS_CHANGED, this.programs);
+        const ok = storageService.savePrograms(this.programs.map(p => p.toJSON())) !== false;
+        if (ok) emit(EVENTS.PROGRAMS_CHANGED, this.programs);
         return ok;
     }
 
-    // Returns false when the write did not land (quota exhausted, private
-    // mode, evicted storage). Callers that tell the user something was saved
-    // MUST check it: finishWorkout used to clear the active-workout blob and
-    // congratulate the lifter on a session that existed only in memory.
     saveWorkoutSessions() {
-        const ok = storageService.saveWorkoutSessions(this.workoutSessions.map(s => s.toJSON()));
-        emit(EVENTS.SESSIONS_CHANGED, this.workoutSessions);
+        const ok = storageService.saveWorkoutSessions(this.workoutSessions.map(s => s.toJSON())) !== false;
+        if (ok) emit(EVENTS.SESSIONS_CHANGED, this.workoutSessions);
         return ok;
     }
 
     saveSettings() {
-        storageService.saveSettings(this.settings.toJSON());
-        emit(EVENTS.SETTINGS_CHANGED, this.settings);
+        const ok = storageService.saveSettings(this.settings.toJSON()) !== false;
+        if (ok) emit(EVENTS.SETTINGS_CHANGED, this.settings);
+        return ok;
     }
 
     saveAchievements() {
-        storageService.saveAchievements(this.achievements.map(a => a.toJSON()));
-        emit(EVENTS.ACHIEVEMENTS_CHANGED, this.achievements);
+        const ok = storageService.saveAchievements(this.achievements.map(a => a.toJSON())) !== false;
+        if (ok) emit(EVENTS.ACHIEVEMENTS_CHANGED, this.achievements);
+        return ok;
     }
 
     saveCustomExercises() {
-        storageService.saveCustomExercises(this.customExercises);
+        const ok = storageService.saveCustomExercises(this.customExercises) !== false;
+        if (!ok) return false;
         // Re-merge exercise database
         this.exerciseDatabase = [...EXERCISE_DATABASE, ...this.customExercises];
         emit(EVENTS.CUSTOM_EXERCISES_CHANGED, this.customExercises);
+        return true;
     }
 
     saveMeasurements() {
-        storageService.saveMeasurements(this.measurements.map(m => m.toJSON()));
-        emit(EVENTS.MEASUREMENTS_CHANGED, this.measurements);
+        const ok = storageService.saveMeasurements(this.measurements.map(m => m.toJSON())) !== false;
+        if (ok) emit(EVENTS.MEASUREMENTS_CHANGED, this.measurements);
+        return ok;
     }
 
+    // add/delete below return false, with memory put back to what storage
+    // still holds, when the write is refused.
     addMeasurement(measurement) {
         this.measurements.push(measurement);
-        this.saveMeasurements();
+        if (this.saveMeasurements()) return true;
+        this.measurements.pop();
+        return false;
     }
 
     deleteMeasurement(id) {
@@ -598,13 +613,18 @@ class GymTrackerApp {
         // numeric ids were stringified would otherwise never match the
         // numeric click-handler id and the entry would silently survive.
         const target = Number(id);
+        const stored = this.measurements;
         this.measurements = this.measurements.filter(m => Number(m.id) !== target);
-        this.saveMeasurements();
+        if (this.saveMeasurements()) return true;
+        this.measurements = stored;
+        return false;
     }
 
     addCustomExercise(exercise) {
         this.customExercises.push(exercise);
-        this.saveCustomExercises();
+        if (this.saveCustomExercises()) return true;
+        this.customExercises.pop();
+        return false;
     }
 
     /**

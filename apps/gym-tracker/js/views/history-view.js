@@ -704,7 +704,11 @@ class HistoryView {
         }
 
         this.app.programs.push(program);
-        this.app.savePrograms();
+        if (this.app.savePrograms() === false) {
+            this.app.programs.pop();
+            showToast('Could not create this program: device storage is full. Free some space and try again.', 'error', 6000);
+            return;
+        }
         showToast(`Program "${name}" created`, 'success');
         document.getElementById('workout-detail-modal').classList.remove('active');
     }
@@ -730,8 +734,12 @@ class HistoryView {
         const index = this.app.workoutSessions.findIndex(s => sameId(s.id, sessionId));
         if (index < 0) return;
 
-        this.app.workoutSessions.splice(index, 1);
-        this.app.saveWorkoutSessions();
+        const [removed] = this.app.workoutSessions.splice(index, 1);
+        if (this.app.saveWorkoutSessions() === false) {
+            this.app.workoutSessions.splice(index, 0, removed);
+            showToast('Could not delete this workout: device storage is full. Free some space and try again.', 'error', 6000);
+            return;
+        }
         this.app.updateAchievements();
         this.render();
         showToast('Workout deleted', 'info');

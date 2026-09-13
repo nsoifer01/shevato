@@ -315,7 +315,9 @@ class SettingsView {
                 const target = this.pendingLeaveView;
                 this.pendingLeaveView = null;
                 closeModalSafely(unsavedModal);
-                this.saveSettings();
+                // A refused save keeps the lifter on Settings, with the form
+                // still holding their choices, instead of leaving without them.
+                if (this.saveSettings() === false) return;
                 if (target) this.app.showView(target);
             });
             document.getElementById('unsaved-settings-discard')?.addEventListener('click', () => {
@@ -625,8 +627,11 @@ class SettingsView {
         return false;
     }
 
+    /** Returns false when storage refused the write (see below). */
     saveSettings() {
         const settings = this.app.settings;
+        // What storage holds right now, so a refused write can put it back.
+        const stored = structuredClone(settings.toJSON());
 
         settings.weightUnit = normalizeWeightUnit(document.getElementById('weight-unit').value);
         const timeFormatEl = document.getElementById('time-format');
@@ -676,7 +681,14 @@ class SettingsView {
             if (parsed.length > 0) profile.plates = parsed;
         }
 
-        this.app.saveSettings();
+        if (this.app.saveSettings() === false) {
+            // Storage still holds the old settings, so every screen keeps
+            // using them. The form keeps the lifter's choices and stays
+            // unsaved, so Save works again once there is room (audit G-4).
+            this.app.settings = Settings.fromJSON(stored);
+            showToast('Could not save your settings: device storage is full. Free some space and save again.', 'error', 6000);
+            return false;
+        }
         // Apply the wake-lock choice to a workout that is running right now,
         // rather than making the lifter finish it first.
         this.app.viewControllers.workout?.syncWakeLock?.();
@@ -691,6 +703,7 @@ class SettingsView {
         // Form is now clean again — snapshot the just-saved values and disable Save
         this.savedSnapshot = this.snapshotForm();
         this.checkDirty();
+        return true;
     }
 
     exportData() {
