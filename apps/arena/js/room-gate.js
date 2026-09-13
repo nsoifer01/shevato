@@ -11,12 +11,12 @@
  * the room code keeps identical passwords in different rooms from
  * producing identical hashes.
  *
- * Boundary (documented deliberately): the gateHash a member writes on
- * their own player doc is readable by any signed-in user who has the
- * room code, so a determined attacker could replay another member's
- * gateHash to enter the room. What the design guarantees is that the
- * PASSWORD ITSELF is never recoverable by anyone - the harm in the old
- * scheme, where the cleartext password (often reused elsewhere) sat on
+ * The gateHash is an admission proof, so it is not left lying around: the
+ * client deletes it from its player doc right after the create, and a
+ * scoped room's roster is readable by members only (since 2026-09-07; it
+ * used to be readable, and replayable, by anyone with the code). Above
+ * all, the PASSWORD ITSELF is never recoverable by anyone - the harm in the
+ * old scheme, where the cleartext password (often reused elsewhere) sat on
  * the world-readable room doc.
  *
  * UMD-style export: CommonJS for node:test (Node 20 ships WebCrypto on
