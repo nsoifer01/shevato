@@ -16,19 +16,10 @@
 // running those commands; the blob store is per-site, so writing it while
 // linked to any other project leaves this endpoint on 503.
 //
-// ONE-TIME MIGRATION STILL OUTSTANDING (the code cannot do this itself; only
-// the owner, from a linked CLI, can rewrite the blob). Until it is done the
-// deployed endpoint answers 503 not_configured, because this version reads
-// `geminiKeyV2` and the live blob still carries `geminiKey`:
-//
-//   netlify status                      # confirm the shevato.com project
-//   netlify blobs:get trip-planner-assist config
-//   netlify blobs:set trip-planner-assist config '{"geminiKeyV2":"<the key from the line above>"}'
-//
-// The new object must NOT keep a `geminiKey` field: dropping the old field is
-// the entire point (see resolveGeminiKey below). Rotating the key at the same
-// time is strictly better, because the old value has been reachable by every
-// deploy permalink ever published.
+// The config must never carry a `geminiKey` field alongside `geminiKeyV2`:
+// every deploy before 2026-09-12 reads that old name, so its absence is what
+// keeps those builds on 503 (see resolveGeminiKey below, and "Old deploys run
+// old function code" in the root FINDINGS.md).
 
 import { checkQuota, resetAtFor } from './lib/tp-assist-quota.mjs';
 import { updateUsage } from './lib/blob-cas.mjs';
