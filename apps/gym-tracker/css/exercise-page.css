@@ -2,7 +2,10 @@
    browse + taxonomy index. Matches the Gym Tracker app: neutral-dark
    surfaces, azure accent, and the Inter typeface. */
 
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+/* Inter comes from Google Fonts through a non-blocking <link> in each generated
+   page's <head> (see scripts/render-exercise-*.cjs), never an @import here: an
+   @import blocks this whole stylesheet, so a stalled fonts.googleapis.com left
+   the page unrendered. tests/static/third-party-boot-path.test.mjs pins it. */
 
 * { box-sizing: border-box; }
 

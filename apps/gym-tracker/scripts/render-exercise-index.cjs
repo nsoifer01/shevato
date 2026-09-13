@@ -47,6 +47,8 @@ function renderExerciseIndex(exercises, slugs, builtAt) {
 
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E💪%3C/text%3E%3C/svg%3E">
   <link rel="stylesheet" href="/apps/gym-tracker/css/exercise-page.css">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" media="print" onload="this.media='all'">
+  <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap"></noscript>
   <link rel="stylesheet" href="/assets/css/back-to-top.css">
 
   <script async src="https://www.googletagmanager.com/gtag/js?id=G-GEQGY35JJN"></script>
@@ -251,6 +253,8 @@ function renderTaxonomyPage({ kind, key, label, exercises, slugs, builtAt }) {
 
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E💪%3C/text%3E%3C/svg%3E">
   <link rel="stylesheet" href="/apps/gym-tracker/css/exercise-page.css">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" media="print" onload="this.media='all'">
+  <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap"></noscript>
   <link rel="stylesheet" href="/assets/css/back-to-top.css">
 
   <script async src="https://www.googletagmanager.com/gtag/js?id=G-GEQGY35JJN"></script>

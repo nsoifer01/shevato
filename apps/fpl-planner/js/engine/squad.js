@@ -374,8 +374,10 @@ export function buildSquadState({ entry, history, transfers, picks, gameState, g
   // The bank moves with the transfers already made: FPL's frozen
   // `entry_history.bank` predates them.
   const bankTenths = (entryHistory.bank ?? 0) + applied.moneyIn - applied.moneyOut;
-  // FPL's `entry_history.value` is the TOTAL: selling value of the 15 plus the
-  // bank. Do not add the bank to it again downstream.
+  // FPL's `entry_history.value` is the TOTAL: the fifteen at their LISTED prices
+  // as of the frozen gameweek's deadline, plus the bank. It is not their selling
+  // value (FINDINGS "Fact 3"), and it already includes the bank, so never add
+  // the bank to it again downstream.
   const frozenValueTenths = entryHistory.value ?? 0;
   const sellingTotal = built.reduce((sum, p) => sum + p.sellingTenths, 0);
   // What the manager can spend TODAY, in every case: the fifteen at their
@@ -383,11 +385,12 @@ export function buildSquadState({ entry, history, transfers, picks, gameState, g
   //
   // This used to fall back to FPL's own `value` whenever no transfer had been
   // made, and that number is a snapshot FROZEN at the gameweek deadline: it does
-  // not track price moves after it (measured 2026-08-28, see FINDINGS "Fact 3").
-  // One overnight fall was enough to make the header state 99.9 while the banner
-  // directly below it named 99.8 and called the header's figure the wrong one.
+  // not track price moves after it (measured 2026-08-28, see FINDINGS "Fact 3"),
+  // and it counts listed prices, so it is higher than what can be spent whenever
+  // an owned player has risen since purchase. One overnight fall was enough to
+  // make the header state 99.9 while the banner directly below it named 99.8.
   // Affordability was already computed from the reconstruction, so the fallback
-  // only ever affected what was DISPLAYED - and it displayed the stale half.
+  // only ever affected what was DISPLAYED - and it displayed the wrong half.
   //
   // The one case with nothing to reconstruct FROM is an in-season payload that
   // carried no picks (`empty_picks`): there the frozen total is the only squad
@@ -395,47 +398,54 @@ export function buildSquadState({ entry, history, transfers, picks, gameState, g
   // nothing.
   const squadValueTenths = built.length ? sellingTotal + bankTenths : frozenValueTenths;
 
-  // The one arithmetic check that proves the purchase-price reconstruction was
-  // right. It fails when a transfer is missing from the payload, and that has to
-  // be visible: silently absorbing it would mean recommending transfers the
-  // manager cannot afford.
+  // The arithmetic check against FPL's own total. It fails when the fifteen or
+  // the bank read here disagree with what FPL holds (a transfer missing from the
+  // payload moves both), and that has to be visible: silently absorbing it would
+  // mean planning from a squad the manager does not own.
+  //
+  // WHAT IT CANNOT PROVE. `value` prices every player at his listed price, never
+  // at what he would sell for, so it carries no information about purchase
+  // prices and cannot validate the selling-price reconstruction at all. Until
+  // 2026-09-13 this compared the SELLING total against it, which warned on every
+  // squad holding a player who had risen since purchase: Team ID 1 in GW4 read
+  // "100.4 does not match FPL's 101.2" with nothing wrong, the 0.8 being eight
+  // risers each held 0.1 below list by the sell-on fee. Every measurement and
+  // test before then used a price FALL, where the two totals coincide.
   //
   // It is only meaningful against the FROZEN squad. Once a transfer has been
   // made for the gameweek being planned, FPL's `value` describes a squad that no
   // longer exists, so comparing against it would fire on every manager who had
   // simply used their transfer.
   //
-  // COMPARE LIKE WITH LIKE. `value` is a snapshot taken at the frozen
-  // gameweek's deadline (Fact 3), so the live reconstruction is guaranteed to
-  // drift from it the instant any owned player changes price, and it fired on
-  // that ordinary drift rather than on a fault: on 2026-09-01 one 0.1 fall put a
-  // banner on the page for a squad whose arithmetic was perfect. Roll every
-  // price back to the deadline with `costChangeEvent` first, and what is left
-  // over is the part price movement does NOT explain, which is the only part
-  // that ever meant anything.
-  const deadlineTotal = built.reduce((sum, p) => {
-    const player = gameState.players.get(p.playerId);
-    const moved = player ? player.costChangeEvent : 0;
-    const nowCost = player ? player.nowCost : 0;
-    return sum + sellingPrice(p.purchaseTenths, nowCost - moved, rules);
-  }, 0);
+  // COMPARE AT THE SAME MOMENT. `value` was taken at the frozen gameweek's
+  // deadline, so today's prices drift from it the instant any owned player
+  // moves, and on 2026-09-01 one 0.1 fall put a banner on the page for a squad
+  // whose arithmetic was perfect. Roll every price back to the deadline with
+  // `costChangeEvent` first, and what is left over is the part price movement
+  // does NOT explain, which is the only part that ever meant anything.
+  //
   // `costChangeEvent` measures movement since the CURRENT event's deadline, so
   // the roll-back only lines up when the frozen picks ARE the current event's.
-  // Reading an older gameweek's picks (a rollover, a hand-passed payload) makes
-  // it the wrong yardstick, and there the raw comparison is the honest one.
+  // Reading an older gameweek's picks (a rollover, a Free Hit revert, a
+  // hand-passed payload) makes it the wrong yardstick, and there the raw
+  // comparison at today's listed prices is the honest one.
   const alignedToCurrentEvent = gameState.currentEvent !== null
     && gameState.currentEvent !== undefined
     && entryHistory.event === gameState.currentEvent;
-  const reconciled = alignedToCurrentEvent
-    ? deadlineTotal + bankTenths === frozenValueTenths
-    : sellingTotal + bankTenths === frozenValueTenths;
-  if (!applied.count && !reconciled) {
+  const listedTotal = built.reduce((sum, p) => {
+    const player = gameState.players.get(p.playerId);
+    if (!player) return sum;
+    return sum + player.nowCost - (alignedToCurrentEvent ? player.costChangeEvent : 0);
+  }, 0);
+  if (!applied.count && listedTotal + bankTenths !== frozenValueTenths) {
     warnings.push({
       code: 'value_mismatch',
       // Both to one decimal. Dividing by 10 alone printed "100.9 does not match
       // FPL's 101", one figure to a tenth and the other not, which read as two
       // different kinds of number rather than the same one twice.
-      message: `Reconstructed squad value ${((sellingTotal + bankTenths) / 10).toFixed(1)} does not match FPL's ${(frozenValueTenths / 10).toFixed(1)}, and price changes since the deadline do not account for the difference. Selling prices may be off by it.`,
+      message: alignedToCurrentEvent
+        ? `Your fifteen at deadline prices plus the bank come to ${((listedTotal + bankTenths) / 10).toFixed(1)}, which does not match FPL's squad value of ${(frozenValueTenths / 10).toFixed(1)}, and price changes since the deadline do not account for the difference. The players or the bank read here may not be the ones Fantasy Premier League holds.`
+        : `Your fifteen at current prices plus the bank come to ${((listedTotal + bankTenths) / 10).toFixed(1)}, which does not match FPL's squad value of ${(frozenValueTenths / 10).toFixed(1)}. Prices may have moved since that gameweek's deadline, or the players or the bank read here may not be the ones Fantasy Premier League holds.`,
     });
   }
 

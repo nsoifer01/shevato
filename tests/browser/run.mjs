@@ -119,7 +119,9 @@ const EXPECTED_CHECKS = {
   // the direction that has to unwind the RTL layout. +1.
   // 172 before 2026-09-05; +1 for the mobile menu open/close JS-error check
   // added with the `wasOpen` fix.
-  'tests/browser/suites/site.mjs': 173,
+  // 173 before 2026-09-13; +16, one "boots with every third-party CDN
+  // stalled" check per root page and app page (arena excepted).
+  'tests/browser/suites/site.mjs': 189,
   // 103 from master, plus the two Rising Shows highlight-badge checks added
   // in this branch.
   'tests/browser/suites/apps.mjs': 105,
@@ -223,7 +225,7 @@ const SUITE_SECONDS = {
   'apps/gym-tracker/e2e/units-migration.mjs': 130,
   // 118 without the rising-shows dataset, 120 with it.
   'tests/browser/suites/apps.mjs': 120,
-  'apps/mario-kart/e2e/audit-2026-08.mjs': 113,
+  'apps/mario-kart/e2e/audit-2026-08.mjs': 116,
   'tests/browser/suites/site.mjs': 111,
   'apps/trip-planner/e2e/trips-sync.mjs': 107,
   'apps/maptap-rivals/e2e/quality.mjs': 101,

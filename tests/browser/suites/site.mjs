@@ -546,6 +546,57 @@ export async function run({ base, cdpPort }) {
   await setOffline(s, false);
   await setViewport(s, 1280, 900);
 
+  // --- every page boots with every third-party CDN stalled -----------------
+  // A request that is accepted and never answered (a lossy network, a captive
+  // portal, a firewall that drops Google or Cloudflare traffic) holds whatever
+  // the browser was told to wait for. Deferred Firebase modules (the SDK comes
+  // from www.gstatic.com), a parser-blocking Chart.js from cdnjs, and
+  // render-blocking Google Fonts / Font Awesome stylesheets each kept pages
+  // from ever reaching DOMContentLoaded; on CI on 2026-09-13 that was Gym
+  // Tracker's js/app.js never running, reported as six unrelated failures.
+  // Here every request to those hosts is paused and never continued for the
+  // whole check, and each page must still reach DOMContentLoaded (Gym Tracker
+  // must also finish init); `held` and the absent `window.firebaseAuth` prove
+  // the stall really happened. Arena is not listed: its own js/app.js imports
+  // firebase-config.js, and a multiplayer room has nothing to show without the
+  // SDK. tests/static/third-party-boot-path.test.mjs pins the markup this needs.
+  const CDN_PATTERNS = ['https://www.gstatic.com/*', 'https://cdnjs.cloudflare.com/*',
+    'https://fonts.googleapis.com/*', 'https://fonts.gstatic.com/*'];
+  const STALL_PAGES = [
+    'home.html', 'work.html', 'apps.html', 'about.html', 'contact.html', 'privacy.html', '404.html',
+    'moadon-alef.html',
+    'apps/football-h2h/', 'apps/fpl-planner/', 'apps/gym-tracker/', 'apps/maptap-rivals/',
+    'apps/mario-kart/', 'apps/rising-shows/', 'apps/rising-shows/kometa/', 'apps/trip-planner/',
+  ];
+  for (const p of STALL_PAGES) {
+    const sp = await newPage(cdpPort);
+    let held = 0;
+    sp.on((method) => { if (method === 'Fetch.requestPaused') held += 1; });
+    try {
+      await setViewport(sp, 1280, 900);
+      await sp.send('Page.addScriptToEvaluateOnNewDocument', {
+        source: "document.addEventListener('DOMContentLoaded', () => { window.__dclFired = true; });",
+      });
+      await sp.send('Fetch.enable', { patterns: CDN_PATTERNS.map((urlPattern) => ({ urlPattern })) });
+      await sp.send('Page.navigate', { url: `${base}/${p}` });
+      const readyExpr = p === 'apps/gym-tracker/'
+        ? 'window.__dclFired === true && !!window.gymApp && !!window.gymApp.currentView'
+        : 'window.__dclFired === true';
+      // A poll can land while the navigation swaps execution contexts, which
+      // rejects instead of answering false; that is a retry, not a verdict.
+      let booted = false;
+      const deadline = Date.now() + 12000;
+      while (!booted && Date.now() < deadline) {
+        try { booted = await waitForExpr(sp, readyExpr, { timeout: Math.max(500, deadline - Date.now()) }); } catch { await sleep(200); }
+      }
+      const state = await evaluate(sp, '({ readyState: document.readyState, sdk: !!window.firebaseAuth })').catch(() => null);
+      t(`${p}: boots with every third-party CDN stalled`, booted && held > 0 && !!state && !state.sdk,
+        `booted=${booted} held=${held} ${JSON.stringify(state)}`);
+    } finally {
+      await closePage(cdpPort, sp);
+    }
+  }
+
   await closePage(cdpPort, s);
   return R;
 }

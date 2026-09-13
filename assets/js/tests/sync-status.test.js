@@ -115,11 +115,14 @@ test('a rejected write stops the pill claiming Synced', () => {
 
 test('the rejected-write banner names the app and says the data is safe locally', () => {
   const w = load({ status: HEALTHY, signedIn: true });
-  w.fire('syncWriteRejected', { namespace: 'maptapRivals', keys: ['maptapRivalsGames'], code: 'invalid-argument' });
+  w.fire('syncWriteRejected', { namespace: 'maptapRivalsApp', keys: ['maptapRivalsGames'], code: 'invalid-argument' });
   assert.equal(w.banner.hidden, false);
   assert.equal(w.banner.dataset.state, 'failed');
   const text = w.banner.children.map(c => c.textContent).join(' ');
-  assert.match(text, /maptapRivals/, 'the message names which app is affected');
+  // Changed 2026-09-13: this used a made-up id and asserted the id itself
+  // appeared, which pinned internal namespace ids in visitor-facing copy.
+  assert.match(text, /in MapTap Rivals /, 'the message names which app is affected, by its site name');
+  assert.ok(!text.includes('maptapRivalsApp'), 'and never by its namespace id');
   assert.match(text, /safe on this device/i);
 });
 
@@ -180,4 +183,145 @@ test('offline outranks a standing failure, because offline is the more useful tr
   w.setOnline(true);
   w.fire('online');
   assert.equal(w.pill.dataset.state, 'failed');
+});
+
+// ---------- retryable vs permanent, and recovery (2026-09-12 audit S-3) ----------
+//
+// The engine now tells the two apart. A write that ran out of retries on a
+// network failure is parked and will be resent (`retryable: true`); a write
+// the server refused outright is not (`retryable: false`). Either way the
+// namespace is NOT saved until the engine says `syncWriteRecovered` for it,
+// and until then the widget must never read "Synced".
+
+test('a retryable rejection reads as not saved yet, never Synced, and survives the poll', () => {
+  const w = load({ status: HEALTHY, signedIn: true });
+  w.fire('syncWriteRejected', { namespace: 'tripPlannerApp', keys: ['k'], code: 'unavailable', retryable: true });
+  assert.equal(w.pill.dataset.state, 'unsaved');
+  assert.equal(w.pill.textContent, 'Not saved to cloud yet');
+  w.tick();
+  w.tick();
+  assert.equal(w.pill.textContent, 'Not saved to cloud yet', 'a healthy poll is not evidence the write landed');
+  assert.equal(w.banner.hidden, false);
+  assert.equal(w.banner.dataset.state, 'unsaved');
+  const text = w.banner.children.map(c => c.textContent).join(' ');
+  assert.match(text, /in Trip Planner /, 'the app is named the way the site names it');
+  assert.match(text, /safe on this device/i);
+  assert.match(text, /try again/i, 'the retryable copy says it will be retried');
+});
+
+test('a permanent rejection reads as not saved and stays until that namespace recovers', () => {
+  const w = load({ status: HEALTHY, signedIn: true });
+  w.fire('syncWriteRejected', { namespace: 'gymTrackerApp', keys: ['k'], code: 'permission-denied', retryable: false });
+  assert.equal(w.pill.dataset.state, 'failed');
+  assert.equal(w.pill.textContent, 'Not saved to cloud');
+
+  w.fire('syncWriteRecovered', { namespace: 'someOtherApp' });
+  w.tick();
+  assert.equal(w.pill.textContent, 'Not saved to cloud', 'another namespace recovering is not this one recovering');
+
+  w.fire('syncWriteRecovered', { namespace: 'gymTrackerApp' });
+  assert.equal(w.pill.dataset.state, 'synced');
+  assert.equal(w.pill.textContent, 'Synced');
+  assert.equal(w.banner.hidden, true, 'the failure banner comes down with the failure');
+});
+
+test('a retryable rejection clears on recovery', () => {
+  const w = load({ status: HEALTHY, signedIn: true });
+  w.fire('syncWriteRejected', { namespace: 'marioKart', keys: ['k'], code: 'deadline-exceeded', retryable: true });
+  w.fire('syncWriteRecovered', { namespace: 'marioKart' });
+  assert.equal(w.pill.textContent, 'Synced');
+});
+
+test('with two namespaces failing, one recovering still does not read Synced', () => {
+  const w = load({ status: HEALTHY, signedIn: true });
+  w.fire('syncWriteRejected', { namespace: 'a', keys: ['k'], code: 'unavailable', retryable: true });
+  w.fire('syncWriteRejected', { namespace: 'b', keys: ['k'], code: 'permission-denied', retryable: false });
+  assert.equal(w.pill.textContent, 'Not saved to cloud', 'the permanent failure is the one shown');
+
+  w.fire('syncWriteRecovered', { namespace: 'b' });
+  assert.equal(w.pill.textContent, 'Not saved to cloud yet', 'the retryable one is still outstanding');
+
+  w.fire('syncWriteRecovered', { namespace: 'a' });
+  assert.equal(w.pill.textContent, 'Synced');
+});
+
+test('a namespace that failed permanently is not downgraded by a later retryable failure', () => {
+  const w = load({ status: HEALTHY, signedIn: true });
+  w.fire('syncWriteRejected', { namespace: 'a', keys: ['k1'], code: 'invalid-argument', retryable: false });
+  w.fire('syncWriteRejected', { namespace: 'a', keys: ['k2'], code: 'unavailable', retryable: true });
+  assert.equal(w.pill.textContent, 'Not saved to cloud');
+});
+
+test('a rejection without a retryable flag keeps the old permanent reading', () => {
+  const w = load({ status: HEALTHY, signedIn: true });
+  w.fire('syncWriteRejected', { namespace: 'a', keys: ['k'], code: 'payload-too-large' });
+  assert.equal(w.pill.dataset.state, 'failed');
+  assert.equal(w.pill.textContent, 'Not saved to cloud');
+});
+
+test('a write failure is not cleared by sync coming up, the way an init failure is', () => {
+  const w = load({ status: { totalQueueSize: 0, activeNamespaces: 0 }, signedIn: true });
+  w.fire('appSyncFailed', { message: 'x' });
+  w.fire('syncWriteRejected', { namespace: 'a', keys: ['k'], code: 'unavailable', retryable: true });
+  w.setStatus(HEALTHY);
+  w.tick();
+  assert.equal(w.pill.textContent, 'Not saved to cloud yet');
+  w.fire('syncWriteRecovered', { namespace: 'a' });
+  assert.equal(w.pill.textContent, 'Synced', 'and the init failure was already retired by the live namespace');
+});
+
+// The stub banner keeps every render's children (label, close), so a test that
+// fires more than once reads the latest render only.
+const latestBannerText = (w) => w.banner.children.slice(-2).map(c => c.textContent).join(' ');
+
+// ---------- the banner names apps, never internal namespace ids ----------
+//
+// The copy used to interpolate the engine's namespace id, so a visitor read
+// "Some changes in tripPlannerApp have not been saved". Every namespace the
+// sync init registers must reach the banner as the app's own name, and an id
+// the widget does not know is left out rather than shown raw.
+
+const INIT_SRC = fs.readFileSync(path.join(__dirname, '..', '..', '..', 'sync-system', 'app-sync-init.js'), 'utf8');
+const REGISTERED = Array.from(INIT_SRC.matchAll(/namespace:\s*'([A-Za-z0-9_]+)'/g), m => m[1]);
+
+test('the namespace scan found the registered namespaces', () => {
+  assert.ok(REGISTERED.length >= 8, REGISTERED.join(', '));
+});
+
+for (const retryable of [true, false]) {
+  for (const ns of REGISTERED) {
+    test(`a ${retryable ? 'retryable' : 'permanent'} failure in ${ns} names the app, not the id`, () => {
+      const w = load({ status: HEALTHY, signedIn: true });
+      w.fire('syncWriteRejected', { namespace: ns, keys: ['k'], code: retryable ? 'unavailable' : 'permission-denied', retryable });
+      const text = w.banner.children.map(c => c.textContent).join(' ');
+      assert.ok(!text.includes(ns), `raw id in: ${text}`);
+      assert.doesNotMatch(text, /\b[a-z]+[A-Z][A-Za-z]*App\b|globalPrefs/, text);
+      assert.match(text, /^Some changes in (your site settings|[A-Z0-9][^,]*) (could not|have not)/, text);
+    });
+  }
+}
+
+test('two failing apps are both named, once each', () => {
+  const w = load({ status: HEALTHY, signedIn: true });
+  w.fire('syncWriteRejected', { namespace: 'gymTrackerApp', keys: ['a'], code: 'unavailable', retryable: true });
+  w.fire('syncWriteRejected', { namespace: 'fplPlannerApp', keys: ['b'], code: 'unavailable', retryable: true });
+  const text = latestBannerText(w);
+  assert.match(text, /^Some changes in Gym Tracker, FPL Planner have not been saved/, text);
+});
+
+test('an unknown namespace is left out of the sentence, never shown raw', () => {
+  const w = load({ status: HEALTHY, signedIn: true });
+  w.fire('syncWriteRejected', { namespace: 'someFutureApp', keys: ['k'], code: 'unavailable', retryable: true });
+  const text = w.banner.children.map(c => c.textContent).join(' ');
+  assert.ok(!text.includes('someFutureApp'), text);
+  assert.match(text, /^Some changes have not been saved to the cloud yet/, text);
+});
+
+test('an unknown refused namespace still outranks a known pending one', () => {
+  const w = load({ status: HEALTHY, signedIn: true });
+  w.fire('syncWriteRejected', { namespace: 'tripPlannerApp', keys: ['a'], code: 'unavailable', retryable: true });
+  w.fire('syncWriteRejected', { namespace: 'someFutureApp', keys: ['b'], code: 'permission-denied', retryable: false });
+  assert.equal(w.pill.dataset.state, 'failed', 'a refused write is never softened because its app has no name');
+  const text = latestBannerText(w);
+  assert.match(text, /^Some changes could not be saved to the cloud/, text);
 });

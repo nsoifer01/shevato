@@ -126,7 +126,7 @@ export async function run({ base, cdpPort }) {
       t('the seeded 8-race log really loaded (guards every assertion below)', rows === 8, String(rows));
       for (const v of ['stats', 'h2h', 'analysis', 'trends', 'achievements', 'activity']) { await view(s, v); await probe(v); }
       await view(s, 'stats');
-      await evaluate(s, `editRace(7)`); await sleep(300);
+      await evaluate(s, `editRace(races[7].id)`); await sleep(300);
       const modal = await evaluate(s, `({ imgs: document.querySelectorAll('.modal-dialog img').length, label: document.querySelector('label[for="edit-player1"]').textContent.includes(${JSON.stringify(HOSTILE)}), meta: document.querySelector('.edit-race-meta').textContent.includes(${JSON.stringify(HOSTILE)}), attr: document.getElementById('edit-date').value })`);
       t('XSS edit modal: labels and meta line escape the hostile strings', modal.imgs === 0 && modal.label && modal.meta, JSON.stringify(modal));
       await pressKey(s, 'Escape', 'Escape', 27);
@@ -145,7 +145,7 @@ export async function run({ base, cdpPort }) {
   {
     const s = await open(cdpPort, base, { seed: { marioKartRaces: SEVEN, marioKartPlayerCount: '3' }, hash: '#stats' });
     try {
-      await evaluate(s, `editRace(2)`); await sleep(200);
+      await evaluate(s, `editRace(races[2].id)`); await sleep(200);
       await evaluate(s, `(()=>{ const i=document.getElementById('edit-player1'); i.value='4'; return 1 })()`);
       await clickSel(s, '#save-edit', { settle: 400 });
       await evaluate(s, `openSidebar()`); await sleep(300);
@@ -179,7 +179,7 @@ export async function run({ base, cdpPort }) {
     const s = await open(cdpPort, base, { seed: { marioKartRaces: SEVEN, marioKartPlayerCount: '3' }, hash: '#stats' });
     try {
       for (let i = 0; i < 3; i++) {
-        await evaluate(s, `(()=>{ document.querySelector('#history-body .edit-btn').focus(); editRace(0); return 1 })()`); await sleep(150);
+        await evaluate(s, `(()=>{ document.querySelector('#history-body .edit-btn').focus(); editRace(races[0].id); return 1 })()`); await sleep(150);
         await clickSel(s, '#cancel-edit', { settle: 150 });
       }
       await pressKey(s, 'Escape', 'Escape', 27);
@@ -188,7 +188,7 @@ export async function run({ base, cdpPort }) {
       const restored = await evaluate(s, `document.activeElement && document.activeElement.classList.contains('edit-btn')`);
       t('focus returns to the edit button that opened the modal', restored, await evaluate(s, `document.activeElement.tagName + '.' + document.activeElement.className`));
 
-      await evaluate(s, `editRace(0)`); await sleep(200);
+      await evaluate(s, `editRace(races[0].id)`); await sleep(200);
       const inside = await evaluate(s, `document.querySelector('.modal-dialog').contains(document.activeElement) && document.activeElement.id === 'edit-date'`);
       t('edit modal: initial focus lands on the date field', inside);
       let trapped = true;
@@ -202,11 +202,11 @@ export async function run({ base, cdpPort }) {
       t('edit modal: Shift+Tab stays inside too', shiftOk);
       await pressKey(s, 'Escape', 'Escape', 27);
       t('Escape closes the edit modal', await evaluate(s, `!document.querySelector('.modal-overlay')`));
-      await evaluate(s, `deleteRace(0)`); await sleep(200);
+      await evaluate(s, `deleteRace(races[0].id)`); await sleep(200);
       const del = await evaluate(s, `(()=>{ const d=document.querySelector('.modal-dialog'); return d.getAttribute('role')==='dialog' && document.activeElement.id==='cancel-delete-race' })()`);
       t('delete modal: dialog role, focus on Cancel (safe default)', del);
       await clickSel(s, '#cancel-delete-race', { settle: 200 });
-      await evaluate(s, `editRace(0)`); await sleep(200);
+      await evaluate(s, `editRace(races[0].id)`); await sleep(200);
       await axe(s, 'edit modal open');
       await pressKey(s, 'Escape', 'Escape', 27);
     } finally { await closePage(cdpPort, s); }
@@ -295,7 +295,7 @@ export async function run({ base, cdpPort }) {
       const aRows = await evaluate(a, `document.querySelectorAll('#history-body tr').length`);
       const bMem = await evaluate(b, `races.length`);
       t('after adds in A then B storage holds all 4 and A renders 4', stored.length === 4 && aRows === 4, `stored=${stored.length} Arows=${aRows} Bmem=${bMem}`);
-      await evaluate(b, `performDeleteRace(0)`);
+      await evaluate(b, `performDeleteRace(races[0].id)`);
       await waitForExpr(a, `races.length === 3 && document.querySelectorAll('#history-body tr').length === 3`, { timeout: 8000 }).catch(() => {});
       const aAfterDelete = await evaluate(a, `({ rows: document.querySelectorAll('#history-body tr').length, mem: races.length })`);
       t('a delete in B reaches A (rows and memory both 3)', aAfterDelete.rows === 3 && aAfterDelete.mem === 3, JSON.stringify(aAfterDelete));
@@ -383,6 +383,26 @@ export async function run({ base, cdpPort }) {
       t('Home jumps to the first tab', (await evaluate(s, `currentView`)) === 'help');
       const label = await evaluate(s, `(()=>{ const l=document.querySelector('label.player-name-label'); return { role: l.getAttribute('role'), tab: l.getAttribute('tabindex') } })()`);
       t('player labels no longer claim to be buttons', label.role === null && label.tab === null, JSON.stringify(label));
+    } finally { await closePage(cdpPort, s); }
+  }
+
+  /* ------------------------------------------- closed sidebar is inert, M-4 */
+  {
+    const s = await open(cdpPort, base, { seed: { marioKartRaces: SEVEN, marioKartPlayerCount: '3' }, hash: '#stats' });
+    try {
+      const closed = await evaluate(s, `(()=>{ const sb=document.getElementById('sidebar'); document.getElementById('sidebar-toggle').focus(); return { inert: sb.inert === true && sb.hasAttribute('inert'), onToggle: document.activeElement.id === 'sidebar-toggle' } })()`);
+      let leaked = null;
+      for (let i = 0; i < 8 && !leaked; i++) {
+        await pressKey(s, 'Tab', 'Tab', 9);
+        leaked = await evaluate(s, `document.getElementById('sidebar').contains(document.activeElement) ? (document.activeElement.id || document.activeElement.className || document.activeElement.tagName) : null`);
+      }
+      t('closed sidebar is inert and eight Tabs from the toggle never land inside it', closed.inert && closed.onToggle && !leaked, JSON.stringify({ ...closed, leaked }));
+      await evaluate(s, `(()=>{ document.getElementById('sidebar-toggle').focus(); toggleSidebar(); return 1 })()`); await sleep(400);
+      const opened = await evaluate(s, `(()=>{ const sb=document.getElementById('sidebar'); return !sb.inert && !sb.hasAttribute('inert') && sb.classList.contains('open') })()`);
+      t('opening the sidebar removes inert', opened);
+      await pressKey(s, 'Escape', 'Escape', 27); await sleep(400);
+      const back = await evaluate(s, `({ inert: document.getElementById('sidebar').inert === true, focus: document.activeElement && document.activeElement.id, open: document.getElementById('sidebar').classList.contains('open') })`);
+      t('Escape closes it, restores inert and returns focus to the toggle', back.inert && back.focus === 'sidebar-toggle' && !back.open, JSON.stringify(back));
     } finally { await closePage(cdpPort, s); }
   }
 

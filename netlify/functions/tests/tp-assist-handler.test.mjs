@@ -291,3 +291,58 @@ test('step 9: a MAX_TOKENS reply still lands, carrying the visible truncation no
   assert.ok(reply.startsWith('Half an answer'));
   assert.match(reply, /cut short/i);
 });
+
+// ------------------------------------------------- fail-closed boundaries ---
+// Neither of these was ever driven through the handler (2026-09-12 audit
+// Q-3): blob-cas-usage.test.mjs proves updateUsage reports ok:false under
+// contention, and nothing proved the handler turns that into a refusal rather
+// than an optimistic reservation, or that a dead store is a JSON 503.
+
+/**
+ * A usage blob another writer changes between every read and every write, so
+ * every etag-conditional write loses: sustained contention, as blob-cas sees it.
+ */
+class RacingMap extends Map {
+  constructor(racedKey) { super(); this.racedKey = racedKey; this.reads = 0; }
+  get(key) {
+    const e = super.get(key);
+    if (key !== this.racedKey) return e;
+    this.reads += 1;
+    return { data: e ? e.data : {}, etag: 'racer-' + this.reads };
+  }
+}
+
+test('step 5: sustained CAS contention is a 429 contention with a 2 s Retry-After, and Gemini is never called', opts, async () => {
+  const map = new RacingMap('usage');
+  map.set('config', { data: { geminiKeyV2: 'k' }, etag: 'etag-config-seed' });
+  globalThis.__tpAssistBlobStub = { stores: { [STORE]: map }, seq: 0 };
+  stubGemini(200, geminiJson([{ text: 'never' }]));
+  const res = await handler(req(goodBody()));
+  assert.equal(res.status, 429);
+  assert.equal(res.headers.get('retry-after'), '2');
+  const body = await res.json();
+  assert.equal(body.error, 'quota_exceeded');
+  assert.equal(body.scope, 'contention');
+  assert.equal(fetchCalls.length, 0, 'fails CLOSED: a reservation that never landed spends nothing');
+  assert.ok(map.reads >= 5, 'the CAS loop really retried before refusing');
+  assert.equal(Map.prototype.get.call(map, 'usage'), undefined, 'and no counter write landed');
+});
+
+test('step 4: a store that cannot be acquired answers 503 store_unavailable', opts, async () => {
+  delete globalThis.__tpAssistBlobStub; // getStore() throws, like a Blobs incident
+  stubGemini(200, geminiJson([{ text: 'never' }]));
+  const res = await handler(req(goodBody()));
+  assert.equal(res.status, 503);
+  assert.deepEqual(await res.json(), { error: 'store_unavailable' });
+  assert.equal(fetchCalls.length, 0);
+});
+
+test('step 4: a store whose config read throws answers 503 store_unavailable, not a bodyless 500', opts, async () => {
+  class ThrowingMap extends Map { get() { throw new Error('blobs 500'); } }
+  globalThis.__tpAssistBlobStub = { stores: { [STORE]: new ThrowingMap() }, seq: 0 };
+  stubGemini(200, geminiJson([{ text: 'never' }]));
+  const res = await handler(req(goodBody()));
+  assert.equal(res.status, 503);
+  assert.deepEqual(await res.json(), { error: 'store_unavailable' });
+  assert.equal(fetchCalls.length, 0);
+});

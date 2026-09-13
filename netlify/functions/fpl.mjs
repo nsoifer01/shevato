@@ -13,13 +13,18 @@
 //   GET /.netlify/functions/fpl?path=entry/4231987/history
 //
 // Response headers: x-fpl-cache (hit|miss), x-fpl-fetched-at (ISO),
-// x-fpl-stale (true|false), x-fpl-age-seconds (int).
+// x-fpl-stale (true|false), x-fpl-age-seconds (int). The age is the copy's
+// age when THIS FUNCTION answered; a response Netlify's edge repeats carries
+// it frozen, plus the standard Age header saying how long the edge has held
+// it, and the client adds the two (apps/fpl-planner/js/data/api.js).
 //
 // Cache MISSES are metered per network (lib/fpl-quota.mjs); cache hits are
 // free. A refused caller gets 429 with Retry-After.
 
 import { originAllowed, json, upstreamSignal } from './lib/tp-http.mjs';
-import { canonicalPath, serveFpl, fplStore, ttlSeconds, USER_AGENT } from './lib/fpl-cache.mjs';
+import {
+  canonicalPath, serveFpl, fplStore, ttlSeconds, USER_AGENT, DEADLINE_WINDOW_MS, DEADLINE_TTL_SECONDS,
+} from './lib/fpl-cache.mjs';
 import { checkQuota, resetAtFor, QUOTA_KEY } from './lib/fpl-quota.mjs';
 import { updateUsage } from './lib/blob-cas.mjs';
 import { networkIdFor } from './lib/tp-client-identity.mjs';
@@ -132,7 +137,7 @@ export default async function handler(req) {
       // own TTL policy (apps/fpl-planner/js/data/api.js) and a second one in
       // front of it would make "how old is this?" unanswerable. Netlify reads
       // Netlify-CDN-Cache-Control for the edge and does not forward it.
-      'Netlify-CDN-Cache-Control': edgeCachePolicy(result),
+      'Netlify-CDN-Cache-Control': edgeCachePolicy(result, now),
       'Cache-Control': 'no-store',
       'x-fpl-cache': result.cache,
       'x-fpl-fetched-at': result.fetchedAt,
@@ -145,10 +150,34 @@ export default async function handler(req) {
 // How long the edge may repeat this exact answer. Only a fresh 200 is
 // cacheable: an error, and a stale copy served while somebody refreshes, must
 // each be re-asked rather than pinned in front of the function.
-export function edgeCachePolicy(result) {
+//
+// THE DEADLINE WINDOW APPLIES HERE TOO (2026-09-12 audit Q-1). A copy the edge
+// repeats is never re-judged by the function, so the edge window must end
+// before the data is older than the TTL the function would apply at THAT
+// moment. This used to ask for the TTL with `nextDeadline: null`, i.e. always
+// the base TTL, and so emitted max-age=600 for bootstrap-static (fixtures
+// 1800, entry 300) in the six hours before a deadline, while the function and
+// the browser both collapsed to 120 s. Two cases:
+//   - inside the window: the collapsed TTL minus the copy's age;
+//   - before it, when the window opens within the base-TTL lifetime: the copy
+//     may live until the window opens, or for the collapsed TTL, whichever is
+//     LONGER, and never past its base lifetime. Past the window's opening a
+//     base-TTL copy would be served into the minutes that matter.
+// The deadline is the one serveFpl judged the answer against (stored meta, or
+// the bootstrap body it just fetched); with none known the base TTL is also
+// what the function applies, so the two stay in step.
+export function edgeCachePolicy(result, now = Date.now()) {
   if (result.status !== 200 || result.stale) return 'no-store';
-  const remaining = Math.max(0, ttlSeconds(result.path, { now: Date.now(), nextDeadline: null })
-    - (Number(result.ageSeconds) || 0));
+  const age = Number(result.ageSeconds) || 0;
+  const nextDeadline = result.nextDeadline || null;
+  let remaining = ttlSeconds(result.path, { now, nextDeadline }) - age;
+  const deadlineMs = Date.parse(nextDeadline);
+  if (Number.isFinite(deadlineMs)) {
+    const untilWindow = Math.floor((deadlineMs - DEADLINE_WINDOW_MS - now) / 1000);
+    if (untilWindow >= 0 && remaining > untilWindow) {
+      remaining = Math.max(untilWindow, Math.min(remaining, DEADLINE_TTL_SECONDS - age));
+    }
+  }
   if (remaining < 5) return 'no-store';
   return `public, max-age=${Math.floor(remaining)}`;
 }

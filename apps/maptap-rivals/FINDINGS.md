@@ -3,6 +3,16 @@
 Living document: the current best understanding of how this app behaves and
 where it bites. Rewrite sections rather than appending to them.
 
+## Chart.js is served from this site (2026-09-13)
+
+`index.html` loaded Chart.js 4.4.1 from cdnjs as a synchronous script, so a
+stalled cdnjs (accepted, never answered) kept the parser, DOMContentLoaded and
+the deferred `js/app.js` from ever running. It now loads
+`/assets/js/chart-4.4.1.umd.min.js`, byte-identical (same `integrity`), still
+synchronously, so `renderCharts` keeps finding `window.Chart`; its guard stays
+for a request that fails. The site-wide account is in the root `FINDINGS.md`,
+"A stalled third-party CDN held every page".
+
 ## The page carries its own explanation now (`.app-about`)
 
 Measured on production before 2026-09-04, this page rendered almost nothing but
@@ -164,13 +174,16 @@ appending games to the same key. 760810 B, then ~890928 B, then a silent give
 up. Three network round trips spent on a write that could not possibly land,
 and each one bigger than the last.
 
-`isPermanentWriteError` (sync-helpers.mjs) now splits the two cases. Our own
-`payload-too-large` and Firestore's `invalid-argument` are deterministic: the
-batch is dropped, the ladder is not started, and a `syncWriteRejected`
-DOM event names the namespace and keys so the failure is not console-only.
-Everything else - `unavailable`, `deadline-exceeded`, an unrecognised code -
-keeps the retry behaviour it always had, so this cannot turn a recoverable
-blip into a permanent one.
+`isPermanentWriteError` (sync-helpers.mjs) splits the two cases. Our own
+`payload-too-large`, and Firestore's `invalid-argument`, `permission-denied`,
+`unauthenticated` and `not-found`, are deterministic: one attempt, no ladder,
+the batch is not requeued but its keys stay dirty (the next sync start tries
+once), and `syncWriteRejected` fires with `retryable: false`. Everything else
+climbs the ladder; if it runs out, the batch is requeued and parked,
+`syncWriteRejected` fires with `retryable: true`, and it is resent on the next
+local change, `online`, the tab becoming visible or a sync start, never on a
+timer of its own (2026-09-13, audit S-3). See the root FINDINGS.md sync failure
+section.
 
 ## A sync walks BOTH histories, so one-sided days go both ways (2026-08-24)
 

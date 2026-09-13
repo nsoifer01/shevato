@@ -113,7 +113,16 @@ export async function run({ base, cdpPort }) {
     await clearAll(s);
     await seed(s, { gymTrackerOnboardingSeen: 'true', gymTrackerPrograms: [PROGRAM], ...extra });
     await goto(s, APP, { settle: 1500 });
-    await ready(s);
+    // A boot that never finishes must fail HERE, once, with the page's own
+    // account of why. Unchecked, it reached the report on CI (2026-09-13, the
+    // 390 leg) as six unrelated-looking failures - no history cards, no
+    // workout, no focus ring - while the cause, js/app.js never evaluating
+    // because a www.gstatic.com request stalled, left no trace at all.
+    if (!(await ready(s))) {
+      const page = await evaluate(s, `({ width: innerWidth, readyState: document.readyState, gymApp: !!window.gymApp })`).catch(() => null);
+      t(`boot: the app booted (${page ? page.width : '?'}px)`, false,
+        `${JSON.stringify(page)} navTimedOut=${s.lastNavTimedOut} errors=${JSON.stringify(s.errors.slice(-3))}`);
+    }
     await sleep(mobile ? 400 : 200);
   };
   const activeSets = (s) => evaluate(s, `(()=>{const a=JSON.parse(localStorage.getItem('gymTrackerActiveWorkout')||'null'); return a? a.exercises.map(e=>e.sets.map(x=>[x.weight,x.reps])) : null})()`);

@@ -4750,8 +4750,9 @@
   }
 
   function renderCharts(s) {
-    // Chart.js comes from a CDN. When it does not arrive - a blocked script,
-    // an offline load, a CDN outage - the canvases stay blank, and the
+    // Chart.js is a plain script tag (served from /assets/js since 2026-09-13;
+    // it came from cdnjs before, and a stalled cdnjs held the whole page). When
+    // it does not arrive - a failed request, an offline load - the canvases stay blank, and the
     // ACCESSIBLE table below each one becomes the only place the numbers
     // exist. So the descriptions are attached whether or not the library
     // loaded: `describeChart` reads the config object, not the chart.

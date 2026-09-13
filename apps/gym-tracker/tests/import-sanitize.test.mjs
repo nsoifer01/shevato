@@ -115,3 +115,126 @@ test('StorageService.importAllData runs the sanitiser before writing (merge and 
         assert.deepEqual(JSON.parse(store.get('gymTrackerSessions')), [], `${mode}: the undated session never reaches storage`);
     }
 });
+
+// ---------------------------------------------------------------------------
+// Achievements: an imported record may only use a vocabulary the code owns
+// (audit G-1). The category view groups by `requirement.type` and renders that
+// key into attributes and a heading, so a type outside the vocabulary was a
+// stored-XSS carrier that synced to every device.
+// ---------------------------------------------------------------------------
+
+const { AchievementService } = await import('../js/services/AchievementService.js');
+
+test('an achievement whose id is not a known definition is skipped and reported', () => {
+    const { data, repairs } = sanitizeImportData({
+        achievements: [{ id: 'shared-badge', name: 'Badge', unlocked: true, requirement: { type: 'x" onmouseover="alert(1)' } }],
+    });
+    assert.deepEqual(data.achievements, []);
+    assert.ok(repairs.some((r) => /achievement/.test(r) && /not one this app defines/.test(r)), repairs.join(' | '));
+});
+
+test('a known achievement with a requirement type outside the vocabulary gets its definition back', () => {
+    const def = AchievementService.getDefaultAchievements().find((a) => a.id === '10-workouts');
+    const hostile = { ...def.toJSON(), unlocked: true, unlockedAt: '2026-08-01T10:00:00.000Z', requirement: { type: '<img src=x onerror=alert(1)>' } };
+    const { data, repairs } = sanitizeImportData({ achievements: [hostile] });
+    assert.equal(data.achievements.length, 1, 'the record is kept');
+    assert.deepEqual(data.achievements[0].requirement, def.requirement, 'the requirement is the code definition again');
+    assert.equal(data.achievements[0].unlocked, true, 'user-owned progress is untouched');
+    assert.ok(repairs.some((r) => /requirement type/.test(r)), repairs.join(' | '));
+});
+
+test('lift milestones and strength PRs keep their own vocabulary; a hostile type on them is repaired', () => {
+    const milestone = { id: 'lift-bench-60', name: 'Bench 60kg', unlocked: true, requirement: { type: 'lift-milestone' }, target: 1 };
+    const pr = { id: 'pr-barbell-back-squat-2026-08-01', name: 'Squat PR', type: 'strength-pr', unlocked: true,
+        requirement: { type: 'strength-pr', exerciseId: 'barbell-back-squat' }, prWeightKg: 120, prDate: '2026-08-01', target: 1 };
+    const clean = sanitizeImportData({ achievements: [milestone, pr] });
+    assert.deepEqual(clean.repairs, []);
+    assert.deepEqual(clean.data.achievements, [milestone, pr], 'legitimate records pass byte-identical');
+
+    const bad = sanitizeImportData({ achievements: [
+        { ...milestone, requirement: { type: 'x" onfocus="y' } },
+        { ...pr, requirement: { type: '<svg onload=1>', exerciseId: 'barbell-back-squat' } },
+    ] });
+    assert.deepEqual(bad.data.achievements.map((a) => a.requirement), [
+        { type: 'lift-milestone' },
+        { type: 'strength-pr', exerciseId: 'barbell-back-squat' },
+    ]);
+    assert.ok(bad.repairs.length > 0);
+});
+
+test('a full export of every definition, including a legacy in-vocabulary type, passes with no repairs', () => {
+    // GT-11 changed "Perfect Week" from weekly-workouts to weekly-distinct-days;
+    // an old export still carries the old (in-vocabulary) type and must reach
+    // syncDefinitions untouched so the unlock-withdrawal rule can run.
+    const all = AchievementService.getDefaultAchievements().map((a) => a.toJSON());
+    const legacyPerfectWeek = all.find((a) => a.id === 'weekly-7-workouts');
+    legacyPerfectWeek.requirement = { type: 'weekly-workouts' };
+    const input = { achievements: all };
+    const { data, repairs } = sanitizeImportData(input);
+    assert.deepEqual(repairs, []);
+    assert.deepEqual(data.achievements, all);
+});
+
+// ---------------------------------------------------------------------------
+// Program set rows (audit G-2). Program's normalizeSetRow dereferenced each row,
+// so ONE null row threw the constructor, app.js's _safeLoad reset the whole
+// programs store to [], and the next savePrograms wrote [] over every program
+// (sync then propagated the deletions).
+// ---------------------------------------------------------------------------
+
+const { Program } = await import('../js/models/Program.js');
+const programWithSets = (sets) => ({ programs: [{ id: 7, name: 'Push', exercises: [{ exerciseId: 'bench-press', sets }] }] });
+
+test('a null set row is skipped and reported, and the program constructs', () => {
+    const { data, repairs } = sanitizeImportData(programWithSets([null]));
+    assert.deepEqual(data.programs[0].exercises[0].sets, []);
+    assert.ok(repairs.some((r) => /set row/.test(r)), repairs.join(' | '));
+    assert.doesNotThrow(() => new Program(data.programs[0]));
+});
+
+test('mixed valid and null set rows keep every valid row, in order', () => {
+    const rows = [{ repsMin: 8, repsMax: 10 }, null, { repsMin: 5, repsMax: 5, targetSeconds: null }, undefined];
+    const { data, repairs } = sanitizeImportData(programWithSets(rows));
+    assert.deepEqual(data.programs[0].exercises[0].sets, [{ repsMin: 8, repsMax: 10 }, { repsMin: 5, repsMax: 5, targetSeconds: null }]);
+    assert.ok(repairs.some((r) => r.startsWith('2 program set row')), repairs.join(' | '));
+    const program = new Program(data.programs[0]);
+    assert.deepEqual(program.exercises[0].sets.map((s) => [s.repsMin, s.repsMax]), [[8, 10], [5, 5]]);
+});
+
+for (const [label, sets] of [
+    ['a string', 'junk'],
+    ['an object', { 0: { repsMin: 5 } }],
+    ['an array of numbers and strings', [3, 'x', true]],
+]) {
+    test(`a set list that is ${label} is emptied and reported`, () => {
+        const { data, repairs } = sanitizeImportData(programWithSets(sets));
+        assert.deepEqual(data.programs[0].exercises[0].sets, []);
+        assert.ok(repairs.length > 0, 'the repair is disclosed');
+        assert.doesNotThrow(() => new Program(data.programs[0]));
+    });
+}
+
+test('a valid program import is untouched: no repairs, byte-identical data, same model', () => {
+    const input = {
+        programs: [{
+            id: 1717000000001, name: 'Upper', restMode: 'uniform', uniformRestSeconds: 120, scheduleDays: [1, 4],
+            exercises: [
+                { exerciseId: 'bench-press', exerciseName: 'Bench Press', sets: [{ repsMin: 6, repsMax: 8, targetSeconds: null }, { repsMin: 8, repsMax: 10, targetSeconds: null }], restSeconds: 150, restAfterSeconds: 180, notes: '', order: 0, groupId: null },
+                { exerciseId: 'plank', exerciseName: 'Plank', sets: [{ repsMin: 10, repsMax: 10, targetSeconds: 45 }], restSeconds: 60, order: 1 },
+                { exerciseId: 'row', exerciseName: 'Row', targetSets: 3, targetReps: 12 },
+            ],
+            createdAt: '2026-05-01T18:30:00.000Z', updatedAt: '2026-05-02T18:30:00.000Z',
+        }],
+    };
+    const snapshot = structuredClone(input);
+    const { data, repairs } = sanitizeImportData(input);
+    assert.deepEqual(repairs, []);
+    assert.deepEqual(data, snapshot, 'nothing rewritten, and a legacy exercise without sets gains no sets key');
+    assert.ok(!('sets' in data.programs[0].exercises[2]));
+    assert.deepEqual(new Program(data.programs[0]).toJSON(), new Program(snapshot.programs[0]).toJSON());
+    assert.deepEqual(new Program(data.programs[0]).toJSON().exercises.map((e) => e.sets), [
+        [{ repsMin: 6, repsMax: 8, targetSeconds: null }, { repsMin: 8, repsMax: 10, targetSeconds: null }],
+        [{ repsMin: 10, repsMax: 10, targetSeconds: 45 }],
+        [{ repsMin: 12, repsMax: 12 }, { repsMin: 12, repsMax: 12 }, { repsMin: 12, repsMax: 12 }],
+    ]);
+});

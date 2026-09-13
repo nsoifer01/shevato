@@ -59,9 +59,12 @@ covers a rise big enough to keep profit, a rise too small to keep any, a price
 fall, and no movement at all.
 
 **A self-consistent value.** `entry_history.value` equals the sum of the 15
-reconstructed selling prices plus `entry_history.bank`, which is the invariant
-`squad.js` asserts. Tests that want the failure path mutate a copy in memory
-rather than adding a second fixture.
+LISTED prices (`now_cost - cost_change_event`, which is `now_cost` here) plus
+`entry_history.bank`, which is what FPL actually serves and what `squad.js`
+checks. It is deliberately NOT the selling total: the squad holds risers, so the
+reconstructed selling value (999) sits below `value` (1008), and a fixture that
+set the two equal would hide the E-2 false alarm (2026-09-13). Tests that want
+the failure path mutate a copy in memory rather than adding a second fixture.
 
 **A free-transfer replay with a real answer.** The history rows carry 0, 1, 4,
 2 and 0 transfers over GW1-5 with a wildcard in GW3, which replays to 3 banked

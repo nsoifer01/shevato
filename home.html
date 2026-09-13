@@ -23,7 +23,8 @@
   <script async src="https://www.googletagmanager.com/gtag/js?id=G-GEQGY35JJN"></script>
   <script defer src="/assets/js/analytics.js"></script>
 
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Raleway:300,400,500,600&display=swap">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Raleway:300,400,500,600&display=swap" media="print" onload="this.media='all'">
+  <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Raleway:300,400,500,600&display=swap"></noscript>
   <link rel="stylesheet" href="assets/css/firebase-auth.css">
   <link rel="stylesheet" href="assets/css/main.css" />
   <link rel="stylesheet" href="assets/css/brand-colors.css" />
@@ -288,7 +289,7 @@
   <script defer src="assets/js/util.js"></script>
 
   <!-- Firebase modular SDK + auth adapter -->
-  <script type="module" src="firebase-config.js"></script>
+  <script type="module" async src="firebase-config.js"></script>
 
   <!-- Main JavaScript -->
   <script defer src="assets/js/main.js"></script>

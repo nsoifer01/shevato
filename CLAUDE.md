@@ -86,6 +86,9 @@ REJECT, whichever way it goes.
   described, so re-read that line at merge time. `tests/static/privacy-review-date.test.mjs`
   fails when the policy prose changes and the date does not; when it goes red,
   bump the date and record the new digest it prints, never the digest alone.
+  Since 2026-09-13 it also compares the prose and date against git (the
+  uncommitted tree against HEAD, a PR against its base, a branch against its
+  merge base), so overwriting `CURRENT.digest` in place no longer turns it green.
 - **Screenshot-verify every visual change** on desktop 1280 AND mobile 390
   before believing it. Computed styles for any colour claim, never eyeballing:
   `assets/css/main.css` sets `button { color:#555 !important }`, a red hover
@@ -97,6 +100,15 @@ REJECT, whichever way it goes.
   down when the work ends (`ss -ltn` to verify). `netlify dev` serves the site
   AND functions on 8888 (pinned); its internal static port does not route
   functions.
+- **No third-party request on a page's boot path.** A stalled (not refused) CDN
+  holds whatever the page waits on: deferred Firebase modules, `<head>`
+  stylesheets and synchronous CDN scripts each kept every page from reaching
+  DOMContentLoaded on 2026-09-13. Third-party scripts and the Firebase module
+  tags are `async`, third-party stylesheets use `media="print"
+  onload="this.media='all'"` with a `<noscript>` copy, no CSS `@import`s a
+  third-party URL, and anything needed in order is served from this origin.
+  Enforced by `tests/static/third-party-boot-path.test.mjs` and the site
+  suite's stall check; the account is in the root `FINDINGS.md`.
 - Dark theme only, never add a light theme or toggle. LF line endings, never
   CRLF. No asset build step at the root (`npm run build:site` only generates
   data-driven pages and stamps sitemaps at deploy), and effectively no npm dependencies: code

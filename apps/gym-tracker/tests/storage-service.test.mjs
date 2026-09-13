@@ -368,3 +368,42 @@ test('a valid program keeps every exercise through import', () => {
     assert.equal(res.ok, true);
     assert.equal(new Program(svc.getPrograms()[0]).exercises.length, 2);
 });
+
+// ---------------------------------------------------------------------------
+// Storage that ALREADY holds a null set row must not load as an empty list
+// (audit G-2). The import sanitiser guards one channel; sync and older builds
+// write storage directly, so this runs the REAL app.js loadAllData/_safeLoad
+// (source-extracted) over a store holding the bad row.
+// ---------------------------------------------------------------------------
+
+const { buildMethods, loadSource } = await import('./helpers/source-extract.mjs');
+
+test('loadAllData keeps every program when one stored program has a null set row', () => {
+    const svc = freshService();
+    svc.savePrograms([
+        { id: 1, name: 'Hostile', exercises: [{ exerciseId: 'bench-press', sets: [null, { repsMin: 5, repsMax: 5 }] }] },
+        { id: 2, name: 'Good', exercises: [{ exerciseId: 'squat', sets: [{ repsMin: 8, repsMax: 10 }] }] },
+    ]);
+    const toasts = [];
+    const identity = { fromJSON: (x) => x };
+    const methods = buildMethods(loadSource('js/app.js'), ['loadAllData', '_safeLoad'], {
+        storageService: svc,
+        Program,
+        WorkoutSession: identity,
+        Achievement: { ...identity, isRenderable: () => true },
+        Measurement: identity,
+        Settings: { ...identity, getDefault: () => ({}), DEFAULTS_VERSION: 1, applyDefaultUpgrades: () => false },
+        EXERCISE_DATABASE: [],
+        emit: () => {},
+        EVENTS: {},
+        showToast: (msg) => toasts.push(msg),
+        console: { ...console, error: () => {} },
+    }, 'app.js');
+    const appStub = Object.assign(Object.create(methods), { saveSettings() {} });
+
+    appStub.loadAllData();
+
+    assert.deepEqual(toasts, [], 'no "Could not load programs" reset');
+    assert.deepEqual(appStub.programs.map((p) => p.name), ['Hostile', 'Good'], 'the store did not load as []');
+    assert.deepEqual(appStub.programs[0].exercises[0].sets.map((s) => s.repsMin), [5]);
+});

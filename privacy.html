@@ -20,7 +20,8 @@
   <script async src="https://www.googletagmanager.com/gtag/js?id=G-GEQGY35JJN"></script>
   <script defer src="/assets/js/analytics.js"></script>
 
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Raleway:300,400,500,600&display=swap">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Raleway:300,400,500,600&display=swap" media="print" onload="this.media='all'">
+  <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Raleway:300,400,500,600&display=swap"></noscript>
   <link rel="stylesheet" href="assets/css/firebase-auth.css">
   <link rel="stylesheet" href="assets/css/main.css" />
   <link rel="stylesheet" href="assets/css/brand-colors.css" />
@@ -92,7 +93,7 @@
 
       <article class="about-shell">
 
-        <p><strong>Last reviewed:</strong> 12 September 2026.
+        <p><strong>Last reviewed:</strong> 13 September 2026.
           <!-- THE RULE, for whoever is editing this file (it is not the owner's chore):
                if your change alters what any app sends, stores, syncs or deletes, OR
                alters the wording below, bump this date IN THE SAME PULL REQUEST, to the
@@ -161,7 +162,7 @@
 
         <h2>What never syncs</h2>
 
-        <p>Some things stay on your device on purpose, even when you're signed in. In the Trip Planner these are: any AI provider API key you supply, your passport nationality for the visa checker, your assistant conversation history, the geocoding cache, the cached exchange rates, weather and visa data, the per-browser identifier described below, and the venue-lookup owner token. Attached documents, as noted, are also excluded.</p>
+        <p>Some things stay on your device on purpose, even when you're signed in. In the Trip Planner these are: any AI provider API key you supply, your passport nationality and passport expiry date for the visa checker, your assistant conversation history, the geocoding cache, the cached exchange rates, weather and visa data, the per-browser identifier described below, and the venue-lookup owner token. Attached documents, as noted, are also excluded.</p>
 
         <p>The FPL Planner's copy of the Fantasy Premier League data (players, fixtures, and the projections it computes from them) stays on your device for the same reason. It is identical for every user and cheap to fetch again, so there is nothing to gain from syncing it.</p>
 
@@ -215,6 +216,33 @@
           </li>
         </ol>
 
+        <h2>The MapTap Rivals rival network is opt-in, and partly shared</h2>
+
+        <p>MapTap Rivals works without it. Only if you are signed in and press "Join rival network" does the app publish anything outside your private area, and your scores and games are never part of what it publishes. Joining writes three kinds of record.</p>
+
+        <ol class="process-steps">
+          <li>
+            <div>
+              <h3>A claim on your MapTap.gg username, readable by any signed-in visitor</h3>
+              <p>A record named after your MapTap.gg username, holding your account id and the username as you entered it. It is how the app turns a rival's MapTap username into someone on the network, so any signed-in visitor can read it, and that includes someone playing Arena as a guest, because guest play signs in anonymously. It records that you claimed the username, not that you own that maptap.gg account: the first claim wins, and only the person who made it can release it.</p>
+            </div>
+          </li>
+          <li>
+            <div>
+              <h3>Your published profile, readable only by you and the rivals you are connected with</h3>
+              <p>Your MapTap.gg username, your display name and icon, and, for up to 60 of the rivals you track, their MapTap.gg username, the name you gave them and the icon you picked for them. It is what lets a connected rival discover the people you play. A rival can read it only once you are connected, meaning both of you have accepted; nobody else can.</p>
+            </div>
+          </li>
+          <li>
+            <div>
+              <h3>A link for each rival you connect with, readable only by the two of you</h3>
+              <p>When you add a rival who is also on the network, a link record is created holding both account ids, both MapTap.gg usernames, the display name of whoever sent the invitation, and which of you has accepted. It grants nothing until the other person accepts, only the two of you can read it, and either of you can delete it.</p>
+            </div>
+          </li>
+        </ol>
+
+        <p>"Leave network" deletes your profile, your username claim and every link you are part of, and deleting your account does the same (see below). What neither can remove is the other person's own data: a rival who tracks you keeps you in their rival list, and if they are on the network too, the profile they publish can carry your MapTap.gg username, the name they gave you and the icon they picked for you.</p>
+
         <h2>The Trip Planner assistant</h2>
 
         <p>The assistant has three modes and you choose which one to use. The mode selected for you on a fresh browser is the free shared assistant, which is the third one below: it sends the trip through a function we host to Google Gemini. Nothing is sent when the panel opens, or while you fill in the request. It is sent when you press Send, and the panel names the mode above that button so you can change it first. Copy and paste, which sends nothing anywhere, is always one click away.</p>
@@ -240,7 +268,7 @@
           </li>
         </ol>
 
-        <p>In the second and third modes, what is sent is a trimmed copy of the current trip: its name, currency, budget, and for each item the type, title, location, dates, times, status, costs and cost notes, the map query, and the free-text <strong>details</strong> field. If you keep confirmation numbers, seat assignments or personal notes in an item's <strong>details</strong>, they are part of what is sent. What is deliberately held back: the confirmation-number field itself, who paid, how a cost is split, the payment tag, the booking deadline and the resolved Google place saved with an item, along with attached documents, your packing list, your trip essentials and your passport setting. The copy-and-paste package holds back the same fields.</p>
+        <p>In the second and third modes, what is sent is a trimmed copy of the current trip: its name, currency and budget, the names of the travellers you have added to it, any extra countries you added in the visa checker, and for each item the type (and, for a food &amp; drink item, its meal slot), title, location, dates, times, status, costs, estimated costs and cost notes, the map query, which of the travellers the item's cost is shared between, and the free-text <strong>details</strong> field. If you keep confirmation numbers, seat assignments or personal notes in an item's <strong>details</strong>, they are part of what is sent. What is deliberately held back: the confirmation-number field itself, who paid, the custom amounts of an uneven cost split, the payment tag, the booking deadline and the resolved Google place saved with an item, along with attached documents, your packing list, your trip essentials and your passport setting. The copy-and-paste package holds back the same fields.</p>
 
         <h2>Other services that receive data</h2>
 
@@ -254,6 +282,10 @@
           <div class="skill-row">
             <h3>Google Gemini</h3>
             <p>Receives Trip Planner trip contents, but only in the assistant modes described above, and only when you use them.</p>
+          </div>
+          <div class="skill-row">
+            <h3>OpenAI</h3>
+            <p>Receives Trip Planner trip contents only if you choose the assistant's "your own API key" mode with an OpenAI key. The request goes straight from your browser to OpenAI with your key and never passes through our servers; what it carries is the trimmed trip described above, and it is covered by your agreement with OpenAI. Nothing else on the site contacts OpenAI.</p>
           </div>
           <div class="skill-row">
             <h3>Google Places</h3>
@@ -311,15 +343,15 @@
 
         <p>This changed in August 2026. Until then the app pages carried no analytics at all, which meant we could see that people arrived but not whether anything we built was worth using. The apps now report a small, fixed set of events. What follows is the complete list of what they send.</p>
 
-        <p>Alongside page views, we record: that an app was opened; which section or tab within an app you moved to; that a search ran, with how many characters you typed and how many results came back; which item you picked from a search result list; which filters or sorting you chose; that you opened a detail view, and which catalogue entry it was; that you paged through a list; that you followed a link to another website, and to which domain; a handful of completed actions specific to each app (a workout finished, a match or race logged, a trip shared, the Trip Planner assistant opened, an Arena room created or joined, an FPL Planner gameweek plan calculated with how long the optimizer took and which model version produced it); and JavaScript errors, by their message.</p>
+        <p>Alongside page views, we record: that an app was opened; which section or tab within an app you moved to; that a search ran, with how many characters you typed and how many results came back; which item you picked from a search result list; which filters or sorting you chose; that you opened a detail view, and which catalogue entry it was; that you paged through a list; that you followed a link to another website, and to which domain; which link on this site you followed, recorded as the path it leads to and which part of the page it sat in; that you clicked an email or phone link, without the address or number; the path of a page that was not found, and the domain of the site that linked to it; a handful of completed actions specific to each app (a workout finished, a Mario Kart race logged, MapTap games logged with how they were entered and how many, a trip shared, the Trip Planner assistant opened, an Arena room created or joined, an FPL Planner gameweek plan calculated with how long the optimizer took and which model version produced it, and a Rising Shows chart image shared, comparison link copied or comparison exported, with how many shows it covered); and JavaScript errors, as a short classification (the standard error type, such as <code>typeerror</code>, or a Firebase error code, such as <code>permission-denied</code>) and, for an error thrown by a script, the path of that script on this site, or just <code>external</code> when it came from another site or a browser extension. The error message, its stack trace and full web addresses are never sent. Every event also carries a short identifier of the site release that sent it, so a problem can be tied to a deploy.</p>
 
         <p>What we deliberately do not send matters more than the list above. <strong>We never send anything you type.</strong> Search boxes report how long your query was and whether it matched anything, never the query itself. We never send your trip contents, destinations, item details or confirmation numbers; your workout notes, exercise names, weights, heart rate or calorie figures; your rivals' or players' names; custom team names; Arena room codes or display names; your FPL team ID, squad or recommended transfers; your email address, account id, or any Firestore path. Filter and sort values are sent as text, but only because every one of them is picked from a fixed list the app defines rather than typed by you.</p>
 
-        <p>The generated show pages under Rising Shows and the exercise pages under Gym Tracker report ordinary page views and nothing else.</p>
+        <p>The generated show pages under Rising Shows and the exercise pages under Gym Tracker report page views, the links you follow on them and JavaScript errors, as described above, and nothing else.</p>
 
         <p>Analytics is loaded so that it cannot interfere with the apps: every tracking call is wrapped so that a failure is silently discarded, and if you block Google Analytics with an extension or a content blocker, every app continues to work exactly as it does otherwise. Nothing on this site is gated on analytics loading.</p>
 
-        <p>There's no contact form on this site; the contact page is just a set of links, so nothing is collected there.</p>
+        <p>There's no contact form on this site; the contact page is a set of links, so nothing you type is collected there. Clicking its email or phone link is counted as a link click, as described above, without the address or number.</p>
 
         <h2>Logs and server-side records</h2>
 
@@ -328,6 +360,8 @@
         <p>The venue-ratings function has one diagnostic mode, off unless we deliberately switch it on to investigate a wrong result. While it is on, that function's log records the venue search text it was given, the city it was told to search in, and the name, address, coordinates and place type of the place Google returned, so we can see why a venue resolved the way it did. It never records who asked: no account, no per-browser identifier, and nothing else from your trip. It is off by default and is not on in normal operation.</p>
 
         <p>A third function is the Fantasy Premier League proxy behind the FPL Planner. It keeps a server-side cache of what it fetches, so that many people asking for the same public data cause roughly one request upstream. Everything in that cache is a copy of a public Fantasy Premier League response, including, where a team was looked up, that team's own public FPL entry. Nothing is stored against your account, and these requests carry no per-browser identifier. It does apply one usage limit: when a request cannot be answered from that cache and has to go upstream, it is counted against a per-network counter of exactly the kind described below. A request the cache can answer is not counted at all.</p>
+
+        <p>A fourth function receives Content Security Policy violation reports. Your browser sends one on its own, without asking you, when a page on this site tries to load something our security policy does not expect. For each report the function logs which policy rule was involved, the origin (scheme and host only) of whatever was blocked, the path of the page it happened on with any query or fragment removed, and whether the policy was blocking or only reporting. It does not log the page's full address, the referrer, any code sample, your IP address or anything else that identifies you, and it stores nothing: that log line is the whole record.</p>
 
         <p>Those first two functions apply usage limits, and to do that they count requests against two identifiers. There are two because the first one alone could not do the job.</p>
 
@@ -383,7 +417,7 @@
         <ul>
           <li>Gym Tracker and FPL Planner can erase their own synced data: each has a control in its settings that deletes its Firestore copy. The FPL Planner offers two, kept separate on purpose: "Disconnect your FPL team" removes only the team ID and the cached squad snapshot, on the device and in the cloud, leaving your saved plans and settings alone; "Delete all FPL Planner data" removes all four of its keys locally and deletes the whole <code>fplPlannerApp</code> document from your account. Both actions also remove the cached copy of your team data (squad, bank and history, stored under your team ID) from this device; the bulk public fixture and projection cache remains. Signed out, both remove the local copy only, and the app says which of the two happened.</li>
           <li>Mario Kart, Football H2H, Rising Shows, MapTap Rivals and the Trip Planner have no equivalent per-app control. Their synced copies stay in Firestore until you delete your account or ask us to remove them.</li>
-          <li>MapTap Rivals has a "Leave rival network" control that removes your published profile, your handle claim and every connection to a rival, without touching the rest of your account.</li>
+          <li>MapTap Rivals has a "Leave network" control that removes your published profile, your handle claim and every connection to a rival, without touching the rest of your account.</li>
           <li>Password reset is self-service too: the sign-in window has a "Forgot password?" link that emails you a reset link.</li>
         </ul>
 
@@ -412,7 +446,7 @@
   <script defer src="assets/js/browser.min.js"></script>
   <script defer src="assets/js/breakpoints.min.js"></script>
   <script defer src="assets/js/util.js"></script>
-  <script type="module" src="firebase-config.js"></script>
+  <script type="module" async src="firebase-config.js"></script>
   <script defer src="assets/js/main.js"></script>
   <script src="/assets/js/back-to-top.js" defer></script>
 </body>

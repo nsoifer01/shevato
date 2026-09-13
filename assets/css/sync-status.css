@@ -46,6 +46,10 @@
    than the amber used for "saving" and "conflict": those two are in-progress
    states that resolve themselves, this one needs the user to act. */
 .sync-status-pill[data-state="failed"]     { background: rgba(220, 38, 38, 0.9); }
+/* A write the engine kept and will resend (retry ladder exhausted on a network
+   failure). Not saved, but nothing for the user to fix: amber, like the other
+   in-progress states, and a deeper shade so it does not read as "Saving". */
+.sync-status-pill[data-state="unsaved"]    { background: rgba(217, 119, 6, 0.9); }
 
 .sync-banner {
     position: fixed;
@@ -75,6 +79,7 @@
    until dismissed - a message nobody reads is the same as no message. */
 .sync-banner[data-state="conflict"] { background: rgba(217, 119, 6, 0.95); }
 .sync-banner[data-state="failed"]   { background: rgba(185, 28, 28, 0.97); }
+.sync-banner[data-state="unsaved"]  { background: rgba(180, 83, 9, 0.97); }
 .sync-banner[data-fading="true"]   { opacity: 0; transform: translateY(-4px); }
 .sync-banner__close {
     flex: none;

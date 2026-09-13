@@ -22,6 +22,18 @@
 // `changed text demands a changed date` assertion below refuses a pair whose
 // date equals the previous one.
 //
+// THE DIGEST PAIR ALONE HAD A HOLE (2026-09-12 audit C-1). The pair lives in
+// THIS file, so an editor could overwrite CURRENT.digest in place, leave
+// PREVIOUS alone and the date unchanged, and every assertion above passed: the
+// "changed text demands a changed date" check only compares the two slots the
+// editor had just rewritten. Nothing inside a file the editor controls can be
+// an anchor. Git history can: the last test below compares the policy text and
+// the date against the commit this change is being made ON TOP OF (the
+// uncommitted tree against HEAD, a pull request's merge commit against its
+// base, a branch against its merge base with master, and a push to master
+// against the commit before it). If the words moved there, the date must have
+// moved forward too, whatever this file's pair says.
+//
 // WHEN THIS TEST FAILS, the fix is not to regenerate blindly:
 //   1. bump `Last reviewed:` in privacy.html to the date the change SHIPS;
 //   2. move CURRENT to PREVIOUS here, and write the new date + digest
@@ -30,6 +42,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
+import { execFileSync } from 'node:child_process';
 import { resolve, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -37,10 +50,10 @@ const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const html = readFileSync(join(REPO_ROOT, 'privacy.html'), 'utf8');
 
 // The two most recent reviews. Append by moving CURRENT down to PREVIOUS.
-const PREVIOUS = { date: '11 September 2026', digest: 'baseline-before-the-guard-existed' };
+const PREVIOUS = { date: '12 September 2026', digest: '1e4ad68e39a0ee4eb0eb205aa4d3be2843303dd0107982c3c32228cdecb75c72' };
 const CURRENT = {
-  date: '12 September 2026',
-  digest: '1e4ad68e39a0ee4eb0eb205aa4d3be2843303dd0107982c3c32228cdecb75c72',
+  date: '13 September 2026',
+  digest: '4714d2c71107a3a1dd66644ca7ac739e710c9a869742bfe60b96d02fb5a2576c',
 };
 
 /**
@@ -54,8 +67,8 @@ const CURRENT = {
  * The review date itself is removed, or every bump would invalidate its own
  * digest.
  */
-function policyText() {
-  const main = /<main[^>]*>([\s\S]*?)<\/main>/.exec(html);
+function policyText(src = html) {
+  const main = /<main[^>]*>([\s\S]*?)<\/main>/.exec(src);
   assert.ok(main, 'privacy.html has no <main> block to fingerprint');
   return main[1]
     .replace(/<!--[\s\S]*?-->/g, ' ')
@@ -68,8 +81,8 @@ function policyText() {
 
 const digestOf = (s) => createHash('sha256').update(s, 'utf8').digest('hex');
 
-function reviewDate() {
-  const m = /<strong>Last reviewed:<\/strong>\s*([0-9]{1,2} [A-Za-z]+ [0-9]{4})/.exec(html);
+function reviewDate(src = html) {
+  const m = /<strong>Last reviewed:<\/strong>\s*([0-9]{1,2} [A-Za-z]+ [0-9]{4})/.exec(src);
   assert.ok(m, 'the Last reviewed line is gone from privacy.html');
   return m[1];
 }
@@ -122,4 +135,61 @@ test('the fingerprint covers the prose a reader sees, and excludes the comments 
   assert.ok(!/TODO\(owner\)/.test(text), 'HTML comments leaked into the fingerprint');
   assert.ok(!/<p>|<strong>/.test(text), 'markup leaked into the fingerprint');
   assert.ok(!/Last reviewed:\s*\d/.test(text), 'the review date leaked into its own fingerprint');
+});
+
+// ---------------------------------------------------------------------------
+// The anchor the digest pair cannot provide: git.
+// ---------------------------------------------------------------------------
+
+function tryGit(args) {
+  try {
+    return execFileSync('git', args, { cwd: REPO_ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], maxBuffer: 64 * 1024 * 1024 });
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The privacy.html this change is being made on top of, and why that commit.
+ * null only when there is no usable history (a shallow single-commit checkout,
+ * or no git at all), in which case the digest pair above is the only guard.
+ */
+function baseVersion() {
+  const atHead = tryGit(['show', 'HEAD:privacy.html']);
+  if (atHead === null) return null;
+  // 1. Uncommitted edits: the working tree against the commit it sits on.
+  if (atHead !== html) return { src: atHead, from: 'HEAD (uncommitted changes)' };
+  const line = tryGit(['rev-list', '--parents', '-n', '1', 'HEAD']);
+  if (!line) return null;
+  const [head, ...parents] = line.trim().split(/\s+/);
+  const at = (rev, from) => {
+    const src = tryGit(['show', `${rev}:privacy.html`]);
+    return src === null ? null : { src, from };
+  };
+  // 2. A pull request is tested as a merge commit; its first parent is the base.
+  if (parents.length >= 2) return at(parents[0], 'first parent of the merge commit (the pull request base)');
+  // 3. A branch: the point it left master.
+  for (const ref of ['origin/master', 'master']) {
+    const mb = tryGit(['merge-base', 'HEAD', ref]);
+    if (mb && mb.trim() !== head) return at(mb.trim(), `merge base with ${ref}`);
+  }
+  // 4. master itself (a push run): the commit before this one.
+  if (parents.length === 1) return at(parents[0], 'the previous commit');
+  return null;
+}
+
+test('THE RULE, anchored in git: changed policy text since the base commit demands a later review date', (t) => {
+  const base = baseVersion();
+  if (!base) {
+    t.diagnostic('no git base resolvable (shallow or missing history); the digest pair above is the only guard in this run');
+    return;
+  }
+  if (policyText(base.src) === policyText()) return; // no policy text change: nothing to demand
+  const was = reviewDate(base.src);
+  const now = reviewDate();
+  assert.notEqual(now, was,
+    `The policy text in privacy.html changed since ${base.from}, but "Last reviewed" still reads ${now}. `
+    + 'Bump it to the date this change SHIPS. (Overwriting CURRENT.digest in this file does not satisfy this check.)');
+  assert.ok(new Date(now) > new Date(was),
+    `"Last reviewed" moved from ${was} to ${now}, which is not later. A changed policy needs a later review date.`);
 });

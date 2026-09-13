@@ -404,15 +404,25 @@ test('isPermanentWriteError: deterministic rejections are permanent', () => {
   assert.equal(isPermanentWriteError({ code: 'payload-too-large' }), true);
   assert.equal(isPermanentWriteError({ code: 'invalid-argument' }), true);
   assert.equal(isPermanentWriteError({ permanent: true }), true);
+  // Changed 2026-09-13 (audit S-3). This test used to assert that
+  // permission-denied was TRANSIENT, which pinned the bug: a rules rejection
+  // was resent three times and then dropped without a word. The rules give
+  // the same answer to the same batch however often it is sent; only a new
+  // sign-in changes that, and a sync start retries dirty keys once.
+  assert.equal(isPermanentWriteError({ code: 'permission-denied' }), true);
+  assert.equal(isPermanentWriteError({ code: 'unauthenticated' }), true);
+  // setDoc with merge creates a missing document, so not-found is structural.
+  assert.equal(isPermanentWriteError({ code: 'not-found' }), true);
 });
 
 test('isPermanentWriteError: transient and unknown failures stay retryable', () => {
   // Anything not positively known to be deterministic keeps the retry
-  // ladder it had before, so this change cannot make a recoverable blip
-  // unrecoverable.
-  assert.equal(isPermanentWriteError({ code: 'unavailable' }), false);
-  assert.equal(isPermanentWriteError({ code: 'deadline-exceeded' }), false);
-  assert.equal(isPermanentWriteError({ code: 'permission-denied' }), false);
+  // ladder: a transient failure misfiled as permanent would not be resent
+  // until the next sign-in.
+  for (const code of ['unavailable', 'deadline-exceeded', 'resource-exhausted', 'aborted',
+    'internal', 'unknown', 'failed-precondition', 'cancelled']) {
+    assert.equal(isPermanentWriteError({ code }), false, code);
+  }
   assert.equal(isPermanentWriteError(new Error('network down')), false);
   assert.equal(isPermanentWriteError(null), false);
   assert.equal(isPermanentWriteError(undefined), false);

@@ -165,7 +165,8 @@ function createTrendCharts(raceData = null) {
             }
         }
     };
-    // Chart.js is a CDN script. If it did not arrive the canvas stays blank
+    // Chart.js is a plain script tag (served from /assets/js since 2026-09-13,
+    // cdnjs before). If it did not arrive the canvas stays blank
     // and the accessible table below is the ONLY place these positions exist,
     // so the description is attached either way - it reads the config object,
     // never the chart.
@@ -333,11 +334,12 @@ function createHeatmapView(raceData = null) {
             }).filter(row => row !== '').join('');
         }
 
-        // Chart.js is a CDN script (index.html); if cdnjs is blocked, neither
-        // `window.Chart` nor the bare `Chart` global (classic scripts share
-        // one global scope with `window`) ever exists. createTrendCharts
-        // already guards its `new Chart(...)` at ~172; this call did not, so
-        // a blocked CDN threw a ReferenceError here on every render while the
+        // Chart.js is a plain script tag in index.html (served from
+        // /assets/js since 2026-09-13; it came from cdnjs before). If it fails
+        // to load, neither `window.Chart` nor the bare `Chart` global (classic
+        // scripts share one global scope with `window`) ever exists.
+        // createTrendCharts already guards its `new Chart(...)` at ~172; this
+        // call did not, so a failed load threw a ReferenceError here on every render while the
         // Activity tab was open - and since createHeatmapView runs
         // unconditionally from updateDisplay() on every data mutation, that
         // could abort the rest of updateDisplay() (including the success

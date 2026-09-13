@@ -381,3 +381,214 @@ test('malformed input is ignored rather than sent', () => {
   api.trackOutbound('not a url');
   assert.equal(events(calls).length, before);
 });
+
+// ---------------------------------------------------------------------------
+// app_error from the two global handlers.
+//
+// The bug these pin (audit A-1, 2026-09-12): since the error_message field
+// became error_code, the only producers of app_error (window `error` and
+// `unhandledrejection`) kept passing the free-text MESSAGE into a normaliser
+// that correctly refuses free text, so every real error reached GA4 as
+// `unclassified`. The wasOpen ReferenceError, the one bug GA4 ever caught,
+// would have been indistinguishable from a network failure. The fix
+// classifies the error by SHAPE (a standard constructor name, a Firebase-
+// style code) and never reads the message beyond one equality check, so the
+// code is useful AND still cannot carry user content.
+// ---------------------------------------------------------------------------
+
+const appErrors = (calls) => events(calls).filter((c) => c[1] === 'app_error').map((c) => c[2]);
+
+/** Dispatches a synthetic window `error` event and returns the app_error payload. */
+function windowError(evt, pathname) {
+  const { calls, listeners } = load({ pathname: pathname || '/apps/trip-planner/' });
+  listeners.error(evt);
+  return appErrors(calls).pop();
+}
+
+/** Dispatches a synthetic `unhandledrejection` and returns the app_error payload. */
+function rejection(reason) {
+  const { calls, listeners } = load({ pathname: '/apps/trip-planner/' });
+  listeners.unhandledrejection({ reason });
+  return appErrors(calls).pop();
+}
+
+function firebaseError(code, message) {
+  const err = new Error(message || 'Firebase: Error (' + code + ').');
+  err.name = 'FirebaseError';
+  err.code = code;
+  return err;
+}
+
+test('window error: a real Error reports its standard name as the code', () => {
+  const cases = [
+    [new ReferenceError('wasOpen is not defined'), 'referenceerror'],
+    [new TypeError("Cannot read properties of null (reading 'trip')"), 'typeerror'],
+    [new SyntaxError('Unexpected token < in JSON at position 4'), 'syntaxerror'],
+    [new RangeError('Maximum call stack size exceeded'), 'rangeerror'],
+    [new DOMException('The quota has been exceeded.', 'QuotaExceededError'), 'quotaexceedederror'],
+  ];
+  for (const [error, code] of cases) {
+    const p = windowError({ message: 'Uncaught ' + error.name + ': ' + error.message, error, filename: 'https://shevato.com/assets/js/main.js' });
+    assert.equal(p.error_code, code, `${error.name} was reported as ${p.error_code}`);
+    assert.equal(p.error_scope, 'window');
+  }
+});
+
+test('window error: a message with no error object is unclassified and the message is never sent', () => {
+  const p = windowError({ message: 'Uncaught dana', error: null, filename: 'https://shevato.com/apps/trip-planner/js/app.js' });
+  assert.equal(p.error_code, 'unclassified');
+  assert.equal(JSON.stringify(p).includes('dana'), false);
+});
+
+test('window error: the opaque cross-origin "Script error." reports script_error', () => {
+  assert.equal(windowError({ message: 'Script error.', error: null, filename: '' }).error_code, 'script_error');
+  // Only the exact browser string counts; a message that merely contains it is text.
+  assert.equal(windowError({ message: 'Script error. for Paris', error: null }).error_code, 'unclassified');
+});
+
+test('window error: a non-standard error name or a thrown non-Error is unclassified', () => {
+  const custom = new Error('card declined for Dana');
+  custom.name = 'PaymentDeclinedForDana';
+  assert.equal(windowError({ message: 'Uncaught PaymentDeclinedForDana', error: custom }).error_code, 'unclassified');
+  assert.equal(windowError({ message: 'Uncaught typeerror', error: 'typeerror' }).error_code, 'unclassified');
+  // A plain object dressed up with a standard name is not an Error.
+  assert.equal(windowError({ message: 'Uncaught [object Object]', error: { name: 'TypeError' } }).error_code, 'unclassified');
+});
+
+test('unhandled rejection: an Error reports its standard name as the code', () => {
+  const p = rejection(new TypeError('Failed to fetch https://shevato.com/?trip=honeymoon'));
+  assert.equal(p.error_code, 'typeerror');
+  assert.equal(p.error_scope, 'promise');
+});
+
+test('unhandled rejection: a Firebase-style code is reported with / mapped to _', () => {
+  assert.equal(rejection(firebaseError('auth/network-request-failed')).error_code, 'auth_network-request-failed');
+  assert.equal(rejection(firebaseError('permission-denied')).error_code, 'permission-denied');
+  assert.equal(rejection(firebaseError('unavailable')).error_code, 'unavailable');
+  assert.equal(rejection(firebaseError('storage/object-not-found')).error_code, 'storage_object-not-found');
+});
+
+test('unhandled rejection: a code that is not Firebase-shaped falls back to the name, never forwarded', () => {
+  const withText = new TypeError('x');
+  withText.code = 'auth/Paris with Dana';
+  assert.equal(rejection(withText).error_code, 'typeerror');
+
+  const nodeStyle = new Error('ENOENT: no such file');
+  nodeStyle.code = 'ENOENT';
+  assert.equal(rejection(nodeStyle).error_code, 'error');
+
+  const tooLong = new RangeError('x');
+  tooLong.code = 'auth/' + 'a'.repeat(40);
+  assert.equal(rejection(tooLong).error_code, 'rangeerror');
+
+  // A Firebase error whose code is not code-shaped and whose name is not standard.
+  assert.equal(rejection(firebaseError('auth/Dana@example')).error_code, 'unclassified');
+});
+
+test('unhandled rejection: a non-Error reason reports non_error_rejection', () => {
+  const reasons = ['dana', 42, { name: 'TypeError', code: 'auth/network-request-failed', message: 'dana' }, undefined, null, true];
+  for (const reason of reasons) {
+    const p = rejection(reason);
+    assert.equal(p.error_code, 'non_error_rejection', `reason ${JSON.stringify(reason)} reported ${p.error_code}`);
+    assert.equal(JSON.stringify(p).includes('dana'), false);
+  }
+});
+
+test('error_source: an extension or cross-origin script reports external', () => {
+  const external = [
+    'chrome-extension://abcdefghijklmnopabcdefghijklmnop/content.js',
+    'moz-extension://7c1e5f2a-0000-4000-8000-000000000000/inject.js',
+    'safari-web-extension://ABCDEF/script.js',
+    'https://cdn.example.com/lib.js?user=dana',
+    'blob:https://shevato.com/5d1c7a2e-0000-4000-8000-000000000000',
+    'http://shevato.com/assets/js/main.js',
+  ];
+  for (const filename of external) {
+    const p = windowError({ message: 'Uncaught TypeError: x', error: new TypeError('x'), filename });
+    assert.equal(p.error_source, 'external', `${filename} reported ${p.error_source}`);
+  }
+});
+
+test('error_source: a same-origin script reports its pathname only', () => {
+  const p = windowError({
+    message: 'Uncaught ReferenceError: wasOpen is not defined',
+    error: new ReferenceError('wasOpen is not defined'),
+    filename: 'https://shevato.com/assets/js/main.js?v=12#honeymoon',
+  });
+  assert.equal(p.error_source, '/assets/js/main.js');
+
+  // An inline script's filename is the page URL, query and all.
+  const inline = windowError({ message: 'x', error: new TypeError('x'), filename: 'https://shevato.com/apps/trip-planner/?trip=honeymoon' });
+  assert.equal(inline.error_source, '/apps/trip-planner');
+
+  const long = windowError({ message: 'x', error: new TypeError('x'), filename: 'https://shevato.com/' + 'a'.repeat(300) + '.js' });
+  assert.ok(long.error_source.length <= 100, `error_source is ${long.error_source.length} chars`);
+
+  assert.equal('error_source' in windowError({ message: 'x', error: new TypeError('x') }), false, 'absent filename omits the field');
+  assert.equal('error_source' in rejection(new TypeError('x')), false, 'a rejection has no source');
+});
+
+test('the per-page error cap still holds for the global handlers', () => {
+  const { calls, listeners } = load({ pathname: '/apps/trip-planner/' });
+  for (let i = 0; i < 10; i++) {
+    listeners.error({ message: 'Uncaught TypeError: x', error: new TypeError('x'), filename: 'https://shevato.com/a.js' });
+    listeners.unhandledrejection({ reason: new TypeError('x') });
+  }
+  assert.equal(appErrors(calls).length, 5);
+});
+
+test('app_error from a global handler carries a release id', () => {
+  const p = windowError({ message: 'Uncaught TypeError: x', error: new TypeError('x') });
+  assert.equal(typeof p.release_id, 'string');
+  assert.ok(p.release_id.length > 0);
+  assert.equal(p.release_id.startsWith('__'), false);
+});
+
+test('no app_error payload ever contains the original message, reason or URL text', () => {
+  // Every shape the browser can hand the handlers, each carrying private text
+  // in the places an error puts it: the message, the thrown value, the code,
+  // the script URL's query and fragment. One-word messages are included on
+  // purpose: a bare lowercase word IS code-shaped and was forwarded verbatim
+  // before this fix. (A reason's `code` PROPERTY that is itself Firebase-shaped
+  // is forwarded by design, see the Firebase test above; the codes used here
+  // are not code-shaped, so they must fall back to the name.)
+  const SECRET = /dana|paris|honeymoon|secret/i;
+  const withCode = new Error('dana');
+  withCode.code = 'Paris/Dana';
+  const withEmailCode = new TypeError('dana');
+  withEmailCode.code = 'dana@paris.com';
+  const payloads = [
+    windowError({ message: 'Uncaught ReferenceError: dana is not defined', error: new ReferenceError('dana is not defined'), filename: 'https://shevato.com/assets/js/main.js?trip=honeymoon#secret' }),
+    windowError({ message: 'dana', error: null, filename: 'https://shevato.com/apps/trip-planner/?q=paris' }),
+    windowError({ message: 'Script error.', error: null, filename: 'chrome-extension://secret/content.js' }),
+    rejection(new Error('dana')),
+    rejection(new TypeError('Failed to fetch https://shevato.com/?trip=honeymoon')),
+    rejection('secret'),
+    rejection({ message: 'dana', stack: 'at paris' }),
+    rejection(withCode),
+    rejection(withEmailCode),
+    rejection(firebaseError('auth/network-request-failed', 'Firebase: dana@paris.com is not registered')),
+  ];
+  for (const p of payloads) {
+    for (const [key, value] of Object.entries(p)) {
+      assert.equal(SECRET.test(String(value)), false, `${key}=${value} leaks private text`);
+    }
+  }
+});
+
+test('app_error: a code outside the Firebase vocabulary is never forwarded, even one word', () => {
+  const decorated = new TypeError('dana');
+  decorated.code = 'dana';
+  const p = rejection(decorated);
+  assert.equal(p.error_code, 'typeerror', 'falls back to the standard name, never the invented code');
+  assert.equal(JSON.stringify(p).includes('dana'), false);
+  const unknownService = new Error('x');
+  unknownService.code = 'myapp/secret-word';
+  assert.equal(rejection(unknownService).error_code, 'error');
+  const ownEngine = new Error('x');
+  ownEngine.code = 'payload-too-large';
+  assert.equal(rejection(ownEngine).error_code, 'payload-too-large', "the sync engine's own code still classifies");
+  const storage = new Error('x');
+  storage.code = 'storage/unauthorized';
+  assert.equal(rejection(storage).error_code, 'storage_unauthorized');
+});
