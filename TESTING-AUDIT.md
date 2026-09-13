@@ -96,7 +96,9 @@ documented in "Remaining limitations".
   rather than Playwright's own runner so the repo keeps one test idiom. It
   answers the one question the CDP harness architecturally cannot: does the
   site work in Gecko and WebKit? Main CI remains zero-install; only the
-  weekly cross-browser workflow runs `npm ci`.
+  weekly cross-browser workflow runs `npm ci`. (Since 2026-09-05 ESLint and
+  its `globals` package are dev dependencies too, used only by
+  `npm run lint`, and the `lint` workflow also runs `npm ci`.)
 - **Added (vendored, not an npm dependency):** axe-core 4.10.3 at
   `tests/browser/vendor/axe.min.js`, injected by the a11y suite; same
   vendoring convention as the site's jQuery.
@@ -195,7 +197,7 @@ coverage.
 | Area | U | E | A | V | M | Err | Notes |
 |---|---|---|---|---|---|---|---|
 | Marketing site + hub | part | FULL | FULL | FULL | FULL | part | Search/filters/switcher/nav/forms E2E; main.js auth modal has keyboard checks only |
-| Arena | FULL | FULL | FULL | FULL | FULL | FULL | Extracted modules deep; since 2026-08-16: 23 emulator rules tests + 27-check two-client multiplayer e2e (separate commands, weekly CI) |
+| Arena | FULL | FULL | FULL | FULL | FULL | FULL | Extracted modules deep; since 2026-08-16: 23 emulator rules tests + 27-check two-client multiplayer e2e (separate commands; CI runs both in arena-rules.yml on pull requests and master pushes that can affect Arena, plus weekly) |
 | Football H2H | FULL | FULL | FULL | FULL | FULL | FULL | Live add path now vm-tested; correctness asserted in browser |
 | FPL Planner | FULL | FULL | FULL | FULL | FULL | FULL | Deepest estate; engine + UI + proxy + e2e lifecycle |
 | Gym Tracker | FULL | FULL | FULL | FULL | FULL | FULL | Views via source extraction; SW at unit + browser layers |
@@ -261,8 +263,10 @@ Read these numbers with care, in both directions:
 
 Floors (tests/coverage/floors.json, enforced by `npm run test:coverage`):
 arena 85, football-h2h 96, fpl-planner 87, gym-tracker 73, maptap-rivals 96,
-rising-shows 88, trip-planner 96, netlify-functions 87, sync-system 82 (line
-%). Set from measured values minus a working margin; lowering one requires a
+rising-shows 88, trip-planner 96, netlify-functions 87, sync-system 82,
+site-shared 95 (added 2026-09-07) (line %). An area with a floor that
+measures no files fails rather than passing (since 2026-09-13). Set from
+measured values minus a working margin; lowering one requires a
 written justification here.
 
 ## Browser matrix
@@ -276,7 +280,9 @@ written justification here.
 
 ## Visual regression testing
 
-`tests/browser/suites/visual.mjs`, 86 checks, output byte-identical across
+`tests/browser/suites/visual.mjs`, 86 checks when written (103 as of
+2026-09-13; the live count is pinned in run.mjs EXPECTED_CHECKS), output
+byte-identical across
 three consecutive runs: horizontal overflow on every page and app at
 1280/390 (+768x1024 for apps, their first tablet coverage), dark-theme
 integrity per app (background/text luminance on each app's real paint
@@ -290,7 +296,8 @@ hit is a genuine regression.
 
 ## Performance testing
 
-Deterministic budgets in `tests/browser/suites/perf.mjs` (41 checks):
+Deterministic budgets in `tests/browser/suites/perf.mjs` (41 checks when
+written, 68 as of 2026-09-13; pinned in run.mjs EXPECTED_CHECKS):
 first-party transfer bytes, same-origin request count, and DOM node count
 for home, apps, and every app root, plus a home-page JS-weight guard.
 Budgets are set at roughly 45-50% headroom over the measured 2026-08-15
@@ -300,15 +307,18 @@ home 1.04 MB / 24 requests / 313 nodes against budgets of 1.55 MB / 36 /
 runs; the only timing check is a deliberately loose 8s DOMContentLoaded
 disaster threshold (measured 93-212 ms). rising-shows' budget originally
 excluded the gitignored release dataset as a workaround; since the loading
-redesign (PR #391) the exclusion is gone and the budget (52 MB, measured
-36.0 MB) guards the intentional architecture: code plus the deliberate boot
-index, with the 67.5 MB extras monolith never fetched at boot. Lighthouse
+redesign (PR #391) the exclusion is gone and the budget guards the
+intentional architecture: code plus the deliberate boot index, with the
+67.5 MB extras monolith never fetched at boot. The budget was 52 MB against a
+measured 36.0 MB; since the 2026-09-08 show-level index split it is 26 MB
+against a measured ~18.3 MB. Lighthouse
 CI was evaluated and rejected (heavy, CI-flaky); these budgets catch the
 static-site regression class that matters.
 
 ## Accessibility
 
-`tests/browser/suites/a11y.mjs`, 33 checks: axe-core 4.10.3 (WCAG 2.0/2.1
+`tests/browser/suites/a11y.mjs`, 33 checks when written (90 as of 2026-09-13;
+pinned in run.mjs EXPECTED_CHECKS): axe-core 4.10.3 (WCAG 2.0/2.1
 A + AA) over every site page, every app root (Arena with Firebase
 intercepted, no production writes), and two deep app states (gym program
 modal open, trip-planner Days view with the example trip), plus 15
@@ -587,7 +597,8 @@ defect fixes stamped above:
   e2e drives create/join/start/answer/reveal/scoreboard/rematch/host-handoff
   and both password paths against local emulators (`npm run
   test:arena:rules`, `npm run test:arena:emulator`; weekly CI via
-  arena-rules.yml). The emulator seam in firebase-config.js is
+  arena-rules.yml then, and since 2026-09-07 also on pull requests and
+  master pushes that can affect Arena). The emulator seam in firebase-config.js is
   double-gated (loopback host AND an explicit localStorage opt-in) and
   unit-tested; no test can reach production Firebase.
 - **Room passwords** moved from cleartext-in-a-readable-doc to a rules-gated
@@ -616,8 +627,10 @@ defect fixes stamped above:
 - **The RTDB path of the sync engine** stays untested (production pins
   Firestore; documented in the sync behavioral suite header).
 - **The arena rules/emulator suites need Java plus a one-time
-  firebase-tools download**, so they are separate commands + weekly CI, not
-  part of `npm test`; they skip cleanly (and loudly) where Java is absent.
+  firebase-tools download**, so they are separate commands with their own CI
+  workflow (arena-rules.yml: pull requests and master pushes that can affect
+  Arena, plus weekly), not part of `npm test`; locally they skip cleanly (and
+  loudly) where Java is absent.
 - Some browser checks depend on the gitignored rising-shows dataset and skip
   cleanly on a fresh clone (6 checks, reported, with the fetch command).
 
@@ -639,8 +652,8 @@ defect fixes stamped above:
    (audit S-3) a retryable failure is parked and resent rather than dropped,
    `syncWriteRecovered` retires the message, and Gym Tracker's own widget and
    FPL Planner show it too.
-5. Consider registering the arena emulator e2e in a CI job with Java the
-   way arena-rules.yml runs the rules suite, if its runtime stays stable.
+5. DONE 2026-09-05: arena-rules.yml runs the arena emulator e2e after the
+   rules suite, in the same job.
 
 ## Files changed
 

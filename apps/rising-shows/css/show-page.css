@@ -248,6 +248,16 @@ main { max-width: 1080px; margin: 0 auto; padding: 24px; }
   display: flex; gap: 18px; flex-wrap: wrap;
 }
 .season-summary strong { color: var(--text); }
+/* An unfinished season (2026-09-12 audit N-2): its average and shapes are what
+   has aired so far. Neutral, like the app's chip: a status, not a shape. */
+.season-airing {
+  color: var(--text);
+  border: 1px solid var(--muted);
+  border-radius: 999px;
+  padding: 0 8px;
+  font-size: 12px;
+  line-height: 20px;
+}
 
 .season-shapes {
   list-style: none; margin: 10px 0 0; padding: 0;

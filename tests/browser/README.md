@@ -12,7 +12,7 @@ The runner starts its own static server and headless Chrome, runs every suite,
 tears both down, and exits non-zero on any failure. Nothing needs to be running
 beforehand.
 
-Three runner-level guarantees:
+Four runner-level guarantees:
 
 - **Crash containment.** Each suite runs in its own try/catch; a suite that
   throws (import error included) records one `<suite>: suite completed`
@@ -22,19 +22,23 @@ Three runner-level guarantees:
   there, they just did not run). The runner now names such suites in the
   summary under "Asserted NOTHING in this run", and FAILS them unless they are
   in `ZERO_RUN_ALLOWED` with a written reason. Today the one entry is
-  `apps/rising-shows/e2e/audit-2026-08.mjs`: its dataset is a 34 MB gitignored
-  release asset, so all 11 of its checks skip on a GitHub runner and have never
-  executed on a pull request. That is a real coverage gap, now visible in every
-  run instead of scrolling past as `0/0 passed`. Note that suite emits 51
-  checks when the dataset IS present and 11 when it is not, which is why it
-  cannot also carry an `EXPECTED_CHECKS` pin.
+  `apps/rising-shows/e2e/audit-2026-08.mjs`: its dataset is a gitignored
+  release asset, so on a clone without it every check skips. The browser
+  workflow now fetches and caches the dataset before the suites run, so on CI
+  the suite normally executes; the exemption covers a failed fetch (that step
+  may fail without failing the job) and a local clone without the data, and
+  the summary names the suite whenever it asserted nothing. Note that suite
+  emits 51 checks when the dataset IS present and 11 when it is not, which is
+  why it cannot also carry an `EXPECTED_CHECKS` pin.
 - **Check-count pinning.** `EXPECTED_CHECKS` in run.mjs pins the number of
   checks a suite must emit, so a silently lost check (early return, dropped
-  loop) becomes an explicit failure instead of a shrunken green run. All six
-  harness-owned suites are pinned (site 157, apps 101, a11y 72, visual 86,
-  perf 41, pwa-gym 14); the app-owned trip-planner/fpl-planner suites are
-  not, by their owners' choice. Adding or removing a check on purpose means
-  updating the pinned number in the same change.
+  loop) becomes an explicit failure instead of a shrunken green run. All
+  seven harness-owned suites (`site`, `apps`, `a11y`, `visual`, `perf`,
+  `pwa-gym`, `csp`) are pinned, plus the app-owned
+  `apps/maptap-rivals/e2e/quality.mjs` by its owner's choice; the other
+  app-owned suites are not, by theirs. The numbers live in run.mjs only.
+  Adding or removing a check on purpose means updating the pinned number in
+  the same change.
 - **Ordered teardown.** kill() is followed by a bounded wait for the actual
   process exits before the Chrome profile dir is removed, so teardown never
   races Chrome's open file handles.
@@ -43,8 +47,9 @@ Three runner-level guarantees:
 
 - Chromium or Chrome on `PATH`, or `CHROME_BIN` pointing at one.
 - Python 3, used for the static server.
-- Node 20+. The driver needs `--experimental-websocket` on Node 20; the npm
-  script passes it. Node 22+ has `WebSocket` globally and ignores the flag.
+- Node 22+ (`engines` in package.json; `npm test`'s pretest refuses older).
+  `WebSocket` is global there, so the `--experimental-websocket` flag the npm
+  scripts still pass is ignored.
 
 ## Local gotchas
 
@@ -90,22 +95,28 @@ release.
 
 ## How CI keeps that to about 12 minutes
 
-The estate is 27 suites walked one at a time in one browser, so the only way to
-finish sooner is to put the suites on more machines. `.github/workflows/browser-tests.yml`
+The estate is 32 suites (`SUITES` in run.mjs, counted 2026-09-13) walked one at
+a time in one browser, so the only way to finish sooner is to put the suites on
+more machines. `.github/workflows/browser-tests.yml`
 runs a four-job matrix, each job taking a quarter of the list:
 
 ```bash
 node --experimental-websocket tests/browser/run.mjs --shard=2/4
 ```
 
-The split is round-robin over `SUITES` (`index % n`), not contiguous blocks:
-the list groups related suites together (ten trip-planner ones in a row, seven
-per-app audit ones) and related suites cost about the same, so blocks would
-hand one runner most of the slow work. Striding interleaves them, and every
-suite has exactly one index, so shards 1..n run the list once and only once.
-That totality is the point: a suite belonging to no shard would report nothing
-and read as green. Each run prints the suites its shard owns before starting,
-so the shard logs side by side are the audit that the estate was fully run.
+The split packs suites by MEASURED cost, not by count. `SUITE_SECONDS` in
+run.mjs records each suite's runtime from GitHub-runner logs, and the runner
+walks the suites heaviest first, handing each to whichever shard is least
+loaded so far (a suite missing from the table is charged `DEFAULT_SECONDS`).
+The first split was round-robin over the list, which balanced suite COUNT
+while costs differ by two orders of magnitude: it put 20 minutes on one shard
+while the other three finished in 8-9, and the estate's wall clock is its
+slowest shard. A stale cost can make shards uneven, never wrong: every suite
+is placed in exactly one shard, and the runner throws if the partition loses
+one. That totality is the point: a suite belonging to no shard would report
+nothing and read as green. Each run prints the suites its shard owns, and the
+work it expects, before starting, so the shard logs side by side are the audit
+that the estate was fully run.
 
 The workflow derives `<n>` from `strategy.job-total`, the matrix size itself,
 so the shard count is never written down twice. Changing the parallelism is
@@ -185,6 +196,8 @@ tests/browser/
                      #   viewports (pixel baselines deliberately rejected)
   suites/perf.mjs    # first-party byte / request / DOM budgets per page
   suites/pwa-gym.mjs # gym service worker: registration, caches, offline
+  suites/csp.mjs     # the enforced CSP, verified by a browser refusing what it
+                     #   blocks rather than by reading the header as a string
   vendor/axe.min.js  # vendored axe-core (same convention as site jQuery)
 
 apps/trip-planner/e2e/   # the trip-planner E2E regression suites (registered
@@ -193,9 +206,13 @@ apps/gym-tracker/e2e/    # gym-tracker units-migration suite (registered in
                          #   run.mjs)
 apps/fpl-planner/e2e/    # fpl-planner scenario + gameweek-lifecycle suites
                          #   (registered in run.mjs)
+apps/<app>/e2e/          # audit-2026-08.mjs regressions for every app except
+                         #   arena, plus maptap-rivals' quality.mjs (all
+                         #   registered in run.mjs)
 apps/arena/e2e/          # two-client multiplayer suite vs local Firebase
                          #   emulators: NOT in run.mjs (needs Java); run it
-                         #   with npm run test:arena:emulator
+                         #   with npm run test:arena:emulator. CI runs it in
+                         #   .github/workflows/arena-rules.yml
 ```
 
 A suite exports `run({ base, cdpPort })` and returns

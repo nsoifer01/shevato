@@ -7,7 +7,7 @@
   <meta name="theme-color" content="#ffffff" />
   <title>Free Web Apps - No Ads, No Signup Required | Shevato</title>
   <meta name="description" content="Free web apps that need no signup: a Fantasy Premier League planner, gym and workout logging, trip itineraries, TV rating trends, and party games." />
-  <meta name="keywords" content="Mario Kart tracker, gym tracker, workout tracker, football statistics, head to head football, Fantasy Premier League planner, FPL transfer planner, FPL team optimizer, FPL captain picker, FPL wildcard planner, TV show ratings, episode ratings, rising shows, slow burn shows, big finale, MapTap tracker, MapTap.gg, MapTap rivals, head to head game tracker, gaming apps, race tracker, fitness tracker, sports statistics, free browser apps, Mario Kart 8 Deluxe, Mario Kart World, gym workout log, multiplayer trivia, real-time trivia, brain arena, geography game, globe drop, 3d globe game, world capitals game, trip planner, travel itinerary builder, itinerary planner, price comparison" />
+  <meta name="keywords" content="Mario Kart tracker, gym tracker, workout tracker, football statistics, head to head football, Fantasy Premier League planner, FPL transfer planner, FPL team optimizer, FPL captain picker, FPL wildcard planner, TV show ratings, episode ratings, rising shows, slow burn shows, big finale, MapTap tracker, MapTap.gg, MapTap rivals, head to head game tracker, gaming apps, race tracker, fitness tracker, sports statistics, free browser apps, Mario Kart 8 Deluxe, Mario Kart World, gym workout log, multiplayer trivia, real-time trivia, brain arena, geography game, globe drop, 3d globe game, world capitals game, trip planner, travel itinerary builder, itinerary planner" />
   <meta name="author" content="Shevato LLC" />
   <meta name="robots" content="index, follow, max-image-preview:large" />
 
@@ -72,7 +72,7 @@
     "@context": "https://schema.org",
     "@type": "CollectionPage",
     "name": "Shevato Apps",
-    "description": "Free web applications including Mario Kart race tracker, gym workout logger, head-to-head football league manager, FPL Planner Fantasy Premier League transfer and captain planner, Rising Shows TV rating-trend analytics, MapTap Rivals daily MapTap.gg head-to-head tracker, Arena multiplayer party games source-backed comparisons, and a day-by-day Trip Planner",
+    "description": "Free web applications including Mario Kart race tracker, gym workout logger, head-to-head football league manager, FPL Planner Fantasy Premier League transfer and captain planner, Rising Shows TV rating-trend analytics, MapTap Rivals daily MapTap.gg head-to-head tracker, Arena multiplayer party games, and a day-by-day Trip Planner",
     "url": "https://shevato.com/apps",
     "publisher": {
       "@type": "Organization",
@@ -232,7 +232,7 @@
     }
     /* --- Preview thumbnails ---------------------------------------------
        Seven of the eight are generated 16:9 crops built by
-       assets/app-previews/build-previews.mjs, which drives each app to the
+       tests/app-previews/build-previews.mjs, which drives each app to the
        screen worth showing and clips a named element. Arena is the eighth and
        is hand captured at 16:10, because its interesting state is a live
        multiplayer room rather than a dataset. The frame owns all the geometry
@@ -377,7 +377,7 @@
       border-radius: inherit;
     }
     /* Seven of the eight previews are generated at 16:9 by
-       assets/app-previews/build-previews.mjs, each already framed on the one
+       tests/app-previews/build-previews.mjs, each already framed on the one
        screen that identifies its app, so their window IS the whole file and
        the centred, unzoomed default lands on it exactly. They need no entry
        here, and adding one would crop a deliberate composition.
@@ -436,7 +436,6 @@
         <button data-filter="fitness" aria-pressed="false">Fitness</button>
         <button data-filter="game" aria-pressed="false">Games</button>
         <button data-filter="tv" aria-pressed="false">TV</button>
-        <button data-filter="utilities" aria-pressed="false">Utilities</button>
         <button data-filter="travel" aria-pressed="false">Travel</button>
       </div>
       <div class="app-search-bar">
@@ -525,7 +524,7 @@
               <a href="apps/maptap-rivals/" class="icon fa-crosshairs brand-color-primary" aria-label="Open MapTap Rivals"></a>
               <h3>MapTap Rivals</h3>
             </header>
-            <p>Log daily MapTap.gg head-to-head scores against named friends. Win streaks, averages, per-rival dashboards, time-boxed rivalry seasons, and a calendar heatmap of daily activity.</p>
+            <p>Log daily MapTap.gg head-to-head scores against named friends. Win streaks, averages, per-rival dashboards, weekly and monthly records, and a calendar heatmap of daily activity.</p>
             <ul class="actions special">
               <li><a href="apps/maptap-rivals/" class="button" aria-label="Track Rivals, MapTap Rivals">Track Rivals</a></li>
             </ul>

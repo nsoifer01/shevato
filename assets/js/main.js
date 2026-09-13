@@ -547,11 +547,13 @@
     /**
      * Build the delete-account confirmation modal.
      *
-     * The "kept" list is not padding. Arena's leaderboard row, head-to-head
-     * records and Globe Drop daily scores sit outside users/{uid} and the
-     * security rules do not let their owner delete them, and room chat is
-     * append-only by design. Saying so up front is the difference between an
-     * honest control and one that overclaims.
+     * The "kept" list is not padding. Deletion removes the Arena leaderboard
+     * row and daily-challenge scores, but a head-to-head record is the other
+     * player's history too, so it stays with the name replaced, and chat in a
+     * room that is still open is append-only until the room is deleted. Saying
+     * so up front is the difference between an honest control and one that
+     * overclaims. tests/static/delete-account-dialog.test.mjs holds this copy
+     * to deleteAccount() and privacy.html.
      * @private
      * @param {Object} user - Signed-in Firebase user
      */
@@ -581,14 +583,15 @@
               <ul class="delete-account-modal__list">
                 <li>Your synced data for every app, in the cloud and on this device</li>
                 <li>Your Arena profile, including XP, wins and games played</li>
+                <li>Your Arena leaderboard row and every Globe Drop daily-challenge score you set</li>
                 <li>Your MapTap Rivals network entry and the links to connected rivals</li>
                 <li>Your sign-in email and password</li>
               </ul>
 
               <p class="delete-account-modal__label">This does not remove</p>
               <ul class="delete-account-modal__list delete-account-modal__list--kept">
-                <li>Your Arena leaderboard row, head-to-head records and Globe Drop daily scores. Only leaderboard admins can remove those.</li>
-                <li>Anything you posted in Arena room chat. Chat is permanent by design.</li>
+                <li>Your Arena head-to-head records, because they are the other player's history too. Your name on them becomes "Former player" and the win, loss and draw counts stay.</li>
+                <li>Anything you posted in Arena room chat while that room is open. It is deleted with the room when the last player leaves.</li>
               </ul>
 
               <p class="delete-account-modal__note">

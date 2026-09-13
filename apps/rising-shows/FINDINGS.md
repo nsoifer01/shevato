@@ -34,14 +34,41 @@ Two things make this class hard to catch:
 - The failure is silent in the file that "wins". Nothing logs, nothing throws in
   the surviving file, and the symptom appears somewhere else entirely.
 
-`tests/classic-script-globals.test.js` now evaluates every classic script
-index.html loads into one `vm` context and asserts each library still reaches
-`window`. It reads the script tags from index.html rather than hardcoding a
-list, and it splits classic from module by the tag's own `type` attribute, so
-adding a script or converting one to a module keeps it honest. A first draft of
-that test treated all four as classic and produced a confident false positive
-about `integrations-lib.js` being broken on master, which is worth remembering:
-simulate the loader the page actually uses, not the one you assume.
+**The guard is site-wide now (2026-09-13, audit N-3).** The first guard,
+`tests/classic-script-globals.test.js`, read the `scripts/*.js` tags of
+index.html only. The Kometa builder, which loads `integrations-lib.js` as a
+CLASSIC script (`const API` and `const CATEGORICAL_SHAPES` included) beside
+`js/kometa.js`, every site script, and every other app's page (Mario Kart's 44
+classic scripts, Football H2H's 23 plus an inline block) sat outside it.
+
+`tests/static/classic-script-scope.test.mjs` took over the collision check. It
+takes every published page from `scripts/build-publish-dir.mjs` (no hand-kept
+app list), collects each page's same-origin and inline classic scripts in
+execution order (parser-inserted first, then `defer`; modules, JSON-LD and
+anything in a comment, `<template>` or `<noscript>` skipped), and instantiates
+them into one `node:vm` context per page WITHOUT running them. Each script is
+compiled with `throw PROBE;` as its first statement, after a leading
+`'use strict'`: the redeclaration check belongs to instantiation, which happens
+before any statement runs, so V8 raises the same "Identifier 'X' has already
+been declared" a browser does and no DOM stub is involved. A clash names the
+page, both files and the name. Appending a `const CATEGORICAL_SHAPES` to
+`js/kometa.js` produced exactly that on the Kometa page. 17 pages, no clashes
+today, about 0.2 s.
+
+Measured on node 20 before relying on the probe: const/const, let/let,
+class/const, var-then-let, let-then-var, function-then-const and
+const-then-function all throw; var/var, function/function and a `const` inside
+an IIFE do not; a non-configurable host global (`top`) defined inside the
+context counts as taken, as on a real window.
+
+`classic-script-globals.test.js` kept one job, the one the site-wide guard
+cannot do: it EXECUTES match.js, finder-lib.js and providers-lib.js in one
+context and asserts each namespace reaches `window`, which catches a library
+that parses and declares cleanly but never assigns its export. A first draft of
+that test treated all four scripts as classic and reported a confident false
+positive about `integrations-lib.js`; the lesson still stands: simulate the
+loader the page actually uses. On index.html it is a module; on the Kometa page
+it is not.
 
 
 ## The phone close button was 36x2 px for as long as it was sticky (2026-09-11)
@@ -589,6 +616,57 @@ over the identical episode data (so the two differ only by these rules):
 161 shows change dominant shape and 229 change their shape set at all.
 The show-level big-finale drop is mostly not the in-progress rule: 79 of
 the 101 are the 2 dp margin fix below.
+
+### A badge decided by a partial season now says "Still airing" (2026-09-13, audit N-2)
+
+The rule above withholds the finale shapes, but the shapes that survive are
+still computed over the partial season's average, and until this round no
+surface said so. The flag also stopped at the show fold: `shows-index.json`
+carried no trace of it, so the card could not have said it if it tried.
+
+Measured on the 2026-09-08 `data.json` with the real `computeDominantShape`,
+once with every season and once without the in-progress one: 517 shows have an
+in-progress newest season, 158 of them carry a dominant badge, and **92 of those
+158 would read differently without the partial season** (a different shape or
+none). 59 of the 517 partial seasons have 3 or fewer rated episodes. Examples:
+Ted Lasso (463,611 votes) Declining on five episodes of season 4, Consistent
+without them; Family Guy Front-loaded vs Bad finale without season 24;
+Star Trek: Strange New Worlds Front-loaded on seven episodes at 6.16, no badge
+without them; Frieren Consistent vs none. The audit's figure was 141 of 161;
+it did not reproduce with this method, and 92 of 158 is the number measured.
+
+**The formula is unchanged, deliberately.** What has aired is real data, and a
+rule that dropped the partial season would hide a collapse that is already
+visible (Strange New Worlds). The fix is presentation:
+
+- `split-data.js` stamps `inProgress: true` on the airing season's
+  `seasonAvgs` entry in `shows-index.json` (only where true; the 517 flags cost
+  9,306 bytes raw on a 16,747,212-byte file, and no measurable brotli). `airingSeasonOf(row)` reads the LAST entry
+  only, because build-data can only flag the newest season.
+- Finder card and list row: a hueless **Still airing** chip beside the badge
+  (`makeAiringTag`), and the badge tooltip starts "Provisional: season N is
+  still airing." It composes with the low-confidence note. No chip on a tile
+  without a badge: nothing is presented as settled there.
+- Show modal: the chip in the shape row; the season row and the season modal
+  subtitle add "still airing"; the degraded (detail-failed) season rows keep
+  the flag.
+- Static page: a "Status: Still airing" line in the hero stats and a Still
+  airing marker in that season's header. Hub membership, the CTA, JSON-LD and
+  the OG text are unchanged.
+- Not the exports: the Kometa and MDBList files list seasons by their own
+  season-level shapes and confidence, where the finale shapes are already
+  withheld, and a "provisional" notion has no field in either format.
+
+The chip is neutral on purpose (see "Every hue in this app already means
+something"): `--muted` on a solid `--border-strong` edge, 8.07:1 on
+`--surface` and 7.54:1 on `--surface-2`, and solid so it cannot be mistaken for
+the dashed low-confidence treatment.
+
+Pinned by `split-data.test.js` (flag on the right season only, absent
+elsewhere), `render-show-page.test.js` and `app-features.test.js` (Ted Lasso's
+real averages: the shape stays Declining, every surface labels it), and a
+data-gated `shows-index-parity.test.js` check that the show index flags exactly
+the seasons the season file does, and only ever the newest.
 
 ## One definition of "avg episode" (2026-08-22)
 
@@ -1368,6 +1446,106 @@ identical order). A 0.01 change to one show's `gap` fails it. The pre-split
 reads `RELATED_VOTES_BAND` from `app.js` rather than carrying a copy - the copy
 had already drifted to 40 against the app's 20 and made the "reference"
 disagree with the app it was meant to reference.
+
+## The index download starts in the head (2026-09-13, audit N-1)
+
+`load()` asked for `shows-index.json` only once `js/app.js` ran, and app.js is a
+deferred module: it runs after the document has parsed and after every deferred
+script ahead of it. #535 made the three Firebase module tags `async`, which
+removed the third-party wait the audit described, but the fetch still started
+4.4 s after navigation on a throttled phone profile. `index.html` now opens its
+`<head>` resources with
+`<link rel="preload" href="shows-index.json" as="fetch" crossorigin>`.
+
+Measured in headless Chromium against a local server compressing at brotli q3
+(the index is 3,463,282 bytes on the wire), cache disabled, every third-party
+host refused so the fast-fail path is what remains. Two batches of three runs
+per variant; the ranges are the two batch medians:
+
+| | no preload | preload | preload, `fetchpriority="low"` |
+|---|---:|---:|---:|
+| desktop: index fetch starts | 83-87 ms | 7-9 ms | 36 ms |
+| desktop: first card | 401-406 ms | 402-452 ms | 1,186 ms |
+| Fast-3G + 4x CPU, 390 px: index fetch starts | 4,402-4,563 ms | 603-625 ms | 598 ms |
+| index fetch ends | 24,239-25,114 ms | 22,947-22,973 ms | 23,069 ms |
+| first contentful paint | 2,144 ms | 2,092 ms | 2,092 ms |
+| skeleton cards appear | 4,563 ms | 5,551 ms | 5,551 ms |
+| DOMContentLoaded | 4,668-4,809 ms | 5,677-5,711 ms | 5,709 ms |
+| **first card** | **25,683-27,111 ms** | **24,430-25,480 ms** | 24,672 ms |
+
+Pooled over the six throttled runs each, the first card moves from 25,756 ms to
+24,547 ms: **about 1.2 s sooner.** The download starts ~3.8 s earlier but ends
+only ~1.3-2.1 s earlier, because for those seconds it shares the throttled link
+with the page's own scripts and stylesheets. That is also the cost: the scripts
+arrive later, so DOMContentLoaded and the skeleton cards move about 1.0 s later,
+while first contentful paint (the hero markup) does not move. On a desktop
+nothing measurable changes. There is exactly one request for the file (CDP
+initiator `parser`, no "preloaded but not used" warning).
+
+Kept, because what the finder is for is the first result, not the skeleton. The
+trade is written down so it can be reversed on purpose: on a slow link the
+skeleton shows about a second later and the first card about a second sooner.
+
+`fetchpriority="low"` was measured and **rejected**: the desktop first card went
+from ~400 ms to 1,186 ms (the low-priority fetch is held back even on an idle
+local link) for no throttled gain.
+
+Traps, all hit or checked:
+- `crossorigin` is required. `fetch()` defaults to credentials "same-origin"; a
+  preload without the attribute is a credentialed request under a different
+  key, and the file downloads twice. `tests/split-data.test.js` pins the href to
+  the literal `load()` fetches, `as="fetch"`, `crossorigin`, and no
+  `fetchpriority`.
+- The file is a gitignored build artifact, so `tests/static/internal-links.test.mjs`
+  needs it in its runtime-generated allowlist, as it lists the generated hubs.
+- `tests/providers-lib.test.js` finds script order with `indexOf('js/app.js')`,
+  so a `<head>` comment naming that path broke it. The comment says "the app
+  script".
+
+## Search suggestions read an index, not the catalogue (2026-09-13, audit N-1)
+
+`computeFinderSuggestions` ran on every `input` event and, for any query of 4+
+characters, built a bigram `Set` for each of ~34,700 folded titles and sorted
+every strict hit by votes. In a real browser (headless Chromium, real index,
+the synchronous work of one `input` event measured between a window capture
+and a window bubble listener, so suggestion RENDERING is included):
+
+| per keystroke | committed | indexed |
+|---|---:|---:|
+| desktop, median of 25 | 33.8 ms | 6.9 ms |
+| 4x CPU, median of 25 | 143.7 ms | 31.8 ms |
+| computation alone, node, "breaking" | ~30 ms | ~2-3 ms |
+
+Both runs were back to back on an idle box: a concurrent test run elsewhere
+inflated one indexed 4x run to 59 ms, which is the reason to pair them.
+
+The work now happens once per catalogue, in two halves, each paid on the first
+keystroke that needs it: the strict half (folded titles, lowercased ids, one
+stable votes sort; ~12 ms, 122 ms at 4x on the first letter) and the fuzzy
+postings (bigram -> rows; ~15 ms on the first 4-character query, 91 ms at 4x).
+A strict query walks the pre-sorted order and stops filling a bucket at 10; a
+fuzzy query walks only its own bigrams' postings and computes the same
+Sorensen-Dice score. Over 628 queries (every prefix of the 60 most-voted
+titles, two typo forms each, ids, accents, stray spaces) on the 34,772-show
+index, the committed and indexed functions returned identical lists in
+identical order.
+
+Measured and rejected:
+- **One `Set` per title for the postings** (the first draft): 38 ms of a
+  65 ms one-shot build. Bigrams as numbers (`charCodeAt(k) * 65536 +
+  charCodeAt(k + 1)`, deduped by "is this row already last in the list") build
+  in 15 ms with an identical distinct count for every title. Two-character
+  string keys without the Set: 27 ms.
+- **A debounce.** At a few milliseconds there is nothing left to defer, and a
+  debounce reopens a window in which Enter or ArrowDown acts on suggestions
+  computed for an older query. The grid keeps its own 200 ms debounce.
+
+`searchBigrams` and `searchDice` had no other caller and were removed with the
+scan. Pinned in `app-features.test.js`: the fuzzy picks equal a textbook Dice
+over character-pair sets (including a title that repeats a bigram), strict
+ranking and ties, a keystroke that reads no row's `titleFold` once the index
+exists (1,585 reads on the committed code for 4 keystrokes over 134 rows), and
+a reloaded catalogue never searched through the previous index.
 
 ## The dominant shape was emission order, not fit (2026-09-11)
 

@@ -424,6 +424,25 @@ test('split-data: inProgress survives the split and still suppresses the show-le
   assert.deepEqual(Object.keys(AIRING_SPLIT.detail.tt0000030.seasons['4']), ['episodes']);
 });
 
+test('split-data: the show index marks the still-airing season, and only that one', () => {
+  // The boot payload is what the finder cards read, and until 2026-09-13 it
+  // dropped the flag at the show fold: a badge decided by a season four
+  // episodes deep rendered exactly like a settled one (Ted Lasso, "Declining"
+  // on five episodes of season 4). The card can only say "still airing" if
+  // the index says so.
+  const shows = JSON.parse(fs.readFileSync(path.join(AIRING_SPLIT.appDir, 'shows-index.json'), 'utf8')).shows;
+  const [row] = shows.filter((s) => s.seriesId === 'tt0000030');
+  assert.deepEqual(row.seasonAvgs.map((a) => a.season), [1, 2, 3, 4]);
+  assert.deepEqual(row.seasonAvgs.filter((a) => a.inProgress === true).map((a) => a.season), [4]);
+  // Absent, not false, on every finished season: the flag costs bytes on the
+  // one file every visitor downloads, so it ships only where it is true.
+  assert.equal(row.seasonAvgs.filter((a) => 'inProgress' in a).length, 1);
+
+  const finished = JSON.parse(fs.readFileSync(path.join(SPLIT.appDir, 'shows-index.json'), 'utf8')).shows;
+  assert.equal(finished.some((s) => s.seasonAvgs.some((a) => 'inProgress' in a)), false,
+    'a catalogue with no airing season carries no flag anywhere');
+});
+
 /* ---------------------------------------------------------------------------
  * The search fold is SHARED, not copied (2026-09-05 audit F08).
  *
@@ -481,4 +500,29 @@ test('the browser never holds the season-level catalogue at boot', () => {
     'the fold is a build step now, not a boot step');
   assert.match(app, /titleSearch: normalizeSearch\(show\.title\)/,
     'the title fold still happens once per show, where it is used');
+});
+
+test('index.html preloads the show index in the mode load() fetches it, so it downloads once', () => {
+  // load() cannot ask for the index until the document has parsed and every
+  // deferred script ahead of app.js has run: on Fast-3G with a 4x CPU that
+  // was 4.4 s after navigation. The preload starts it from <head> (0.6 s) and
+  // the first card lands ~1.2 s sooner (2026-09-13, audit N-1; FINDINGS has
+  // the measurement). It only helps if the fetch() REUSES it: fetch()
+  // defaults to credentials "same-origin", a preload without `crossorigin` is
+  // keyed as a credentialed request, and the browser then downloads the
+  // 3.4 MB file twice.
+  const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8').replace(/<!--[\s\S]*?-->/g, '');
+  const app = fs.readFileSync(path.join(__dirname, '..', 'js', 'app.js'), 'utf8');
+  const fetched = /await fetch\('([^']+)'\)/.exec(app);
+  assert.equal(fetched && fetched[1], 'shows-index.json', 'load() fetches the show index by a literal, same-origin URL');
+  const head = html.slice(0, html.indexOf('</head>'));
+  const preloads = [...head.matchAll(/<link\b[^>]*>/g)]
+    .map((m) => m[0])
+    .filter((tag) => /\srel="preload"/.test(tag) && tag.includes(`href="${fetched[1]}"`));
+  assert.equal(preloads.length, 1, 'exactly one preload of the file load() fetches, in <head>');
+  assert.match(preloads[0], /\sas="fetch"/);
+  assert.match(preloads[0], /\scrossorigin(?=[\s>])/, 'anonymous CORS mode, matching fetch() defaults');
+  // fetchpriority="low" was measured and rejected: the desktop first card went
+  // from ~400 ms to ~1,200 ms for no throttled gain.
+  assert.equal(/fetchpriority/.test(preloads[0]), false);
 });

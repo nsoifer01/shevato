@@ -675,25 +675,6 @@ function foldSearchWithMap(s) {
 // behind unrelated titles that happen to start with the bare noun.
 // Same form is applied to both query and indexed title before comparing.
 
-// fuzzy-search: character-bigram set used by the Dice-coefficient
-// scorer. Run on already-normalized strings so "The Bear" and "bear"
-// hash to identical bigram sets.
-function searchBigrams(s) {
-  const set = new Set();
-  for (let i = 0; i < s.length - 1; i++) set.add(s.slice(i, i + 2));
-  return set;
-}
-
-// fuzzy-search: Sørensen–Dice coefficient over two bigram sets.
-// Returns 1.0 for identical strings, ~0.67 for "beat" vs "bear",
-// trending to 0 as the strings diverge.
-function searchDice(a, b) {
-  if (a.size === 0 || b.size === 0) return 0;
-  let inter = 0;
-  for (const bg of a) if (b.has(bg)) inter++;
-  return (2 * inter) / (a.size + b.size);
-}
-
 // --- localStorage helpers ---
 
 const Watched = {
@@ -1329,6 +1310,7 @@ function fallbackSeasonsFromShow(seriesId) {
     seasonYear: a.year,
     avgRating: a.avg,
     episodeCount: Number.isFinite(a.episodeCount) ? a.episodeCount : 0,
+    inProgress: a.inProgress === true,
     genres: show.genres || [],
     language: show.language,
     poster: show.poster,
@@ -1928,7 +1910,12 @@ function makeShapeTag(shape, confidence = null) {
 // were reordered by fit, so an undimmed badge was routinely asserting a
 // pattern that is barely there. Pass null for a categorical tag, which has no
 // confidence and is not a weak claim.
-function makeShowShapeBadge(shape, confidence = null) {
+//
+// `airing` is the show's still-airing season (airingSeasonOf), when it has
+// one: the badge is then decided in part by a season that has not finished,
+// and its tooltip says so. The visible "Still airing" chip beside it is
+// makeAiringTag; the shape named is unchanged either way.
+function makeShowShapeBadge(shape, confidence = null, airing = null) {
   const label = SHAPE_LABELS[shape] || shape;
   const icon = FINDER_SHAPE_ICONS[shape] || '';
   const el = document.createElement('span');
@@ -1947,6 +1934,36 @@ function makeShowShapeBadge(shape, confidence = null) {
     el.classList.add('is-low-confidence');
     el.title = `Low confidence (${confidence.toFixed(2)}): the ${label} pattern is only just there. ${el.title}`;
   }
+  if (airing) {
+    el.title = `Provisional: season ${airing.season} is still airing. ${el.title}`;
+  }
+  return el;
+}
+
+// The show's still-airing season, or null. split-data stamps `inProgress` on
+// the seasonAvgs entry of a season build-data saw unfinished, and only the
+// newest season can be one, so only the last entry is read.
+//
+// A badge that season decides is not settled (2026-09-12 audit N-2): Ted
+// Lasso read "Declining" off five episodes of season 4, and "Consistent"
+// without them; 92 of the 158 badged airing shows on the 2026-09-08 build
+// flip the same way. The formula is right to use what has aired. The card
+// was wrong to present the answer as final, and nothing said "still airing".
+function airingSeasonOf(row) {
+  const avgs = row && Array.isArray(row.seasonAvgs) ? row.seasonAvgs : [];
+  const last = avgs[avgs.length - 1];
+  return last && last.inProgress === true ? last : null;
+}
+
+// "Still airing", beside a badge the unfinished season decides and in the show
+// modal's shape row. A span, like the badge: on a tile the tile is the control.
+function makeAiringTag(airing) {
+  const el = document.createElement('span');
+  el.className = 'airing-tag';
+  el.textContent = 'Still airing';
+  const n = Number.isFinite(airing.episodeCount) ? airing.episodeCount : 0;
+  const soFar = n ? ` (${n} episode${n === 1 ? '' : 's'} so far)` : '';
+  el.title = `Season ${airing.season} is still airing${soFar}, so this show's shape can still change.`;
   return el;
 }
 
@@ -1960,11 +1977,12 @@ function makeShowShapeBadge(shape, confidence = null) {
 // ship, and makes the app agree with a freshly built static page immediately
 // rather than at the next data refresh.
 //
-// The row carries no inProgress flag, so every show is scored as finished.
-// That is safe by construction: inProgress only suppresses the three
-// finale-dependent shapes at CLASSIFICATION time, and a show whose newest
-// season was airing never had one emitted, so the extra score has nothing in
-// `shapes` to attach to. Pinned in tests/finder-lib.test.js.
+// Every show is scored as finished, including one whose newest season carries
+// `inProgress` (that flag is read only for the "Still airing" label; see
+// airingSeasonOf). That is safe by construction: inProgress only suppresses
+// the three finale-dependent shapes at CLASSIFICATION time, and a show whose
+// newest season was airing never had one emitted, so the extra score has
+// nothing in `shapes` to attach to. Pinned in tests/finder-lib.test.js.
 function showShapeConfidencesOf(row) {
   return RisingShowsFinder.showShapeConfidence(
     (row.seasonAvgs || []).map((a) => a.avg),
@@ -3147,7 +3165,7 @@ async function openModal(m, opts = {}) {
   // to the index's episodeCount: a failed detail fetch used to read
   // "0 episodes", and so did a season whose episodes are all still unrated.
   const subtitleEps = seasonRatedFold(m).count || seasonEpisodeCount(m);
-  els.modalSubtitle.textContent = `Season ${m.season} · ${subtitleEps} episodes${yearStr} · ${m.genres.join(', ') || 'No genre listed'}`;
+  els.modalSubtitle.textContent = `Season ${m.season} · ${subtitleEps} episodes${yearStr}${m.inProgress === true ? ' · still airing' : ''} · ${m.genres.join(', ') || 'No genre listed'}`;
 
   // Shape pills + streaming chips in the modal-shapes row, matching the
   // chip row rendered on every result tile. Same suppression rule as
@@ -3516,6 +3534,8 @@ async function openShowModal(seriesId, opts = {}) {
   // filter row. Per-SEASON shapes still live on the season rows below.
   els.showModalShapes.replaceChildren();
   fillShapeTags(els.showModalShapes, showShapesBySeries.get(seriesId) || []);
+  const modalAiring = airingSeasonOf(showAggBySeries.get(seriesId));
+  if (modalAiring) els.showModalShapes.appendChild(makeAiringTag(modalAiring));
 
   renderShowModalWatchRow(meta);
 
@@ -3713,7 +3733,7 @@ function buildShowSeasonRow(m, bestSeason, worstSeason, mostRatedSeason) {
   // Rated-episode count from the index record, not from the loaded episode
   // array: a failed detail fetch used to make every row read "0 eps", and so
   // did a season whose episodes are all still unrated (seasonEpisodeCount).
-  eps.textContent = `${seasonRatedFold(m).count || seasonEpisodeCount(m)} eps${yearStr}${ssRuntimeBit}`;
+  eps.textContent = `${seasonRatedFold(m).count || seasonEpisodeCount(m)} eps${yearStr}${ssRuntimeBit}${m.inProgress === true ? ' · still airing' : ''}`;
   meta.appendChild(eps);
   // Per-season shape labels inside the show modal's season list — these
   // belong to an individual season, not the show as a whole, so they stay
@@ -4629,7 +4649,9 @@ function buildFinderTable(page) {
     if (rowShape) {
       const badgeWrap = document.createElement('span');
       badgeWrap.className = 'finder-row-badges';
-      badgeWrap.appendChild(makeShowShapeBadge(rowShape, dominantShapeConfidenceOf(s)));
+      const rowAiring = airingSeasonOf(s);
+      badgeWrap.appendChild(makeShowShapeBadge(rowShape, dominantShapeConfidenceOf(s), rowAiring));
+      if (rowAiring) badgeWrap.appendChild(makeAiringTag(rowAiring));
       const rowProv = firstMainstreamProvider(s);
       if (rowProv) {
         const tag = document.createElement('span');
@@ -4756,7 +4778,11 @@ function buildFinderCard(s) {
   const badges = node.querySelector('.finder-card-badges');
   badges.replaceChildren();
   const domShape = dominantShapeOf(s);
-  if (domShape) badges.appendChild(makeShowShapeBadge(domShape, dominantShapeConfidenceOf(s)));
+  if (domShape) {
+    const airing = airingSeasonOf(s);
+    badges.appendChild(makeShowShapeBadge(domShape, dominantShapeConfidenceOf(s), airing));
+    if (airing) badges.appendChild(makeAiringTag(airing));
+  }
   const prov = firstMainstreamProvider(s);
   if (prov) {
     const tag = document.createElement('span');
@@ -5871,53 +5897,137 @@ function highlightFragment(text, q) {
 // Parallel to the Seasons suggestion machinery: same .search-suggestion CSS,
 // but it ranks rows from showAgg (one per series) and matches title or IMDb
 // series id only — no episode-name or fuzzy fallback.
+//
+// THE CATALOGUE IS INDEXED ONCE, NOT SCANNED PER KEYSTROKE (2026-09-12 audit
+// N-1). Every query of four or more characters used to build a bigram Set for
+// each of ~34,700 titles and then sort every strict hit by votes: 35 ms a
+// keystroke on a desktop and ~145 ms at a 4x CPU slowdown, which is what a
+// mid-range phone types against. The work now happens once per catalogue, in
+// two halves, each on the first keystroke that needs it:
+//   - getFinderSuggestIndex() (first keystroke, ~12 ms on a desktop): folded
+//     titles, lowercased ids, and `order`, row positions by votes, highest
+//     first, sorted ONCE with a stable sort. Walking it fills each strict
+//     bucket already in the order the old per-keystroke sort produced, ties in
+//     catalogue order.
+//   - finderSuggestPostings() (first query of 4+ characters, ~15 ms): bigram ->
+//     the rows whose folded title contains it, a row at most once per bigram.
+//     A query walks only its OWN bigrams' postings, so `shared[i]` ends up as
+//     the size of the two bigram sets' intersection and
+//     2 * shared / (|query| + |title|) is the Sorensen-Dice score. A title
+//     sharing no bigram scores 0 and is never visited.
+// Bigrams are numbers (bigramCode), not two-character strings in a Set: one
+// Set per title was 38 ms of a 65 ms one-shot build, a ~300 ms stall on a
+// phone's first keystroke. The pairs of UTF-16 code units are the same either
+// way, and the distinct count per title matched the Set version for all 34,772
+// titles of the 2026-09-08 catalogue.
+// The index is keyed to the showAgg array itself, so the new array load()'s
+// Retry path assigns is never searched through the old catalogue's index.
+// Nothing is debounced: at a millisecond or two a keystroke there is no cost
+// left to defer, and a debounce would reopen the window in which Enter or
+// ArrowDown acts on suggestions computed for an older query.
+let finderSuggestIndex = null;
+function getFinderSuggestIndex() {
+  if (finderSuggestIndex && finderSuggestIndex.rows === showAgg) return finderSuggestIndex;
+  const rows = showAgg;
+  const n = rows.length;
+  const titles = new Array(n);
+  const ids = new Array(n);
+  for (let i = 0; i < n; i++) {
+    titles[i] = rows[i].titleFold || foldSearch(rows[i].title);
+    ids[i] = rows[i].seriesId.toLowerCase();
+  }
+  const order = Array.from({ length: n }, (_, i) => i)
+    .sort((a, b) => (rows[b].votes || 0) - (rows[a].votes || 0));
+  finderSuggestIndex = { rows, titles, ids, order, titleSet: new Set(titles), postings: null };
+  return finderSuggestIndex;
+}
+
+// A character bigram as one number: the UTF-16 code units at k and k + 1.
+function bigramCode(s, k) {
+  return s.charCodeAt(k) * 65536 + s.charCodeAt(k + 1);
+}
+
+function finderSuggestPostings(index) {
+  if (index.postings) return index;
+  const { titles } = index;
+  const postings = new Map();
+  const bigramCount = new Uint16Array(titles.length);
+  for (let i = 0; i < titles.length; i++) {
+    const t = titles[i];
+    let distinct = 0;
+    for (let k = 0; k < t.length - 1; k++) {
+      const code = bigramCode(t, k);
+      const list = postings.get(code);
+      // Rows are added in order, so a list already ending in i means this
+      // title repeats the bigram: count it once, as a set would.
+      if (!list) {
+        postings.set(code, [i]);
+        distinct++;
+      } else if (list[list.length - 1] !== i) {
+        list.push(i);
+        distinct++;
+      }
+    }
+    bigramCount[i] = distinct;
+  }
+  index.postings = postings;
+  index.bigramCount = bigramCount;
+  index.shared = new Uint16Array(titles.length);
+  return index;
+}
+
 function computeFinderSuggestions(rawQuery) {
   // Folded on both sides so an ASCII query finds an accented title (see
-  // foldSearch). s.titleFold is precomputed once per row in indexShowAgg.
+  // foldSearch). The folded titles live in the suggestion index above.
   const q = foldSearch(rawQuery.trim());
   if (!q || !showAgg) return [];
+  const index = getFinderSuggestIndex();
+  const { rows, titles, ids, order, titleSet } = index;
   const titleStarts = [];
   const titleContains = [];
   const idMatches = [];
-  for (const s of showAgg) {
-    const titleL = s.titleFold || foldSearch(s.title);
-    const idL = s.seriesId.toLowerCase();
-    if (titleL.startsWith(q)) titleStarts.push(s);
-    else if (titleL.includes(q)) titleContains.push(s);
-    else if (idL.includes(q)) idMatches.push(s);
+  for (const i of order) {
+    const titleL = titles[i];
+    if (titleL.startsWith(q)) {
+      if (titleStarts.length < MAX_SUGGESTIONS) titleStarts.push(rows[i]);
+    } else if (titleL.includes(q)) {
+      if (titleContains.length < MAX_SUGGESTIONS) titleContains.push(rows[i]);
+    } else if (ids[i].includes(q)) {
+      if (idMatches.length < MAX_SUGGESTIONS) idMatches.push(rows[i]);
+    }
   }
-  const byVotes = (a, b) => (b.votes || 0) - (a.votes || 0);
-  titleStarts.sort(byVotes);
-  titleContains.sort(byVotes);
-  idMatches.sort(byVotes);
-  const strictAll = [...titleStarts, ...titleContains, ...idMatches];
-  const out = strictAll.slice(0, MAX_SUGGESTIONS);
+  const out = [...titleStarts, ...titleContains, ...idMatches].slice(0, MAX_SUGGESTIONS);
 
-  // fuzzy-search: mirror the Seasons suggestion builder, but over whole
-  // shows. Append up to FUZZY_MAX_RESULTS typo-tolerant titles under a
-  // "Did you mean?" subheader. Runs even when the strict bucket is full,
-  // and is suppressed when a multi-word query exactly matches a real
-  // title ("Breaking Bad" shouldn't suggest "Breaking In").
+  // fuzzy-search: append up to FUZZY_MAX_RESULTS typo-tolerant titles under a
+  // "Did you mean?" subheader. Runs even when the strict bucket is full, and
+  // is suppressed when a multi-word query exactly matches a real title
+  // ("Breaking Bad" shouldn't suggest "Breaking In").
   const FUZZY_MIN_QUERY_LEN = 4;
   const FUZZY_DICE_THRESHOLD = 0.6;
   const FUZZY_MAX_RESULTS = 3;
-  const matchedIds = new Set(strictAll.map((s) => s.seriesId));
-  const hasExactTitle = showAgg.some((s) => (s.titleFold || foldSearch(s.title)) === q);
-  const suppressFuzzy = hasExactTitle && q.includes(' ');
+  const suppressFuzzy = titleSet.has(q) && q.includes(' ');
   if (q.length >= FUZZY_MIN_QUERY_LEN && !suppressFuzzy) {
-    const qBigrams = searchBigrams(q);
-    const scored = [];
-    for (const s of showAgg) {
-      if (matchedIds.has(s.seriesId)) continue;
-      const titleL = s.titleFold || foldSearch(s.title);
-      if (titleL === q) continue;
-      const score = searchDice(qBigrams, searchBigrams(titleL));
-      if (score >= FUZZY_DICE_THRESHOLD) scored.push({ s, score });
+    const { postings, bigramCount, shared } = finderSuggestPostings(index);
+    const qCodes = new Set();
+    for (let k = 0; k < q.length - 1; k++) qCodes.add(bigramCode(q, k));
+    const touched = [];
+    for (const code of qCodes) {
+      const list = postings.get(code);
+      if (!list) continue;
+      for (let j = 0; j < list.length; j++) {
+        if (shared[list[j]]++ === 0) touched.push(list[j]);
+      }
     }
-    scored.sort((a, b) => {
-      if (b.score !== a.score) return b.score - a.score;
-      return (b.s.votes || 0) - (a.s.votes || 0);
-    });
+    const scored = [];
+    for (const i of touched) {
+      const inter = shared[i];
+      shared[i] = 0;
+      // Every strict hit (title or id contains the query) is already above.
+      if (titles[i].includes(q) || ids[i].includes(q)) continue;
+      const score = (2 * inter) / (qCodes.size + bigramCount[i]);
+      if (score >= FUZZY_DICE_THRESHOLD) scored.push({ s: rows[i], i, score });
+    }
+    scored.sort((a, b) => (b.score - a.score) || ((b.s.votes || 0) - (a.s.votes || 0)) || (a.i - b.i));
     for (let i = 0; i < scored.length && i < FUZZY_MAX_RESULTS; i++) {
       out.push({ ...scored[i].s, isFuzzy: true });
     }
@@ -7063,6 +7173,10 @@ if (typeof window !== 'undefined') {
     // a card's shape badge is dimmed, and the badge builder that dims it.
     dominantShapeConfidenceOf,
     makeShowShapeBadge,
+    // "Still airing" (2026-09-12 audit N-2): which season is unfinished, and
+    // the label that says so beside the badge it decides.
+    airingSeasonOf,
+    makeAiringTag,
     isAnimated,
     isUnscripted,
     // Best / worst / most-rated highlights, shared by the season list and the

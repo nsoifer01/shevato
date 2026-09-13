@@ -168,11 +168,14 @@ Notes on individual fields:
   series' highest-numbered season, it still had an episode RATED this year, and
   either IMDb lists an episode numbered after the last one we have a rating for,
   or IMDb lists no more episodes than we have ratings for and the season has
-  under 60% of the previous season's rated episodes. 409 of 66,380 seasons carry
-  it on the 2026-08-22 build. Such a
+  under 60% of the previous season's rated episodes. 517 of 66,661 seasons carry
+  it on the 2026-09-08 build (409 of 66,380 on 2026-08-22). Such a
   season never receives the finale-dependent shapes (big-finale, bad-finale,
   u-shaped, saved-best-for-last) and its show is not labelled from it. Absent
-  means finished. See the app's FINDINGS.md for how the rule was derived.
+  means finished. `split-data.js` carries it into `shows-index.json` on that
+  season's `seasonAvgs` entry (again only where true), which is what the
+  finder's "Still airing" label reads. See the app's FINDINGS.md for how the
+  rule was derived.
 
 - `year` is the show's start year; `seasonYear` is the air year of the earliest-aired episode in this specific season. The UI prefers `seasonYear` everywhere a single season is rendered and falls back to `year` if absent.
 - `episodes[]` carries only the fields the grid needs to filter, sort, and draw curves. Episode titles, IMDb deep-link IDs, and runtimes live in `data/show-modal-extras.json` (see below). Per-episode `year` is intentionally dropped from the projection because the UI doesn't read it.
@@ -335,7 +338,11 @@ place by the workflow, downloaded at build time by
 
 The two-file split predates the move (data.json crossed GitHub's hard
 100 MiB per-file cap on 2026-07-05) and is kept because it also splits
-the browser payload: the grid only needs `data.json` up front. Release
+the build inputs: the extras are modal-only data. The browser downloads
+neither file; at deploy time `split-data.js` derives `shows-index.json` (the
+only dataset the finder fetches at boot) and the per-show
+`data/detail/<seriesId>.json` files from them (see the app README, "Payload
+split"). Release
 assets have a 2 GiB per-file limit, so the cap is no longer a concern,
 but `build-data.js` still logs both file sizes on every build.
 

@@ -6,7 +6,7 @@
 //
 // OWNER SETUP (one-time, out-of-band; env vars are NOT injected into functions
 // on this site, so the key lives in a Blob):
-//   netlify blobs:set trip-planner-places config '{"placesKey":"<key>"}'
+//   netlify blobs:set trip-planner-places config '{"placesKeyV2":"<key>"}'
 // Disable ratings again with:
 //   netlify blobs:set trip-planner-places config '{}'
 // The store is per-project: run `netlify status` first and confirm the CLI is

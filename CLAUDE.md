@@ -112,11 +112,12 @@ REJECT, whichever way it goes.
 - Dark theme only, never add a light theme or toggle. LF line endings, never
   CRLF. No asset build step at the root (`npm run build:site` only generates
   data-driven pages and stamps sitemaps at deploy), and effectively no npm dependencies: code
-  must run unchanged in a browser and under `node --test`. The three standing
+  must run unchanged in a browser and under `node --test`. The four standing
   exceptions are `@netlify/blobs` (declared at the root so the Netlify
   functions bundle; never used by browser code), the dev-only Playwright
-  (used solely by `tests/cross-browser/`) and the dev-only ESLint (used solely
-  by `npm run lint`). None is ever imported by app or test code. Only the
+  (used solely by `tests/cross-browser/`), and the dev-only ESLint and its
+  `globals` package (both used solely by `npm run lint`, through
+  `eslint.config.mjs`). None is ever imported by app or test code. Only the
   `lint` and `cross-browser` workflows run npm install; the push/PR TEST
   workflows stay dependency-free.
 - **`npm run lint` is a correctness gate, not a style one.** It exists because

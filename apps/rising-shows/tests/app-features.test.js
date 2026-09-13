@@ -28,6 +28,8 @@ test('vm harness: app.js exports every helper these tests drive', () => {
     'weightedAvgEpisode', 'isAnimated', 'isUnscripted',
     // Strongest-fit dominant shape and the confidence that dims its badge.
     'dominantShapeOf', 'dominantShapeConfidenceOf', 'makeShowShapeBadge',
+    // "Still airing": the unfinished season and the label beside its badge.
+    'airingSeasonOf', 'makeAiringTag',
   ];
   const missing = expected.filter((name) => helpers[name] == null);
   assert.deepEqual(missing, [], `js/app.js stopped exporting: ${missing.join(', ')}`);
@@ -1310,4 +1312,186 @@ test('season most-rated: a show whose detail failed gets no badge anywhere', () 
   // Best and worst still come from the index-backed averages, which survive.
   assert.equal(out.best, 1);
   assert.equal(out.worst, 2);
+});
+
+// ---------------------------------------------------------------------------
+// Still airing (2026-09-12 audit N-2)
+// ---------------------------------------------------------------------------
+
+// A shows-index.json row as split-data writes it for Ted Lasso (real season
+// averages, 2026-09-08 catalogue): season 4 is five episodes deep and flagged.
+const TED_LASSO_ROW = {
+  seriesId: 'tt10986410',
+  title: 'Ted Lasso',
+  shapes: ['declining'],
+  seasonAvgs: [
+    { season: 1, year: 2020, avg: 8.54, episodeCount: 10 },
+    { season: 2, year: 2021, avg: 8.27, episodeCount: 12 },
+    { season: 3, year: 2023, avg: 8.23, episodeCount: 12 },
+    { season: 4, year: 2026, avg: 7.72, episodeCount: 5, inProgress: true },
+  ],
+};
+
+test('airingSeasonOf: the newest season, only when the index flags it as still airing', () => {
+  const airing = helpers.airingSeasonOf(TED_LASSO_ROW);
+  assert.equal(airing.season, 4);
+  assert.equal(airing.episodeCount, 5);
+  const finished = { ...TED_LASSO_ROW, seasonAvgs: TED_LASSO_ROW.seasonAvgs.map(({ inProgress, ...a }) => a) };
+  assert.equal(helpers.airingSeasonOf(finished), null);
+  assert.equal(helpers.airingSeasonOf({ seasonAvgs: [] }), null);
+  assert.equal(helpers.airingSeasonOf({}), null);
+});
+
+test('a badge decided by a still-airing season says so, and the shape it names is unchanged', () => {
+  // Declining is what the formula gives Ted Lasso over all four seasons
+  // (Consistent without the partial one); labelling it must not re-rank it.
+  assert.equal(helpers.dominantShapeOf(TED_LASSO_ROW), 'declining');
+  const airing = helpers.airingSeasonOf(TED_LASSO_ROW);
+  const badge = helpers.makeShowShapeBadge('declining', 0.5, airing);
+  assert.equal(badge.dataset.shape, 'declining');
+  assert.match(badge.title, /^Provisional: season 4 is still airing\./);
+  assert.equal(/Provisional/.test(helpers.makeShowShapeBadge('declining', 0.5).title), false);
+  // Still dims on low confidence as well: the two notes compose.
+  assert.match(helpers.makeShowShapeBadge('declining', 0.1, airing).title, /^Provisional: .*Low confidence \(0\.10\)/);
+
+  const tag = helpers.makeAiringTag(airing);
+  assert.equal(tag.textContent, 'Still airing');
+  assert.match(tag.title, /^Season 4 is still airing \(5 episodes so far\), so this show's shape can still change\.$/);
+});
+
+// ---------------------------------------------------------------------------
+// Search suggestions: one title index per catalogue, not a catalogue pass per
+// keystroke (2026-09-12 audit N-1). Every query of 4+ characters used to build
+// a bigram Set for each of ~34,700 titles: ~35 ms a keystroke on a desktop and
+// ~145 ms at a 4x CPU slowdown.
+// ---------------------------------------------------------------------------
+
+const { makeContext, APP_JS } = require('./app-harness.js');
+
+// A fresh app per catalogue, so these tests never share the harness's showAgg.
+function appWithCatalogue(rows) {
+  const c = makeContext();
+  try { vm.runInContext(APP_JS, c, { filename: 'app.js' }); } catch { /* load() against DOM stubs, as in the harness */ }
+  c.__rows = rows;
+  vm.runInContext('showAgg = __rows; indexShowAgg();', c);
+  return c;
+}
+
+// 132 two-word titles over a small vocabulary, so near-misses score in the
+// fuzzy band, plus a duplicated title. Votes repeat on purpose: ties have to
+// keep catalogue order.
+const SUGGEST_WORDS = ['stranger', 'things', 'breaking', 'bad', 'the', 'office', 'bear', 'house', 'dragon', 'crown', 'dark', 'lost'];
+function suggestCatalogue() {
+  const rows = [];
+  for (const a of SUGGEST_WORDS) {
+    for (const b of SUGGEST_WORDS) {
+      if (a === b) continue;
+      const n = rows.length + 1;
+      rows.push({ seriesId: `tt${String(n).padStart(7, '0')}`, title: `${a[0].toUpperCase()}${a.slice(1)} ${b}`, votes: ((n * 37) % 11) * 100, shapes: [], genres: [] });
+    }
+  }
+  rows.push({ seriesId: 'tt0000900', title: 'Stranger things', votes: 300, shapes: [], genres: [] });
+  rows.push({ seriesId: 'tt0000901', title: 'Dragon dragons', votes: 300, shapes: [], genres: [] });
+  return rows;
+}
+
+// A catalogue whose rows count every read of `titleFold`, the folded title
+// indexShowAgg stamps. The old ranker read it off every row, twice, on every
+// keystroke. Non-enumerable, so the spread that copies a picked row does not
+// count as a scan.
+function countingCatalogue(rows) {
+  const reads = { n: 0 };
+  const counted = rows.map((r) => {
+    let fold;
+    const row = { ...r };
+    Object.defineProperty(row, 'titleFold', {
+      get() { reads.n++; return fold; },
+      set(v) { fold = v; },
+      enumerable: false,
+      configurable: true,
+    });
+    return row;
+  });
+  return { rows: counted, reads };
+}
+
+test('finder suggestions: a keystroke does not walk the catalogue rows', () => {
+  const { rows, reads } = countingCatalogue(suggestCatalogue());
+  const c = appWithCatalogue(rows);
+  const compute = vm.runInContext('computeFinderSuggestions', c);
+  compute('stranger'); // the first query of 4+ characters builds the index, once
+  reads.n = 0;
+  const typed = ['strange', 'strangr', 'brekaing', 'the ofice'];
+  for (const q of typed) compute(q);
+  assert.ok(
+    reads.n < rows.length,
+    `${typed.length} keystrokes read a row's folded title ${reads.n} times over a ${rows.length}-row catalogue; the index built on the first keystroke should answer them`,
+  );
+});
+
+test('finder suggestions: the fuzzy picks are exactly the best Sorensen-Dice scores over character bigrams', () => {
+  // The rule the README states: strict title/id hits first, then up to three
+  // titles scoring >= 0.6, best score first, then votes, then catalogue order;
+  // suppressed when a multi-word query is exactly a real title. Scored here by
+  // the textbook definition over sets of adjacent character pairs, so an index
+  // that miscounts a shared bigram, double-counts a repeated one ("dragon
+  // dragon"), or keeps counts from the previous keystroke cannot agree with it.
+  const pairs = (s) => {
+    const set = new Set();
+    for (let i = 0; i < s.length - 1; i++) set.add(s.slice(i, i + 2));
+    return set;
+  };
+  const dice = (a, b) => {
+    const A = pairs(a);
+    const B = pairs(b);
+    if (!A.size || !B.size) return 0;
+    let shared = 0;
+    for (const x of A) if (B.has(x)) shared++;
+    return (2 * shared) / (A.size + B.size);
+  };
+  const rows = suggestCatalogue();
+  const c = appWithCatalogue(rows);
+  const compute = vm.runInContext('computeFinderSuggestions', c);
+  const fold = vm.runInContext('foldSearch', c);
+  for (const raw of ['strnger thngs', 'braking bad', 'offise', 'dargon', 'the bear', 'xyzq', 'stranger things', 'strnger thngs', 'house', 'tt00001', 'dragon dragon']) {
+    const q = fold(raw.trim());
+    const strict = (s) => fold(s.title).includes(q) || s.seriesId.toLowerCase().includes(q);
+    const suppressed = q.length < 4 || (q.includes(' ') && rows.some((s) => fold(s.title) === q));
+    const expected = suppressed ? [] : rows
+      .map((s, i) => ({ s, i, score: dice(q, fold(s.title)) }))
+      .filter((x) => !strict(x.s) && x.score >= 0.6)
+      .sort((a, b) => (b.score - a.score) || ((b.s.votes || 0) - (a.s.votes || 0)) || (a.i - b.i))
+      .slice(0, 3)
+      .map((x) => x.s.seriesId);
+    const got = compute(raw);
+    assert.equal(got.filter((s) => s.isFuzzy).map((s) => s.seriesId).join(','), expected.join(','), `fuzzy picks for "${raw}"`);
+    const strictGot = got.filter((s) => !s.isFuzzy);
+    assert.ok(strictGot.every(strict), `every strict pick for "${raw}" contains the query`);
+  }
+});
+
+test('finder suggestions: strict picks rank prefix, then substring, then id, each by votes with ties in catalogue order', () => {
+  const rows = [
+    { seriesId: 'tt0000001', title: 'The Bear', votes: 50, shapes: [], genres: [] },
+    { seriesId: 'tt0000002', title: 'Bear Grylls', votes: 10, shapes: [], genres: [] },
+    { seriesId: 'tt0000003', title: 'Bearing Up', votes: 10, shapes: [], genres: [] },
+    { seriesId: 'tt0000004', title: 'Paddington Bear', votes: 90, shapes: [], genres: [] },
+    { seriesId: 'tt0000005', title: 'Beartooth', votes: 70, shapes: [], genres: [] },
+  ];
+  const compute = vm.runInContext('computeFinderSuggestions', appWithCatalogue(rows));
+  assert.equal(compute('bear').filter((s) => !s.isFuzzy).map((s) => s.seriesId).join(','),
+    'tt0000005,tt0000002,tt0000003,tt0000004,tt0000001');
+  assert.equal(compute('tt000000').filter((s) => !s.isFuzzy).map((s) => s.seriesId).join(','),
+    'tt0000004,tt0000005,tt0000001,tt0000002,tt0000003');
+});
+
+test('finder suggestions: a reloaded catalogue is searched, never the index built for the previous one', () => {
+  const c = appWithCatalogue(suggestCatalogue());
+  const compute = vm.runInContext('computeFinderSuggestions', c);
+  assert.ok(compute('dargon crown').some((s) => s.seriesId === 'tt0000097' && s.isFuzzy), 'fixture: "Dragon crown" is a fuzzy hit on the first catalogue');
+  // load()'s Retry path assigns a new showAgg and re-indexes it.
+  c.__rows = [{ seriesId: 'tt9999999', title: 'Dragon Crowns', votes: 5, shapes: [], genres: [] }];
+  vm.runInContext('showAgg = __rows; indexShowAgg();', c);
+  assert.equal(compute('dargon crown').map((s) => s.seriesId).join(','), 'tt9999999');
+  assert.equal(compute('stranger').length, 0);
 });

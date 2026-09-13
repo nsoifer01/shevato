@@ -290,15 +290,17 @@ active-page highlight in `main.js` works there although it compares against
 `.html` names.
 
 Do NOT rely on this for JSON or JS string URLs, or for XML: they are not
-rewritten. Both known cases are fixed and pinned:
-`site.webmanifest` `start_url` is `/home` (was `/home.html`, a redirect hop on
-every installed-app launch) and `sitemap-pages.xml`'s moadon-alef hreflang
-alternates are the extensionless URL matching its `<loc>` (they were four
-`.html` alternates all pointing at the same URL).
-Regressions: `tests/static/webmanifest.test.mjs` ("site.webmanifest launches
-on the canonical /home and paints a dark splash") and
-`tests/static/sitemap-alternates.test.mjs` (no alternate ends in `.html`,
-every alternate href is itself a `<loc>`).
+rewritten. `site.webmanifest` `start_url` is `/home` (was `/home.html`, a
+redirect hop on every installed-app launch), pinned by
+`tests/static/webmanifest.test.mjs` ("site.webmanifest launches on the
+canonical /home and paints a dark splash"). `sitemap-pages.xml` once carried
+four moadon-alef hreflang alternates, all `.html` URLs naming the same page;
+the 2026-08-22 site audit (91503c5) removed them rather than correcting them,
+because one URL serves all three languages and a set of alternates that names
+one page four times tells Google nothing. The sitemap declares no alternates
+today, so `tests/static/sitemap-alternates.test.mjs` holds vacuously: it only
+bites if alternates come back, when none may end in `.html` and every href
+must be a `<loc>`.
 
 ## Partial injection timing: listen for `shevato:include-loaded`
 
@@ -827,15 +829,16 @@ mis-parse) next to contact.html's clean `tel:+15046383370`. Both fixed;
 partial to be `tel:+<digits>` with `+972` on moadon-alef surfaces and `+1`
 elsewhere.
 
-## The @import chain in main.css is preloaded, not removed
+## main.css has no @import chain
 
-`assets/css/main.css` starts with `@import` for the Google Font CSS and
-`firebase-auth.css` (57 KB), which serialises round trips before first paint.
-The imports stay because every app page loads `main.css` too and their
-`<head>`s are app-owned; instead every root page carries
-`<link rel="preload" ... as="style">` for both, so the fetches start with the
-HTML parse. Removing the `@import`s means editing every app page's head in the
-same change.
+`assets/css/main.css` imports nothing. It used to `@import` the Raleway Google
+Fonts stylesheet and `firebase-auth.css`, which put both a full round trip
+behind the render-blocking chain, and this section used to record a
+`<link rel="preload">` workaround for them. The 2026-08-22 site audit
+(91503c5) removed the `@import`s instead and gave every page that links
+`main.css` its own `<link>` tags for both, placed before it; no page carries
+the preloads any more. `tests/static/stylesheet-chain.test.mjs` fails on a
+page missing either link and on any `@import` in `main.css`.
 
 ## Site chrome facts worth keeping
 
@@ -1304,6 +1307,60 @@ it as `publish`. Functions still bundle from the repo root, so they deploy and
 stop being downloadable. `tests/static/publish-graph.test.mjs` asserts BOTH
 directions - the dangerous one being a careless exclusion breaking generated
 pages, a service worker asset or the Search Console verification file.
+
+## Old deploys run old function code against the live blobs (2026-09-13, audit Q-2)
+
+Netlify keeps every deploy reachable: production permalinks, and
+`deploy-preview-<PR>--shevato.netlify.app` aliases, which are guessable. All
+three blob-backed functions open SITE-scoped stores (`getStore` in
+`netlify/functions/lib/tp-assist-store.mjs`, `tp-places-store.mjs` and
+`fpl-cache.mjs`), so an old deploy reads the live config and writes the live
+counters and cache. `csp-report` stores nothing. The Origin guard
+(`lib/tp-http.mjs`) turns away a browser on a preview origin with 403, but not
+a request with a forged `Origin` (the 2026-09-12 audit verified that on
+preview 529); it is defence in depth, never the control.
+
+What an old build can still do, per function (re-checked 2026-09-13):
+
+- `tp-assist`: nothing. Every build before #530 (8ac5b99, 2026-09-12) reads
+  `geminiKey`, and the live config carries only `geminiKeyV2` (verified by the
+  audit), so those builds answer 503. Every build that can read the key has
+  `MONTHLY_BUDGET` and the per-network bucket, and #533 changed no
+  `tp-assist` code.
+- `tp-places`: money is bounded, availability is not. Builds before
+  2026-08-18 (7d47387) read `placesKey` and answer 503; every later build
+  shares the `billedMonth` ledger (5940b91, 2026-08-17), and Google's 500/day
+  `GetPlaceRequest` cap applies to every path. But builds before #533
+  (274f307) refund the per-client and per-network counters when a free Text
+  Search finds nothing (the named path until #530, the discovery path until
+  #533), and builds before #506 (071c8da, 2026-09-07) have no per-network
+  bucket at all, so one source rotating `clientId` can run searches the
+  counters never see, or drain the shared public daily pool: a ratings outage
+  for the day, not a bill.
+- `fpl`: availability and blob growth are both open. Builds from b64e649
+  (2026-08-12) to #530 have no quota at all: unlimited upstream fetches from
+  our egress, and a permanent `v1:<path>` key in the shared `fpl-planner`
+  store for every distinct allowlisted `entry/<id>/...` path. Nothing evicts
+  cache keys, in current code either; current builds bound new keys per
+  network per hour and day, not globally.
+
+**Decision: no generic `minRelease` gate.** A gate binds only builds that
+contain it, and every build with a concrete gap above predates any gate, so it
+would close nothing that exists. The field-rename gate works for the `tp-*`
+functions because their builds need a secret from the blob; `fpl` reads no
+config and needs no secret, so no blob write can switch its old builds off. A
+gate would help only a FUTURE fix, and would cost a per-request config read in
+`fpl`, an orderable build stamp that the function bundles do not have
+(`scripts/stamp-release.mjs` stamps a commit id into `assets/js/analytics.js`
+only), and a new owner procedure. Revisit if a future quota fix has to retire
+old builds of a function that has no secret to rename.
+
+The existing exposure can be closed only on the platform, by the owner: delete
+old deploys and previews, or put non-production deploys behind Netlify's access
+protection if the plan offers it (neither is verifiable from the repo). For the
+`tp-*` functions the rule stands: a fix that must retire old builds renames the
+config field (`resolveGeminiKey` in `tp-assist.mjs`, `resolvePlacesKey` in
+`tp-places.mjs`, "Credential isolation" in `apps/trip-planner/FINDINGS.md`).
 
 ## Node 22, and the two things that broke on it (2026-09-05 F19)
 

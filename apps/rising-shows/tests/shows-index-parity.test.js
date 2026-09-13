@@ -344,6 +344,28 @@ test('parity (real catalogue): the two files describe the same build', { skip: h
   assert.equal(shows.count, undefined, 'an ambiguous `count` must not reappear');
 });
 
+test('parity (real catalogue): the show index flags exactly the seasons the season file says are still airing', { skip: haveReal ? false : 'release data absent' }, () => {
+  // The finder's "Still airing" label reads the flag off seasonAvgs; the season
+  // file is where build-data decided it. Every listed show's flagged season
+  // must arrive, nothing else may, and the flag only ever sits on the newest.
+  const index = JSON.parse(fs.readFileSync(INDEX, 'utf8'));
+  const shows = JSON.parse(fs.readFileSync(SHOWS, 'utf8'));
+  const listed = new Set(shows.shows.map((s) => s.seriesId));
+  const expected = index.matches
+    .filter((m) => m.inProgress === true && listed.has(m.seriesId))
+    .map((m) => `${m.seriesId}:${m.season}`)
+    .sort();
+  const got = shows.shows
+    .flatMap((s) => s.seasonAvgs.filter((a) => a.inProgress === true).map((a) => `${s.seriesId}:${a.season}`))
+    .sort();
+  assert.equal(got.length, expected.length, 'flagged season count');
+  assert.deepEqual(got, expected);
+  for (const s of shows.shows) {
+    const at = s.seasonAvgs.findIndex((a) => a.inProgress === true);
+    if (at !== -1) assert.equal(at, s.seasonAvgs.length - 1, `${s.seriesId}: only the newest season can be airing`);
+  }
+});
+
 test('the boot payload is materially smaller than the season file it replaced', { skip: haveReal ? false : 'release data absent' }, () => {
   const seasonBytes = fs.statSync(INDEX).size;
   const showBytes = fs.statSync(SHOWS).size;

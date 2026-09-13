@@ -69,6 +69,12 @@ const RUNTIME_GENERATED_ALLOWLIST = new Map([
   // rationale.
   ['apps/gym-tracker/exercises/index.html',
     'generated at deploy time by npm run build:site (gym-tracker exercise pages)'],
+  // Rising Shows show index: split-data.js writes apps/rising-shows/shows-index.json
+  // during the same build, and index.html preloads it in the head so the
+  // download starts with the parser (audit 2026-09-12 N-1). Gitignored, same
+  // rationale as the pages above.
+  ['apps/rising-shows/shows-index.json',
+    'generated at deploy time by npm run build:site (split-data.js); preloaded by apps/rising-shows/index.html'],
   // The 14 rating-shape hubs, linked from the Rising Shows landing page's
   // "Browse by shape" list. Same build, same gitignore as shows/ above: they
   // are the highest search-intent pages the app has, and before that list

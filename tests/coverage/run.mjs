@@ -23,6 +23,7 @@ import { spawn } from 'node:child_process';
 import { mkdir, writeFile, readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { parseTable, isTestFile, aggregate, evaluateAreas } from './lib.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.resolve(HERE, '..', '..');
@@ -62,21 +63,6 @@ const INVENTORY_ROOTS = [
 ];
 const INVENTORY_SKIP = /(^|\/)(tests?|e2e|tests-rules|vendor|node_modules|scripts|experiments|data|fixtures|helpers)(\/|$)|\.min\.js$|\.test\.(js|cjs|mjs)$/;
 
-// Area -> path prefix used to bucket per-file rows.
-const AREAS = [
-  ['arena', 'apps/arena/'],
-  ['football-h2h', 'apps/football-h2h/'],
-  ['fpl-planner', 'apps/fpl-planner/'],
-  ['gym-tracker', 'apps/gym-tracker/'],
-  ['maptap-rivals', 'apps/maptap-rivals/'],
-  ['mario-kart', 'apps/mario-kart/'],
-  ['rising-shows', 'apps/rising-shows/'],
-  ['trip-planner', 'apps/trip-planner/'],
-  ['netlify-functions', 'netlify/'],
-  ['sync-system', 'sync-system/'],
-  ['site-shared', 'assets/'],
-];
-
 // Line-coverage floors per area, set from the measured 2026-08-15 baseline
 // minus a small working margin. Raising a floor is always fine; lowering one
 // needs a written justification in TESTING-AUDIT.md. The floors are on the
@@ -105,67 +91,6 @@ function runCoverage() {
     child.on('close', (code) => resolve({ code, out }));
   });
 }
-
-function parseTable(out) {
-  // TWO TABLE SHAPES, because Node changed it.
-  //
-  // Node 20 printed one flat repo-relative path per row:
-  //     # apps/foo/js/bar.js | 99.62 | 79.34 | 100.00 | 351-352
-  //
-  // Node 22 prints an indented TREE, where a directory row carries no
-  // percentages and a file row's full path is its own name prefixed by the
-  // directories above it at smaller indents:
-  //     # apps                     |        |        |        |
-  //     #  gym-tracker             |        |        |        |
-  //     #   js                     |        |        |        |
-  //     #    app.js                |  91.20 |  84.10 |  88.00 | 12-14
-  //
-  // Reading the second as though it were the first yields BASENAMES, every
-  // area prefix matches nothing, and the report says 0.00% across the board
-  // while claiming every production file is unmeasured. Both are parsed here
-  // so the runner is not silently wrong on either runtime.
-  const rows = [];
-  let inTable = false;
-  const summary = {};
-  const stack = [];   // [{ indent, name }] for the Node 22 tree
-  for (const line of out.split('\n')) {
-    if (line.includes('start of coverage report')) { inTable = true; stack.length = 0; continue; }
-    if (line.includes('end of coverage report')) { inTable = false; continue; }
-    const m = /^# tests (\d+)|^# pass (\d+)|^# fail (\d+)|^# skipped (\d+)|^# todo (\d+)/.exec(line);
-    if (m) {
-      if (m[1] != null) summary.tests = Number(m[1]);
-      if (m[2] != null) summary.pass = Number(m[2]);
-      if (m[3] != null) summary.fail = Number(m[3]);
-      if (m[4] != null) summary.skipped = Number(m[4]);
-      if (m[5] != null) summary.todo = Number(m[5]);
-    }
-    if (!inTable) continue;
-
-    // `# ` then the (possibly indented) name, then the three percentage
-    // columns. A directory row has them blank.
-    const r = /^#(\s+)([^|]*?)\s*\|\s*([\d.]*)\s*\|\s*([\d.]*)\s*\|\s*([\d.]*)\s*\|/.exec(line);
-    if (!r) continue;
-    const indent = r[1].length;
-    const name = r[2].trim();
-    if (!name || name === 'file') continue;
-    const isDir = r[3] === '' && r[4] === '' && r[5] === '';
-
-    while (stack.length && stack[stack.length - 1].indent >= indent) stack.pop();
-    if (isDir) { stack.push({ indent, name }); continue; }
-
-    if (name === 'all files') {
-      summary.allFiles = { line: +r[3], branch: +r[4], funcs: +r[5] };
-      continue;
-    }
-    const file = [...stack.map((e) => e.name), name].join('/');
-    rows.push({ file, line: +r[3], branch: +r[4], funcs: +r[5] });
-  }
-  return { rows, summary };
-}
-
-const isTestFile = (f) =>
-  /(^|\/)tests?\//.test(f) || /\.test\.(js|cjs|mjs)$/.test(f) || /(^|\/)e2e\//.test(f)
-  || /tests\/(helpers|fixtures)\//.test(f);
 
 async function lineCount(file) {
   try { return (await readFile(path.join(REPO, file), 'utf8')).split('\n').length; }
@@ -196,12 +121,6 @@ const { rows, summary } = parseTable(out);
 const srcRows = rows.filter((r) => !isTestFile(r.file));
 for (const r of srcRows) r.lines = await lineCount(r.file);
 
-function aggregate(list) {
-  const w = list.reduce((a, r) => a + r.lines, 0) || 1;
-  const wavg = (k) => list.reduce((a, r) => a + r[k] * r.lines, 0) / w;
-  return { files: list.length, line: wavg('line'), branch: wavg('branch'), funcs: wavg('funcs') };
-}
-
 const report = [];
 report.push('# Unit/integration coverage (source files only, test files excluded)');
 report.push('');
@@ -211,16 +130,9 @@ report.push('');
 report.push('| Area | Files | Line % | Branch % | Funcs % | Floor (line) | Status |');
 report.push('|---|---|---|---|---|---|---|');
 
-let floorsFailed = 0;
-const areaStats = {};
-for (const [area, prefix] of AREAS) {
-  const list = srcRows.filter((r) => r.file.startsWith(prefix));
-  if (!list.length) continue;
-  const a = aggregate(list);
-  areaStats[area] = a;
-  const floor = FLOORS[area];
-  const ok = floor == null || a.line >= floor;
-  if (!ok) floorsFailed++;
+const { results: areaResults, failures: floorFailures } = evaluateAreas(srcRows, FLOORS);
+for (const { area, stats: a, floor, ok } of areaResults) {
+  if (!a) { report.push(`| ${area} | 0 | - | - | - | ${floor} | NOT MEASURED |`); continue; }
   report.push(`| ${area} | ${a.files} | ${a.line.toFixed(2)} | ${a.branch.toFixed(2)} | ${a.funcs.toFixed(2)} | ${floor ?? '-'} | ${ok ? 'ok' : 'BELOW FLOOR'} |`);
 }
 const total = aggregate(srcRows);
@@ -259,5 +171,8 @@ console.log(report.slice(0, 20).join('\n'));
 console.log(`\nFull report: .coverage/summary.md (${srcRows.length} measured, `
   + `${unmeasured.length} of ${inventory.length} production files unmeasured)`);
 if (summary.fail) console.error(`\nFAIL: ${summary.fail} test(s) failed under coverage.`);
-if (floorsFailed) console.error(`FAIL: ${floorsFailed} area(s) below their line-coverage floor.`);
-process.exit(summary.fail || floorsFailed || code ? 1 : 0);
+if (floorFailures.length) {
+  console.error(`FAIL: ${floorFailures.length} area(s) failed their line-coverage floor:`);
+  for (const f of floorFailures) console.error(`  ${f}`);
+}
+process.exit(summary.fail || floorFailures.length || code ? 1 : 0);

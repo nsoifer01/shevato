@@ -1758,6 +1758,30 @@ button.shape-tag.is-clickable:focus-visible {
   font-size: 0.55rem;
   opacity: 0.85;
 }
+/* "Still airing" beside a shape badge the unfinished season decides, and in
+   the show modal's shape row (2026-09-12 audit N-2). Deliberately hueless:
+   every hue here already means something (FINDINGS, "Every hue in this app
+   already means something"), and this is a status, not a source or an action.
+   A solid edge, so it never reads as the dashed low-confidence treatment.
+   --muted measures 8.07:1 on --surface and 7.54:1 on --surface-2. */
+.airing-tag {
+  display: inline-flex;
+  align-items: center;
+  background: transparent;
+  color: var(--muted);
+  font-size: 0.66rem;
+  font-weight: 600;
+  padding: 0.1rem 0.5rem;
+  border-radius: 999px;
+  border: 1px solid var(--border-strong);
+  line-height: 1.4;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+.finder-card-badges .airing-tag,
+.finder-row-badges .airing-tag {
+  font-size: 0.62rem;
+}
 
 /* List-view genre line — mirrors .card-meta on the grid card. Lives inside
  * .row-head so it flows inline with title / season / year, separated by a

@@ -89,6 +89,16 @@
   <!-- Favicon: rising-curve glyph -->
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📈</text></svg>">
 
+  <!-- The show index is the only data first paint waits for, and the app's
+       load() cannot ask for it until the document has parsed and every
+       deferred script ahead of the app script has run. This starts the
+       download from the head instead. `crossorigin` is required, not
+       decoration: fetch() defaults to credentials "same-origin", a preload
+       without the attribute is keyed as a different request, and the browser
+       would download the file twice. The href must stay the exact string
+       load() fetches (pinned in tests/split-data.test.js). -->
+  <link rel="preload" href="shows-index.json" as="fetch" crossorigin>
+
   <!-- Site chrome: main.css for #header / #footer / #menu styling, font-awesome
        for footer icons. App styles override what they need to. -->
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" integrity="sha384-iw3OoTErCYJJB9mCa8LNS2hbsQ7M3C0EpIsO/H5+EGAkPGc6rk+V8i04oW/K5xq0" crossorigin="anonymous" referrerpolicy="no-referrer" media="print" onload="this.media='all'">

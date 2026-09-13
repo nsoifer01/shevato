@@ -129,10 +129,12 @@ function buildShowsIndex(slimMatches, aboveImdb) {
   const above = new Set(aboveImdb);
   const acc = new Map();
   const epCount = new Map();
+  const airing = new Set();
   for (const m of slimMatches) {
     if (Number.isFinite(m.episodeCount)) {
       epCount.set(m.seriesId + '\u0000' + m.season, m.episodeCount);
     }
+    if (m.inProgress === true) airing.add(m.seriesId + ':' + m.season);
     let e = acc.get(m.seriesId);
     if (!e) {
       e = { voteSum: 0, seasons: 0, provider: null, adult: false, best: null, worst: null };
@@ -182,10 +184,15 @@ function buildShowsIndex(slimMatches, aboveImdb) {
       // detail file cannot be fetched, the modal still has to state the true
       // number of episodes per season rather than "0 eps" for a season it can
       // count (2026-08-22 audit D7). It costs ~0.15 MB encoded and is the only
-      // season-level number kept in the boot payload.
+      // season-level number kept in the boot payload. The one flag beside it
+      // is `inProgress`, stamped only where true on the season build-data saw
+      // still airing, so the finder can say that a badge that season decides
+      // is not settled yet (2026-09-12 audit N-2). Nothing classifies from it
+      // here: buildShowAgg has already withheld the finale-dependent shapes.
       seasonAvgs: s.seasonAvgs.map((a) => {
         const n = epCount.get(s.seriesId + '\u0000' + a.season);
-        return n == null ? a : { ...a, episodeCount: n };
+        const withCount = n == null ? a : { ...a, episodeCount: n };
+        return airing.has(s.seriesId + ':' + a.season) ? { ...withCount, inProgress: true } : withCount;
       }),
       shapes: s.shapes,
       // Mean of the seasons' own vote floors. computeShowRelated bands

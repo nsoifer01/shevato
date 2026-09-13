@@ -6,9 +6,11 @@
 //
 // Run with: npm run test:browser
 //
-// This is deliberately NOT part of `npm test`. It needs Chromium on the machine
-// and takes minutes rather than seconds, so CI keeps running the fast unit
-// suites while this stays an explicit local/pre-release check.
+// This is deliberately NOT part of `npm test`: it needs Chromium on the machine
+// and takes minutes rather than seconds. CI runs it as its own workflow
+// (.github/workflows/browser-tests.yml, sharded, on every pull request and
+// every push to master), and locally it is the pre-PR gate
+// (`npm run test:browser:parallel`).
 import { spawn } from 'node:child_process';
 import http from 'node:http';
 import net from 'node:net';

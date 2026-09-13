@@ -332,7 +332,8 @@
 # failure is unrecoverable and it cannot be verified from a local checkout,
 # only from a real deploy. A one-hour TTL with stale-while-revalidate removes
 # the per-navigation round trips, which was the measured problem, and its worst
-# case is that a returning visitor runs an hour-old asset once. That is a
+# case is that a returning visitor runs a stale asset once: up to 25 hours old,
+# the hour of max-age plus the day of stale-while-revalidate below. That is a
 # recoverable failure, so it is the one to ship first. Revisit `immutable` only
 # together with deploy-time versioning, and only with a verified deploy.
 #

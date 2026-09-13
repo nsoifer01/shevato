@@ -23,7 +23,9 @@
 // on this site, so the key lives in a Blob):
 //   1. Enable "Places API (New)" in the Google Cloud project, create an API key
 //      restricted to that single API.
-//   2. netlify blobs:set trip-planner-places config '{"placesKey":"<key>"}'
+//   2. netlify blobs:set trip-planner-places config '{"placesKeyV2":"<key>"}'
+//      (`placesKeyV2`, never `placesKey`: the old name is what keeps every
+//      deploy before 2026-08-18 on 503, see resolvePlacesKey below)
 //   3. Disable again with: netlify blobs:set trip-planner-places config '{}'
 // With no key set the endpoint returns 503 not_configured and the client simply
 // renders candidate cards without ratings.
