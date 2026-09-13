@@ -180,6 +180,34 @@ crossTabChannel.subscribe(CHANNEL_MESSAGE_TYPES.AUTH_CHANGED, () => {
   });
 });
 
+// Edits made in the sync engine's 500 ms debounce window just before "Sign
+// out" used to be stranded (2026-09-12 audit S-3): signOut ran first, the
+// auth-state listener stopped every sync, and a write attempted after that is
+// rejected for want of credentials. So ask the engine to flush first, and
+// wait. The wait is bounded, because offline a Firestore write does not
+// resolve until the server acknowledges it; that is fine, since once setDoc
+// has been called the SDK's persistent cache owns the write and sends it the
+// next time this user signs in. storage-sync-robust.js registers the hook;
+// pages without the engine have none and sign out exactly as before.
+const SIGN_OUT_FLUSH_TIMEOUT_MS = 1500;
+
+async function flushSyncBeforeSignOut() {
+  const flush = typeof window !== 'undefined' ? window.__shevatoFlushSync : null;
+  if (typeof flush !== 'function') return;
+  let timer = null;
+  try {
+    await Promise.race([
+      Promise.resolve().then(flush),
+      new Promise((resolve) => { timer = setTimeout(resolve, SIGN_OUT_FLUSH_TIMEOUT_MS); })
+    ]);
+  } catch (err) {
+    // A broken flush must never stop someone signing out.
+    console.warn('Could not flush pending sync before sign out:', err?.message || err);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 // Every message a visitor can see. The fallback is deliberately generic:
 // the raw SDK string ("Firebase: Error (auth/network-request-failed).") is
 // never shown, whatever code comes back. Unmapped codes are logged by the
@@ -272,6 +300,7 @@ window.firebaseAuth = {
   },
   async signOut() {
     try {
+      await flushSyncBeforeSignOut();
       await signOut(auth);
     } catch (err) {
       console.error('Sign out error:', err);

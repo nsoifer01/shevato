@@ -192,9 +192,14 @@ test('getFilteredRaces: "custom" range filters inclusively', () => {
 
 // --- saveAction / undoLastAction / redoLastAction -------------------------
 
+// Undo entries name races by id (2026-09 audit M-1: an index goes stale when
+// another tab replaces the log), so every fixture race carries one. The write
+// itself is dataManager.js's persistRaces, stubbed here because only
+// undoRedo.js is loaded.
 test('undoRedo: ADD_RACE then undo pops the last race', () => {
   const ctx = makeContext({
-    races: [{ player1: 1, player2: 2, date: '2026-01-01' }],
+    races: [{ id: 'race-a', player1: 1, player2: 2, date: '2026-01-01' }],
+    persistRaces: () => true,
   });
   loadInto(ctx, 'undoRedo.js');
   ctx.saveAction('ADD_RACE', { race: ctx.races[0] });
@@ -203,9 +208,10 @@ test('undoRedo: ADD_RACE then undo pops the last race', () => {
 });
 
 test('undoRedo: DELETE_RACE then undo restores at original index', () => {
-  const original = { player1: 3, player2: 4, date: '2026-01-02' };
+  const original = { id: 'race-b', player1: 3, player2: 4, date: '2026-01-02' };
   const ctx = makeContext({
-    races: [{ player1: 1, player2: 2, date: '2026-01-01' }],
+    races: [{ id: 'race-a', player1: 1, player2: 2, date: '2026-01-01' }],
+    persistRaces: () => true,
   });
   loadInto(ctx, 'undoRedo.js');
   ctx.saveAction('DELETE_RACE', { race: original, index: 1 });
@@ -220,14 +226,14 @@ test('undoRedo: history is bounded by MAX_HISTORY (oldest evicted)', () => {
   // undo them all, then verify only MAX_HISTORY races were popped (the buffer
   // evicted the oldest 10). MAX_HISTORY is a top-level `const` read out of the
   // loaded source rather than hardcoded, so the test follows the app.
-  const ctx = makeContext({ races: [] });
+  const ctx = makeContext({ races: [], persistRaces: () => true });
   loadInto(ctx, 'undoRedo.js');
   const maxHistory = evalIn(ctx, 'MAX_HISTORY');
   assert.ok(Number.isInteger(maxHistory) && maxHistory > 0, 'MAX_HISTORY should be a positive integer');
   const pushed = maxHistory + 10;
   for (let i = 0; i < pushed; i++) {
-    ctx.races.push({ player1: i, date: '2026-01-01' });
-    ctx.saveAction('ADD_RACE', { race: { player1: i, date: '2026-01-01' } });
+    ctx.races.push({ id: `race-${i}`, player1: i, date: '2026-01-01' });
+    ctx.saveAction('ADD_RACE', { race: { id: `race-${i}`, player1: i, date: '2026-01-01' } });
   }
   let undoCount = 0;
   // Undo until no further effect; cap iterations well above the buffer size
@@ -243,10 +249,11 @@ test('undoRedo: history is bounded by MAX_HISTORY (oldest evicted)', () => {
 
 test('undoRedo: redo after undo replays the action', () => {
   const ctx = makeContext({
-    races: [{ player1: 1, player2: 2, date: '2026-01-01' }],
+    races: [{ id: 'race-a', player1: 1, player2: 2, date: '2026-01-01' }],
+    persistRaces: () => true,
   });
   loadInto(ctx, 'undoRedo.js');
-  const newRace = { player1: 5, player2: 6, date: '2026-01-02' };
+  const newRace = { id: 'race-new', player1: 5, player2: 6, date: '2026-01-02' };
   ctx.races.push(newRace);
   ctx.saveAction('ADD_RACE', { race: newRace });
   ctx.undoLastAction();
@@ -371,6 +378,7 @@ function makeImportContext() {
   };
 
   const messages = [];
+  const buttons = {};
   const ctx = makeContext({
     races: [],
     players: ['player1', 'player2', 'player3'],
@@ -384,7 +392,12 @@ function makeImportContext() {
     updateAchievements: () => {},
     updateClearButtonState: () => {},
     showMessage: (msg, isError) => messages.push({ msg, isError }),
+    // Import asks before it replaces the log (2026-09 audit M-3); the tests
+    // press the dialog's buttons through these stubs.
+    presentModal: () => ({ close() {} }),
   });
+  ctx.document.getElementById = (id) => (/^(confirm|cancel)-import$/.test(id) ? (buttons[id] = buttons[id] || { onclick: null }) : null);
+  ctx._buttons = buttons;
   // Expose messages via a property added after context creation.
   ctx._messages = messages;
   // Patch showMessage after loading so we can capture messages from the file too.
@@ -405,6 +418,8 @@ test('importData: accepts race with distinct positions', () => {
     version: '1.4',
   };
   ctx.importData({ target: { files: [fakeFile(goodData)], value: '' } });
+  assert.ok(ctx._buttons['confirm-import'], 'a valid file asks for confirmation before replacing the log');
+  ctx._buttons['confirm-import'].onclick();
   const errors = ctx._messages.filter(m => m.isError);
   assert.equal(errors.length, 0, 'no error expected for distinct positions');
   // `races` is a module-level `let` inside the vm, not directly on ctx.

@@ -428,6 +428,34 @@ test('the reported data age is the data age, not the time this browser held it',
   assert.equal(second.ageSeconds, 150, 'and thirty seconds later it is thirty seconds older');
 });
 
+test('a copy repeated by the CDN reports its age including the time the edge held it', async () => {
+  // The proxy stamps x-fpl-age-seconds when the FUNCTION answers. Netlify's
+  // edge may then repeat that exact response, header and all, for up to the
+  // copy's remaining TTL, and says how long it has held it in the standard
+  // Age header. Reading x-fpl-age-seconds alone labelled a 71 s old copy as
+  // 53 s old (numbers observed on production, 2026-09-13).
+  const fetchImpl = recorder(() => {
+    const res = proxyResponse({ n: 1 }, { fetchedAt: new Date(NOW - 53 * 1000).toISOString(), cache: 'hit' });
+    res.headers.set('Age', '18');
+    return res;
+  });
+  const api = createFplApi({ fetchImpl, storage: fakeStorage(), now: () => NOW });
+  const res = await api.getFixtures();
+  assert.equal(res.ageSeconds, 71, 'the data age is the proxy age plus the edge age');
+});
+
+test('a garbage Age header is ignored rather than poisoning the age', async () => {
+  for (const age of ['', 'soon', '-5']) {
+    const fetchImpl = recorder(() => {
+      const res = proxyResponse({ n: 1 }, { fetchedAt: new Date(NOW - 53 * 1000).toISOString(), cache: 'hit' });
+      if (age) res.headers.set('Age', age);
+      return res;
+    });
+    const api = createFplApi({ fetchImpl, storage: fakeStorage(), now: () => NOW });
+    assert.equal((await api.getFixtures()).ageSeconds, 53, `Age ${JSON.stringify(age)}`);
+  }
+});
+
 test('a quota failure evicts the oldest entry rather than the whole cache', async () => {
   // Wiping every key on the first failure threw away copies that were still
   // useful and left the session with nothing persisted at all.

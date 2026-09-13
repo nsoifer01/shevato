@@ -83,10 +83,12 @@ function appContext({ races = [], playerCount = 3, names = {}, maxPositions = 12
   };
 }
 
+// Every race carries an id: dialogs and undo entries name races by id since the
+// 2026-09 audit (M-1, pinned in audit-2026-09.test.js).
 const RACES = [
-  { date: '2026-08-01', timestamp: '10:00:00 CDT', player1: 1, player2: 2, player3: 3, player4: null },
-  { date: '2026-08-02', timestamp: '11:00:00 CDT', player1: 2, player2: 1, player3: 3, player4: null },
-  { date: '2026-08-03', timestamp: '12:00:00 CDT', player1: 3, player2: 2, player3: 1, player4: null },
+  { id: 'race-1', date: '2026-08-01', timestamp: '10:00:00 CDT', player1: 1, player2: 2, player3: 3, player4: null },
+  { id: 'race-2', date: '2026-08-02', timestamp: '11:00:00 CDT', player1: 2, player2: 1, player3: 3, player4: null },
+  { id: 'race-3', date: '2026-08-03', timestamp: '12:00:00 CDT', player1: 3, player2: 2, player3: 1, player4: null },
 ];
 
 // --- D1: clear all + undo ----------------------------------------------------
@@ -220,8 +222,8 @@ test('D3 history headers and stat cards escape player names', () => {
 });
 
 test('D3 the edit modal escapes names, the timestamp meta line and the date attribute', () => {
-  const app = appContext({ races: [{ ...hostileRaces[0], date: '2026-08-01" onfocus="window.__pwn=1' }], playerCount: 2, names: { player1: HOSTILE } });
-  app.ctx.editRace(0);
+  const app = appContext({ races: [{ ...hostileRaces[0], id: 'race-hostile', date: '2026-08-01" onfocus="window.__pwn=1' }], playerCount: 2, names: { player1: HOSTILE } });
+  app.ctx.editRace('race-hostile');
   const html = app.elements.__modal.html;
   assertEscaped(html, 'edit modal');
   assert.ok(!html.includes('value="2026-08-01" onfocus='), 'date attribute cannot break out of its quotes');
@@ -229,7 +231,7 @@ test('D3 the edit modal escapes names, the timestamp meta line and the date attr
 
 test('D3 the delete modal escapes the race date', () => {
   const app = appContext({ races: [{ ...RACES[0], date: HOSTILE }], playerCount: 2 });
-  app.ctx.deleteRace(0);
+  app.ctx.deleteRace('race-1');
   assert.ok(!/<img\b/i.test(app.elements.__modal.html));
 });
 
@@ -240,7 +242,12 @@ function importFile(app, payload) {
   FakeFileReader.prototype.readAsText = function (file) { this.onload({ target: { result: file.text } }); };
   app.ctx.FileReader = FakeFileReader;
   app.ctx.updatePlayerCount = () => {};
+  delete app.elements['confirm-import'];
   app.ctx.importData({ target: { files: [{ text: typeof payload === 'string' ? payload : JSON.stringify(payload) }], value: '' } });
+  // Import asks before it replaces the log (2026-09 audit M-3, pinned in
+  // audit-2026-09.test.js). These tests are about the validator, so accept.
+  const confirm = app.elements['confirm-import'];
+  if (confirm && typeof confirm.onclick === 'function') confirm.onclick();
 }
 
 test('D14 import: a non-JSON file and a null entry get plain-language messages, never internals', () => {

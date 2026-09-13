@@ -189,6 +189,76 @@
   }
 
   /**
+   * Error names defined by the language (the Error constructors) or the DOM
+   * (DOMException names). A name on this list describes the KIND of failure
+   * and cannot carry user content; a name a script invents (a custom class,
+   * a library's `FirebaseError`) is not on it and classifies as unclassified.
+   */
+  var STANDARD_ERROR_NAME = /^(Error|EvalError|RangeError|ReferenceError|SyntaxError|TypeError|URIError|AggregateError|SecurityError|NotAllowedError|QuotaExceededError|AbortError|NetworkError|InvalidStateError|NotFoundError|DataCloneError)$/;
+
+  /**
+   * A Firebase error code, from a CLOSED vocabulary rather than a shape. A
+   * shape alone (lowercase words and hyphens) still let a single word through,
+   * so an Error a script decorated with `code = 'dana'` would have been sent
+   * verbatim. Accepted:
+   *   - the sixteen Firestore / gRPC status codes, bare (`permission-denied`),
+   *     plus `payload-too-large`, the one code this site's own sync engine sets;
+   *   - `<service>/<kebab-code>` for a Firebase service prefix
+   *     (`auth/network-request-failed`, `storage/unauthorized`).
+   * Capped at 40 characters, which is also normaliseErrorCode's limit once `/`
+   * becomes `_`.
+   */
+  var FIREBASE_STATUS_CODE = /^(cancelled|unknown|invalid-argument|deadline-exceeded|not-found|already-exists|permission-denied|resource-exhausted|failed-precondition|aborted|out-of-range|unimplemented|internal|unavailable|data-loss|unauthenticated|payload-too-large)$/;
+  var FIREBASE_SERVICE_CODE = /^(auth|firestore|storage|functions|database|app|installations|messaging|appcheck|app-check)\/[a-z0-9]+(?:-[a-z0-9]+)*$/;
+  function isFirebaseCode(code) {
+    return typeof code === 'string' && code.length <= 40
+      && (FIREBASE_STATUS_CODE.test(code) || FIREBASE_SERVICE_CODE.test(code));
+  }
+
+  /**
+   * True for a real Error (any realm, any subclass) or a DOMException. Reads
+   * the built-in tag rather than `instanceof`, which fails across frames, and
+   * rather than `name`, which a plain object can fake.
+   */
+  function isErrorLike(value) {
+    if (!value || typeof value !== 'object') return false;
+    var tag = Object.prototype.toString.call(value);
+    return tag === '[object Error]' || tag === '[object DOMException]';
+  }
+
+  /** `typeerror`, `quotaexceedederror`... or `unclassified` for any other name. */
+  function standardNameCode(err) {
+    var name = err.name;
+    return typeof name === 'string' && STANDARD_ERROR_NAME.test(name)
+      ? name.toLowerCase() : 'unclassified';
+  }
+
+  /**
+   * The code for a window `error` event. The message is compared to the
+   * browser's fixed cross-origin placeholder and otherwise never read.
+   */
+  function classifyWindowError(evt) {
+    if (isErrorLike(evt.error)) {
+      var code = standardNameCode(evt.error);
+      if (code !== 'unclassified') return code;
+    }
+    if (evt.message === 'Script error.') return 'script_error';
+    return 'unclassified';
+  }
+
+  /**
+   * The code for an unhandled rejection. Only the reason's `code` (when it is
+   * a known Firebase code) and `name` (when it is standard) are read; its message
+   * and stack never are.
+   */
+  function classifyRejection(reason) {
+    if (!isErrorLike(reason)) return 'non_error_rejection';
+    var code = reason.code;
+    if (isFirebaseCode(code)) return code.replace('/', '_');
+    return standardNameCode(reason);
+  }
+
+  /**
    * Strips parameters that could carry personal data, and clamps the rest to
    * GA4-safe primitives. Returns a fresh object; never mutates the input.
    */
@@ -273,7 +343,13 @@
   /* ----------------------------------------------------------------- public */
 
   var api = {
-    /** Event names, centralised so callers cannot invent variants by typo. */
+    /**
+     * The complete event vocabulary. tests/static/analytics-call-sites.test.mjs
+     * reads this map and fails if any event sent anywhere (a sendSafely() in
+     * this file, or an event name passed to the helper's own track method
+     * anywhere in the tree) is missing from it, or if an entry here is sent by
+     * nothing.
+     */
     events: {
       APP_OPEN: 'app_open',
       APP_VIEW: 'app_view',
@@ -285,7 +361,8 @@
       APP_ACTION: 'app_action',
       OUTBOUND_CLICK: 'outbound_click',
       SITE_NAV_CLICK: 'site_nav_click',
-      APP_ERROR: 'app_error'
+      APP_ERROR: 'app_error',
+      PAGE_NOT_FOUND: 'page_not_found'
     },
 
     /** Escape hatch for one-off events. Still scrubbed and still safe. */
@@ -492,20 +569,48 @@
   }
 
   /**
-   * Uncaught JS errors, so an abandoned session can be correlated with a
-   * broken script. Message only — never the stack, never local variables.
+   * Where an uncaught error was thrown: the PATHNAME of a script on this
+   * page's own origin (no query, no fragment, at most 100 characters), or
+   * `external` for anything else (another origin, a browser extension, a
+   * blob: or data: URL). Omitted when the browser gives no filename.
+   */
+  function errorSource(filename) {
+    if (typeof filename !== 'string' || !filename) return undefined;
+    var url;
+    try { url = new URL(filename); } catch (err) { return undefined; }
+    var here;
+    try { here = new URL(window.location.href); } catch (err) { return undefined; }
+    if ((url.protocol !== 'https:' && url.protocol !== 'http:') || url.origin !== here.origin) {
+      return 'external';
+    }
+    return normalisePath(url.pathname).slice(0, 100);
+  }
+
+  /**
+   * Uncaught JS errors and unhandled rejections, so a broken script shows up
+   * in GA4 attributed to a release.
+   *
+   * Classified by SHAPE, never by text: the code is a standard error name
+   * (`referenceerror`), a Firebase-style code (`auth_network-request-failed`),
+   * `script_error`, `non_error_rejection` or `unclassified`. The message,
+   * stack and thrown value are never sent. These handlers used to pass the
+   * message into trackError, whose normaliser (rightly) refuses free text, so
+   * every real error reported `unclassified` and a one-word message was
+   * forwarded verbatim (audit 2026-09-12, A-1).
    */
   window.addEventListener('error', function (evt) {
-    if (!evt || !evt.message) return;
-    api.trackError('window', evt.message, {
-      error_source: evt.filename ? normalisePath(evt.filename) : undefined
-    });
+    try {
+      if (!evt || (!evt.message && !evt.error)) return;
+      api.trackError('window', classifyWindowError(evt), {
+        error_source: errorSource(evt.filename)
+      });
+    } catch (err) { /* an error handler must never throw */ }
   });
 
   window.addEventListener('unhandledrejection', function (evt) {
-    var reason = evt && evt.reason;
-    var message = reason && reason.message ? reason.message : String(reason || '');
-    api.trackError('promise', message);
+    try {
+      api.trackError('promise', classifyRejection(evt ? evt.reason : undefined));
+    } catch (err) { /* an error handler must never throw */ }
   });
 
   /**

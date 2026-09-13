@@ -86,8 +86,15 @@ function restoreFromBackup() {
         document.getElementById('confirm-restore').onclick = () => {
             close();
 
-            // Perform the restore
+            // Perform the restore. The races are written first: if storage
+            // refuses, nothing else (names, symbols, icons) changes and the
+            // user sees "Not saved" instead of a success message.
+            const previousRaces = races;
             races = result.races;
+            if (!persistRaces()) {
+                races = previousRaces;
+                return;
+            }
             if (typeof resetActionHistory === 'function') resetActionHistory();
             
             // Use centralized PlayerNameManager for player names
@@ -138,9 +145,6 @@ function restoreFromBackup() {
                     window.updateAllPlayerIcons();
                 }
             }
-            
-            const racesKey = window.getStorageKey ? window.getStorageKey('Races') : 'marioKartRaces';
-            localStorage.setItem(racesKey, JSON.stringify(races));
             
             updateDisplay();
             updateAchievements();

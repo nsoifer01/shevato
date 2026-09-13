@@ -20,11 +20,11 @@ Mario Kart Race Tracker is a feature-rich web application that allows you to:
 - **Course Selection**: Tag each race with the course/map you played on, via a searchable picker (an inline dropdown on mobile, a command-palette overlay on desktop) with favorites, recent searches, and game-version / new-course filters. Course data is data-driven and easy to update (see "Updating Course Data" below)
 - **Player Management**: Customizable player names (up to 40 characters) and emoji/icons, per game version
 - **Date Filtering**: View stats for specific time periods; "Last 7 Days" and "Last 30 Days" are local calendar windows (today plus the previous 6 or 29 days)
-- **Undo/Redo**: Covers adding, editing, deleting and Clear All (a clear is undone from a snapshot). Import, Restore and a game-version switch start a fresh history
-- **Data Persistence**: Automatic saving to browser localStorage, with account sync across devices when signed in
-- **Export/Import**: JSON file support for data backup and transfer. Every import and restore runs through one validator: unambiguous repairs (legacy player keys, `24:MM` stamps, empty entries, unreadable times/course tags) are applied and listed in the toast; a bad date or a non-integer, out-of-range or duplicate position rejects the file with a message naming the race
-- **Restore**: One-click recovery from the rolling auto-backup snapshot (taken every 10 minutes, and refreshed right before a Clear All)
-- **Edit Races**: Every race in the history (table row or mobile card) has an edit button that opens the race in a modal to correct positions, date, and time
+- **Undo/Redo**: Covers adding, editing, deleting and Clear All (a clear is undone from a snapshot). Steps name races by id, so a change made in another tab or on another device can never make Undo touch the wrong race; a step whose race has changed is refused and the history cleared. Import, Restore and a game-version switch start a fresh history
+- **Data Persistence**: Automatic saving to browser localStorage, with account sync across devices when signed in. A save the browser refuses (storage full) is reported as "Not saved" and undone on screen, never shown as saved
+- **Export/Import**: JSON file support for data backup and transfer. Every import and restore runs through one validator: unambiguous repairs (legacy player keys, `24:MM` stamps, empty entries, unreadable times/course tags) are applied and listed in the toast; a bad date or a non-integer, out-of-range or duplicate position rejects the file with a message naming the race. A file with no valid races is refused; otherwise Import asks first ("replace your N races with M races from the file") and refreshes the auto-backup before replacing, so Restore can undo it
+- **Restore**: One-click recovery from the rolling auto-backup snapshot (taken every 10 minutes, and refreshed right before a Clear All or an Import)
+- **Edit Races**: Every race in the history (table row or mobile card) has an edit button that opens the race in a modal to correct positions, date, and time. The dialog saves to the race it showed, found again by id at Save; if that race was deleted meanwhile (another tab or device), Save says so instead of overwriting another race
 - **Safe Deletes**: Deleting a race asks for confirmation first; undo/redo still covers every action
 - **Clear All Data**: The 🗑️ button in the sidebar header wipes the races and stats for the current game behind a "Delete Everything" confirmation modal (disabled when there is nothing to clear). Player names and icons stay; Undo brings the races straight back, and Restore brings them back later from the auto-backup taken just before the clear
 - **Sortable History**: Newest race first by default; sort by date or by any player's finishing position (first click ascending, the arrow and `aria-sort` say which)
@@ -81,6 +81,14 @@ The tracker works best on modern browsers:
 ### Optimal Configuration
 - **Players**: Supports 1-4 players; layouts verified at all player counts
 - **Browser**: Chrome or Firefox on desktop for best experience
+
+### Race ids
+Every race stores an `id`. New races get a random one; races saved before ids
+existed get one derived from their content (date, time, positions, course), so
+every device that syncs the same log computes the same ids and the per-record
+sync merge never duplicates a race. Edit, delete and undo all find a race by
+this id at the moment they act. Details and the known limits are in
+`FINDINGS.md` ("Races have stable ids").
 
 ### Race timestamps
 Each race stores a `date` (YYYY-MM-DD, validated as a real calendar day on import/restore) plus an optional `timestamp`
@@ -146,6 +154,7 @@ mario-kart/
 │   ├── harness.js       # Shared vm harness (not a test file)
 │   ├── core.test.js     # Roster, date filters, undo/redo, stats, import, backup
 │   ├── audit-2026-08.test.js # Regressions from the 2026-08 audit (clear+undo, XSS, validator, per-version names, sort, integers)
+│   ├── audit-2026-09.test.js # Regressions from the 2026-09 audit (race ids across foreign writes, refused saves, import confirmation, inert sidebar)
 │   ├── dataManager.test.js # addRace / editRace / migrateRaceData
 │   ├── statistics.test.js  # calculateStats edge cases + chronological ordering
 │   ├── dateFilter.test.js  # Rolling week/month window semantics
@@ -153,7 +162,7 @@ mario-kart/
 │   ├── utils.test.js       # Shared position guard + race-datetime parser
 │   └── courses.test.js  # Course dataset integrity + search ranking
 ├── e2e/
-│   └── audit-2026-08.mjs # Browser regressions (run by tests/browser/run.mjs): XSS through the DOM, modal focus, two tabs, phone geometry, seeded axe scans
+│   └── audit-2026-08.mjs # Browser regressions (run by tests/browser/run.mjs): XSS through the DOM, modal focus, two tabs, phone geometry, seeded axe scans, inert closed sidebar
 ├── FINDINGS.md           # Engineering knowledge: root causes, decisions, regression risks
 └── README.md            # This file
 ```
@@ -171,6 +180,7 @@ npm run test:browser     # browser estate, including apps/mario-kart/e2e/audit-2
 ### What is covered
 
 - **audit-2026-08.test.js** - the 2026-08 audit regressions through the real functions: clear -> undo -> add -> reload, player-count decrease, escaping in every renderer (H2H tables, history table/cards, headers, stat cards, edit/delete modals), the shared import/restore validator with a real legacy export, widened-roster cells, per-version names/count, default order and sort direction, whole-number positions.
+- **audit-2026-09.test.js** - the 2026-09 audit regressions: edit/delete dialogs and undo opened from the real rendered row buttons, then a foreign write replaces the log before Save/Confirm/Undo (right race edited or deleted, a vanished race refused, never a duplicate or a `null` row); legacy ids identical across two independent loads; add/edit/delete/clear/undo/redo/Restore with storage throwing `QuotaExceededError` (no success message, memory equals storage, nothing after a reload); Import refuses a zero-race file, confirms with both counts, Cancel writes nothing, and the auto-backup holds the replaced races; the sidebar's `inert` markup, toggling, focus hand-off and visible-only Tab trap.
 - **core.test.js** - roster union (`rosterForCount`, `highestPlayerWithRaces`), date-filter plumbing, undo/redo including the `MAX_HISTORY` bound, H2H statistics, import validation, and version-scoped backup/restore keys.
 - **dataManager.test.js** - `addRace` (min-player rule, position range, duplicate positions, course tagging, timestamp build, localStorage write, undo entry), `editRace` (revalidation, timestamp preserve/rebuild/clear, undo and redo, untouched fields), `migrateRaceData` (legacy `slav`/`mike`/`nikita` keys).
 - **statistics.test.js** - `calculateStats` when a player key is absent rather than null (roster widening) and chronological ordering across every timestamp shape, including legacy "24:MM:SS" stamps; `calculateCourseStats`/`getCourseRankings`/`generateCourseStatsView` (course-less races excluded, per-course/per-player aggregation, the 3-race ranking minimum, and escaping).

@@ -124,8 +124,10 @@
 <a class="skip-link" href="#main-content">Skip to main content</a>
     <div data-include="header"></div>
 
-    <!-- Live sync banner — only shown when offline, and briefly on the
-         offline→synced transition. Mounted/managed by js/utils/sync-status.js. -->
+    <!-- Live sync banner: shown when offline, briefly on the offline to online
+         transition, and (until dismissed or resolved) for a write the cloud
+         refused, a sync that never started, or a sync conflict.
+         Mounted/managed by js/utils/sync-status.js. -->
     <div id="sync-banner" class="sync-banner" role="status" aria-live="polite" hidden></div>
 
     <!-- Main App Container -->

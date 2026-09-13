@@ -164,13 +164,16 @@ appending games to the same key. 760810 B, then ~890928 B, then a silent give
 up. Three network round trips spent on a write that could not possibly land,
 and each one bigger than the last.
 
-`isPermanentWriteError` (sync-helpers.mjs) now splits the two cases. Our own
-`payload-too-large` and Firestore's `invalid-argument` are deterministic: the
-batch is dropped, the ladder is not started, and a `syncWriteRejected`
-DOM event names the namespace and keys so the failure is not console-only.
-Everything else - `unavailable`, `deadline-exceeded`, an unrecognised code -
-keeps the retry behaviour it always had, so this cannot turn a recoverable
-blip into a permanent one.
+`isPermanentWriteError` (sync-helpers.mjs) splits the two cases. Our own
+`payload-too-large`, and Firestore's `invalid-argument`, `permission-denied`,
+`unauthenticated` and `not-found`, are deterministic: one attempt, no ladder,
+the batch is not requeued but its keys stay dirty (the next sync start tries
+once), and `syncWriteRejected` fires with `retryable: false`. Everything else
+climbs the ladder; if it runs out, the batch is requeued and parked,
+`syncWriteRejected` fires with `retryable: true`, and it is resent on the next
+local change, `online`, the tab becoming visible or a sync start, never on a
+timer of its own (2026-09-13, audit S-3). See the root FINDINGS.md sync failure
+section.
 
 ## A sync walks BOTH histories, so one-sided days go both ways (2026-08-24)
 

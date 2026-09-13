@@ -310,7 +310,7 @@ Designed for gym environments with low lighting:
 - User authentication
 - Cross-device synchronization
 - Automatic conflict resolution
-- Sync status UI: on phones a banner pinned directly below the site header while offline (and briefly on the offline → synced transition), dismissible with its close button and stacked under the header so the logo, Menu and Sign In stay clickable; on desktop a state pill in the side-nav footer instead; plus a sync dot on the "More" nav item
+- Sync status UI: on phones a banner pinned directly below the site header while offline (and briefly on the offline → synced transition), dismissible with its close button and stacked under the header so the logo, Menu and Sign In stay clickable; on desktop a state pill in the side-nav footer instead; plus a sync dot on the "More" nav item. Failures are never shown as "Synced": a write the cloud refused reads "Not saved to cloud" (red), one the sync engine kept and will resend reads "Not saved to cloud yet", and a sync that never started reads "Sync unavailable", on the pill, the dot and a banner that stays up until dismissed; a refused write keeps its pill/dot state until the engine reports it recovered. A sync conflict raises a banner saying what was merged or which copy was kept, until dismissed. Failure and conflict banners show at every width (`js/utils/sync-status.js`, Gym's own counterpart of `assets/js/sync-status.js`)
 
 ### Export/Import
 - JSON format
@@ -322,9 +322,14 @@ Designed for gym environments with low lighting:
   `timeFormat: 13`), dates are normalised to `YYYY-MM-DD` (or the record is
   skipped), set weight/reps/duration are clamped to finite, non-negative,
   physically possible numbers, and records with a missing or unusable id
-  (including `__proto__`) get a fresh one. Whatever it repaired is disclosed
-  in a toast rather than applied silently; a legitimate older export passes
-  through untouched
+  (including `__proto__`) get a fresh one. Program exercises and each
+  exercise's set rows are reduced to real records (one `null` set row used to
+  empty the whole programs store on the next save). Achievements must use the
+  code's own vocabulary: an id no definition, lift milestone or strength PR
+  produces is skipped, and a known achievement whose requirement type is not one
+  the code defines gets its definition back (that key is rendered on the
+  Achievements screen). Whatever it repaired is disclosed in a toast rather than
+  applied silently; a legitimate older export passes through untouched
 - Import has two explicit modes. **Merge** (the default) unions the file into
   your data by record id (`sameId`, so a string id from an export matches the
   numeric one it came from), keeps everything the file does not mention, and

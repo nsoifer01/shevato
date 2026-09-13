@@ -42,7 +42,7 @@ const BROWSER_FETCH_ORIGINS = {
   'https://api.open-meteo.com': 'Trip Planner near-term forecast chips',
   'https://geocoding-api.open-meteo.com': 'Trip Planner city typeahead in the place fields',
   'https://api.frankfurter.dev': 'Trip Planner exchange rates',
-  'https://api.openai.com': 'Trip Planner assistant, owner-supplied OpenAI key',
+  'https://api.openai.com': 'Trip Planner assistant, OpenAI key the traveller supplies (bring your own key)',
   'https://generativelanguage.googleapis.com': 'Trip Planner assistant, Gemini',
   'https://raw.githubusercontent.com': 'Trip Planner visa matrix dataset',
   'https://maptap.gg': 'MapTap Rivals daily puzzle data files',

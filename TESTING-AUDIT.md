@@ -633,8 +633,12 @@ defect fixes stamped above:
 3. Mario-kart cosmetic sibling of defect 8: a widened roster can render
    "undefined" in a history cell (render-path guards were deliberately left
    alone).
-4. Decide whether the sync engine's oversize-payload drop (silent beyond
-   console after the retry ladder) deserves a user-visible surface.
+4. RESOLVED. The sync engine's oversize-payload drop and every other write
+   that does not reach the cloud now reach the page: the shared sync-status
+   widget listens for `syncWriteRejected` (2026-09-11), and since 2026-09-13
+   (audit S-3) a retryable failure is parked and resent rather than dropped,
+   `syncWriteRecovered` retires the message, and Gym Tracker's own widget and
+   FPL Planner show it too.
 5. Consider registering the arena emulator e2e in a CI job with Java the
    way arena-rules.yml runs the rules suite, if its runtime stays stable.
 

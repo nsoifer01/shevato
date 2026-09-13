@@ -29,27 +29,111 @@ outline levels. They are `<h3>` under a `<h2 class="help-panel-heading">What thi
 `.help-section h4` selectors in `layout.css`, `refresh.css` and
 `help-styles.css` moved with them.
 
-## Undo/redo is a stack replayed against the live `races` array
+## Races have stable ids, and everything names a race by id
 
-`actionHistory` holds deep-copied `{type, data}` entries whose DELETE/EDIT
-entries carry an array index. Anything that replaces the log wholesale must
-therefore either record an action whose undo restores the same rows at the
-same indices, or drop the stack:
+`races` is REPLACED whenever storage is re-read: a second tab writing
+(`ShevatoTabSync`), a cloud delivery (`localStorageSync`, `source: 'remote'`),
+Import, Restore, a game-version switch. Until 2026-09-13 the history buttons
+carried an array index, the edit and delete dialogs committed with the index
+captured when they opened, and undo entries stored it. A foreign write while a
+dialog was open therefore edited the wrong slot (the edited race then existed
+twice), deleted the neighbour, or deleted nothing behind "Race removed
+successfully!" while recording an undo entry for `undefined` whose Undo wrote a
+`null` row to storage. Football had this class fixed on 2026-09-03 ("Edit and
+delete must re-resolve the row"); Mario Kart could not copy that fix because
+its races had no id.
+
+How it works now (`dataManager.js`, top of the file):
+
+- Every race carries a string `id` matching `/^[A-Za-z0-9_-]{1,64}$/`
+  (`isValidRaceId`). The history row buttons pass it (`editRace('<id>')`, so
+  it is safe inside the inline handler), and `editRace`, `deleteRace` and
+  `performDeleteRace` re-resolve it with `findRaceIndexById` at Save/Confirm
+  time. A race that is gone is refused with "That race is no longer in the log
+  (it was changed in another tab or on another device)": no success message,
+  no undo entry. Edit applies the dialog's values onto the FRESH row, so a field
+  the dialog does not manage (a course tag another tab changed) survives.
+- A new race gets a random id: `mk-<crypto.randomUUID()>`, or
+  `mk-<time36>-<random>` where `randomUUID` is missing.
+- A race without a valid, unique id (everything stored before 2026-09-13, an
+  old export, a hand-made file) gets a DETERMINISTIC id from `assignRaceIds`:
+  `lg-` plus a 53-bit cyrb53 hash (`raceContentHash`) of
+  `[date, timestamp, player1..4, courseId, course]`, read in that fixed order
+  with undefined as null, and `-2`, `-3`, ... for further races that hash the
+  same (two identical races are still two races). Valid ids are collected in a
+  first pass, so a healed race never takes an id a later race already owns. It
+  runs in `migrateRaceData` (load path, written back once, skipped inside a
+  tab-sync handler) and at the end of `sanitizeRaceData` (import and Restore;
+  valid ids in a file are kept, so re-importing an export changes none).
+
+**Why legacy ids are deterministic, not random.** `marioKartRaces` is a synced
+key. `mergeRecordCollections` (`sync-system/sync-helpers.mjs`) merges an array
+per record only when EVERY entry has a unique `id`; the id-less log used to fall
+back to a whole-value winner. After the upgrade each device's first load writes
+its healed log back, so both devices hold a changed value and the conflict path
+merges them per id. Had each device given the same legacy race its own random
+id, the merge would see two different records and keep both: every legacy race
+duplicated and every stat doubled, the class MapTap hit as R-1. Ids derived
+from content make both devices produce identical records, which the merge
+collapses. Pinned by "M-1 ids: legacy races get the same ids on every device"
+(two independent loads, reordered keys, two identical races, a reload).
+
+Known limit: two devices whose id-less logs had ALREADY diverged before either
+one upgraded (a race edited offline on one of them) derive different ids for
+that race, so the merge keeps both versions; before ids it was a whole-value
+conflict where one side lost everything. Likewise, if one device deleted one of
+two identical races before upgrading, the other device's `-2` copy survives the
+merge. Both leave a visible extra row that can be deleted, never a lost race.
+
+## Undo/redo replays by id against the live `races` array
+
+`undoRedo.js` `applyHistoryStep` resolves the race named by the entry at the
+moment of the step. ADD removes (undo) or re-pushes (redo) by id; DELETE
+re-inserts at the recorded index, which is only a placement hint (clamped), and
+refuses when the id is already present; EDIT swaps the row with that id;
+CLEAR_DATA restores its deep-copied snapshot. A step whose race is not where it
+needs to be changes nothing, drops the whole stack and says "Nothing undone:
+that race was changed in another tab or on another device." Anything that
+replaces the log wholesale still drops the stack: Import, Restore, a
+game-version switch and both refresh handlers call `resetActionHistory()`.
 
 - `clearData()` records `CLEAR_DATA` with a snapshot of the log (after
-  refreshing the auto-backup, so Restore also works after a reload). Undo
-  restores the snapshot; older EDIT/DELETE entries then replay against the
-  rows they were recorded on. Before this, Undo after "Delete Everything"
-  wrote `[null, null, ..., {race}]` to storage and Stats threw on reload.
-- Import, Restore, a game-version switch and a foreign tab's write all call
-  `resetActionHistory()`; their new log has nothing in common with the
-  stack. The stack is memory-only: `marioKartActionHistory` was never
-  written and is no longer listed in the sync config.
+  refreshing the auto-backup, so Restore also works after a reload). Before
+  2026-08-23 Undo after "Delete Everything" wrote `[null, null, ..., {race}]`
+  to storage and Stats threw on reload.
+- The stack is memory-only: `marioKartActionHistory` was never written and is
+  no longer listed in the sync config.
 - `migrateRaceData` (load path) drops null/non-object rows, so a log left
-  sparse by the old bug heals on the next load.
+  sparse by the old bugs heals on the next load.
 
-Pinned by `tests/audit-2026-08.test.js` ("D1 ...") and the clear+undo block of
+Pinned by `tests/audit-2026-09.test.js` (M-1: dialogs and undo across a
+foreign write, driven through the real rendered row buttons),
+`tests/audit-2026-08.test.js` ("D1 ...") and the clear+undo block of
 `e2e/audit-2026-08.mjs`.
+
+## Every write of the log is checked (`persistRaces`)
+
+`addRace`, `editRace`, `performDeleteRace` and `clearData` used to catch a
+failed `localStorage.setItem`, `console.error` it, and toast success anyway; a
+production probe on 2026-09-12 showed two rows on screen, one in storage, and
+the race gone after reload. Undo/redo wrote with no try/catch and threw out of
+the click handler after `races` and `historyPosition` had already moved.
+Quota is reachable: 1 MB icon uploads, the auto-backup snapshot and both games'
+logs share one origin.
+
+`persistRaces()` is now the one write for every user action (add, edit,
+delete, clear, import, Restore, undo, redo). On failure it shows Football's
+wording, "Not saved: this device is out of storage space. Export a backup and
+clear some data.", and returns false. Every caller then rolls its in-memory
+change back and records no undo entry: add pops the race and keeps the form
+filled in, edit restores the row and keeps the dialog open, delete splices the
+race back, clear/import/Restore put the previous array back (Restore before it
+touches names or symbols), undo/redo put the array back and leave
+`historyPosition` where it was. The load-path write-back in `migrateRaceData`
+is wrapped too: `loadSavedData` turns any throw into an EMPTY log, and since
+ids heal every legacy log on its first load, an unguarded throw there on a full
+device would show no races and let the next add overwrite them. Pinned by the
+M-2 tests (storage throwing `QuotaExceededError`, then a reload from storage).
 
 ## One validator for every wholesale replacement of the log
 
@@ -67,6 +151,15 @@ chars) and symbols must be short strings. Import error messages never carry
 engine text (the old `Cannot read properties of null` / raw SyntaxError).
 A real 2024-shape export with legacy keys and a `24:` stamp is a test
 fixture; keep it importing.
+
+Import then asks before it replaces anything (2026-09-13; Delete, Clear and
+Restore already did). A file with no valid races after validation
+(`{"races":[]}`, `{"races":[null]}`) is refused with "Import failed: this file
+has no races to import"; it used to replace the whole log behind "Successfully
+imported 0 races!". Otherwise `confirmImport` says "This will replace your N
+races with M races from the file" (Cancel writes nothing), and `applyImport`
+refreshes the auto-backup BEFORE replacing, exactly as `clearData` does, so
+Restore is the way back. Pinned by the M-3 tests.
 
 ## Renderers escape every stored string
 
@@ -185,6 +278,17 @@ silently, and the validator now rejects a stored 2.5 on import.
   race" button (`startAddRace()` opens the sidebar and the form).
 - The tablist handles Left/Right/Home/End; `label.player-name-label` no
   longer carries `role="button"`/`tabindex` (it has no handler).
+- The closed sidebar carries `inert` (set in `index.html`; `openSidebar`
+  removes it, `closeSidebar` moves focus to the toggle FIRST and then sets it).
+  The panel is hidden only by `transform: translateX(-100%)`, so without it Tab
+  from the toggle walked about 15 off-screen controls and screen readers read a
+  "Control Panel" that was not on screen (Football fixed the same on
+  2026-08-23). The open-panel Tab trap counts only visible, enabled controls
+  (`offsetParent !== null`, `:not([disabled])`), as Football's does, so a
+  `display:none` input or a disabled Undo is never a trap endpoint. Open the
+  panel through `openSidebar()`: adding the `open` class alone leaves it inert
+  and unclickable. Pinned by the M-4 unit tests and the "closed sidebar is
+  inert" block of the e2e.
 
 ## Still open
 

@@ -296,12 +296,22 @@ export default async function handler(req) {
       // looked and there is nothing", which it then told the traveller about a
       // town full of restaurants. The reason travels so the two can be told
       // apart all the way to the sentence on screen.
-      found = { results: [], spent: granted, reason: 'upstream' };
+      // Same conservative rule as step (6): unknown work keeps the whole
+      // reservation on both dimensions.
+      found = { results: [], spent: granted, searched: granted, reason: 'upstream' };
     }
+    // TWO REFUNDS, for the same reason as step (7) below. The money comes back
+    // for every slot that bought no Place Details call; the RATE allowance
+    // does not come back for the search, which always ran. This branch used to
+    // pass one number, so the rate refund defaulted to the money refund and a
+    // category search that found nothing left every counter at zero: one
+    // caller could repeat it without limit (2026-09-12 audit F-1, measured at
+    // 1,000 admitted requests against a 60/hour cap).
     const unspentD = granted - found.spent;
-    if (unspentD > 0) {
+    const unusedRateD = granted - Math.max(found.spent, found.searched || 0);
+    if (unspentD > 0 || unusedRateD > 0) {
       await updateUsage(store, USAGE_KEY, latest =>
-        ({ write: releaseQuota(latest, clamped.clientId, now, unspentD, tier, networkId) }));
+        ({ write: releaseQuota(latest, clamped.clientId, now, unspentD, tier, networkId, unusedRateD) }));
     }
     return json({
       results: found.results,
