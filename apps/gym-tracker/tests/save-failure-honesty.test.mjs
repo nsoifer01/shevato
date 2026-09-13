@@ -4,7 +4,7 @@
  * `StorageService.set` has always answered a refused write (quota exhausted,
  * evicted storage, private mode) with `false`. The live workout and Finish
  * read it (see active-workout-write-failure.test.mjs and "A failed write must
- * not be reported as a saved workout" in FINDINGS). Every other store did not:
+ * never be reported as saved" in FINDINGS). Every other store did not:
  * saving or deleting a program, saving settings, creating or deleting a custom
  * exercise, saving, editing or deleting a measurement or a goal, deleting a
  * workout, and removing an exercise's history all toasted success while
