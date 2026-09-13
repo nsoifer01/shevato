@@ -2749,7 +2749,9 @@ async function sendChatMessage() {
             uid: state.user.uid,
             displayName,
             text,
-            sentAt: serverTimestamp()
+            sentAt: serverTimestamp(),
+            // Deleted by the TTL policy on the chat collection group (firestore.rules).
+            expiresAt: new Date(Date.now() + ROOM_TTL_MS)
         });
         input.value = '';
     } catch (e) {
@@ -2810,7 +2812,9 @@ async function sendChatEmoji(emoji) {
             uid: state.user.uid,
             displayName,
             text: emoji,
-            sentAt: serverTimestamp()
+            sentAt: serverTimestamp(),
+            // Deleted by the TTL policy on the chat collection group (firestore.rules).
+            expiresAt: new Date(Date.now() + ROOM_TTL_MS)
         });
     } catch (e) {
         console.warn('sendChatEmoji failed:', e);

@@ -22,6 +22,10 @@ import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+
+// A chat message's expiry, as the app sets it (ROOM_TTL_MS, a day): the chat
+// create rule requires one for the chat TTL policy.
+const chatExpiry = () => new Date(Date.now() + 24 * 3600_000);
 import {
     startEmulator, loadRules, loadRulesFile, clearData, authToken, OWNER,
     createDoc, updateDoc, getDoc, deleteDoc, listDocs, queryEquals,
@@ -104,7 +108,7 @@ if (!setup.ok) {
         assert.equal(await createDoc('triviaRooms/SCOPD/players/host1',
             { uid: 'host1', displayName: 'Host', score: 0, gateHash: 'scoped-hash-value' }, OWNER), 200);
         assert.equal(await createDoc('triviaRooms/SCOPD/chat/m0',
-            { uid: 'host1', text: 'private conversation' }, OWNER), 200);
+            { uid: 'host1', text: 'private conversation', expiresAt: chatExpiry() }, OWNER), 200);
     });
 
     /* ---------------- F01: the private-room boundary ---------------- */
@@ -177,9 +181,9 @@ if (!setup.ok) {
 
     test('F01: an outsider cannot post chat into a room they never joined', async () => {
         assert.equal(await createDoc('triviaRooms/SCOPD/chat/intrude',
-            { uid: 'alice', text: 'hello from outside' }, ALICE), 403);
+            { uid: 'alice', text: 'hello from outside', expiresAt: chatExpiry() }, ALICE), 403);
         assert.equal(await createDoc('triviaRooms/PUBAA/chat/intrude2',
-            { uid: 'bob', text: 'hello from outside' }, BOB), 403,
+            { uid: 'bob', text: 'hello from outside', expiresAt: chatExpiry() }, BOB), 403,
             'membership is required in every room, scoped or not');
     });
 
@@ -819,21 +823,21 @@ if (!setup.ok) {
         assert.ok([200, 409].includes(await createDoc('triviaRooms/PUBAA/players/guest1',
             { uid: 'guest1', displayName: 'Guest', score: 0 }, GUEST)));
         assert.equal(await createDoc('triviaRooms/PUBAA/chat/m1',
-            { uid: 'alice', text: 'hello' }, ALICE), 200);
+            { uid: 'alice', text: 'hello', expiresAt: chatExpiry() }, ALICE), 200);
         assert.equal(await createDoc('triviaRooms/PUBAA/chat/m2',
-            { uid: 'alice', text: 'x'.repeat(280) }, ALICE), 200,
+            { uid: 'alice', text: 'x'.repeat(280), expiresAt: chatExpiry() }, ALICE), 200,
             'exactly 280 chars is the last allowed length');
         assert.equal(await createDoc('triviaRooms/PUBAA/chat/m3',
-            { uid: 'alice', text: 'x'.repeat(281) }, ALICE), 403,
+            { uid: 'alice', text: 'x'.repeat(281), expiresAt: chatExpiry() }, ALICE), 403,
             '281 chars breaches the cap');
         assert.equal(await createDoc('triviaRooms/PUBAA/chat/m4',
-            { uid: 'alice', text: '' }, ALICE), 403, 'empty text denied');
+            { uid: 'alice', text: '', expiresAt: chatExpiry() }, ALICE), 403, 'empty text denied');
         assert.equal(await createDoc('triviaRooms/PUBAA/chat/m5',
-            { uid: 'bob', text: 'spoof' }, ALICE), 403, 'uid must match the author');
+            { uid: 'bob', text: 'spoof', expiresAt: chatExpiry() }, ALICE), 403, 'uid must match the author');
         assert.equal(await createDoc('triviaRooms/PUBAA/chat/m6',
-            { uid: 'alice', text: 42 }, ALICE), 403, 'text must be a string');
+            { uid: 'alice', text: 42, expiresAt: chatExpiry() }, ALICE), 403, 'text must be a string');
         assert.equal(await createDoc('triviaRooms/PUBAA/chat/m7',
-            { uid: 'guest1', text: 'guests can chat' }, GUEST), 200,
+            { uid: 'guest1', text: 'guests can chat', expiresAt: chatExpiry() }, GUEST), 200,
             'chat requires sign-in, not registration');
         assert.equal(await updateDoc('triviaRooms/PUBAA/chat/m1', { text: 'edited' }, ALICE), 403,
             'no edits, even by the author');
@@ -843,28 +847,48 @@ if (!setup.ok) {
             'not even the host can delete chat while the room lives');
     });
 
+    test('chat create: every message carries a bounded expiresAt for the chat TTL policy', async () => {
+        // The room TTL deletes the room DOCUMENT only. Without an expiry of its
+        // own, a room nobody revisited kept its chat indefinitely (112 of 113
+        // stored messages on 2026-09-13), although privacy.html says an
+        // abandoned room is removed within a day. Runs after the test above has
+        // made alice a member, and proves the accepted case first, so the
+        // refusals below are about the expiry and nothing else.
+        assert.equal(await createDoc('triviaRooms/PUBAA/chat/x4',
+            { uid: 'alice', text: 'a day', expiresAt: chatExpiry() }, ALICE), 200,
+            "the app's one-day expiry is accepted");
+        assert.equal(await createDoc('triviaRooms/PUBAA/chat/x1',
+            { uid: 'alice', text: 'no expiry' }, ALICE), 403, 'a message with no expiry is refused');
+        assert.equal(await createDoc('triviaRooms/PUBAA/chat/x2',
+            { uid: 'alice', text: 'expired', expiresAt: new Date(Date.now() - 1000) }, ALICE), 403,
+            'an expiry in the past is refused');
+        assert.equal(await createDoc('triviaRooms/PUBAA/chat/x3',
+            { uid: 'alice', text: 'far', expiresAt: new Date(Date.now() + 90 * 3600_000) }, ALICE), 403,
+            'an expiry beyond 48 hours is refused');
+    });
+
     test('chat bound (audit 2026-09-12): the display name is capped, and nothing but the four message fields rides along', async () => {
         assert.equal(await createDoc('triviaRooms/CHATB',
             { code: 'CHATB', hostUid: 'host1', status: 'lobby', isPrivate: false }, OWNER), 200);
         assert.equal(await createDoc('triviaRooms/CHATB/players/alice', { uid: 'alice', score: 0 }, ALICE), 200);
         assert.equal(await createDoc('triviaRooms/CHATB/chat/c1',
-            { uid: 'alice', displayName: 'x'.repeat(20), text: 'hi', sentAt: new Date() }, ALICE), 200,
+            { uid: 'alice', displayName: 'x'.repeat(20), text: 'hi', sentAt: new Date(), expiresAt: chatExpiry() }, ALICE), 200,
             'exactly what sendChatMessage writes, with a name at the 20-character cap');
         assert.equal(await createDoc('triviaRooms/CHATB/chat/c2',
-            { uid: 'alice', displayName: 'x'.repeat(21), text: 'hi', sentAt: new Date() }, ALICE), 403,
+            { uid: 'alice', displayName: 'x'.repeat(21), text: 'hi', sentAt: new Date(), expiresAt: chatExpiry() }, ALICE), 403,
             'every client in the room downloads and renders this name');
         assert.equal(await createDoc('triviaRooms/CHATB/chat/c3',
-            { uid: 'alice', displayName: 42, text: 'hi' }, ALICE), 403,
+            { uid: 'alice', displayName: 42, text: 'hi', expiresAt: chatExpiry() }, ALICE), 403,
             'the name is a string');
         assert.equal(await createDoc('triviaRooms/CHATB/chat/c4',
-            { uid: 'alice', displayName: 'Alice', text: 'hi', padding: 'x'.repeat(5000) }, ALICE), 403,
+            { uid: 'alice', displayName: 'Alice', text: 'hi', padding: 'x'.repeat(5000), expiresAt: chatExpiry() }, ALICE), 403,
             'no other field: the 280-character text cap is pointless if anything else can be attached');
     });
 
     test('teardown sweep (audit D6): once the room doc is deleted, chat and leftover player docs are sweepable by any signed-in user', async () => {
         assert.equal(await createDoc('triviaRooms/TORN',
             { code: 'TORN', hostUid: 'host1', status: 'finished', isPrivate: false }, OWNER), 200);
-        assert.equal(await createDoc('triviaRooms/TORN/chat/c1', { uid: 'alice', text: 'bye' }, OWNER), 200);
+        assert.equal(await createDoc('triviaRooms/TORN/chat/c1', { uid: 'alice', text: 'bye', expiresAt: chatExpiry() }, OWNER), 200);
         assert.equal(await createDoc('triviaRooms/TORN/players/alice', { uid: 'alice', score: 1 }, OWNER), 200);
         assert.equal(await deleteDoc('triviaRooms/TORN/chat/c1', HOST), 403, 'room still exists: chat stays');
         assert.equal(await deleteDoc('triviaRooms/TORN/players/alice', HOST), 403, 'room still exists, alice is live');

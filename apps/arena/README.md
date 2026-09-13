@@ -280,6 +280,13 @@ stamp, and `PRESENCE_STALE_MS` after a crash that left no stamp at all.
     last-leaver teardown already uses. A room nobody ever revisits leaves those
     behind, which is what the 269 documents above were.
 
+  Chat has its own expiry since 2026-09-13. Every message carries
+  `expiresAt` (a day, like the room), the chat create rule requires it within
+  48 hours, and a second TTL policy on the `chat` collection group deletes it, so
+  a room nobody revisits no longer keeps its conversation. Enable that policy
+  once: `gcloud firestore fields ttls update expiresAt --collection-group=chat
+  --enable-ttl --project=shevato-site`.
+
   Enabling the policy and Firestore actually deleting anything are separate
   events: the config went ACTIVE immediately, and deletion runs on Google's own
   schedule (documented as typically within 24 h of expiry) with no completion

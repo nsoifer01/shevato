@@ -1384,3 +1384,21 @@ nothing and exits 1, because `node --test` only expands globs from Node 21.
 `.nvmrc` pins 22, so CI is unaffected. On an older default, run the file
 directly (`node --test apps/arena/tests-rules/rules.test.mjs`) and read the
 TAP summary for executed tests.
+
+## Chat expires on its own TTL (2026-09-13)
+
+The room TTL policy on `triviaRooms.expiresAt` deletes the room DOCUMENT only.
+Subcollections are left to the orphan sweep, which runs only when a signed-in
+client opens that room code again, so a room nobody revisits kept its chat
+indefinitely. Counted read-only in production on 2026-09-13: 113 chat messages,
+112 of them in 23 rooms that no longer existed. privacy.html says an abandoned
+room is removed within a day, so the chat was the part that made that untrue.
+
+Every message now carries `expiresAt` (`ROOM_TTL_MS`, a day, set on both the
+text and the emoji send), `firestore.rules` requires it on create within 48
+hours exactly like the room, and a TTL policy on the `chat` collection group
+deletes it. The orphan sweep stays: it clears leftover players and gates, and
+it still removes chat sooner when someone revisits. Pinned by
+`tests/chat-expiry.test.mjs` (both send paths) and the rules suite ("every
+message carries a bounded expiresAt").
+

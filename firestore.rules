@@ -449,7 +449,7 @@ service cloud.firestore {
       allow read: if mayReadRoomContent(roomCode);
       allow create: if request.auth != null
         && isRoomMember(roomCode)
-        && request.resource.data.keys().hasOnly(['uid', 'displayName', 'text', 'sentAt'])
+        && request.resource.data.keys().hasOnly(['uid', 'displayName', 'text', 'sentAt', 'expiresAt'])
         && request.resource.data.uid == request.auth.uid
         && request.resource.data.text is string
         && request.resource.data.text.size() > 0
@@ -459,7 +459,15 @@ service cloud.firestore {
         // (Config.MAX_DISPLAY_NAME). It used to be unbounded, and so was the
         // key set, which made the text cap decorative.
         && request.resource.data.get('displayName', '') is string
-        && request.resource.data.get('displayName', '').size() <= 20;
+        && request.resource.data.get('displayName', '').size() <= 20
+        // Input to a Firestore TTL policy on the `chat` collection group, the
+        // same contract as triviaRooms.expiresAt. The room policy deletes the
+        // room DOCUMENT only, so a room nobody revisited kept its conversation
+        // indefinitely: 112 of the 113 stored messages on 2026-09-13 belonged
+        // to rooms that were already gone.
+        && request.resource.data.expiresAt is timestamp
+        && request.resource.data.expiresAt > request.time
+        && request.resource.data.expiresAt < request.time + duration.value(48, 'h');
       // No edits, no recalls while the room lives - chat stays append-only
       // so moderation is tractable. Once the room doc is deleted (last
       // player left) the messages are orphans and any signed-in user may
