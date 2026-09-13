@@ -728,6 +728,10 @@
   body.tp-shared .tb-more-menu [data-proxy="#shiftTripBtn"],
   body.tp-shared .tb-more-menu [data-proxy="#assistBtn"],
   body.tp-shared .visa-add-field { display: none !important; }
+  /* A shared view has no Add item or undo, so More is the first toolbar control
+     and its right-anchored menu opened off the left edge of a phone (x -127 on a
+     390 px screen, measured on production 2026-09-13), hiding every row. */
+  body.tp-shared .tb-more-menu { left: 0; right: auto; }
 
   /* ---------- visa modal ----------
      per-modal layout only: a scrollable country list with a pill per row is

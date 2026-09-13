@@ -11,7 +11,7 @@ import {
   APP, LS_KEY, recorder, freshIds, iso, item, trip, dbOf, standardTrip,
   openApp, readDb, openTripIdOf, overlayOpenId, tpErrors, openMenu, menuState,
   addItemViaUi, buildShareHash, expandTimeline, gotoHard,
-  closePage, evaluate, clickSel, setValue, pressKey, sleep, waitForExpr,
+  closePage, evaluate, clickSel, setValue, pressKey, sleep, waitForExpr, setViewport,
 } from './helpers.mjs';
 
 // Rows the trip menu must keep live on a shared trip. export-gpx is on the
@@ -95,6 +95,16 @@ export async function run({ base, cdpPort }) {
 
     const bytesAfterVisit = await evaluate(s, `localStorage.getItem(${JSON.stringify(LS_KEY)})`);
     await t('tp-share I: visiting a share never touches local data', bytesAfterVisit === ownedBytes, '', s);
+
+    // On a phone the shared view has no Add item or undo, so More is the first
+    // toolbar control; its menu used to open off the left edge (x -127 at 390).
+    await setViewport(s, 390, 844, true);
+    await evaluate(s, `document.getElementById('tbMoreBtn').click()`);
+    await sleep(300);
+    const moreBox = await evaluate(s, `(()=>{const m=document.getElementById('tbMoreMenu'); if (!m || m.hidden) return null; const b=m.getBoundingClientRect(); return { left: Math.round(b.left), right: Math.round(b.right), vw: innerWidth };})()`);
+    await t('tp-share I: the More menu opens inside a 390 px screen', !!moreBox && moreBox.left >= 0 && moreBox.right <= moreBox.vw, JSON.stringify(moreBox), s);
+    await evaluate(s, `document.getElementById('tbMoreBtn').click()`);
+    await setViewport(s, 1280, 900);
 
     /* -------------------- J. import as my trip --------------------------- */
     await clickSel(s, '#sharedImport', { settle: 900 });

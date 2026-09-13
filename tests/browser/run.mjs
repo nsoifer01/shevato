@@ -250,7 +250,7 @@ const SUITE_SECONDS = {
   'apps/trip-planner/e2e/views.mjs': 49,
   'apps/trip-planner/e2e/core.mjs': 45,
   'apps/football-h2h/e2e/audit-2026-08.mjs': 42,
-  'apps/trip-planner/e2e/share.mjs': 18,
+  'apps/trip-planner/e2e/share.mjs': 19,
   'tests/browser/suites/pwa-gym.mjs': 12,
   'apps/fpl-planner/e2e/free-hit.mjs': 8,
   'apps/trip-planner/e2e/pwa.mjs': 5,
