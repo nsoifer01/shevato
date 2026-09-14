@@ -79,16 +79,31 @@ REJECT, whichever way it goes.
 - **`privacy.html` is binding.** It makes narrow checkable promises per app
   (what is sent, stored, synced, deletable). Check it BEFORE adding tracking,
   identifiers, storage or third-party calls; update it in the same change, and
-  **bump `Last reviewed:` to the date the change SHIPS, not the day you wrote
-  the words.** A review date is a claim about the published page. PR #530 moved
-  it 7 -> 11 September when the paragraphs were written, then ran another day
-  and merged on the 12th, publishing a date older than the content it
-  described, so re-read that line at merge time. `tests/static/privacy-review-date.test.mjs`
-  fails when the policy prose changes and the date does not; when it goes red,
-  bump the date and record the new digest it prints, never the digest alone.
-  Since 2026-09-13 it also compares the prose and date against git (the
-  uncommitted tree against HEAD, a PR against its base, a branch against its
-  merge base), so overwriting `CURRENT.digest` in place no longer turns it green.
+  **set `Last reviewed:` to the UTC calendar date the change reaches master**
+  (`date -u '+%-d %B %Y'`), not the day you wrote the words and not anyone's
+  local date: a review date is a claim about the published page, and GitHub's
+  merge and Netlify's publish are both stamped in UTC. PR #530 dated its
+  paragraphs 11 September and merged on the 12th, publishing a date older than
+  its content, so re-read that line at merge time. Two policy changes on the
+  same UTC day share that day's date. `tests/static/privacy-review-date.test.mjs`
+  fails when the policy prose changes and the date is not the UTC day it ships
+  (today for anything not on master yet, the commit's own day once it is);
+  when it goes red, set the date it names and record the digest it prints. It
+  checks against git, so overwriting `CURRENT.digest` in place does not turn it
+  green. No part of this rule is ever a reason to wait for a date to change.
+- **Dates and clocks: name the zone, and never wait on one without a real
+  dependency.** Published date-only stamps (privacy.html `Last reviewed`) are
+  UTC calendar days, the zone CI, GitHub merges and Netlify deploys run and
+  stamp in. App data is the viewer's LOCAL calendar day on purpose (Gym
+  Tracker, MapTap Rivals), so tests that depend on it pin `TZ` or anchor on the
+  real current week, never a fixed date fed to a real-clock function. The
+  owner's local time names session reports and nothing else. If work is valid
+  now, do it now: wait on a clock only for a genuine external condition (an
+  FPL deadline, a scheduled data refresh), and name that condition before
+  waiting. On 2026-09-13 a session proposed holding a green privacy PR for
+  three hours until the owner's local midnight, when it was already the 14th
+  in UTC and the guard passed; a "blocked until <date>" note carried across a
+  context summary had been treated as a fact instead of a condition to re-check.
 - **Screenshot-verify every visual change** on desktop 1280 AND mobile 390
   before believing it. Computed styles for any colour claim, never eyeballing:
   `assets/css/main.css` sets `button { color:#555 !important }`, a red hover

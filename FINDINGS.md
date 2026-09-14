@@ -62,14 +62,14 @@ What changed:
   templates instead of the `@import`.
 
 `privacy.html` named "a charting library" among what pages load from cdnjs
-and Google Fonts for a day after this shipped. That over-stated what the pages
-contact (it broke no promise), and it could not be corrected on the day: PR #533
-had already published a policy edit under "Last reviewed: 13 September 2026",
-and `tests/static/privacy-review-date.test.mjs` rightly refuses changed policy
-prose without a strictly later date. The clause was dropped on 14 September 2026,
-with the Arena chat and room and MapTap handle corrections that waited for the
-same reason. A policy fix that follows a same-day policy edit waits for the next
-day; it cannot share the date.
+and Google Fonts until 14 September 2026. That over-stated what the pages
+contact (it broke no promise). It was not corrected the same day only because
+the review-date guard then demanded a date strictly LATER than the one PR #533
+had just published, which refused an honest same-day follow-up; the correction
+shipped on the 14th with the Arena chat and room and MapTap handle corrections.
+The guard now asks for the UTC day a change ships instead, so a second policy
+change on the same UTC day keeps its date and nothing waits for a date to roll
+over (`tests/static/privacy-review-date-rule.mjs`).
 
 Guards: `tests/static/third-party-boot-path.test.mjs` (async Firebase modules;
 no third-party script without `async`; no blocking third-party stylesheet in
