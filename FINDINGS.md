@@ -61,14 +61,15 @@ What changed:
 - The generated exercise pages link Inter non-blockingly from the generator
   templates instead of the `@import`.
 
-Blocked until 14 September 2026: `privacy.html` still names "a charting library"
-among what pages load from cdnjs and Google Fonts. That now over-states what
-the pages contact (it breaks no promise), and it cannot be corrected on the day
-this shipped: PR #533 had already published a policy edit under "Last reviewed:
-13 September 2026", and `tests/static/privacy-review-date.test.mjs` rightly
-refuses changed policy prose without a strictly later date, which cannot
-honestly exist before the 14th. The correction is one clause, dropped from the
-"cdnjs and Google Fonts" entry, dated the day it ships.
+`privacy.html` named "a charting library" among what pages load from cdnjs
+and Google Fonts for a day after this shipped. That over-stated what the pages
+contact (it broke no promise), and it could not be corrected on the day: PR #533
+had already published a policy edit under "Last reviewed: 13 September 2026",
+and `tests/static/privacy-review-date.test.mjs` rightly refuses changed policy
+prose without a strictly later date. The clause was dropped on 14 September 2026,
+with the Arena chat and room and MapTap handle corrections that waited for the
+same reason. A policy fix that follows a same-day policy edit waits for the next
+day; it cannot share the date.
 
 Guards: `tests/static/third-party-boot-path.test.mjs` (async Firebase modules;
 no third-party script without `async`; no blocking third-party stylesheet in

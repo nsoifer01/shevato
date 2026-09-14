@@ -50,10 +50,10 @@ const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const html = readFileSync(join(REPO_ROOT, 'privacy.html'), 'utf8');
 
 // The two most recent reviews. Append by moving CURRENT down to PREVIOUS.
-const PREVIOUS = { date: '12 September 2026', digest: '1e4ad68e39a0ee4eb0eb205aa4d3be2843303dd0107982c3c32228cdecb75c72' };
+const PREVIOUS = { date: '13 September 2026', digest: '4714d2c71107a3a1dd66644ca7ac739e710c9a869742bfe60b96d02fb5a2576c' };
 const CURRENT = {
-  date: '13 September 2026',
-  digest: '4714d2c71107a3a1dd66644ca7ac739e710c9a869742bfe60b96d02fb5a2576c',
+  date: '14 September 2026',
+  digest: '4351bc291b5a3173df07cd933517cbbb7db10ced9d142900912c601876f0d8ef',
 };
 
 /**
