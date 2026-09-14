@@ -276,6 +276,54 @@ test('a base branch that keeps moving cannot spin the watcher forever', async ()
   assert.equal(updates, 3, 'bounded by maxBranchUpdates');
 });
 
+// THE RACE (#546, 2026-09-14). GitHub merged the pull request at 21:46:25; the
+// poll a second later still read it open and `behind`, because master already
+// held the merge, and update-branch answered 422 "merge conflict between base
+// and head". The 422 threw: the refresh job went red with its data merged, and
+// the bot branch stayed on the remote because the delete never ran.
+const refusedUpdate = { status: 422, body: { message: 'merge conflict between base and head' } };
+const quietApiFor = (pullAt, onUpdate) => stubApi(({ method, path }) => {
+  if (path === `/repos/${REPO}/pulls/515`) return pullAt();
+  if (path.includes('/actions/runs')) return { workflow_runs: [] };
+  if (path.includes('/check-runs')) return { check_runs: [] };
+  if (path === '/graphql') return { data: {} };
+  if (method === 'PUT' && path.endsWith('/update-branch')) return onUpdate();
+  return {};
+});
+
+test('THE RACE: a pull request merged while it still read as behind ends merged, not red', async () => {
+  let tick = 0;
+  let updates = 0;
+  const ref = 'bot/refresh-rising-shows-20260914-213651';
+  const { api, calls } = quietApiFor(
+    () => (tick === 0
+      ? pull({ mergeable_state: 'behind', head: { sha: '63bcc2c7', ref } })
+      : pull({ merged: true, state: 'closed', merge_commit_sha: '5293edc6', mergeable_state: 'unknown', head: { sha: '63bcc2c7', ref } })),
+    () => { updates += 1; return refusedUpdate; },
+  );
+  const result = await drivePullRequest(api, 515, { log: () => {}, sleep: async () => { tick += 1; }, pollMs: 0 });
+  assert.equal(result.outcome, 'merged', 'the next poll sees the merge instead of the 422 ending the job');
+  assert.equal(updates, 1);
+  assert.deepEqual(calls.filter((c) => c.method === 'DELETE').map((c) => c.path),
+    [`/repos/${REPO}/git/refs/heads/${ref}`], 'and the merged branch is still deleted');
+});
+
+test('a refused update on a pull request that really stays behind still ends bounded', async () => {
+  let updates = 0;
+  const { api } = quietApiFor(() => pull({ mergeable_state: 'behind' }), () => { updates += 1; return refusedUpdate; });
+  const result = await drivePullRequest(api, 515, { log: () => {}, sleep: async () => {}, pollMs: 0 });
+  assert.equal(result.outcome, 'behind', 'reported through the normal outcome, never thrown');
+  assert.equal(updates, 3, 'each refusal still counts against maxBranchUpdates');
+});
+
+test('any other update-branch failure still throws', async () => {
+  const { api } = quietApiFor(() => pull({ mergeable_state: 'behind' }), () => ({ status: 500, body: { message: 'server error' } }));
+  await assert.rejects(
+    () => drivePullRequest(api, 515, { log: () => {}, sleep: async () => {}, pollMs: 0 }),
+    /update-branch -> 500/,
+  );
+});
+
 test('the watch gives up rather than hanging when nothing ever settles', async () => {
   let clock = 0;
   const { api } = stubApi(({ path }) => {
