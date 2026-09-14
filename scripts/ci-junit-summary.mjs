@@ -33,11 +33,14 @@ function attr(tag, name) {
 /** Every testcase as { name, failure, reason, kind: 'pass' | 'fail' | 'skipped' | 'todo' }. */
 export function testcases(xml) {
   const out = [];
-  const re = /<testcase\b([^>]*?)(\/>|>([\s\S]*?)<\/testcase>)/g;
+  // Attributes are read as whole quoted values: node does not escape `>` inside
+  // them (a name like "a -> b", a message quoting `<anonymous>`), so a `[^>]*`
+  // tag pattern stopped mid-name and reported the test as "(unnamed)".
+  const re = /<testcase\b((?:\s+[\w:-]+="[^"]*")*)\s*(\/>|>([\s\S]*?)<\/testcase>)/g;
   for (const m of String(xml).matchAll(re)) {
     const open = `<testcase${m[1]}>`;
     const body = m[3] || '';
-    const skippedTag = (/<skipped\b[^>]*>/.exec(body) || [])[0] || '';
+    const skippedTag = (/<skipped\b(?:\s+[\w:-]+="[^"]*")*\s*\/?>/.exec(body) || [])[0] || '';
     const skippedType = skippedTag ? attr(skippedTag, 'type') : null;
     const failure = attr(open, 'failure');
     let kind = 'pass';

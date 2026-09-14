@@ -80,6 +80,29 @@ test('failing tests are named, with their message, and counted against the total
   assert.doesNotMatch(out, /- passes/, 'a passing test is not listed');
 });
 
+test('a > inside a name or a message does not cut the test off', () => {
+  // node leaves `>` unescaped in attribute values; CI run 34813672046 named two
+  // skipped tests "(unnamed)" because the tag pattern stopped at it.
+  const xml = `<testsuites>
+	<testcase name="a round -> the next round" time="0.1" classname="test">
+		<skipped type="skipped" message="needs >= 2 seasons"/>
+	</testcase>
+	<testcase name="fails at &lt;anonymous> in a > b" time="0.1" classname="test" failure="expected 1 > 2">
+		<failure type="testCodeFailure" message="expected 1 > 2">x</failure>
+	</testcase>
+	<!-- tests 2 -->
+	<!-- fail 1 -->
+	<!-- skipped 1 -->
+	<!-- todo 0 -->
+</testsuites>`;
+  assert.deepEqual(testcases(xml).map((c) => [c.name, c.kind]),
+    [['a round -> the next round', 'skipped'], ['fails at <anonymous> in a > b', 'fail']]);
+  const out = summarize(xml);
+  assert.match(out, /- fails at <anonymous> in a > b - `expected 1 > 2`/);
+  assert.match(out, /- skipped: a round -> the next round - needs >= 2 seasons/);
+  assert.doesNotMatch(out, /\(unnamed\)/);
+});
+
 test('a missing report is reported as missing, never as a pass', () => {
   assert.match(summarize(null), /no JUnit report was written/);
 });
