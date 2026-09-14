@@ -115,9 +115,12 @@ jobs:
         env:
           NODE_OPTIONS: --test-reporter=dot --test-reporter-destination=stdout --test-reporter=junit --test-reporter-destination=unit-tests.junit.xml
         run: npm test
-      - name: Summarize failures
-        if: failure()
-        run: node scripts/ci-junit-summary.mjs unit-tests.junit.xml >> "$GITHUB_STEP_SUMMARY"
+      # On EVERY outcome: `dot` prints no totals, so on a green run this line is
+      # the evidence of how many tests actually executed (and how many were
+      # skipped or quarantined as todo). Printed to the log and the run summary.
+      - name: Summarize results
+        if: always()
+        run: node scripts/ci-junit-summary.mjs unit-tests.junit.xml | tee -a "$GITHUB_STEP_SUMMARY"
       - name: Keep the JUnit report
         if: failure()
         uses: actions/upload-artifact@v7

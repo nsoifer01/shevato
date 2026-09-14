@@ -1,14 +1,22 @@
 #!/usr/bin/env node
-// Turns node:test's JUnit report into a short Markdown failure list for the
-// GitHub run summary.
+// Turns node:test's JUnit report into a short Markdown result for the GitHub
+// run summary and the job log.
 //
-//   node scripts/ci-junit-summary.mjs unit-tests.junit.xml >> "$GITHUB_STEP_SUMMARY"
+//   node scripts/ci-junit-summary.mjs unit-tests.junit.xml | tee -a "$GITHUB_STEP_SUMMARY"
 //
-// The `test` job in .github/workflows/ci.yml prints `dot` output, whose
-// failures are already at the end of the log; this puts the same names on the
-// run's summary page, so "which test failed?" is answered without opening a
-// log at all. No XML dependency: node's JUnit reporter writes flat, attribute-
-// escaped <testcase> elements, which is all this reads.
+// The `test` job in .github/workflows/ci.yml prints `dot` output, which shows
+// failures in full at the end of the log but no totals at all. This runs on
+// every outcome, so a green run still states how many tests executed, and a red
+// one names what failed without anyone opening the log.
+//
+// Two details of node's JUnit shape (measured 2026-09-14) decide the counts:
+//   - a `{ todo }` test (this repo's KNOWN DEFECT quarantine) that fails still
+//     carries a `failure=` attribute, next to `<skipped type="todo">`, although
+//     it does not fail the run. It is counted as todo, never as a failure;
+//   - the root ends with `<!-- tests N -->`, `<!-- pass N -->`, `<!-- fail N -->`,
+//     `<!-- skipped N -->` and `<!-- todo N -->`, the runner's own totals, which
+//     are used whenever present.
+// No XML dependency: the reporter's output is regular enough to read directly.
 import { readFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 
@@ -22,19 +30,55 @@ function attr(tag, name) {
   return m ? unescape(m[1]) : null;
 }
 
+/** Every testcase as { name, failure, kind: 'pass' | 'fail' | 'skipped' | 'todo' }. */
+export function testcases(xml) {
+  const out = [];
+  const re = /<testcase\b([^>]*?)(\/>|>([\s\S]*?)<\/testcase>)/g;
+  for (const m of String(xml).matchAll(re)) {
+    const open = `<testcase${m[1]}>`;
+    const body = m[3] || '';
+    const skippedType = (/<skipped\b[^>]*\btype="([^"]*)"/.exec(body) || [])[1] || null;
+    const failure = attr(open, 'failure');
+    let kind = 'pass';
+    if (skippedType === 'todo') kind = 'todo';
+    else if (skippedType) kind = 'skipped';
+    else if (failure !== null || /<failure\b/.test(body)) kind = 'fail';
+    out.push({ name: attr(open, 'name') || '(unnamed)', failure, kind });
+  }
+  return out;
+}
+
+function totals(xml, cases) {
+  const read = (k) => {
+    const m = new RegExp(`<!--\\s*${k}\\s+(\\d+)\\s*-->`).exec(xml);
+    return m ? Number(m[1]) : null;
+  };
+  const count = (kind) => cases.filter((c) => c.kind === kind).length;
+  return {
+    tests: read('tests') ?? cases.length,
+    fail: read('fail') ?? count('fail'),
+    skipped: read('skipped') ?? count('skipped'),
+    todo: read('todo') ?? count('todo'),
+  };
+}
+
 export function summarize(xml, { limit = 50 } = {}) {
   if (xml == null) {
     return '### Unit tests: no JUnit report was written\n\nThe run ended before the reporter could write it '
       + '(a crash, a timeout, or a failure before any test started). Read the end of the job log.\n';
   }
-  const cases = [...String(xml).matchAll(/<testcase\b[^>]*>/g)].map((m) => m[0]);
-  const failed = cases.filter((tag) => attr(tag, 'failure') !== null);
-  if (!failed.length) return `### Unit tests: all ${cases.length} passed\n`;
+  const cases = testcases(xml);
+  const t = totals(String(xml), cases);
+  const extras = [t.skipped ? `${t.skipped} skipped` : '', t.todo ? `${t.todo} todo` : ''].filter(Boolean).join(', ');
+  const failed = cases.filter((c) => c.kind === 'fail');
+  if (!t.fail && !failed.length) {
+    return `### Unit tests: all ${t.tests} passed${extras ? ` (${extras})` : ''}\n`;
+  }
   const md = (s) => s.replace(/[`|]/g, "'").replace(/\s+/g, ' ').trim();
-  const lines = [`### Unit tests: ${failed.length} of ${cases.length} failed`, ''];
-  for (const tag of failed.slice(0, limit)) {
-    const message = md(attr(tag, 'failure') || '').slice(0, 300);
-    lines.push(`- ${md(attr(tag, 'name') || '(unnamed)')}${message ? ` - \`${message}\`` : ''}`);
+  const lines = [`### Unit tests: ${t.fail || failed.length} of ${t.tests} failed${extras ? ` (${extras})` : ''}`, ''];
+  for (const c of failed.slice(0, limit)) {
+    const message = md(c.failure || '').slice(0, 300);
+    lines.push(`- ${md(c.name)}${message ? ` - \`${message}\`` : ''}`);
   }
   if (failed.length > limit) lines.push(`- ... and ${failed.length - limit} more; the full list is at the end of the job log`);
   return `${lines.join('\n')}\n`;
