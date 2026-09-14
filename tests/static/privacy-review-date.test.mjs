@@ -16,26 +16,36 @@
 // looked covered.
 //
 // So this file asserts the real rule, mechanically: if the policy text changes,
-// the review date must change with it. It keeps the last two (date, digest)
-// pairs. Editing the policy makes CURRENT.digest stop matching the page, and
-// the only way back to green is to record a new pair - at which point the
-// `changed text demands a changed date` assertion below refuses a pair whose
-// date equals the previous one.
+// the review date must be the day that change ships. It keeps the last two
+// (date, digest) pairs. Editing the policy makes CURRENT.digest stop matching
+// the page, and the only way back to green is to record a new pair.
 //
 // THE DIGEST PAIR ALONE HAD A HOLE (2026-09-12 audit C-1). The pair lives in
 // THIS file, so an editor could overwrite CURRENT.digest in place, leave
-// PREVIOUS alone and the date unchanged, and every assertion above passed: the
-// "changed text demands a changed date" check only compares the two slots the
-// editor had just rewritten. Nothing inside a file the editor controls can be
-// an anchor. Git history can: the last test below compares the policy text and
-// the date against the commit this change is being made ON TOP OF (the
-// uncommitted tree against HEAD, a pull request's merge commit against its
-// base, a branch against its merge base with master, and a push to master
-// against the commit before it). If the words moved there, the date must have
-// moved forward too, whatever this file's pair says.
+// PREVIOUS alone and the date unchanged, and every pair assertion passed.
+// Nothing inside a file the editor controls can be an anchor. Git history can:
+// the last test below compares the policy text and the date against the commit
+// this change is being made ON TOP OF (the uncommitted tree against HEAD, a
+// pull request's merge commit against its base, a branch against its merge
+// base with master, and a push to master against the commit before it).
+//
+// THE DATE IS A UTC DAY, AND NEVER SOMETHING TO WAIT FOR (2026-09-14). The git
+// check used to demand a date strictly LATER than the base commit's. That
+// refused an honest same-day follow-up: PR #533 published a policy edit dated
+// 13 September, corrections found later that day could only ship under a later
+// date, and they sat as "blocked until 14 September". A session then read "the
+// 14th" as the owner's local midnight and proposed holding a green PR for hours
+// when it was already the 14th in UTC. Nothing here named a zone either:
+// `new Date('14 September 2026')` is local midnight wherever the test runs.
+// The rule now lives in privacy-review-date-rule.mjs, pinned case by case in
+// its own test: the review date is the UTC calendar day the change reaches
+// master, which is today for anything not on master yet and the commit's own
+// day for a commit already there; two changes on one UTC day share its date;
+// and a date past today's UTC day is refused.
 //
 // WHEN THIS TEST FAILS, the fix is not to regenerate blindly:
-//   1. bump `Last reviewed:` in privacy.html to the date the change SHIPS;
+//   1. set `Last reviewed:` in privacy.html to the UTC date the change ships
+//      (the failure names it; `date -u '+%-d %B %Y'` prints today's);
 //   2. move CURRENT to PREVIOUS here, and write the new date + digest
 //      (the failure message prints the digest it computed).
 import { test } from 'node:test';
@@ -45,15 +55,18 @@ import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { resolve, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import {
+  changedPolicyDateProblem, formatReviewDay, futureDateProblem, reviewDay, utcDay,
+} from './privacy-review-date-rule.mjs';
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const html = readFileSync(join(REPO_ROOT, 'privacy.html'), 'utf8');
 
 // The two most recent reviews. Append by moving CURRENT down to PREVIOUS.
-const PREVIOUS = { date: '12 September 2026', digest: '1e4ad68e39a0ee4eb0eb205aa4d3be2843303dd0107982c3c32228cdecb75c72' };
+const PREVIOUS = { date: '13 September 2026', digest: '4714d2c71107a3a1dd66644ca7ac739e710c9a869742bfe60b96d02fb5a2576c' };
 const CURRENT = {
-  date: '13 September 2026',
-  digest: '4714d2c71107a3a1dd66644ca7ac739e710c9a869742bfe60b96d02fb5a2576c',
+  date: '14 September 2026',
+  digest: '4351bc291b5a3173df07cd933517cbbb7db10ced9d142900912c601876f0d8ef',
 };
 
 /**
@@ -88,17 +101,15 @@ function reviewDate(src = html) {
 }
 
 test('privacy.html still states a parseable review date', () => {
-  const when = new Date(reviewDate());
-  assert.ok(!Number.isNaN(when.valueOf()), `unparseable review date: ${reviewDate()}`);
+  assert.ok(reviewDay(reviewDate()), `unparseable review date: ${reviewDate()}`);
 });
 
-test('the review date is not in the future', () => {
-  // A date ahead of today is either a typo or a promise about a review that has
-  // not happened. One day of slack absorbs timezone skew between a CI runner
-  // and whoever wrote it.
-  const when = new Date(reviewDate());
-  const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000);
-  assert.ok(when <= tomorrow, `review date ${reviewDate()} is in the future`);
+test('the review date is not past today in UTC', () => {
+  // A date past today's UTC day is either a typo or a promise about a review
+  // that has not happened. No slack: the day is UTC for everyone, so there is
+  // no skew between a CI runner and whoever wrote the date to absorb.
+  const problem = futureDateProblem(reviewDate(), Date.now());
+  assert.equal(problem, null, problem);
 });
 
 test('privacy.html and this file agree on the review date', () => {
@@ -111,19 +122,19 @@ test('THE RULE: the policy text cannot change while the review date stands still
   const actual = digestOf(policyText());
   assert.equal(actual, CURRENT.digest,
     'The words in privacy.html changed. That is a review.\n'
-    + '  1. bump `Last reviewed:` in privacy.html to the date this change SHIPS\n'
+    + `  1. set \`Last reviewed:\` in privacy.html to the UTC date this change ships (today in UTC: ${formatReviewDay(utcDay(Date.now()))})\n`
     + '  2. in tests/static/privacy-review-date.test.mjs, move CURRENT to PREVIOUS and record:\n'
-    + `       { date: '<the new date>', digest: '${actual}' }\n`
-    + 'Do not record a new digest under the old date: the next assertion refuses it.');
+    + `       { date: '<that date>', digest: '${actual}' }\n`
+    + 'A second change on the same UTC day keeps the date; the git check below says which day it is.');
 });
 
-test('a changed policy demands a changed date, not just a new digest', () => {
-  // The half that gives the check teeth. Recording a fresh digest under the
-  // previous date is exactly the mistake PR #530 shipped, so it is the one
-  // thing this file will not accept.
+test('a changed policy never moves the review date backwards', () => {
+  // Equal dates are allowed: two policy changes on one UTC day were both
+  // reviewed that day. Whether the date is the RIGHT day is the git check's
+  // job below, because only git knows when the change was made.
   if (CURRENT.digest === PREVIOUS.digest) return;   // text unchanged: nothing to demand
-  assert.notEqual(CURRENT.date, PREVIOUS.date,
-    `the policy text changed but the review date stayed at ${CURRENT.date}`);
+  assert.ok(reviewDay(CURRENT.date) >= reviewDay(PREVIOUS.date),
+    `the policy text changed and the review date moved back from ${PREVIOUS.date} to ${CURRENT.date}`);
 });
 
 test('the fingerprint covers the prose a reader sees, and excludes the comments around it', () => {
@@ -150,24 +161,37 @@ function tryGit(args) {
 }
 
 /**
- * The privacy.html this change is being made on top of, and why that commit.
- * null only when there is no usable history (a shallow single-commit checkout,
- * or no git at all), in which case the digest pair above is the only guard.
+ * The privacy.html this change is being made on top of, why that commit, and
+ * when the change ships. A commit already on master shipped at its own commit
+ * time (a GitHub squash merge is stamped at the merge), so a rerun on a later
+ * day judges it by the day it landed; anything else (uncommitted edits, a pull
+ * request's test merge, a branch) has not shipped, so it ships no earlier than
+ * now. null only when there is no usable history (a shallow single-commit
+ * checkout, or no git at all), in which case the digest pair above is the only
+ * guard.
  */
 function baseVersion() {
   const atHead = tryGit(['show', 'HEAD:privacy.html']);
   if (atHead === null) return null;
+  const notShipped = { shipsAt: Date.now(), shipsFrom: 'now (not on master yet)' };
   // 1. Uncommitted edits: the working tree against the commit it sits on.
-  if (atHead !== html) return { src: atHead, from: 'HEAD (uncommitted changes)' };
+  if (atHead !== html) return { src: atHead, from: 'HEAD (uncommitted changes)', ...notShipped };
   const line = tryGit(['rev-list', '--parents', '-n', '1', 'HEAD']);
   if (!line) return null;
   const [head, ...parents] = line.trim().split(/\s+/);
+  const onMaster = ['origin/master', 'master'].some((ref) => tryGit(['merge-base', '--is-ancestor', 'HEAD', ref]) !== null);
+  let ships = notShipped;
+  if (onMaster) {
+    const committed = Date.parse(String(tryGit(['log', '-1', '--format=%cI', 'HEAD'])).trim());
+    if (Number.isNaN(committed)) return null;
+    ships = { shipsAt: committed, shipsFrom: 'the commit time of HEAD, already on master' };
+  }
   const at = (rev, from) => {
     const src = tryGit(['show', `${rev}:privacy.html`]);
-    return src === null ? null : { src, from };
+    return src === null ? null : { src, from, ...ships };
   };
-  // 2. A pull request is tested as a merge commit; its first parent is the base.
-  if (parents.length >= 2) return at(parents[0], 'first parent of the merge commit (the pull request base)');
+  // 2. A merge commit: its first parent is the base (a pull request's test merge, or a merge on master).
+  if (parents.length >= 2) return at(parents[0], 'first parent of the merge commit');
   // 3. A branch: the point it left master.
   for (const ref of ['origin/master', 'master']) {
     const mb = tryGit(['merge-base', 'HEAD', ref]);
@@ -178,18 +202,16 @@ function baseVersion() {
   return null;
 }
 
-test('THE RULE, anchored in git: changed policy text since the base commit demands a later review date', (t) => {
+test('THE RULE, anchored in git: changed policy text carries the UTC date it ships', (t) => {
   const base = baseVersion();
   if (!base) {
     t.diagnostic('no git base resolvable (shallow or missing history); the digest pair above is the only guard in this run');
     return;
   }
   if (policyText(base.src) === policyText()) return; // no policy text change: nothing to demand
-  const was = reviewDate(base.src);
-  const now = reviewDate();
-  assert.notEqual(now, was,
-    `The policy text in privacy.html changed since ${base.from}, but "Last reviewed" still reads ${now}. `
-    + 'Bump it to the date this change SHIPS. (Overwriting CURRENT.digest in this file does not satisfy this check.)');
-  assert.ok(new Date(now) > new Date(was),
-    `"Last reviewed" moved from ${was} to ${now}, which is not later. A changed policy needs a later review date.`);
+  t.diagnostic(`base: ${base.from}; ships: ${base.shipsFrom}, ${utcDay(base.shipsAt)} UTC`);
+  const problem = changedPolicyDateProblem({ was: reviewDate(base.src), date: reviewDate(), shipsAt: base.shipsAt });
+  assert.equal(problem, null,
+    `The policy text in privacy.html changed since ${base.from}: ${problem} `
+    + '(Overwriting CURRENT.digest in this file does not satisfy this check.)');
 });

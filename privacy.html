@@ -93,7 +93,7 @@
 
       <article class="about-shell">
 
-        <p><strong>Last reviewed:</strong> 13 September 2026.
+        <p><strong>Last reviewed:</strong> 14 September 2026.
           <!-- THE RULE, for whoever is editing this file (it is not the owner's chore):
                if your change alters what any app sends, stores, syncs or deletes, OR
                alters the wording below, bump this date IN THE SAME PULL REQUEST, to the
@@ -192,8 +192,8 @@
           </li>
           <li>
             <div>
-              <h3>Chat is readable by any signed-in visitor, and lasts as long as the room</h3>
-              <p>Room chat messages are stored with your display name and account id. The security rules allow no edits, and no deletions at all while the room is open, so nothing can be recalled mid-game. When the last player leaves, the room is deleted and its chat goes with it. A room that is never closed cleanly keeps its chat until it is.</p>
+              <h3>Chat is readable only by the room's players, and is deleted within about two days</h3>
+              <p>Room chat messages are stored with your display name and account id, and while the room exists only its players can read them. The security rules allow no edits, and no deletions at all while the room is open, so nothing can be recalled mid-game. When the last player leaves, the room is deleted and its chat goes with it. Every message is also given an expiry of a day when it is sent, after which the database deletes it, usually within another day, so a room nobody closes does not keep its chat. In the gap between a room expiring and its chat expiring, a signed-in visitor who has the room code could read what is left.</p>
             </div>
           </li>
           <li>
@@ -205,7 +205,7 @@
           <li>
             <div>
               <h3>Head-to-head records and rooms are shared too</h3>
-              <p>Multiplayer results create per-pair win/loss records carrying both players' display names, readable by any signed-in visitor. Game rooms themselves are readable by any signed-in visitor who has the room code.</p>
+              <p>Multiplayer results create per-pair win/loss records carrying both players' display names, readable by any signed-in visitor. A game room itself, with its players and its chat, is readable only by the players in it; a signed-in visitor who has the room code can see only that the room exists, which game it is, and whether it needs a password.</p>
             </div>
           </li>
           <li>
@@ -223,8 +223,8 @@
         <ol class="process-steps">
           <li>
             <div>
-              <h3>A claim on your MapTap.gg username, readable by any signed-in visitor</h3>
-              <p>A record named after your MapTap.gg username, holding your account id and the username as you entered it. It is how the app turns a rival's MapTap username into someone on the network, so any signed-in visitor can read it, and that includes someone playing Arena as a guest, because guest play signs in anonymously. It records that you claimed the username, not that you own that maptap.gg account: the first claim wins, and only the person who made it can release it.</p>
+              <h3>A claim on your MapTap.gg username, which an account holder can look up by that username</h3>
+              <p>A record named after your MapTap.gg username, holding your account id and the username as you entered it. It is how the app turns a rival's MapTap username into someone on the network, so anyone signed in with an account can look it up by that exact username. Nobody can list the claims, and a guest sign-in, including Arena guest play, cannot read them at all. It records that you claimed the username, not that you own that maptap.gg account: the first claim wins, and only the person who made it can release it.</p>
             </div>
           </li>
           <li>
@@ -333,7 +333,7 @@
           </div>
           <div class="skill-row">
             <h3>cdnjs and Google Fonts</h3>
-            <p>Some pages load icon fonts, a charting library and web fonts from these CDNs. They see your IP address and the referring page.</p>
+            <p>Some pages load icon fonts and web fonts from these CDNs. They see your IP address and the referring page.</p>
           </div>
         </div>
 
@@ -406,7 +406,7 @@
         <p>Two things survive, and we would rather say so than imply otherwise:</p>
 
         <ul>
-          <li>Anything you typed in Arena room chat, in any room that is still open. Chat cannot be edited or recalled while a room is live; it is deleted along with the room when the last player leaves, and every room is also given an expiry when it is created, so a room whose players all closed their browsers is removed within a day rather than sitting there.</li>
+          <li>Anything you typed in Arena room chat, in any room that is still open. Chat cannot be edited or recalled while a room is live; it is deleted along with the room when the last player leaves, and every room and every chat message is also given an expiry of a day, after which the database deletes it, usually within another day, so a room whose players all closed their browsers does not sit there.</li>
           <li>Other devices you're signed in on keep their own local copy of your app data until it's cleared there. They lose access to the cloud copy immediately, because the account no longer exists.</li>
         </ul>
 
