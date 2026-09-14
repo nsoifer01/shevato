@@ -197,7 +197,7 @@ coverage.
 | Area | U | E | A | V | M | Err | Notes |
 |---|---|---|---|---|---|---|---|
 | Marketing site + hub | part | FULL | FULL | FULL | FULL | part | Search/filters/switcher/nav/forms E2E; main.js auth modal has keyboard checks only |
-| Arena | FULL | FULL | FULL | FULL | FULL | FULL | Extracted modules deep; since 2026-08-16: 23 emulator rules tests + 27-check two-client multiplayer e2e (separate commands; CI runs both in arena-rules.yml on pull requests and master pushes that can affect Arena, plus weekly) |
+| Arena | FULL | FULL | FULL | FULL | FULL | FULL | Extracted modules deep; since 2026-08-16: 23 emulator rules tests + 27-check two-client multiplayer e2e (separate commands; CI runs both in the `rules-shard` jobs of ci.yml, split across two machines, on pull requests and master pushes that can affect Arena, plus weekly unscoped in scheduled.yml) |
 | Football H2H | FULL | FULL | FULL | FULL | FULL | FULL | Live add path now vm-tested; correctness asserted in browser |
 | FPL Planner | FULL | FULL | FULL | FULL | FULL | FULL | Deepest estate; engine + UI + proxy + e2e lifecycle |
 | Gym Tracker | FULL | FULL | FULL | FULL | FULL | FULL | Views via source extraction; SW at unit + browser layers |
@@ -247,6 +247,13 @@ Unit/integration layer, source files only, test files excluded, line-weighted
 
 Read these numbers with care, in both directions:
 
+- Per-file figures come from Node's LCOV report with every module instance
+  of a file merged (since 2026-09-14): a line counts as covered if any
+  instance ran it. Node's TAP table credits one instance per path, so tests
+  that re-import a module with `?page=N` (the sync account-boundary suite)
+  made storage-sync-robust.js read 59.61% and sync-system 69.54%; merged,
+  they read 93.98% and 93.36%. Branch and function % are approximate across
+  instances; the floors use line % only.
 - Files that only browser tests exercise never appear in V8 coverage, and
   neither do files loaded via `node:vm` or tested by source extraction
   (mario-kart's core files, football-h2h's sidebar, analytics.js, both
@@ -626,11 +633,13 @@ defect fixes stamped above:
   the same property and verifies its header contract producer-side).
 - **The arena rules/emulator suites need Java plus a one-time
   firebase-tools download**, so they are separate commands with their own CI
-  workflow (arena-rules.yml: pull requests and master pushes that can affect
-  Arena, plus weekly), not part of `npm test`; locally they skip cleanly (and
-  loudly) where Java is absent.
+  jobs (`rules-shard` in ci.yml: pull requests and master pushes that can
+  affect Arena, split across two machines; weekly unscoped in scheduled.yml),
+  not part of `npm test`; locally they skip cleanly (and loudly) where Java is
+  absent.
 - Some browser checks depend on the gitignored rising-shows dataset and skip
-  cleanly on a fresh clone (6 checks, reported, with the fetch command).
+  cleanly on a fresh clone (reported, with the fetch command). On CI they always
+  run: the shards prepare the dataset, and CI mode fails any precondition skip.
 
 ## Recommended next steps (all optional polish; nothing load-bearing open)
 
@@ -772,4 +781,48 @@ are recorded here so the next session does not have to re-measure.
 **Also not adopted:** Prettier, any style preset, or `eslint:recommended`
 wholesale. The `eslint-disable` comments already in the codebase refer to the
 unenabled hygiene rules, which is why `reportUnusedDisableDirectives` is off.
+
+## Addendum, 2026-09-14: CI made deterministic
+
+Pull-request CI had become slow and red for reasons unrelated to the change
+under review. The evidence (400 runs, every failed log, the mechanism behind
+each failure class) and the full list of defects are in the root
+`FINDINGS.md`, "Why pull-request CI failed, and what the pipeline is now".
+What changed in the testing architecture itself:
+
+- **One pipeline.** `.github/workflows/ci.yml` replaces `test.yml`, `lint.yml`,
+  `browser-tests.yml` and `arena-rules.yml`; `scheduled.yml` replaces
+  `cross-browser.yml` and the weekly coverage and Arena schedules. The required
+  checks (`lint`, `test`, `browser`, `rules`) keep their names. A push to master
+  whose exact tree already passed on its pull request is skipped by
+  `scripts/ci-already-tested.mjs`; every uncertain answer runs the suites.
+- **The browser layer no longer touches the internet.** Every page answers
+  third-party requests from `tests/browser/third-party.mjs`: the CDN assets the
+  site references from a committed mirror, the date-varying MapTap puzzle from
+  a fixture, everything else refused. `tests/static/browser-third-party.test.mjs`
+  keeps the mirror complete. This extends the standing rule "Depend on live
+  third-party APIs in the deterministic suites: never" from APIs to every
+  third-party byte.
+- **CI mode.** On CI (`BROWSER_TEST_CI=1`) a precondition skip or a suite that
+  asserted nothing is a failure, and CI prepares every precondition (the Rising
+  Shows dataset, the generated Gym Tracker pages, the one built show page), so a
+  commit asserts the same set of things on every run. Known-defect quarantines
+  are unaffected.
+- **The unit layer states what ran.** The `test` job restores the same pinned
+  dataset (one composite action, `.github/actions/rising-shows-dataset`), so
+  the ten real-catalogue Rising Shows tests (`shows-index-parity`,
+  `finder-moods`) run on CI; they had skipped on every CI run before. Its
+  summary gives the runner's totals and names every skipped or todo test on
+  every run. The skips that remain are deliberate: six FPL tests that need
+  seasons downloaded from the live FPL API, and one `@netlify/blobs` version
+  check that needs an npm install the job does not do.
+- **Infrastructure is labelled.** A browser that dies mid-run fails its suite
+  once as `INFRASTRUCTURE` and the next suite gets a new browser; a browser that
+  never starts reports its exit and stderr; each shard and the unit job write a
+  failure summary to the run page.
+- **Hangs are bounded.** `npm test` and the coverage runner pass
+  `--test-timeout=180000`; every CI job has a timeout.
+- **Coverage merges module instances.** The floors are measured from LCOV with
+  every instance of a file merged (the table counted one `?page=N` instance
+  and failed sync-system at 69.54%; merged it is 93.36%). Floors unchanged.
 

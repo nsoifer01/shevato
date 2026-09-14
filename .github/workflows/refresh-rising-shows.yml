@@ -510,11 +510,11 @@ jobs:
       # GitHub, this would strand one timestamped bot/refresh-rising-shows-*
       # branch every day.
       #
-      # 75 minutes is the watch window. The four required checks cost about 15
-      # minutes together on a change like this one (lint ~1, test ~2, browser
-      # ~12 across four shards, rules ~1 because its Scope step finds no
-      # emulator inputs), and the window has to hold a second round in case
-      # master moves and the branch has to be updated.
+      # 75 minutes is the watch window. The four required checks all come from
+      # one ci.yml run, which on a change like this one is its browser shards
+      # (the `rules` Scope step finds no emulator inputs and skips the suites),
+      # and the window has to hold a second round in case master moves and the
+      # branch has to be updated.
       - name: Drive the pull request through CI and auto-merge
         if: steps.open_pr.outputs.number != ''
         env:

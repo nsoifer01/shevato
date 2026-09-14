@@ -1,5 +1,6 @@
 // Minimal CDP driver. Node 20 needs --experimental-websocket for global WebSocket.
 import http from 'node:http';
+import { thirdPartyResponse } from './third-party.mjs';
 
 // ---------------------------------------------------------------------------
 // Wait accounting.
@@ -14,14 +15,16 @@ import http from 'node:http';
 // run.mjs snapshots them around each suite and prints the breakdown. They are
 // two additions on paths that are already awaiting a timer, so leaving them on
 // costs nothing measurable.
-export const waitStats = { fixedMs: 0, pollMs: 0, navMs: 0, gotos: 0, polls: 0 };
-export function snapshotWaits() { return { ...waitStats }; }
+export const waitStats = { fixedMs: 0, pollMs: 0, navMs: 0, gotos: 0, polls: 0, fixedBy: {} };
+export function snapshotWaits() { return { ...waitStats, fixedBy: { ...waitStats.fixedBy } }; }
 export function waitsSince(before) {
   const now = waitStats;
+  const fixedBy = {};
+  for (const [k, v] of Object.entries(now.fixedBy)) fixedBy[k] = v - (before.fixedBy[k] || 0);
   return {
     fixedMs: now.fixedMs - before.fixedMs, pollMs: now.pollMs - before.pollMs,
     navMs: now.navMs - before.navMs, gotos: now.gotos - before.gotos,
-    polls: now.polls - before.polls,
+    polls: now.polls - before.polls, fixedBy,
   };
 }
 
@@ -31,7 +34,11 @@ const rawSleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // The counted one. Everything a suite does deliberately - goto settle, click
 // settle, an explicit sleep in a suite - goes through here.
-const sleep = (ms) => { waitStats.fixedMs += ms; return rawSleep(ms); };
+const sleep = (ms, source = 'sleep') => {
+  waitStats.fixedMs += ms;
+  waitStats.fixedBy[source] = (waitStats.fixedBy[source] || 0) + ms;
+  return rawSleep(ms);
+};
 
 function httpJson(port, path, method = 'GET') {
   return new Promise((resolve, reject) => {
@@ -131,7 +138,23 @@ export async function newPage(port) {
       s.netFails.push(`HTTP ${p.response.status} ${p.response.url}`);
     }
   });
+  await installThirdPartyAnswers(s);
   return s;
+}
+
+// Every page answers third-party requests locally from the first navigation
+// (tests/browser/third-party.mjs): the CDN assets from the committed mirror,
+// anything else refused. `https://*` pauses only secure requests, and every
+// first-party URL here is plain http on 127.0.0.1, so the site's own files are
+// not slowed by it; interceptNetwork() widens it to `*` for suites whose
+// rules stand in for first-party files too.
+async function installThirdPartyAnswers(s) {
+  if (s.thirdPartyAnswers) return;
+  s.thirdPartyAnswers = true;
+  // What was refused, for a check's own detail when a refusal is the cause.
+  s.blockedThirdParty = [];
+  s.on((method, p) => { if (method === 'Fetch.requestPaused') answerPausedRequest(s, p); });
+  await s.send('Fetch.enable', { patterns: [{ urlPattern: 'https://*' }] });
 }
 
 export async function closePage(port, s) {
@@ -182,7 +205,7 @@ export async function goto(s, url, { settle = 2500 } = {}) {
   }
   waitStats.navMs += Date.now() - navStart;
   waitStats.gotos += 1;
-  await sleep(settle);
+  await sleep(settle, 'goto');
 }
 
 // Entries from s.netFails whose URL is same-origin with base (the local
@@ -298,7 +321,7 @@ export async function hoverSel(s, sel, { nth = 0, settle = 300 } = {}) {
   await s.send('Input.dispatchMouseEvent', {
     type: 'mouseMoved', x: Math.round(box.x), y: Math.round(box.y), button: 'none', buttons: 0,
   });
-  await sleep(settle);
+  await sleep(settle, 'hover');
   return true;
 }
 
@@ -322,7 +345,7 @@ export async function clickSel(s, sel, { nth = 0, settle = 400 } = {}) {
   })()`);
   if (!box || box.zero) return false;
   await clickAt(s, box.x, box.y);
-  await sleep(settle);
+  await sleep(settle, 'click');
   return true;
 }
 
@@ -337,7 +360,7 @@ export async function typeInto(s, sel, text, { nth = 0 } = {}) {
   // Frameworks here are vanilla, but fire both so listeners on either path see it.
   await evaluate(s, `(()=>{const e=[...document.querySelectorAll(${JSON.stringify(sel)})][${nth}];
     if(e){e.dispatchEvent(new Event('input',{bubbles:true}));e.dispatchEvent(new Event('change',{bubbles:true}));} return 1})()`);
-  await sleep(200);
+  await sleep(200, 'type');
   return true;
 }
 
@@ -357,7 +380,7 @@ export async function pressKey(s, key, code, keyCode, modifiers = 0, text) {
   if (text !== undefined) { down.text = text; down.unmodifiedText = text; }
   await s.send('Input.dispatchKeyEvent', down);
   await s.send('Input.dispatchKeyEvent', { type: 'keyUp', ...p });
-  await sleep(150);
+  await sleep(150, 'key');
 }
 
 // Seed storage then boot, because app state is closure-scoped and only read at
@@ -426,7 +449,7 @@ export async function clickText(s, text, { sel = 'button,a,[role=tab],label', ex
   })()`);
   if (!box) return false;
   await clickAt(s, box.x, box.y);
-  await sleep(settle);
+  await sleep(settle, 'click');
   return true;
 }
 
@@ -457,9 +480,12 @@ export const cleanErrors = (s) => s.errors.filter((e) => !NOISE.test(e));
 // Network interception (CDP Fetch domain).
 //
 // rules(url, request) is called for every request the PAGE issues and returns:
-//   null/undefined      -> let it through
+//   null/undefined      -> no opinion: first-party goes through, third-party is
+//                          answered by tests/browser/third-party.mjs (mirror
+//                          or refusal), never by the live internet
 //   'fail'              -> abort it (looks like the network refusing)
-//   { status, body, contentType } -> fulfill with a canned response
+//   'hold'              -> leave it paused and never answer (a stalled network)
+//   { status, body, contentType, headers } -> fulfill with a canned response
 //
 // Interception sees page-issued requests only: a request the service worker
 // makes on the page's behalf belongs to the worker target, not this one. The
@@ -467,39 +493,51 @@ export const cleanErrors = (s) => s.errors.filter((e) => !NOISE.test(e));
 // always originate here and are always interceptable.
 export async function interceptNetwork(s, rules) {
   s.netRules = rules;
-  if (s.netIntercepting) return;
-  s.netIntercepting = true;
-  s.on(async (method, p) => {
-    if (method !== 'Fetch.requestPaused') return;
-    let verdict = null;
-    try { verdict = s.netRules ? s.netRules(p.request.url, p.request) : null; } catch { verdict = null; }
-    try {
-      if (verdict === 'fail') {
-        await s.send('Fetch.failRequest', { requestId: p.requestId, errorReason: 'ConnectionRefused' });
-      } else if (verdict && typeof verdict === 'object') {
-        const body = typeof verdict.body === 'string' ? verdict.body : JSON.stringify(verdict.body ?? {});
-        // `headers` lets a suite stand in for a real upstream that says
-        // something in its headers rather than its body: the FPL proxy reports
-        // freshness through x-fpl-stale / x-fpl-age-seconds, and a test that
-        // could not set those could not exercise the stale paths at all.
-        const extraHeaders = Object.entries(verdict.headers || {})
-          .map(([name, value]) => ({ name, value: String(value) }));
-        await s.send('Fetch.fulfillRequest', {
-          requestId: p.requestId,
-          responseCode: verdict.status || 200,
-          responseHeaders: [
-            { name: 'Content-Type', value: verdict.contentType || 'application/json' },
-            { name: 'Access-Control-Allow-Origin', value: '*' },
-            ...extraHeaders,
-          ],
-          body: Buffer.from(body).toString('base64'),
-        });
-      } else {
-        await s.send('Fetch.continueRequest', { requestId: p.requestId });
-      }
-    } catch { /* target navigated away mid-flight; nothing to do */ }
-  });
+  await installThirdPartyAnswers(s);
+  if (s.netAllRequests) return;
+  s.netAllRequests = true;
   await s.send('Fetch.enable', { patterns: [{ urlPattern: '*' }] });
+}
+
+async function answerPausedRequest(s, p) {
+  const url = p.request.url;
+  let verdict = null;
+  try { verdict = s.netRules ? s.netRules(url, p.request) : null; } catch { verdict = null; }
+  if (verdict === 'hold') return;
+  let refusal = 'ConnectionRefused';
+  if (verdict == null) {
+    verdict = thirdPartyResponse(url);
+    // Offline emulation has to refuse the mirror as well, or an "offline"
+    // page would still load the SDK and fonts from memory.
+    if (verdict != null && s.offline) { verdict = 'fail'; refusal = 'InternetDisconnected'; }
+    if (verdict === 'fail') s.blockedThirdParty.push(url);
+  }
+  try {
+    if (verdict === 'fail') {
+      await s.send('Fetch.failRequest', { requestId: p.requestId, errorReason: refusal });
+    } else if (verdict && typeof verdict === 'object') {
+      const raw = verdict.body;
+      const body = Buffer.isBuffer(raw) ? raw : Buffer.from(typeof raw === 'string' ? raw : JSON.stringify(raw ?? {}));
+      // `headers` lets a suite stand in for a real upstream that says
+      // something in its headers rather than its body: the FPL proxy reports
+      // freshness through x-fpl-stale / x-fpl-age-seconds, and a test that
+      // could not set those could not exercise the stale paths at all.
+      const extraHeaders = Object.entries(verdict.headers || {})
+        .map(([name, value]) => ({ name, value: String(value) }));
+      await s.send('Fetch.fulfillRequest', {
+        requestId: p.requestId,
+        responseCode: verdict.status || 200,
+        responseHeaders: [
+          { name: 'Content-Type', value: verdict.contentType || 'application/json' },
+          { name: 'Access-Control-Allow-Origin', value: '*' },
+          ...extraHeaders,
+        ],
+        body: body.toString('base64'),
+      });
+    } else {
+      await s.send('Fetch.continueRequest', { requestId: p.requestId });
+    }
+  } catch { /* target navigated away mid-flight; nothing to do */ }
 }
 
 // Every host the trip planner can call out to. Kept here so a suite can block
@@ -507,6 +545,7 @@ export async function interceptNetwork(s, rules) {
 export const EXTERNAL_HOSTS = /photon\.komoot\.io|nominatim\.openstreetmap\.org|geocoding-api\.open-meteo\.com|archive-api\.open-meteo\.com|api\.open-meteo\.com|api\.frankfurter\.(app|dev)|api\.openai\.com|raw\.githubusercontent\.com|tile\.openstreetmap\.org|googletagmanager|google-analytics|gstatic\.com|googleapis\.com|firebaseio\.com|\/\.netlify\/functions\//i;
 
 export async function setOffline(s, offline) {
+  s.offline = !!offline;
   await s.send('Network.emulateNetworkConditions', {
     offline: !!offline, latency: 0, downloadThroughput: -1, uploadThroughput: -1,
   });

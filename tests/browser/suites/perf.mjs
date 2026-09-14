@@ -145,10 +145,11 @@ const HOME_JS_BUDGET = 310_000;
 // cannot quietly drift into a shape the app no longer meets in production.
 //
 // Alternatives considered and rejected:
-//   - Fetching the real dataset in browser-tests.yml. 111 MB and minutes on
-//     every pull request, for a contract a 6 KB fixture proves just as well;
-//     browser-tests.yml already rejected that trade for the six data-gated
-//     apps.mjs checks and the same reasoning holds here.
+//   - Asserting this contract against the real dataset. CI does prepare it
+//     now (for the suites that need real shows), but a contract about WHICH
+//     dataset files are fetched is proven exactly by a 6 KB fixture whose
+//     shape is known, and would drift with every data refresh against the
+//     real one.
 //   - Making perf.mjs fail when data-index.json is absent. That turns a
 //     missing gitignored build artifact into a red build on every PR, which
 //     trains everyone to ignore the suite, and it still asserts nothing about

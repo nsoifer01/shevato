@@ -259,10 +259,11 @@ npm test                   # fast gate: all unit/integration + static checks, no
                            #   (about three minutes; CI on every push to master and every PR)
 npm run test:browser       # full browser estate: site, apps, a11y, visual, perf, PWA, app E2E (CI on PRs + master)
                            #   (46 minutes locally, serial, measured 2026-09-05; CI splits it
-                           #   across a four-job matrix, `-- --shard=<i>/<n>`, and the shards are
-                           #   packed by MEASURED cost, so the gate clears in about twelve)
-npm run test:browser:parallel  # the same estate, 4 shards at once on this machine (about twelve
-                           #   minutes). Each shard gets its own port pair, static server, Chrome
+                           #   across a six-job matrix, `-- --shard=<i>/<n>`, and the shards are
+                           #   packed by MEASURED cost). Never touches the internet: third-party
+                           #   requests are served from tests/browser/vendor/third-party/
+npm run test:browser:parallel  # the same estate, 4 shards at once on this machine (11.1
+                           #   minutes, measured 2026-09-14). Each shard gets its own port pair, static server, Chrome
                            #   and profile, so it is the same isolation CI gets. `-- --shards=<n>`
                            #   to change the width; it refuses to start if a port is busy.
 npm run test:all           # "is this change safe to merge": lint, then npm test, then test:browser
@@ -272,7 +273,7 @@ npm run test:cross-browser # Firefox/WebKit smoke (needs: npm install && npx pla
 npm run test:arena:rules   # Firestore security-rules suite vs the local emulator
 npm run test:arena:emulator# two-client multiplayer e2e vs the local emulators
                            #   (both need Java 21 + a one-time firebase-tools download;
-                           #   CI runs both via arena-rules.yml on PRs and master pushes
+                           #   CI runs both in ci.yml's `rules` job on PRs and master pushes
                            #   that can affect Arena, plus weekly)
 npm run test:<app>         # one app's unit suite (gym, football, fpl-planner, rising-shows, mario-kart,
                            #   arena, maptap, trip-planner); test:static, test:sync, test:analytics,
@@ -367,15 +368,28 @@ Fixing the product bug is a separate change from the test that documents it.
 - The browser runner prints per-suite pass/skip counts and pins expected
   check counts for every harness-owned suite (see EXPECTED_CHECKS in
   run.mjs), so a crashed block cannot silently shrink the denominator.
-- CI (`.github/workflows/`): `tests` (unit + static + syntax, every push to
-  master and every PR, plus a weekly job enforcing the coverage floors),
-  `lint` (every push to master and every PR), `browser tests` (PRs + master
-  pushes + manual dispatch), `cross-browser smoke` (weekly + manual
-  dispatch), `arena emulator` (the rules suite and the two-client e2e against
-  the emulators, on PRs and master pushes that can affect Arena, plus
-  weekly), `Refresh Rising Shows data` (daily; publishes the dataset release
-  and merges the derived files), and `bot pr autopilot` (drives the refresh
-  bot's pull requests through their required checks to auto-merge).
+- CI (`.github/workflows/`):
+  - `ci` is the whole pull-request gate, one workflow: `lint`, `test` (every
+    `node:test` file with the Rising Shows dataset present, so the
+    real-catalogue tests run; `dot` output plus a summary on every run that
+    states the totals and names every skipped test), the
+    `browser-shard` matrix (six shards) with its `browser` verdict, and the
+    `rules-shard` pair with its `rules` verdict (the Arena rules suite and the
+    multi-client e2e against the emulators, split across two machines and
+    scoped to changes that can move them). They all start together. The required status checks
+    are those job names. On a push to master a `plan` job first asks
+    `scripts/ci-already-tested.mjs` whether that exact tree already passed on
+    its pull request, and skips the suites if so; every uncertain answer runs
+    them. A newer commit on a pull request cancels the older run. On a push,
+    `dataset-cache` keeps the Rising Shows dataset cache warm on master, where
+    every pull request's shards can restore it.
+  - `scheduled` (weekly + manual): the full `ci` pipeline against master
+    unscoped, the coverage floors, and the Firefox/WebKit smoke.
+  - `Refresh Rising Shows data` (daily; publishes the dataset release and
+    opens the derived-files pull request) and `bot pr autopilot` (drives those
+    pull requests through their required checks to auto-merge).
+- Browser failure screenshots from CI are kept as a job artifact on the failing
+  shard.
 
 ## Analytics
 

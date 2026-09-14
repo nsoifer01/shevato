@@ -28,7 +28,9 @@ import { join, dirname, resolve, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
-const WORKFLOW = '.github/workflows/arena-rules.yml';
+// The `rules` job lives in the single ci workflow since 2026-09-14 (it was
+// arena-rules.yml); its Scope step is unchanged.
+const WORKFLOW = '.github/workflows/ci.yml';
 const read = (p) => readFileSync(join(REPO_ROOT, p), 'utf8');
 
 // ---------------------------------------------------------------------------
@@ -117,7 +119,7 @@ function runScope({ event, before = 'a'.repeat(40), after = 'b'.repeat(40), file
 // ---------------------------------------------------------------------------
 // The property that makes the job requireable at all.
 // ---------------------------------------------------------------------------
-test('the arena emulator workflow reports on every pull request', () => {
+test('the workflow holding the arena emulator job reports on every pull request', () => {
   const yaml = read(WORKFLOW);
   const on = yaml.slice(yaml.indexOf('\non:'), yaml.indexOf('\njobs:'));
 
@@ -128,7 +130,7 @@ test('the arena emulator workflow reports on every pull request', () => {
 
   // The check context branch protection names is the job id. Renaming the job
   // silently un-requires it, because the old context simply stops appearing.
-  assert.match(yaml, /^\n?jobs:\n {2}rules:$/m,
+  assert.match(yaml, /^ {2}rules:$/m,
     'the job must stay `rules`: that string is the required-status-check context');
 });
 
@@ -143,9 +145,12 @@ const RUNS = {
   'the rules suite': ['apps/arena/tests-rules/rules.test.mjs'],
   'the multiplayer e2e': ['apps/arena/e2e/emulator.mjs'],
   'the sync layer the app writes through': ['sync-system/storage-sync-robust.js'],
+  // Read as data by tests/browser/third-party.mjs, so no import walk sees it:
+  // every e2e page loads the Firebase SDK from this mirror.
+  'the third-party mirror the e2e pages load the SDK from': ['tests/browser/vendor/third-party/manifest.json'],
   'the scripts this job runs': ['package.json'],
   'the node version it runs them on': ['.nvmrc'],
-  'the workflow itself': ['.github/workflows/arena-rules.yml'],
+  'the workflow itself': ['.github/workflows/ci.yml'],
   'one arena file among many unrelated ones': ['index.html', 'apps/gym-tracker/js/app.js', 'apps/arena/README.md'],
 };
 
@@ -179,24 +184,32 @@ for (const [what, files] of Object.entries(SKIPS)) {
 // Derived, not restated: whatever the e2e imports from outside apps/arena is
 // an input to this job, and must be in the trigger.
 // ---------------------------------------------------------------------------
-test('every module the multiplayer e2e imports from outside apps/arena is an input', () => {
-  const e2eDir = 'apps/arena/e2e';
-  const sources = ['emulator.mjs', 'run-emulator.mjs'];
+test('every module the multiplayer e2e imports from outside apps/arena, transitively, is an input', () => {
+  // TRANSITIVELY: the walk used to read only the two harness files' own
+  // imports, so when cdp.mjs started importing tests/browser/third-party.mjs
+  // (2026-09-14) nothing here noticed that the SDK every e2e page loads now
+  // came from a file the trigger did not list.
+  const queue = ['apps/arena/e2e/emulator.mjs', 'apps/arena/e2e/run-emulator.mjs'];
+  const seen = new Set();
   const escaping = new Set();
 
-  for (const file of sources) {
-    const src = read(join(e2eDir, file));
-    for (const m of src.matchAll(/from\s+['"](\.[^'"]+)['"]/g)) {
-      const abs = resolve(REPO_ROOT, e2eDir, m[1]);
-      const rel = relative(REPO_ROOT, abs).split('\\').join('/');
+  while (queue.length) {
+    const file = queue.shift();
+    if (seen.has(file)) continue;
+    seen.add(file);
+    for (const m of read(file).matchAll(/from\s+['"](\.[^'"]+)['"]/g)) {
+      const rel = relative(REPO_ROOT, resolve(REPO_ROOT, dirname(file), m[1])).split('\\').join('/');
       if (!rel.startsWith('apps/arena/')) escaping.add(rel);
+      queue.push(rel);
     }
   }
 
-  // The one that exists today is tests/browser/cdp.mjs, and it was NOT in the
-  // old trigger: the driver the whole suite runs on could be rewritten without
-  // this job ever running. If that set is ever empty, the parser broke.
-  assert.ok(escaping.size > 0, 'expected at least one cross-tree import to check');
+  // tests/browser/cdp.mjs was NOT in the old trigger: the driver the whole
+  // suite runs on could be rewritten without this job ever running. If these
+  // are ever missing from the set, the walk broke.
+  for (const must of ['tests/browser/cdp.mjs', 'tests/browser/third-party.mjs']) {
+    assert.ok(escaping.has(must), `expected the walk to reach ${must}; found ${[...escaping].join(', ')}`);
+  }
 
   for (const path of escaping) {
     assert.equal(runScope({ event: 'pull_request', files: [path] }).run, '1',

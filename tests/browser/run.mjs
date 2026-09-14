@@ -7,10 +7,10 @@
 // Run with: npm run test:browser
 //
 // This is deliberately NOT part of `npm test`: it needs Chromium on the machine
-// and takes minutes rather than seconds. CI runs it as its own workflow
-// (.github/workflows/browser-tests.yml, sharded, on every pull request and
-// every push to master), and locally it is the pre-PR gate
-// (`npm run test:browser:parallel`).
+// and takes minutes rather than seconds. CI runs it sharded as the
+// `browser-shard` jobs of .github/workflows/ci.yml, on every pull request and
+// every push to master whose tree has not already passed, and locally it is the
+// pre-PR gate (`npm run test:browser:parallel`).
 import { spawn } from 'node:child_process';
 import http from 'node:http';
 import net from 'node:net';
@@ -178,6 +178,19 @@ const ZERO_RUN_ALLOWED = new Set([
 // Suites that ran with nothing asserted, filled in during the run.
 const zeroRunSuites = [];
 
+// CI mode (BROWSER_TEST_CI=1, set by .github/workflows/ci.yml).
+//
+// A skipped check is a check that did not run, and locally that is fine: a
+// clone without the Rising Shows dataset or the generated Gym Tracker pages
+// cannot run the assertions that need them. On CI it is not fine, because the
+// set of assertions that ran then depends on whether a download happened to
+// work that day, and the same commit can go green having checked less. That is
+// exactly how PR #530's contrast regression passed four green shards. CI
+// prepares every precondition, so here a precondition skip and a suite that
+// asserted nothing are FAILURES, named as such. Known-defect quarantines
+// (detail starting "KNOWN DEFECT") stay skips: they execute every run.
+const CI_MODE = process.env.BROWSER_TEST_CI === '1';
+
 const selected = only ? SUITES.filter((p) => p.includes(only)) : SUITES;
 if (!selected.length) { console.error(`--only=${only} matches no suite. Suites:\n  ${SUITES.join('\n  ')}`); process.exit(2); }
 
@@ -214,53 +227,49 @@ if (!selected.length) { console.error(`--only=${only} matches no suite. Suites:\
 // what the numbers say. Refresh them from the timing table this runner
 // prints at the end of every run.
 const DEFAULT_SECONDS = 90;
+//
+// Refreshed 2026-09-14 from the four CI shard timing tables of run
+// 34800414010 (the last run of the old four-shard layout), which now pack the
+// estate into six CI shards of 467-473 s each.
 const SUITE_SECONDS = {
-  // 501 -> 101 with the same-document navigation fix in cdp.mjs (see FINDINGS,
-  // "A fragment-only goto() used to cost 21 seconds"), then -> 81 once
-  // seedAndReload stopped needing three navigations per boot to seed a
-  // 347-game fixture. All 53 checks pass at every step.
-  'apps/maptap-rivals/e2e/audit-2026-08.mjs': 82,
-  'tests/browser/suites/a11y.mjs': 209,
-  'apps/trip-planner/e2e/audit-fixes.mjs': 176,
-  'apps/gym-tracker/e2e/audit-2026-08.mjs': 151,
-  'tests/browser/suites/visual.mjs': 148,
-  'apps/gym-tracker/e2e/units-migration.mjs': 130,
-  // 118 without the rising-shows dataset, 120 with it.
+  // perf: 313 on 2026-09-08 once the throttled CLS budgets and the F08
+  // partition cases were added (each is its own page load); 346 now.
+  'tests/browser/suites/perf.mjs': 346,
+  'tests/browser/suites/a11y.mjs': 179,
+  'apps/trip-planner/e2e/audit-fixes.mjs': 172,
+  'apps/gym-tracker/e2e/audit-2026-08.mjs': 153,
+  'tests/browser/suites/visual.mjs': 141,
+  'apps/gym-tracker/e2e/units-migration.mjs': 129,
+  'apps/trip-planner/e2e/places.mjs': 122,
   'tests/browser/suites/apps.mjs': 120,
-  'apps/mario-kart/e2e/audit-2026-08.mjs': 116,
-  'tests/browser/suites/site.mjs': 111,
-  'apps/trip-planner/e2e/trips-sync.mjs': 107,
-  'apps/maptap-rivals/e2e/quality.mjs': 101,
-  'apps/trip-planner/e2e/ui.mjs': 97,
-  'apps/trip-planner/e2e/places.mjs': 95,
-  'apps/fpl-planner/e2e/lifecycle.mjs': 92,
-  'apps/trip-planner/e2e/audit-2026-08.mjs': 91,
-  'apps/fpl-planner/e2e/audit-2026-08.mjs': 76,
-  // 76 without the rising-shows dataset, 77 with its three budget rows; 313
-  // measured 2026-09-08 once the throttled CLS budgets and the F08 partition
-  // cases were added (each is its own page load).
-  'tests/browser/suites/perf.mjs': 313,
-  'apps/fpl-planner/e2e/scenario.mjs': 69,
-  'apps/trip-planner/e2e/assistant.mjs': 63,
-  // Measured on 2026-09-05, the round that added it.
-  'apps/trip-planner/e2e/assistant-identity.mjs': 41,
-  // Measured on 2026-09-06, the round that added it (two blocks, one reload).
-  'apps/trip-planner/e2e/canonical-coordinates.mjs': 20,
-  // Measured on 2026-09-06, the schedule-validity round (23.6s locally).
+  'apps/mario-kart/e2e/audit-2026-08.mjs': 115,
+  'tests/browser/suites/site.mjs': 115,
+  'apps/trip-planner/e2e/trips-sync.mjs': 109,
+  'apps/maptap-rivals/e2e/quality.mjs': 99,
+  'apps/trip-planner/e2e/ui.mjs': 99,
+  'apps/fpl-planner/e2e/lifecycle.mjs': 94,
+  'apps/trip-planner/e2e/audit-2026-08.mjs': 89,
+  // 501 -> 101 with the same-document navigation fix in cdp.mjs (see FINDINGS,
+  // "A fragment-only goto() used to cost 21 seconds"), then -> ~80 once
+  // seedAndReload stopped needing three navigations per boot.
+  'apps/maptap-rivals/e2e/audit-2026-08.mjs': 80,
+  'apps/fpl-planner/e2e/audit-2026-08.mjs': 80,
+  'apps/fpl-planner/e2e/scenario.mjs': 64,
+  'apps/trip-planner/e2e/assistant.mjs': 64,
+  'tests/browser/suites/csp.mjs': 59,
+  'apps/trip-planner/e2e/qa-fixes.mjs': 52,
+  'apps/trip-planner/e2e/canonical-coordinates.mjs': 50,
+  'apps/trip-planner/e2e/views.mjs': 48,
   'apps/trip-planner/e2e/schedule-slots.mjs': 47,
-  'apps/trip-planner/e2e/qa-fixes.mjs': 53,
-  'apps/trip-planner/e2e/views.mjs': 49,
   'apps/trip-planner/e2e/core.mjs': 45,
-  'apps/football-h2h/e2e/audit-2026-08.mjs': 42,
-  'apps/trip-planner/e2e/share.mjs': 19,
+  'apps/football-h2h/e2e/audit-2026-08.mjs': 44,
+  'apps/trip-planner/e2e/assistant-identity.mjs': 34,
+  // With the dataset present, which CI now always prepares.
+  'apps/rising-shows/e2e/audit-2026-08.mjs': 30,
+  'apps/trip-planner/e2e/share.mjs': 18,
   'tests/browser/suites/pwa-gym.mjs': 12,
-  'apps/fpl-planner/e2e/free-hit.mjs': 8,
+  'apps/fpl-planner/e2e/free-hit.mjs': 9,
   'apps/trip-planner/e2e/pwa.mjs': 5,
-  // Was 0 on a runner while the dataset was absent and every check skipped.
-  // browser-tests.yml now fetches and caches it, so this is the measured cost
-  // with the data present (40.3s locally). If the fetch fails the suite skips
-  // and costs nothing, which makes a shard uneven, never wrong.
-  'apps/rising-shows/e2e/audit-2026-08.mjs': 45,
 };
 
 // Longest-processing-time-first bin packing: walk the suites heaviest first
@@ -365,6 +374,13 @@ const httpOk = (url) => new Promise((resolve) => {
 });
 
 let server, chrome, profileDir;
+// Set when Chrome exits on its own mid-run (a renderer OOM, a crash). The
+// suite loop reads it, labels the damage as infrastructure, and restarts the
+// browser for the next suite.
+let chromeExit = null;
+let stoppingBrowser = false;
+let chromeStderr = '';
+const infraFailures = [];
 
 // Timing. Kept beside the results so the run can say where its wall clock
 // went: shard balance and every "is this sleep worth it?" question are
@@ -381,16 +397,21 @@ async function startAll() {
         + `Stop whatever is on ${port}, or set ${envVar} to a free port.`);
     }
   }
-  let t0 = Date.now();
+  const t0 = Date.now();
   server = spawn('python3', ['-m', 'http.server', String(PORT), '--bind', '127.0.0.1'],
     { cwd: REPO, stdio: 'ignore' });
   await waitFor(() => httpOk(`${BASE}/home.html`), 20000, 'static server');
   startupMs.server = Date.now() - t0;
-  t0 = Date.now();
+  await startBrowser();
+}
 
+async function startBrowser() {
+  const t0 = Date.now();
+  if (profileDir) { try { await rm(profileDir, { recursive: true, force: true }); } catch {} }
   profileDir = await mkdtemp(path.join(tmpdir(), 'shevato-browser-test-'));
   const bin = process.env.CHROME_BIN || 'chromium';
-  chrome = spawn(bin, [
+  chromeStderr = '';
+  const proc = spawn(bin, [
     ...(headed ? [] : ['--headless=new']),
     '--disable-gpu', '--no-sandbox', '--no-first-run',
     `--remote-debugging-port=${CDP_PORT}`,
@@ -398,10 +419,22 @@ async function startAll() {
     // Blackhole analytics so a blocked beacon never looks like an app error.
     '--host-resolver-rules=MAP www.googletagmanager.com 127.0.0.1:1, MAP *.google-analytics.com 127.0.0.1:1',
     'about:blank',
-  ], { stdio: 'ignore' });
-  chrome.on('error', (e) => { console.error(`\nCould not launch "${bin}": ${e.message}\nSet CHROME_BIN to a Chrome/Chromium binary.`); });
-  await waitFor(() => httpOk(`http://127.0.0.1:${CDP_PORT}/json/version`), 30000, 'headless Chrome');
-  startupMs.browser = Date.now() - t0;
+  ], { stdio: ['ignore', 'ignore', 'pipe'] });
+  chrome = proc;
+  // Kept (bounded) so a browser that never comes up, or dies mid-run, can say
+  // why. "timed out waiting for headless Chrome" on its own is not a diagnosis.
+  proc.stderr.on('data', (d) => { chromeStderr = (chromeStderr + d).slice(-4000); });
+  proc.on('error', (e) => { console.error(`\nCould not launch "${bin}": ${e.message}\nSet CHROME_BIN to a Chrome/Chromium binary.`); });
+  proc.on('exit', (code, signal) => { if (chrome === proc && !stoppingBrowser) chromeExit = { code, signal }; });
+  try {
+    await waitFor(() => httpOk(`http://127.0.0.1:${CDP_PORT}/json/version`), 30000, 'headless Chrome');
+  } catch (e) {
+    const state = proc.exitCode !== null || proc.signalCode ? `exited ${proc.exitCode ?? proc.signalCode}` : 'still running';
+    const tail = chromeStderr.trim().split('\n').slice(-6).join(' | ') || '(no output)';
+    throw new Error(`${e.message} on port ${CDP_PORT} (${bin}, ${state}); its last output: ${tail}`);
+  }
+  chromeExit = null;
+  startupMs.browser += Date.now() - t0;
 }
 
 // Waits for a spawned process to actually exit, bounded so a wedged process
@@ -416,6 +449,7 @@ function waitForExit(p, timeoutMs) {
 
 async function stopAll() {
   const tearStart = Date.now();
+  stoppingBrowser = true;
   for (const p of [chrome, server]) { try { p && p.kill(); } catch {} }
   // Wait for real exits before removing the profile dir: Chrome still holds
   // files open right after kill(), and rm-ing under it raced (EBUSY/ENOTEMPTY
@@ -461,6 +495,29 @@ try {
         detail: `run() resolved with ${r === null ? 'null' : typeof r}; suites must return [{ name, pass, detail }]`,
       }];
     }
+    if (CI_MODE) {
+      r = r.map((x) => ((x.pass && x.skipped && !/^KNOWN DEFECT/.test(String(x.detail || '')))
+        ? { ...x, pass: false, skipped: false, detail: `did not run on CI, whose job is to prepare every precondition: ${x.detail || 'no reason given'}` }
+        : x));
+    }
+    if (chromeExit) {
+      // The browser died under this suite. Its failures above are most likely
+      // consequences (ECONNREFUSED, "timeout: Runtime.evaluate"), so say that
+      // once, loudly, and give the NEXT suite a fresh browser instead of letting
+      // one crash turn the rest of the shard into a wall of unrelated failures.
+      r.push({
+        name: `${suiteName}: INFRASTRUCTURE - Chrome exited while this suite ran`,
+        pass: false,
+        detail: `exit code ${chromeExit.code}, signal ${chromeExit.signal}; failures in this suite after that moment are consequences, not separate defects`,
+      });
+      infraFailures.push(`${suiteName}: Chrome exited (code ${chromeExit.code}, signal ${chromeExit.signal})`);
+      chromeExit = null;
+      try { await startBrowser(); } catch (e) {
+        r.push({ name: 'INFRASTRUCTURE - Chrome could not be restarted', pass: false, detail: e.message });
+        results.push(...r);
+        throw e;
+      }
+    }
     if (EXPECTED_CHECKS[name] != null && r.length !== EXPECTED_CHECKS[name]) {
       r.push({
         name: `${suiteName}: expected ${EXPECTED_CHECKS[name]} checks, got ${r.length}`,
@@ -481,7 +538,7 @@ try {
     const ranHere = r.filter((x) => !x.skipped).length;
     if (r.length > 0 && ranHere === 0) {
       zeroRunSuites.push(name);
-      if (!ZERO_RUN_ALLOWED.has(name)) {
+      if (!ZERO_RUN_ALLOWED.has(name) || CI_MODE) {
         r.push({
           name: `${suiteName}: every check skipped, so this suite protected nothing`,
           pass: false,
@@ -503,7 +560,9 @@ try {
   }
 } catch (e) {
   console.error('\nrunner error:', e.message);
-  results.push({ name: 'runner completed', pass: false, detail: e.message });
+  // Infrastructure, not the application: no suite's assertion produced this.
+  results.push({ name: 'INFRASTRUCTURE - the runner could not complete', pass: false, detail: e.message });
+  infraFailures.push(`runner: ${e.message}`);
 } finally {
   await stopAll();
 }
@@ -554,6 +613,10 @@ if (timings.length) {
   console.log(`  startup: static server ${(startupMs.server / 1000).toFixed(1)}s, `
     + `browser ${(startupMs.browser / 1000).toFixed(1)}s, teardown ${(startupMs.teardown / 1000).toFixed(1)}s`
     + `  |  ${sum('gotos')} navigations, ${sum('polls')} condition waits`);
+  const fixedBy = {};
+  for (const x of timings) for (const [k, v] of Object.entries(x.fixedBy || {})) fixedBy[k] = (fixedBy[k] || 0) + v;
+  console.log(`  fixed waits by source: ${Object.entries(fixedBy).sort((a, b) => b[1] - a[1])
+    .map(([k, v]) => `${k} ${(v / 1000).toFixed(1)}s`).join(', ') || 'none'}`);
   if (process.env.BROWSER_TEST_TIMING_JSON) {
     const { writeFileSync } = await import('node:fs');
     writeFileSync(process.env.BROWSER_TEST_TIMING_JSON,
@@ -564,5 +627,34 @@ if (timings.length) {
 if (failed.length) {
   console.log('\nFailures:');
   for (const f of failed) console.log(`  - ${f.name}${f.detail ? '  [' + f.detail + ']' : ''}`);
+}
+
+// The run page on GitHub shows this without opening a log: what failed, and
+// whether it was the application or the harness. Infrastructure failures are
+// listed first and separately, because "Chrome died" and "the page is wrong"
+// call for different reactions and used to look identical.
+if (process.env.GITHUB_STEP_SUMMARY) {
+  const { appendFileSync } = await import('node:fs');
+  const md = (x) => String(x).replace(/[`|]/g, "'").replace(/\s+/g, ' ');
+  const appFailures = failed.filter((f) => !/INFRASTRUCTURE/.test(f.name));
+  const out = [`### Browser regression${shardLabel}: ${failed.length ? 'FAILED' : 'passed'}`, '',
+    `${ran - failed.length}/${ran} checks passed${skipped.length ? `, ${skipped.length} skipped` : ''}; `
+    + `suites: ${toRun.map((n) => md(n.replace(/^(tests\/browser\/suites|apps)\//, ''))).join(', ')}`];
+  if (infraFailures.length) {
+    out.push('', '**Infrastructure** (the harness or the browser, not an application assertion):');
+    for (const f of infraFailures) out.push(`- ${md(f).slice(0, 400)}`);
+  }
+  if (appFailures.length) {
+    out.push('', `**Failed checks (${appFailures.length}):**`);
+    for (const f of appFailures.slice(0, 80)) out.push(`- ${md(f.name)}${f.detail ? ` - \`${md(f.detail).slice(0, 300)}\`` : ''}`);
+    if (appFailures.length > 80) out.push(`- ... and ${appFailures.length - 80} more in the log`);
+  }
+  if (timings.length) {
+    out.push('', '| suite | checks | seconds |', '| --- | ---: | ---: |');
+    for (const x of [...timings].sort((a, b) => b.ms - a.ms)) {
+      out.push(`| ${md(x.name.replace(/^(tests\/browser\/suites|apps)\//, ''))} | ${x.checks} | ${(x.ms / 1000).toFixed(1)} |`);
+    }
+  }
+  try { appendFileSync(process.env.GITHUB_STEP_SUMMARY, `${out.join('\n')}\n`); } catch {}
 }
 process.exit(failed.length ? 1 : 0);

@@ -36,7 +36,12 @@ const SITEMAP_FILE = path.join(ROOT, 'sitemap-shows.xml');
 // with real search demand. See renderShowsSitemap for the rationale.
 const SITEMAP_LIMIT = 2000;
 
-function main() {
+// `only` (a series id) renders exactly one show page, byte-identical to what
+// the full build writes for it, and touches nothing else: no wipe of shows/,
+// no index, hubs or sitemap. CI uses it for the single built page the Rising
+// Shows browser suite visits, which the full ~34k-page build would otherwise
+// have to produce on every browser shard.
+function main({ only = null } = {}) {
   if (!fs.existsSync(DATA_FILE)) {
     throw new Error(`data.json not found at ${DATA_FILE}. Run \`npm run build:rising-shows\` first.`);
   }
@@ -59,9 +64,6 @@ function main() {
   // Build shape → series lookup for recommendations panel.
   const shapeIndex = buildShapeIndex(series);
 
-  fs.rmSync(SHOWS_DIR, { recursive: true, force: true });
-  fs.mkdirSync(SHOWS_DIR, { recursive: true });
-
   // The curated set is decided BEFORE rendering: pages outside it are
   // rendered with a noindex,follow robots meta. The May 2026 full-catalogue
   // launch put ~34k templated pages in front of Google, which crawled the
@@ -77,9 +79,7 @@ function main() {
   const gapHubShows = selectGapHubShows(series);
   const gapHubIds = new Set(gapHubShows.map((s) => s.seriesId));
 
-  let pageCount = 0;
-  const start = Date.now();
-  for (const s of series) {
+  const writeShowPage = (s) => {
     const dir = path.join(SHOWS_DIR, showPath(s.title, s.seriesId));
     fs.mkdirSync(dir, { recursive: true });
     const { dominantShape, dominantShapeSlug } = computeDominantShape(s);
@@ -102,6 +102,24 @@ function main() {
     }
     const html = renderShowPage({ ...s, cast, builtAt: data.builtAt, dominantShape, dominantShapeSlug, relatedShows, inSitemap: curatedIds.has(s.seriesId), inGapHub: gapHubIds.has(s.seriesId) });
     fs.writeFileSync(path.join(dir, 'index.html'), html);
+    return dir;
+  };
+
+  if (only) {
+    const one = series.find((s) => s.seriesId === only);
+    if (!one) throw new Error(`--only=${only}: data.json has no series with that id`);
+    const dir = writeShowPage(one);
+    console.log(`[build-show-pages] --only: wrote ${path.relative(ROOT, dir)}/index.html and nothing else`);
+    return;
+  }
+
+  fs.rmSync(SHOWS_DIR, { recursive: true, force: true });
+  fs.mkdirSync(SHOWS_DIR, { recursive: true });
+
+  let pageCount = 0;
+  const start = Date.now();
+  for (const s of series) {
+    writeShowPage(s);
     pageCount++;
     if (pageCount % 1000 === 0) {
       console.log(`[build-show-pages] ${pageCount}/${series.length}…`);
@@ -274,11 +292,14 @@ function computeRelatedShows(show, dominantShape, shapeIndex, limit) {
 // `--help` (and any unknown argument) prints usage and exits BEFORE main()
 // deletes and regenerates shows/. It used to start the full 34k-page build on
 // `--help` (2026-08-22 audit, D6).
-const USAGE = `Usage: node build-show-pages.js
+const USAGE = `Usage: node build-show-pages.js [--only=<seriesId>]
 
 Deletes and regenerates ../shows/ (one page per show, A-Z index, shape hubs)
-and ../sitemap-shows.xml from ../data.json. Takes no options.
+and ../sitemap-shows.xml from ../data.json.
 Run via \`npm run build:rising-shows:pages\`.
+
+  --only=tt0903747   write that one show's page and nothing else (no wipe,
+                     no index, hubs or sitemap)
 `;
 
 if (require.main === module) {
@@ -287,12 +308,22 @@ if (require.main === module) {
     process.stdout.write(USAGE);
     process.exit(0);
   }
-  if (args.length) {
-    process.stderr.write(`Unknown argument: ${args[0]}\n${USAGE}`);
+  let only = null;
+  const rest = [];
+  for (const a of args) {
+    if (a.startsWith('--only=')) only = a.slice('--only='.length);
+    else rest.push(a);
+  }
+  if (rest.length) {
+    process.stderr.write(`Unknown argument: ${rest[0]}\n${USAGE}`);
+    process.exit(2);
+  }
+  if (only !== null && !/^tt\d+$/.test(only)) {
+    process.stderr.write(`--only needs an IMDb series id like tt0903747, got "${only}"\n${USAGE}`);
     process.exit(2);
   }
   try {
-    main();
+    main({ only });
   } catch (e) {
     console.error('[build-show-pages] FAILED:', e.message);
     process.exit(1);

@@ -132,8 +132,8 @@ test('auto-merge is armed through GitHub, with a merge commit', async () => {
   const mutation = calls.find((c) => c.path === '/graphql');
   assert.match(mutation.body.query, /enablePullRequestAutoMerge/);
   assert.equal(mutation.body.variables.pullRequestId, 'PR_node');
-  // A squash would drop the second parent that tests.yml and browser-tests.yml
-  // use to skip a redundant push run over an already-tested tree.
+  // The refresh keeps merge commits (see MERGE_METHOD for why it no longer
+  // affects ci.yml's already-tested skip).
   assert.equal(mutation.body.variables.mergeMethod, 'MERGE');
   assert.equal(MERGE_METHOD, 'MERGE');
 });

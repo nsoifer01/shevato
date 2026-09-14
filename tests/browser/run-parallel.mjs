@@ -126,6 +126,9 @@ function runShard(s) {
           ...process.env,
           BROWSER_TEST_PORT: String(s.port),
           BROWSER_TEST_CDP_PORT: String(s.cdpPort),
+          ...(process.env.BROWSER_TEST_TIMING_JSON
+            ? { BROWSER_TEST_TIMING_JSON: process.env.BROWSER_TEST_TIMING_JSON.replace(/\.json$/, `.shard${s.index}.json`) }
+            : {}),
         },
         stdio: ['ignore', 'pipe', 'pipe'],
       });

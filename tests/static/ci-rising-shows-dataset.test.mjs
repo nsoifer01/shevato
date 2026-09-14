@@ -1,4 +1,5 @@
-// The Rising Shows dataset step in browser-tests.yml, tested (2026-09-12).
+// The Rising Shows dataset steps of the browser shards in ci.yml, tested
+// (2026-09-12; moved from browser-tests.yml on 2026-09-14).
 //
 // WHY THIS FILE EXISTS
 // --------------------
@@ -33,7 +34,9 @@ import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
-const WORKFLOW = '.github/workflows/browser-tests.yml';
+const WORKFLOW = '.github/workflows/ci.yml';
+// The steps themselves live in one composite action every job uses.
+const ACTION = '.github/actions/rising-shows-dataset/action.yml';
 const SPLITTER = 'apps/rising-shows/scripts/split-data.js';
 const read = (p) => readFileSync(join(REPO_ROOT, p), 'utf8');
 
@@ -42,7 +45,7 @@ const read = (p) => readFileSync(join(REPO_ROOT, p), 'utf8');
 // Actions would hand it to bash. No ${{ }} expressions appear in this one.
 // ---------------------------------------------------------------------------
 function stepScript(stepName) {
-  const lines = read(WORKFLOW).split('\n');
+  const lines = read(ACTION).split('\n');
   const at = lines.findIndex((l) => l.trim() === `- name: ${stepName}`);
   assert.ok(at >= 0, `no "${stepName}" step in ${WORKFLOW}`);
   const runAt = lines.findIndex((l, i) => i > at && /^\s*run: \|\s*$/.test(l));
@@ -58,11 +61,11 @@ function stepScript(stepName) {
   return body.join('\n');
 }
 
-// The `path:` block of the dataset cache step, as a list of repo-relative paths.
-function cachePaths() {
-  const lines = read(WORKFLOW).split('\n');
-  const at = lines.findIndex((l) => l.trim() === '- name: Cache the Rising Shows dataset');
-  assert.ok(at >= 0, `no dataset cache step in ${WORKFLOW}`);
+// The `path:` block of a dataset cache step, as a list of repo-relative paths.
+function cachePaths(stepName = 'Restore the Rising Shows dataset') {
+  const lines = read(ACTION).split('\n');
+  const at = lines.findIndex((l) => l.trim() === `- name: ${stepName}`);
+  assert.ok(at >= 0, `no "${stepName}" step in ${WORKFLOW}`);
   const pathAt = lines.findIndex((l, i) => i > at && /^\s*path: \|\s*$/.test(l));
   assert.ok(pathAt > at && pathAt < at + 20, 'no "path: |" block in the dataset cache step');
   const indent = lines[pathAt + 1].match(/^\s*/)[0].length;
@@ -91,6 +94,82 @@ function splitterArtifacts() {
 }
 
 const coveredBy = (list, p) => list.some((c) => c === p || p.startsWith(`${c}/`));
+
+// The raw lines of one step, from its `- name:` to the next step.
+function stepBlock(stepName) {
+  const lines = read(ACTION).split('\n');
+  const at = lines.findIndex((l) => l.trim() === `- name: ${stepName}`);
+  assert.ok(at >= 0, `no "${stepName}" step in ${WORKFLOW}`);
+  const indent = lines[at].match(/^\s*/)[0].length;
+  const out = [lines[at]];
+  for (let i = at + 1; i < lines.length; i += 1) {
+    const l = lines[i];
+    if (l.trim() !== '' && l.match(/^\s*/)[0].length <= indent) break;
+    out.push(l);
+  }
+  return out.join('\n');
+}
+const keyOf = (stepName) => {
+  const m = /^\s*key:\s*(.+)$/m.exec(stepBlock(stepName));
+  assert.ok(m, `no key: in "${stepName}"`);
+  return m[1].trim();
+};
+
+test('restore and save carry the same files under the same key', () => {
+  assert.deepEqual(cachePaths('Save the Rising Shows dataset'), cachePaths('Restore the Rising Shows dataset'));
+  assert.equal(keyOf('Save the Rising Shows dataset'), keyOf('Restore the Rising Shows dataset'));
+});
+
+// A top-level ci.yml job's block, from `  <id>:` to the next job.
+function ciJob(id) {
+  const yaml = read(WORKFLOW);
+  const at = yaml.indexOf(`\n  ${id}:\n`);
+  assert.ok(at >= 0, `ci.yml has no ${id} job`);
+  const rest = yaml.slice(at + 1);
+  const next = rest.slice(1).search(/\n {2}[a-z][a-z0-9-]*:\n/);
+  return next < 0 ? rest : rest.slice(0, next + 1);
+}
+
+test('every job that needs the real catalogue prepares it through the one action', () => {
+  // browser-shard: three suites; test: the real-catalogue parity tests, which
+  // never ran on CI before; dataset-cache: keeps the entry warm.
+  for (const id of ['browser-shard', 'test', 'dataset-cache']) {
+    assert.match(ciJob(id), /uses: \.\/\.github\/actions\/rising-shows-dataset\s*$/m, `${id} must use the dataset action`);
+  }
+  assert.doesNotMatch(read(WORKFLOW), /actions\/cache\/(restore|save)@[^\n]*\n[\s\S]{0,400}rising-shows-dataset-/,
+    'no job may carry its own copy of the dataset cache steps');
+});
+
+test('master keeps the entry warm, because pushes no longer run the shards', () => {
+  // Without it, a push the plan job skips saves nothing on master, and a cache
+  // saved inside a pull request is invisible to every other pull request.
+  const job = ciJob('dataset-cache');
+  assert.match(job, /^ {4}if: github\.event_name == 'push'$/m, 'dataset-cache runs on pushes to master');
+  assert.doesNotMatch(job, /needs: plan/, 'and is not skipped by plan: it exists for the runs plan skips');
+});
+
+test('the cache key is the committed data pin, never the run', () => {
+  // A run-id key never hits exactly, so every run saved another ~100 MB entry
+  // and evicted other caches (the Arena emulator jar among them).
+  const key = keyOf('Restore the Rising Shows dataset');
+  assert.doesNotMatch(key, /run_id|run_number|github\.sha/, key);
+  assert.match(key, /apps\/rising-shows\/data-release\.json/, 'the pin is what identifies the dataset');
+});
+
+test('no cached path is, or contains, a tracked file', () => {
+  // apps/rising-shows/data/ holds a tracked season-overviews.json. Caching the
+  // directory restored a stale copy OVER the pull request's version.
+  const paths = cachePaths('Restore the Rising Shows dataset');
+  const tracked = execFileSync('git', ['ls-files', '--', ...paths], { cwd: REPO_ROOT, encoding: 'utf8' }).trim();
+  assert.equal(tracked, '', `a cache restore would overwrite tracked files:\n${tracked}`);
+});
+
+test('preparing the dataset is never allowed to fail quietly', () => {
+  // continue-on-error here turned a failed download into 64 skipped assertions
+  // and a green shard.
+  assert.equal(/^\s*continue-on-error:/m.test(stepBlock('Prepare the Rising Shows dataset')), false,
+    'the Prepare step must not carry continue-on-error');
+});
 
 test('the cache carries every artifact split-data.js reads or writes', () => {
   const paths = cachePaths();

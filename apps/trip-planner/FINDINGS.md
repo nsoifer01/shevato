@@ -3912,7 +3912,7 @@ product defect - production returns them correctly.
 - **Framework: the repo's own zero-dependency CDP harness** (`tests/browser/`),
   NOT Playwright/Cypress. Deliberate: the repo rule is zero npm deps and no
   build step, the harness already runs in CI on every PR
-  (`.github/workflows/browser-tests.yml` -> `npm run test:browser`), and one
+  (the `browser-shard` jobs of `.github/workflows/ci.yml` -> `npm run test:browser`), and one
   browser-testing stack is enough to maintain. The runner gained repo-relative
   suite paths, `--only=<substring>` and `--headed`; the driver gained
   `evalAsync`, `waitForExpr`, key modifiers, `interceptNetwork` (CDP Fetch),

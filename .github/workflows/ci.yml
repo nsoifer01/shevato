@@ -1,0 +1,450 @@
+name: ci
+
+# THE PULL-REQUEST GATE: one workflow, one pipeline.
+#
+#   pull_request, or push to master
+#   |
+#   +- plan ............ push only: has this exact tree already passed on its
+#   |                    pull request? (scripts/ci-already-tested.mjs)
+#   +- lint ............ ESLint correctness rules (npm run lint)
+#   +- test ............ every node:test file: unit, integration, static
+#   +- browser-shard x6  the CDP browser estate, packed by measured cost
+#   |  +- browser ...... one verdict for the six shards
+#   +- dataset-cache ... push only: keeps the Rising Shows dataset cache warm
+#   |                    on master, where every pull request can restore it
+#   +- rules-shard x2 .. Arena's Firestore rules suite + multi-client e2e against
+#      |                 the emulators, scoped to changes that can move them
+#      +- rules ........ one verdict for both groups
+#
+# Branch protection requires the job names `lint`, `test`, `browser` and
+# `rules`. Renaming one of those jobs silently un-requires it.
+#
+# WHY ONE WORKFLOW (2026-09-14). This used to be four workflows (tests, lint,
+# browser tests, arena emulator), each with its own copy of an "already
+# tested?" guard that compared HEAD^{tree} with HEAD^2^{tree}. That only works
+# for merge commits; this repository squash-merges, so every merge re-ran the
+# entire estate on master, and a flake there turned master red for a change
+# that had already passed. Now the question is asked once, correctly, in
+# `plan`, and every job reads the answer.
+#
+# Nothing here waits on anything it does not need: lint, test, the six browser
+# shards and both Arena groups all start together. On a pull request `plan` is skipped outright
+# and costs nothing.
+#
+# WHAT IS NEVER DONE HERE: retries of a failed check, continue-on-error on a
+# step whose absence changes what was tested, or a precondition that is
+# allowed to silently skip assertions. A red run is a real result.
+
+on:
+  pull_request:
+  push:
+    branches: [master]
+  workflow_dispatch:
+  # scheduled.yml calls this for the weekly full run (the Arena suites run
+  # unscoped there, which is what catches emulator and runner-image drift).
+  workflow_call:
+
+# A new commit on a pull request makes the run for the previous commit
+# worthless, so it is cancelled rather than left holding four runners. Pushes
+# to master are never cancelled: each one is a distinct state of master.
+concurrency:
+  group: ci-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || format('{0}-{1}', github.event_name, github.sha) }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+  # plan reads pull requests and their workflow runs.
+  actions: read
+  pull-requests: read
+
+jobs:
+  plan:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      run: ${{ steps.decide.outputs.run }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: '.nvmrc'
+      # Fails OPEN: every uncertain answer is run=true. If this job itself
+      # fails, the jobs below still run (see their `if:`), because a broken
+      # guard must cost a duplicate run, never an untested master.
+      - name: Already tested on its pull request?
+        id: decide
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: node scripts/ci-already-tested.mjs
+
+  lint:
+    needs: plan
+    if: ${{ !cancelled() && (github.event_name != 'push' || needs.plan.result != 'success' || needs.plan.outputs.run == 'true') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: '.nvmrc'
+          cache: npm
+      # One of the four standing npm dependency exceptions (ESLint and its
+      # globals package); nothing else in this workflow installs anything.
+      - run: npm ci
+      - run: npm run lint
+
+  test:
+    needs: plan
+    if: ${{ !cancelled() && (github.event_name != 'push' || needs.plan.result != 'success' || needs.plan.outputs.run == 'true') }}
+    runs-on: ubuntu-latest
+    # About four minutes on a runner. The cap exists so a hung test fails in
+    # minutes with a name (package.json sets --test-timeout) instead of holding
+    # a runner for GitHub's six-hour default.
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: '.nvmrc'
+      # Ten real-catalogue tests (shows-index-parity, finder-moods) skip without
+      # the dataset, and on the old `tests` workflow they never once ran. With
+      # the warm cache this is a 2-4 s restore.
+      - name: Rising Shows dataset
+        uses: ./.github/actions/rising-shows-dataset
+      # The TAP reporter wrote ~60,000 lines for 6,700 passing tests, so a
+      # failure was a search, not a read. `dot` prints one character per test
+      # and then every failure in full at the END of the log; the JUnit file
+      # feeds the run summary and is kept as an artifact when something fails.
+      # Passed through NODE_OPTIONS so `npm test` stays the single definition
+      # of what runs (no test in the estate spawns `node --test` itself).
+      - name: Unit, integration and static tests
+        env:
+          NODE_OPTIONS: --test-reporter=dot --test-reporter-destination=stdout --test-reporter=junit --test-reporter-destination=unit-tests.junit.xml
+        run: npm test
+      # On EVERY outcome: `dot` prints no totals, so on a green run this line is
+      # the evidence of how many tests actually executed (and how many were
+      # skipped or quarantined as todo). Printed to the log and the run summary.
+      - name: Summarize results
+        if: always()
+        run: node scripts/ci-junit-summary.mjs unit-tests.junit.xml | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Keep the JUnit report
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: unit-tests-junit
+          path: unit-tests.junit.xml
+          if-no-files-found: ignore
+          retention-days: 14
+
+  browser-shard:
+    needs: plan
+    if: ${{ !cancelled() && (github.event_name != 'push' || needs.plan.result != 'success' || needs.plan.outputs.run == 'true') }}
+    runs-on: ubuntu-latest
+    # One shard failing must not cancel its siblings: the estate exists to say
+    # everything that is broken, not the first thing.
+    # SIX shards: packed by the measured costs in tests/browser/run.mjs, six
+    # land within 1.5% of each other at about 470 s of suites each (four were
+    # about 710 s). The single heaviest suite, perf.mjs, is about 350 s, so
+    # more shards would buy little and cost more concurrent jobs per PR.
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4, 5, 6]
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: '.nvmrc'
+
+      # Chrome ships on the runner image. Resolve it rather than assume a name,
+      # so an image change is a clear error here instead of a timeout later.
+      - name: Resolve browser
+        run: |
+          set -e
+          for c in google-chrome google-chrome-stable chromium chromium-browser; do
+            if command -v "$c" >/dev/null 2>&1; then
+              echo "CHROME_BIN=$c" >> "$GITHUB_ENV"
+              echo "Using $c: $("$c" --version)"
+              exit 0
+            fi
+          done
+          echo "::error::INFRASTRUCTURE: no Chrome/Chromium on the runner image." >&2
+          exit 1
+
+      # The real catalogue three suites assert against (restore by its pinned
+      # key, download and split on a miss; see the action for why each detail).
+      - name: Rising Shows dataset
+        uses: ./.github/actions/rising-shows-dataset
+
+      # Generated, gitignored pages the Gym Tracker and Rising Shows suites
+      # visit. Seconds each, and without them their checks could not run.
+      - name: Build the generated pages the suites visit
+        run: |
+          set -e
+          npm run build:gym-tracker:pages
+          node apps/rising-shows/scripts/build-show-pages.js --only=tt0903747
+
+      # BROWSER_TEST_CI=1: a precondition skip, or a suite that asserted
+      # nothing, is a FAILURE here (tests/browser/run.mjs), so every run of a
+      # commit asserts the same set of things.
+      - name: Run browser shard ${{ matrix.shard }}
+        env:
+          BROWSER_TEST_CI: '1'
+        run: npm run test:browser -- --shard=${{ matrix.shard }}/${{ strategy.job-total }}
+
+      - name: Keep failure screenshots
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: browser-shard-${{ matrix.shard }}-screenshots
+          path: .screenshots/
+          if-no-files-found: ignore
+          retention-days: 14
+
+  # One verdict for the estate, so the required check has one stable name.
+  # `if: always()` is what makes it mean something: without it a cancelled or
+  # skipped shard would leave this job skipped, and a skipped required check
+  # reads as passing.
+  browser:
+    needs: [plan, browser-shard]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Verify every shard passed
+        env:
+          EVENT: ${{ github.event_name }}
+          PLAN: ${{ needs.plan.result }}
+          PLAN_RUN: ${{ needs.plan.outputs.run }}
+          SHARDS: ${{ needs.browser-shard.result }}
+        run: |
+          if [ "$EVENT" = push ] && [ "$PLAN" = success ] && [ "$PLAN_RUN" = false ]; then
+            echo "this tree already passed the browser estate on its pull request"
+            exit 0
+          fi
+          echo "browser-shard result: $SHARDS"
+          if [ "$SHARDS" != success ]; then
+            echo "::error::the browser estate did not pass (shards: $SHARDS)"
+            exit 1
+          fi
+
+  # Keeps the Rising Shows dataset cache warm ON MASTER, the one place every
+  # pull request can restore a cache from (a cache a pull request saves is
+  # visible to that pull request alone). The old browser workflow warmed it as a
+  # side effect of re-running the estate on every push; pushes now skip the
+  # shards when the tree already passed (plan), so without this job nothing on
+  # master would save the key and every pull request's first run would download
+  # and split the dataset on all six shards. Measured 2026-09-14 (PR #542): a
+  # miss costs each shard 8-13 s (download, split, save), a hit restores in
+  # 2-4 s. Not gated on plan: its whole job is the run that plan skips.
+  dataset-cache:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: '.nvmrc'
+      # A hit is a 2-4 s restore that does nothing else; a miss (the refresh
+      # bot published new data) builds and saves the entry for every PR.
+      - name: Rising Shows dataset
+        uses: ./.github/actions/rising-shows-dataset
+
+  # The Arena emulator suites, on TWO machines. On one, the multiplayer e2e was
+  # about ten minutes of real game clocks, the longest job on a pull request.
+  # It splits at the one boundary its scenarios allow (ARENA_E2E_GROUP in
+  # apps/arena/e2e/emulator.mjs): group 1 is the chained S1-S5 session plus
+  # the rules suite, group 2 is S6 onward. Measured 2026-09-14, each group run
+  # alone on fresh emulators: 76/76 in 6.1 min and 30/30 in 3.5 min, together
+  # exactly the full run's 106 checks. A scenario belongs to one group by its
+  # number, so none can fall between the two.
+  rules-shard:
+    needs: plan
+    if: ${{ !cancelled() && (github.event_name != 'push' || needs.plan.result != 'success' || needs.plan.outputs.run == 'true') }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        group: [1, 2]
+    # Both suites, plus a cold firebase-tools download on a cache miss.
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          # The Scope step diffs a pull request against its merge base and a
+          # push against its predecessor. Neither commit exists in the default
+          # single-commit checkout.
+          fetch-depth: 0
+
+      # THE JOB ALWAYS RUNS; THE SUITES ARE WHAT IS CONDITIONAL. A workflow
+      # filtered by `on.<event>.paths` reports NOTHING on a change that misses
+      # the filter, and a required check that never reports parks every
+      # unrelated pull request forever. So the filter lives here, where a skip
+      # still produces a green check run (apps/arena/FINDINGS.md, "A
+      # path-filtered workflow can never be a required check").
+      #
+      # Fail-safe is RUN, never skip: an unknown event, a missing commit or a
+      # failed diff all fall through to the full suites. The worst case of a
+      # wrong guess is ten wasted minutes; the other direction is an unchecked
+      # authorization boundary reported green.
+      - name: Scope - decide whether this change can move the emulator outcome
+        id: scope
+        env:
+          EVENT: ${{ github.event_name }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
+          PUSH_BEFORE: ${{ github.event.before }}
+          PUSH_AFTER: ${{ github.sha }}
+        run: |
+          set -uo pipefail
+
+          run_everything() {
+            echo "run=1" >> "$GITHUB_OUTPUT"
+            echo "Running both suites: $1"
+            exit 0
+          }
+
+          case "$EVENT" in
+            # A pull request is its three-dot diff, the same set GitHub shows
+            # in Files changed. Two-dot would count master's own commits as
+            # this branch's changes.
+            pull_request) BEFORE="$PR_BASE";     AFTER="$PR_HEAD";   RANGE='...' ;;
+            # A push to master is linear, so its predecessor is the base.
+            push)         BEFORE="$PUSH_BEFORE"; AFTER="$PUSH_AFTER"; RANGE='..' ;;
+            *)            run_everything "$EVENT has no diff to scope by" ;;
+          esac
+
+          case "$BEFORE" in
+            ''|0000000000000000000000000000000000000000)
+              run_everything "no comparison point for this $EVENT" ;;
+          esac
+          git cat-file -e "${BEFORE}^{commit}" 2>/dev/null || run_everything "base $BEFORE is unreachable"
+          git cat-file -e "${AFTER}^{commit}"  2>/dev/null || run_everything "head $AFTER is unreachable"
+
+          CHANGED=$(git diff --name-only "${BEFORE}${RANGE}${AFTER}") \
+            || run_everything "git diff ${BEFORE}${RANGE}${AFTER} failed"
+
+          # The inputs, and why each one is an input:
+          #   firestore.rules        the authorization boundary under test
+          #   firebase.json          emulator ports and the ruleset wiring
+          #   firebase-config.js     the emulator seam for auth, and the app every client signs in through
+          #   firebase-firestore.js  the emulator seam for Firestore: every client in both suites reaches Firestore through it
+          #   apps/arena/**          the app that writes through it, plus both suites
+          #   sync-system/**         the layer the app writes through (arena loads six of its modules)
+          #   tests/browser/cdp.mjs  the driver the multiplayer e2e imports
+          #   tests/browser/third-party.mjs + vendor/third-party/
+          #                          what every e2e page's Firebase SDK is served from
+          #   package.json/.nvmrc    the scripts this job runs, and the node it runs them on
+          #   this workflow          its own steps
+          INPUTS='^(firestore\.rules|firebase\.json|firebase-config\.js|firebase-firestore\.js|package\.json|\.nvmrc|apps/arena/|sync-system/|tests/browser/cdp\.mjs|tests/browser/third-party\.mjs|tests/browser/vendor/third-party/|\.github/workflows/ci\.yml)'
+          # sync-system/tests/** is the one carve-out: node tests and their
+          # stubs, already covered by the `test` job, and loaded by neither
+          # emulator suite.
+          NOT_INPUTS='^sync-system/tests/'
+
+          # `|| true` is load-bearing: Actions runs this as `bash -e`, and grep
+          # exits 1 when it matches nothing, which IS the skip case. Without it
+          # every pull request with no emulator inputs went red (2026-09-08).
+          HITS=$(printf '%s\n' "$CHANGED" | grep -Ev "$NOT_INPUTS" | grep -E "$INPUTS" || true)
+          if [ -n "$HITS" ]; then
+            echo "run=1" >> "$GITHUB_OUTPUT"
+            echo "Emulator inputs changed:"
+            printf '%s\n' "$HITS" | sed 's/^/  /'
+          else
+            echo "run=0" >> "$GITHUB_OUTPUT"
+            echo "No emulator inputs in this change - reporting success without running the suites."
+            echo "Changed files:"
+            printf '%s\n' "$CHANGED" | sed 's/^/  /'
+          fi
+
+      - name: Use Node.js
+        if: steps.scope.outputs.run == '1'
+        uses: actions/setup-node@v6
+        with:
+          node-version-file: '.nvmrc'
+
+      - name: Use Java 21
+        if: steps.scope.outputs.run == '1'
+        uses: actions/setup-java@v5
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+
+      # firebase-tools lands in the npx cache, the Firestore emulator jar in
+      # ~/.cache/firebase/emulators. The key pins the firebase-tools version
+      # (FIREBASE_TOOLS_VERSION in emulator-harness.mjs); bumping the pin
+      # invalidates it.
+      - name: Cache firebase-tools and the emulator jar
+        if: steps.scope.outputs.run == '1'
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.npm/_npx
+            ~/.cache/firebase/emulators
+          key: arena-rules-firebase-tools-15.27.0
+
+      # ARENA_RULES_REQUIRE=1 turns the suites' local skip-when-unavailable
+      # behaviour into a hard failure, so a broken Java setup or download can
+      # never fake a green run.
+      - name: Run the rules suite against the emulator
+        if: steps.scope.outputs.run == '1' && matrix.group == 1
+        env:
+          ARENA_RULES_REQUIRE: '1'
+        run: npm run test:arena:rules
+
+      - name: Resolve browser
+        if: steps.scope.outputs.run == '1'
+        run: |
+          set -e
+          for c in google-chrome google-chrome-stable chromium chromium-browser; do
+            if command -v "$c" >/dev/null 2>&1; then
+              echo "CHROME_BIN=$c" >> "$GITHUB_ENV"
+              echo "Using $c: $("$c" --version)"
+              exit 0
+            fi
+          done
+          echo "::error::INFRASTRUCTURE: no Chrome/Chromium on the runner image." >&2
+          exit 1
+
+      # The only suite that drives two and three real clients against
+      # Firestore + Auth. It brings up its own emulators, two static servers
+      # and its own Chrome, and tears them all down. ARENA_E2E_VERBOSE streams
+      # each check and each scenario's timing as it happens, so a stall or a
+      # failure is located in the log instead of arriving as one block after
+      # eleven minutes.
+      - name: Run multiplayer e2e group ${{ matrix.group }} against the emulators
+        if: steps.scope.outputs.run == '1'
+        env:
+          ARENA_RULES_REQUIRE: '1'
+          ARENA_E2E_VERBOSE: '1'
+          ARENA_E2E_GROUP: ${{ matrix.group }}
+        run: npm run test:arena:emulator
+
+  # One verdict for both Arena groups, under the name branch protection
+  # requires. `if: always()` for the same reason as `browser`: a failed or
+  # cancelled group must not leave the required check skipped.
+  rules:
+    needs: [plan, rules-shard]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Verify both Arena groups passed
+        env:
+          EVENT: ${{ github.event_name }}
+          PLAN: ${{ needs.plan.result }}
+          PLAN_RUN: ${{ needs.plan.outputs.run }}
+          SHARDS: ${{ needs.rules-shard.result }}
+        run: |
+          if [ "$EVENT" = push ] && [ "$PLAN" = success ] && [ "$PLAN_RUN" = false ]; then
+            echo "this tree already passed the Arena suites on its pull request"
+            exit 0
+          fi
+          echo "rules-shard result: $SHARDS"
+          if [ "$SHARDS" != success ]; then
+            echo "::error::the Arena emulator suites did not pass (groups: $SHARDS)"
+            exit 1
+          fi
