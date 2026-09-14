@@ -89,14 +89,14 @@ const FLOORS = JSON.parse(await readFile(path.join(HERE, 'floors.json'), 'utf8')
 
 // The hang bound for each test FILE under coverage, not each test: with process
 // isolation `--test-timeout` bounds a whole file, every test in it together.
-// It cannot be `npm test`'s value. V8 coverage makes the heavy FPL files many
-// times slower, and unevenly (one file alone on four local cores, 2026-09-14):
-// backtest.test.mjs 21.9 s plain and 173.4 s covered, optimizer-consistency
-// 51.0 s and 125.1 s. A GitHub runner took 2.1 times as long as those four
-// cores for the whole covered estate (606 s against 288 s), so at npm test's
-// 180 s the weekly job killed both files, all their tests passing. The slowest
-// files and their share of this bound are printed on every run
-// (scripts/test-file-times.mjs); the job's own timeout-minutes in
+// It is set apart from `npm test`'s, because V8 coverage makes the heavy FPL
+// files many times slower, and unevenly (one file alone on four local cores,
+// 2026-09-14): backtest.test.mjs 21.9 s plain and 173.4 s covered,
+// optimizer-consistency 51.0 s and 125.1 s. At the 180 s npm test first used,
+// the weekly job killed both files with all their tests passing. At 900 s a
+// runner measured backtest.test.mjs, the slowest covered file, at 281.5 s
+// (31%). The slowest files and their share of this bound are printed on every
+// run (scripts/test-file-times.mjs); the job's own timeout-minutes in
 // scheduled.yml leaves room for a hang to reach this bound and be named.
 const FILE_TIMEOUT_MS = 900000;
 

@@ -822,12 +822,22 @@ What changed in the testing architecture itself:
   failure summary to the run page.
 - **Hangs are bounded.** `--test-timeout` bounds each test FILE, every test in
   it together, not each test (two 1.2 s tests under a 2 s bound are cancelled
-  at 2 s). `npm test` passes 180 s; the coverage runner passes 900 s, because
-  V8 coverage makes `apps/fpl-planner/tests/backtest.test.mjs` eight times
-  slower (21.9 s to 173.4 s alone on four cores), and at 180 s the first
-  scheduled run killed it and `optimizer-consistency.test.mjs` with every test
-  in them passing. Both runs print their slowest files against the bound
-  (`scripts/test-file-times.mjs`), and every CI job has a timeout.
+  at 2 s). `npm test` passes 600 s and the coverage runner 900 s. Both were
+  set from a runner's own per-file times (2026-09-14): plain, the heaviest file
+  (`apps/fpl-planner/tests/optimizer-consistency.test.mjs`) took 156.9 s, 87%
+  of the 180 s first chosen; under coverage `backtest.test.mjs` took 281.5 s,
+  and at 180 s the first scheduled run killed it and optimizer-consistency with
+  every test in them passing. Both runs print their slowest files against the
+  bound (`scripts/test-file-times.mjs`), and every CI job has a timeout.
+  `tests/static/npm-test-script.test.mjs` pins the script's shape (the bound as
+  its own token, then only quoted globs, the same ones the coverage runner
+  lists): raising the bound once dropped the space after it, which glued the
+  first glob onto the flag, and Node silently ran no Gym Tracker test and no
+  bound at all.
+- **CPU budgets are not compared under coverage.** The FPL planner's six
+  CPU-time budgets assert on every plain run and only report under V8
+  coverage, where the instrumentation is the cost
+  (`apps/fpl-planner/tests/helpers/cpu-budget.mjs`).
 - **Coverage merges module instances.** The floors are measured from LCOV with
   every instance of a file merged (the table counted one `?page=N` instance
   and failed sync-system at 69.54%; merged it is 93.36%). Floors unchanged.

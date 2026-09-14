@@ -148,6 +148,22 @@ test('master keeps the entry warm, because pushes no longer run the shards', () 
   assert.doesNotMatch(job, /needs: plan/, 'and is not skipped by plan: it exists for the runs plan skips');
 });
 
+test('a data refresh warms its new pin on master before its pull request opens', () => {
+  // The refresh bot merges with GITHUB_TOKEN, whose push starts no ci.yml run,
+  // so dataset-cache never sees a data change: after #543 (2026-09-14) pull
+  // requests missed the new pin until the weekly run saved it.
+  const wf = read('.github/workflows/refresh-rising-shows.yml');
+  const warm = wf.indexOf('- name: Warm the CI dataset cache for the new pin');
+  assert.ok(warm > 0, 'refresh-rising-shows.yml must warm the dataset cache');
+  const step = wf.slice(warm, wf.indexOf('\n      # ', warm));
+  assert.match(step, /uses: \.\/\.github\/actions\/rising-shows-dataset\s*$/m, 'through the one action, so the key cannot drift');
+  assert.match(step, /if: steps\.change\.outputs\.changed == 'true'/, 'on the same gate as the upload that writes the pin');
+  assert.ok(wf.indexOf('- name: Upload data to the rising-shows-data release') < warm,
+    'after the upload step writes the new data-release.json, or the key is the old pin');
+  assert.ok(warm < wf.indexOf('- name: Open the refresh pull request'),
+    'before the pull request, whose shards are the first to restore it');
+});
+
 test('the cache key is the committed data pin, never the run', () => {
   // A run-id key never hits exactly, so every run saved another ~100 MB entry
   // and evicted other caches (the Arena emulator jar among them).

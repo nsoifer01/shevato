@@ -517,6 +517,20 @@ so ask what a candidate does to order before running it.
   measurement to make after GW1 rather than a last-week production tweak. Note
   also that wildcard and free hit are illegal in GW1, so the opening gameweek
   never pays for those two rebuilds at all.
+- **The CPU budgets are compared on the plain run only, never under V8
+  coverage** (2026-09-14). Once the weekly coverage job stopped killing whole
+  test files at the per-file timeout, two budgets failed there: a live-sized
+  plan at 10062 ms of CPU against 10000, and the transfer search at 2315 ms
+  against 1500. The same run's uninstrumented unit job passed both. Coverage
+  instrumentation slows this code unevenly (`optimizer-consistency.test.mjs`
+  2.5 times, `backtest.test.mjs` 8 times, one file alone on four cores), so an
+  instrumented number is not a planner number and no scaled budget would be
+  one either. All six budget comparisons go through
+  `tests/helpers/cpu-budget.mjs`: without `NODE_V8_COVERAGE` it asserts exactly
+  as before, and under coverage the work and every assertion on its output
+  still run and the cost is printed as a diagnostic.
+  `tests/cpu-budget.test.mjs` fails if a raw `assert.ok(ms < ..._BUDGET...)`
+  comes back.
 - **A search limit must never be written into game state.** The manual
   pre-season squad hardcoded `freeTransfers: 2` "because the search only
   enumerates two moves"; same bug class as the FT=5 display. The reach of the

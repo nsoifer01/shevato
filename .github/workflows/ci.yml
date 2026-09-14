@@ -101,7 +101,10 @@ jobs:
     # About four minutes on a runner. The cap exists so a hung test fails in
     # minutes with a name instead of holding a runner for GitHub's six-hour
     # default: package.json sets --test-timeout, which bounds each test FILE
-    # (every test in it together), not each test.
+    # (every test in it together), not each test. It is 600 s: on a runner the
+    # heaviest file, apps/fpl-planner/tests/optimizer-consistency.test.mjs,
+    # took 156.9 s (2026-09-14), which was 87% of the 180 s first set here, and
+    # a file that hangs still reaches 600 s well inside this cap.
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v6
@@ -245,6 +248,12 @@ jobs:
   # and split the dataset on all six shards. Measured 2026-09-14 (PR #542): a
   # miss costs each shard 8-13 s (download, split, save), a hit restores in
   # 2-4 s. Not gated on plan: its whole job is the run that plan skips.
+  #
+  # It only ever sees pushes a person's merge makes. The data refresh bot
+  # merges with GITHUB_TOKEN, whose push starts no workflow run at all, so a
+  # NEW pin is warmed by refresh-rising-shows.yml itself, on master, before it
+  # opens its pull request (after #543 on 2026-09-14 nothing warmed it for two
+  # hours).
   dataset-cache:
     if: github.event_name == 'push'
     runs-on: ubuntu-latest
@@ -254,8 +263,9 @@ jobs:
       - uses: actions/setup-node@v6
         with:
           node-version-file: '.nvmrc'
-      # A hit is a 2-4 s restore that does nothing else; a miss (the refresh
-      # bot published new data) builds and saves the entry for every PR.
+      # A hit is a 2-4 s restore that does nothing else; a miss (an entry
+      # evicted, or a pin the refresh job could not warm) builds and saves the
+      # entry for every PR.
       - name: Rising Shows dataset
         uses: ./.github/actions/rising-shows-dataset
 

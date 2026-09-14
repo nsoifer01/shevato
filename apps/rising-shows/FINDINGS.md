@@ -1123,7 +1123,13 @@ audit; the shell is still pinned by `tests/static/ci-rising-shows-dataset.test.m
   #542: a hit restores in 2-4 s per shard, a miss costs 8-13 s (download,
   split, save). A cache saved inside a pull request is visible to that pull
   request only, and pushes to master no longer run the shards, so ci.yml's
-  push-only `dataset-cache` job keeps the entry warm on master.
+  push-only `dataset-cache` job keeps the entry warm on master. That job
+  cannot see a data refresh, though: the bot merges with GITHUB_TOKEN, and that
+  push starts no workflow, so after #543 (2026-09-14) the new pin went
+  uncached on master for two hours, until the weekly scheduled run saved it.
+  `refresh-rising-shows.yml` now warms the new pin through the same action, on
+  master, after the upload writes `data-release.json` and before it opens the
+  pull request.
 - **The real-catalogue unit tests never ran on CI.** `shows-index-parity`
   (seven tests) and `finder-moods` (three) skip without the dataset, and the
   unit job never had it, so they ran only on machines with the data. The
