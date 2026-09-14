@@ -743,6 +743,48 @@ so `privacy.html` now says it holds a note that the question is waiting for an
 answer before it holds the answer; the note is the status alone, with no
 timestamp, because nothing needs to know when the question first came up.
 
+**Profiles the race already damaged cannot be identified, and that was
+checked, not assumed (2026-09-14).** The old reconciler turned unanswered legacy
+measurements into structurally valid canonical records without converting
+them: 180 lb / 34 in became 180 kg / 34 cm, stamped `unitsCanonical: true`.
+Running the pre-#544 `data-migrations.js` through the race, and through the
+legitimate states that end in the same place, showed that nothing a detector
+could read separates them:
+
+- **Per-record metadata is identical to correct data.** A race victim, a
+  canonical record synced in from the user's healthy second device, and an
+  intact install's v1 output all carry the stamp, the same creation time
+  embedded in the id (`generateNumericId` is `Date.now() * 4096 + counter`, kept
+  through every load and save), the same `createdAt`, the same decision record
+  (none, or `resolved` / `imperial`) and, where a backup exists, a stored value
+  equal to the backup. Only the numbers differ.
+- **No history survives to consult.** The sync layer keeps one current revision
+  per key (`rev`, `hash`, `updatedAt`) and no earlier values.
+  `gymTrackerMeasurementsBackup` is local-only, written only when the question
+  is answered, and after the race it already holds the stamped values. Imports
+  merge by id with the newer `createdAt` winning and carry whatever stamps the
+  export had.
+- **The numbers do not discriminate reliably either.** An absolute plausibility
+  test ("a 34 cm adult waist is impossible") was already rejected when the
+  question was designed. A sequence test fares no better: a race victim shows an
+  exact 2.2046x weight step against entries logged after the fix, and so does
+  legitimately migrated history, because a pre-canonical lb account that once
+  had its display unit on kg stored raw kg numbers that v1 then converted as
+  pounds. A profile with no entry logged since the fix shows no step at all.
+
+So existing records stay untouched: no automatic repair and no
+"suspicious record" flag, since either would act on correct profiles. The fix
+prevents new cases. The exposure was narrow: an lb account whose install had
+been damaged by the pre-2026-08-20 sync clobber (unstamped legacy sessions),
+holding measurements logged before then, where any scan ran between
+2026-08-20 05:05 UTC (cdcaf972) and 2026-09-14 18:47 UTC (#544) while the
+question was still unanswered: the sync-ready refresh a second after the boot
+that asked, a remote update, Settings re-check, or the next boot after "Decide
+later". The recourse is manual:
+with pounds selected, an affected pre-August entry reads 2.2 times too heavy
+(180 lb shows as 396.8 lb) and its circumferences 2.54 times too small (34 in
+shows as 13.4 in); edit those entries to the numbers actually measured.
+
 **Settings > Data > Re-check stored units** is the permanent escape hatch. It
 is a diagnostic, NOT "run all migrations again": it repairs only provable
 cases, reports ambiguous ones, and changes nothing on a healthy profile no
