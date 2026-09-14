@@ -1390,6 +1390,9 @@ client opens that room code again, so a room nobody revisits kept its chat
 indefinitely. Counted read-only in production on 2026-09-13: 113 chat messages,
 112 of them in 23 rooms that no longer existed. privacy.html says an abandoned
 room is removed within a day, so the chat was the part that made that untrue.
+Since 14 September 2026 privacy.html also states the chat expiry, that only a
+room's players can read its chat while the room exists, and the gap between a
+room expiring and its chat expiring.
 
 Every message now carries `expiresAt` (`ROOM_TTL_MS`, a day, set on both the
 text and the emoji send), `firestore.rules` requires it on create within 48
