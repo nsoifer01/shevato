@@ -55,7 +55,14 @@ const RED = `<?xml version="1.0" encoding="utf-8"?>
 test('THE TRAP: a failing KNOWN DEFECT todo is counted as todo, never as a failure', () => {
   const kinds = testcases(GREEN).map((c) => c.kind);
   assert.deepEqual(kinds, ['pass', 'skipped', 'todo', 'pass']);
-  assert.equal(summarize(GREEN), '### Unit tests: all 5 passed (1 skipped, 1 todo)\n');
+  assert.match(summarize(GREEN), /^### Unit tests: all 5 passed \(1 skipped, 1 todo\)\n/);
+});
+
+test('a green run names every test that did not run, and why', () => {
+  // A count alone cannot say whether the skipped test was the one that matters
+  // (CI once skipped ten real-catalogue parity tests on every run).
+  assert.equal(summarize(GREEN), '### Unit tests: all 5 passed (1 skipped, 1 todo)\n\n'
+    + 'Did not run (2):\n- skipped: a skipped test - needs a thing\n- todo: a todo test - KNOWN DEFECT: x\n');
 });
 
 test('a green run states how many tests ran, from the runner\'s own totals', () => {

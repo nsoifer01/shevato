@@ -10,6 +10,8 @@ name: ci
 #   +- test ............ every node:test file: unit, integration, static
 #   +- browser-shard x6  the CDP browser estate, packed by measured cost
 #   |  +- browser ...... one verdict for the six shards
+#   +- dataset-cache ... push only: keeps the Rising Shows dataset cache warm
+#   |                    on master, where every pull request can restore it
 #   +- rules-shard x2 .. Arena's Firestore rules suite + multi-client e2e against
 #      |                 the emulators, scoped to changes that can move them
 #      +- rules ........ one verdict for both groups
@@ -105,6 +107,11 @@ jobs:
       - uses: actions/setup-node@v6
         with:
           node-version-file: '.nvmrc'
+      # Ten real-catalogue tests (shows-index-parity, finder-moods) skip without
+      # the dataset, and on the old `tests` workflow they never once ran. With
+      # the warm cache this is a 2-4 s restore.
+      - name: Rising Shows dataset
+        uses: ./.github/actions/rising-shows-dataset
       # The TAP reporter wrote ~60,000 lines for 6,700 passing tests, so a
       # failure was a search, not a read. `dot` prints one character per test
       # and then every failure in full at the END of the log; the JUnit file
@@ -166,65 +173,10 @@ jobs:
           echo "::error::INFRASTRUCTURE: no Chrome/Chromium on the runner image." >&2
           exit 1
 
-      # THE RISING SHOWS DATASET. Gitignored, published on a GitHub release,
-      # pinned by apps/rising-shows/data-release.json. Three suites assert
-      # against it, so it is a precondition, not an optional extra: it used to
-      # be `continue-on-error`, which let a failed download turn 64 assertions
-      # into skips and a green shard that checked less than the last one.
-      #
-      # The key is the PIN, not the run id. A run-id key saved a fresh ~100 MB
-      # entry on every run (evicting the Arena emulator cache under the 10 GB
-      # limit) and never produced an exact hit; the pin changes only when the
-      # refresh bot publishes new data.
-      #
-      # Explicit files, never the data/ directory: data/ also holds a TRACKED
-      # file (season-overviews.json), and restoring the directory overwrote the
-      # pull request's copy with whatever the cache had saved.
-      - name: Restore the Rising Shows dataset
-        id: rs-cache
-        uses: actions/cache/restore@v5
-        with:
-          path: |
-            apps/rising-shows/data.json
-            apps/rising-shows/data-index.json
-            apps/rising-shows/shows-index.json
-            apps/rising-shows/data/show-modal-extras.json
-            apps/rising-shows/data/kometa-index.json
-            apps/rising-shows/data/detail
-          key: rising-shows-dataset-${{ hashFiles('apps/rising-shows/data-release.json', 'apps/rising-shows/scripts/fetch-data.js', 'apps/rising-shows/scripts/split-data.js') }}
-
-      - name: Prepare the Rising Shows dataset
-        run: |
-          set -e
-          # Gate on what the SUITES gate on (shows-index.json plus a detail
-          # shard), never on a file that merely happens to be cheap to check.
-          # A cache that holds the raw download but not the split output is a
-          # partial hit: split it rather than skipping the whole dataset.
-          if [ -s apps/rising-shows/shows-index.json ] \
-            && [ -s apps/rising-shows/data-index.json ] \
-            && [ -d apps/rising-shows/data/detail ]; then
-            echo "dataset restored from cache"
-          elif [ -s apps/rising-shows/data.json ] \
-            && [ -s apps/rising-shows/data/show-modal-extras.json ]; then
-            echo "cache held the raw dataset but not the split output; splitting"
-            npm run build:rising-shows:split
-          else
-            npm run fetch:rising-shows-data
-            npm run build:rising-shows:split
-          fi
-
-      - name: Save the Rising Shows dataset
-        if: steps.rs-cache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v5
-        with:
-          path: |
-            apps/rising-shows/data.json
-            apps/rising-shows/data-index.json
-            apps/rising-shows/shows-index.json
-            apps/rising-shows/data/show-modal-extras.json
-            apps/rising-shows/data/kometa-index.json
-            apps/rising-shows/data/detail
-          key: rising-shows-dataset-${{ hashFiles('apps/rising-shows/data-release.json', 'apps/rising-shows/scripts/fetch-data.js', 'apps/rising-shows/scripts/split-data.js') }}
+      # The real catalogue three suites assert against (restore by its pinned
+      # key, download and split on a miss; see the action for why each detail).
+      - name: Rising Shows dataset
+        uses: ./.github/actions/rising-shows-dataset
 
       # Generated, gitignored pages the Gym Tracker and Rising Shows suites
       # visit. Seconds each, and without them their checks could not run.
@@ -277,6 +229,29 @@ jobs:
             echo "::error::the browser estate did not pass (shards: $SHARDS)"
             exit 1
           fi
+
+  # Keeps the Rising Shows dataset cache warm ON MASTER, the one place every
+  # pull request can restore a cache from (a cache a pull request saves is
+  # visible to that pull request alone). The old browser workflow warmed it as a
+  # side effect of re-running the estate on every push; pushes now skip the
+  # shards when the tree already passed (plan), so without this job nothing on
+  # master would save the key and every pull request's first run would download
+  # and split the dataset on all six shards. Measured 2026-09-14 (PR #542): a
+  # miss costs each shard 8-13 s (download, split, save), a hit restores in
+  # 2-4 s. Not gated on plan: its whole job is the run that plan skips.
+  dataset-cache:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: '.nvmrc'
+      # A hit is a 2-4 s restore that does nothing else; a miss (the refresh
+      # bot published new data) builds and saves the entry for every PR.
+      - name: Rising Shows dataset
+        uses: ./.github/actions/rising-shows-dataset
 
   # The Arena emulator suites, on TWO machines. On one, the multiplayer e2e was
   # about ten minutes of real game clocks, the longest job on a pull request.

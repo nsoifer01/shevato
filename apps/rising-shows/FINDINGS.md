@@ -1119,7 +1119,18 @@ audit; the shell is still pinned by `tests/static/ci-rising-shows-dataset.test.m
 - **The key was the run id.** It could never hit exactly, so every run saved
   another ~100 MB entry and evicted other caches under GitHub's 10 GB limit.
   The key is now `data-release.json` (the committed pin) plus the two scripts,
-  which changes only when the refresh bot publishes new data.
+  which changes only when the refresh bot publishes new data. Measured on PR
+  #542: a hit restores in 2-4 s per shard, a miss costs 8-13 s (download,
+  split, save). A cache saved inside a pull request is visible to that pull
+  request only, and pushes to master no longer run the shards, so ci.yml's
+  push-only `dataset-cache` job keeps the entry warm on master.
+- **The real-catalogue unit tests never ran on CI.** `shows-index-parity`
+  (seven tests) and `finder-moods` (three) skip without the dataset, and the
+  unit job never had it, so they ran only on machines with the data. The
+  unit job now restores it through the same composite action
+  (`.github/actions/rising-shows-dataset`), and its summary names every
+  skipped test, which is how this surfaced: "all 6789 passed (17 skipped)" on
+  CI against 6 skipped locally.
 - **Preparation was `continue-on-error`.** A failed download turned the 64
   assertions into skips and the shard stayed green. It is a normal step now,
   and the shards run in CI mode (`BROWSER_TEST_CI=1`), where any precondition

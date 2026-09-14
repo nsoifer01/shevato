@@ -197,7 +197,7 @@ coverage.
 | Area | U | E | A | V | M | Err | Notes |
 |---|---|---|---|---|---|---|---|
 | Marketing site + hub | part | FULL | FULL | FULL | FULL | part | Search/filters/switcher/nav/forms E2E; main.js auth modal has keyboard checks only |
-| Arena | FULL | FULL | FULL | FULL | FULL | FULL | Extracted modules deep; since 2026-08-16: 23 emulator rules tests + 27-check two-client multiplayer e2e (separate commands; CI runs both in arena-rules.yml on pull requests and master pushes that can affect Arena, plus weekly) |
+| Arena | FULL | FULL | FULL | FULL | FULL | FULL | Extracted modules deep; since 2026-08-16: 23 emulator rules tests + 27-check two-client multiplayer e2e (separate commands; CI runs both in the `rules-shard` jobs of ci.yml, split across two machines, on pull requests and master pushes that can affect Arena, plus weekly unscoped in scheduled.yml) |
 | Football H2H | FULL | FULL | FULL | FULL | FULL | FULL | Live add path now vm-tested; correctness asserted in browser |
 | FPL Planner | FULL | FULL | FULL | FULL | FULL | FULL | Deepest estate; engine + UI + proxy + e2e lifecycle |
 | Gym Tracker | FULL | FULL | FULL | FULL | FULL | FULL | Views via source extraction; SW at unit + browser layers |
@@ -633,11 +633,13 @@ defect fixes stamped above:
   the same property and verifies its header contract producer-side).
 - **The arena rules/emulator suites need Java plus a one-time
   firebase-tools download**, so they are separate commands with their own CI
-  workflow (arena-rules.yml: pull requests and master pushes that can affect
-  Arena, plus weekly), not part of `npm test`; locally they skip cleanly (and
-  loudly) where Java is absent.
+  jobs (`rules-shard` in ci.yml: pull requests and master pushes that can
+  affect Arena, split across two machines; weekly unscoped in scheduled.yml),
+  not part of `npm test`; locally they skip cleanly (and loudly) where Java is
+  absent.
 - Some browser checks depend on the gitignored rising-shows dataset and skip
-  cleanly on a fresh clone (6 checks, reported, with the fetch command).
+  cleanly on a fresh clone (reported, with the fetch command). On CI they always
+  run: the shards prepare the dataset, and CI mode fails any precondition skip.
 
 ## Recommended next steps (all optional polish; nothing load-bearing open)
 
@@ -806,6 +808,14 @@ What changed in the testing architecture itself:
   Shows dataset, the generated Gym Tracker pages, the one built show page), so a
   commit asserts the same set of things on every run. Known-defect quarantines
   are unaffected.
+- **The unit layer states what ran.** The `test` job restores the same pinned
+  dataset (one composite action, `.github/actions/rising-shows-dataset`), so
+  the ten real-catalogue Rising Shows tests (`shows-index-parity`,
+  `finder-moods`) run on CI; they had skipped on every CI run before. Its
+  summary gives the runner's totals and names every skipped or todo test on
+  every run. The skips that remain are deliberate: six FPL tests that need
+  seasons downloaded from the live FPL API, and one `@netlify/blobs` version
+  check that needs an npm install the job does not do.
 - **Infrastructure is labelled.** A browser that dies mid-run fails its suite
   once as `INFRASTRUCTURE` and the next suite gets a new browser; a browser that
   never starts reports its exit and stderr; each shard and the unit job write a

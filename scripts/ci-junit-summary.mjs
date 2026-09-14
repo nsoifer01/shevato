@@ -30,22 +30,36 @@ function attr(tag, name) {
   return m ? unescape(m[1]) : null;
 }
 
-/** Every testcase as { name, failure, kind: 'pass' | 'fail' | 'skipped' | 'todo' }. */
+/** Every testcase as { name, failure, reason, kind: 'pass' | 'fail' | 'skipped' | 'todo' }. */
 export function testcases(xml) {
   const out = [];
   const re = /<testcase\b([^>]*?)(\/>|>([\s\S]*?)<\/testcase>)/g;
   for (const m of String(xml).matchAll(re)) {
     const open = `<testcase${m[1]}>`;
     const body = m[3] || '';
-    const skippedType = (/<skipped\b[^>]*\btype="([^"]*)"/.exec(body) || [])[1] || null;
+    const skippedTag = (/<skipped\b[^>]*>/.exec(body) || [])[0] || '';
+    const skippedType = skippedTag ? attr(skippedTag, 'type') : null;
     const failure = attr(open, 'failure');
     let kind = 'pass';
     if (skippedType === 'todo') kind = 'todo';
-    else if (skippedType) kind = 'skipped';
+    else if (skippedTag) kind = 'skipped';
     else if (failure !== null || /<failure\b/.test(body)) kind = 'fail';
-    out.push({ name: attr(open, 'name') || '(unnamed)', failure, kind });
+    out.push({ name: attr(open, 'name') || '(unnamed)', failure, reason: skippedTag ? attr(skippedTag, 'message') : null, kind });
   }
   return out;
+}
+
+// Skips and todos are NAMED on every run, green included. A skipped test did
+// not run, and a count alone cannot say whether it was the one that matters.
+function notRun(cases, md, limit) {
+  const list = cases.filter((c) => c.kind === 'skipped' || c.kind === 'todo');
+  if (!list.length) return [];
+  const lines = ['', `Did not run (${list.length}):`];
+  for (const c of list.slice(0, limit)) {
+    lines.push(`- ${c.kind}: ${md(c.name)}${c.reason ? ` - ${md(c.reason).slice(0, 160)}` : ''}`);
+  }
+  if (list.length > limit) lines.push(`- ... and ${list.length - limit} more`);
+  return lines;
 }
 
 function totals(xml, cases) {
@@ -71,16 +85,17 @@ export function summarize(xml, { limit = 50 } = {}) {
   const t = totals(String(xml), cases);
   const extras = [t.skipped ? `${t.skipped} skipped` : '', t.todo ? `${t.todo} todo` : ''].filter(Boolean).join(', ');
   const failed = cases.filter((c) => c.kind === 'fail');
+  const md = (s) => String(s).replace(/[`|]/g, "'").replace(/\s+/g, ' ').trim();
   if (!t.fail && !failed.length) {
-    return `### Unit tests: all ${t.tests} passed${extras ? ` (${extras})` : ''}\n`;
+    return `${[`### Unit tests: all ${t.tests} passed${extras ? ` (${extras})` : ''}`, ...notRun(cases, md, limit)].join('\n')}\n`;
   }
-  const md = (s) => s.replace(/[`|]/g, "'").replace(/\s+/g, ' ').trim();
   const lines = [`### Unit tests: ${t.fail || failed.length} of ${t.tests} failed${extras ? ` (${extras})` : ''}`, ''];
   for (const c of failed.slice(0, limit)) {
     const message = md(c.failure || '').slice(0, 300);
     lines.push(`- ${md(c.name)}${message ? ` - \`${message}\`` : ''}`);
   }
   if (failed.length > limit) lines.push(`- ... and ${failed.length - limit} more; the full list is at the end of the job log`);
+  lines.push(...notRun(cases, md, limit));
   return `${lines.join('\n')}\n`;
 }
 

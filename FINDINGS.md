@@ -65,6 +65,29 @@ day and on a CDN, not on the change.
   headless Chrome" with no cause, and an Arena e2e that printed nothing for
   eleven minutes.
 
+**Measured result** (first run of the new pipeline, PR #542 run 34811820850,
+against the old pipeline's 38 green pull-request commits from 2026-09-08 to
+09-14):
+
+| | Old pipeline | New pipeline |
+| --- | --- | --- |
+| PR wall clock (first job queued to last job done) | median 13.1 min (12.3 to 18.1) | 8.55 min (-35%) |
+| Longest path | browser tests, ~13 min (4 shards of ~12 min) | a browser shard, 505 s (six shards, 484-505 s each) |
+| Arena, when its inputs changed | one job, 10.1-11.6 min | group 1 424 s, group 2 300 s, in parallel |
+| Unit + static | ~3.7 min | 237 s (6,788 tests executed, 0 failed) |
+| Lint | ~0.4 min | 27 s |
+| Runner time per PR | ~64 min | 66.2 min |
+| Push to master after a merge | the whole estate again: 27 pushes cost 275 + 177 + 77 + 11 workflow-minutes | skipped when the tree already passed |
+| Browser checks executed on CI | 2,237 (5 always skipped) | 2,244, 0 skipped |
+
+Every job of the new run started within 5 s of the run being created, so
+nothing waited on anything it does not need. The six browser shards' suite
+time was 455-479 s, within 5% of each other; the critical path is those shards,
+ahead of Arena group 1. Six shards, not eight, because a public repository on
+GitHub Free runs at most 20 jobs at once and a pull request now peaks at ten,
+so two concurrent pull requests fit without queuing; eight shards would save
+about a minute and queue the second pull request instead.
+
 **Real-clock sweep.** The unit estate was run under eight shifted clocks and
 zones (early Monday UTC, late Sunday Los Angeles, Monday in Auckland, New
 Year's Eve, both DST changes, a leap day, month end at UTC+14). Apart from the

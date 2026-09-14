@@ -370,7 +370,9 @@ Fixing the product bug is a separate change from the test that documents it.
   run.mjs), so a crashed block cannot silently shrink the denominator.
 - CI (`.github/workflows/`):
   - `ci` is the whole pull-request gate, one workflow: `lint`, `test` (every
-    `node:test` file, `dot` output with a JUnit summary on failure), the
+    `node:test` file with the Rising Shows dataset present, so the
+    real-catalogue tests run; `dot` output plus a summary on every run that
+    states the totals and names every skipped test), the
     `browser-shard` matrix (six shards) with its `browser` verdict, and the
     `rules-shard` pair with its `rules` verdict (the Arena rules suite and the
     multi-client e2e against the emulators, split across two machines and
@@ -378,7 +380,9 @@ Fixing the product bug is a separate change from the test that documents it.
     are those job names. On a push to master a `plan` job first asks
     `scripts/ci-already-tested.mjs` whether that exact tree already passed on
     its pull request, and skips the suites if so; every uncertain answer runs
-    them. A newer commit on a pull request cancels the older run.
+    them. A newer commit on a pull request cancels the older run. On a push,
+    `dataset-cache` keeps the Rising Shows dataset cache warm on master, where
+    every pull request's shards can restore it.
   - `scheduled` (weekly + manual): the full `ci` pipeline against master
     unscoped, the coverage floors, and the Firefox/WebKit smoke.
   - `Refresh Rising Shows data` (daily; publishes the dataset release and
