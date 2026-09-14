@@ -93,9 +93,15 @@ zones (early Monday UTC, late Sunday Los Angeles, Monday in Auckland, New
 Year's Eve, both DST changes, a leap day, month end at UTC+14). Apart from the
 two already fixed, nothing failed except tests whose code runs in a `node:vm`
 realm (its `Date` is not the shifted one, so that is an artifact) and the
-privacy review-date guard, which compares against today by design. That realm
-is the limit of the method: code under `apps/arena/tests/helpers/app-vm.js`
-was not swept.
+privacy review-date guard, which compares against today by design. The sweep's
+preload replaced `Date` in the main realm only, so code the Arena tests load
+into a `node:vm` context through `apps/arena/tests/helpers/app-vm.js` kept the
+real clock. That leaves nothing calendar-dependent unswept: the functions loaded
+there (`maybeResetForNewRound`, `progressRoomClock`, `livePlayers`,
+`joinPlayer`, `sweepStalePlayers`) only compare `Date.now()` against stored
+timestamps to measure elapsed time, and the two places `app.js` formats a
+calendar date (`shareResultCard`, `formatRelativeDate`) are not loaded into the
+vm at all.
 
 **The first scheduled run (34815661555) was red twice, both times CI's own
 doing.**
@@ -131,12 +137,19 @@ doing.**
   the push-only `dataset-cache` job never ran for a new pin: after #543 merged
   at 11:37 UTC, master's entry for its pin was saved only by the weekly run at
   13:49. `refresh-rising-shows.yml` now saves the new pin's entry on master
-  itself, before it opens the pull request.
+  itself, before it opens the pull request. That the bot's merge starts no
+  master CI run is intended, not a hole: branch protection is strict and
+  requires lint, test, browser and rules on an up-to-date head, so the merged
+  tree is the tree its pull request tested, which is the same guarantee the
+  plan job relies on when it skips a person's merge (#543's merge tree and its
+  tested head are both `7039607c`).
 - *The mandatory local browser gate then caught a real Gym Tracker data race*
   (three `gym-units F` checks), which CI and every earlier run had missed only
   because their test clicked before the app's sync refresh ran. It was not a
   flaky test: an asked measurement-units question could be decided for the
-  user by the next scan, storing 34 in as 34 cm. Details in
+  user by the next scan, storing 34 in as 34 cm. The fix prevents new cases;
+  profiles it already damaged were checked and cannot be told apart from
+  correct ones, so they are left untouched. Details in
   `apps/gym-tracker/FINDINGS.md`.
 - *Arena S5: `timeout: Runtime.evaluate`* from a polling loop that read the
   page with plain `evaluate()`, the send-timeout hole `waitForExpr` had closed
