@@ -34,6 +34,7 @@ import { sameId } from '../js/utils/id-utils.js';
 import { completedSetsInSlotOrder } from '../js/utils/session-metrics.js';
 import { normalizeWeightUnit } from '../js/utils/units.js';
 import { AnalyticsService } from '../js/services/AnalyticsService.js';
+import { startOfWeek } from '../js/utils/week.js';
 
 // In-memory localStorage shim: AchievementService reaches the StorageService
 // singleton for the display unit. Installed before the import below.
@@ -339,10 +340,14 @@ function finishedQuickSession(id, date, weight) {
 }
 
 test('a quick session counts toward volume and week stats', () => {
-    const quick = finishedQuickSession(1, '2026-09-08', 60);
+    // getWeekStats reads the real clock, so the session is dated on the first
+    // day of the CURRENT week. A fixed date turned this red the Monday after it.
+    const thisWeek = AnalyticsService.toLocalDateKey(startOfWeek(new Date(), 1));
+    const quick = finishedQuickSession(1, thisWeek, 60);
     assert.equal(AnalyticsService.getTotalVolume([quick]), 960);
     const stats = AnalyticsService.getWeekStats([quick], 1);
-    assert.ok(stats.workouts >= 1, 'a quick workout is a workout');
+    assert.equal(stats.workouts, 1, 'a quick workout is a workout');
+    assert.equal(stats.volume, 960, 'and its volume is this week\'s volume');
 });
 
 test('a quick session counts toward personal records', () => {
