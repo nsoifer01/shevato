@@ -78,6 +78,65 @@ which pauses every gstatic, cdnjs and Google Fonts request on each page and
 requires DOMContentLoaded. `tests/static/stylesheet-chain.test.mjs` counts the
 Raleway link outside its `<noscript>` copy.
 
+## Marketing pages load auth only; Firestore is imported where it is used (2026-09-13, audit S-7)
+
+**What every page paid for.** `firebase-config.js` is on every page, because the
+header's Sign In needs `window.firebaseAuth`. It used to import and start the
+Firestore SDK (with its IndexedDB multi-tab cache) and the Realtime Database SDK
+as well. Measured on production before the change, fresh profile, cache off, GA
+blocked, median of three loads: every marketing page (`/`, `/about`, `/work`,
+`/contact`, `/apps`, `/privacy`) downloaded 216 KB compressed of Firebase code
+(`firebase-app`, `firebase-auth`, `firebase-database`, `firebase-firestore`),
+about three quarters of the 291 KB of script those pages load, and none of them
+ever sent a Firestore request. On a mobile user agent `getAuth()` also installed
+the popup/redirect resolver, which loaded Google's auth iframe on every page
+view (3 more requests, about 40 KB).
+
+**The split.**
+
+- `firebase-config.js` is the app plus auth: `initializeAuth(app, { persistence:
+  [browserLocalPersistence, indexedDBLocalPersistence, browserSessionPersistence] })`.
+  localStorage first, as `setPersistence(browserLocalPersistence)` made it before;
+  the other two are only read to find a session saved before that. No
+  popup/redirect resolver, because nothing on the site signs in by popup or
+  redirect (email and password, and anonymous guests for Arena). If a popup or
+  redirect sign-in is ever added, pass `browserPopupRedirectResolver` there.
+- `firebase-firestore.js` initialises Firestore on that app and is imported by
+  the sync engine (`storage-sync-robust.js`), Arena's `app.js` and the MapTap
+  rival network's dynamic import. App pages load it through the engine;
+  account deletion on a marketing page gets it through `app-sync-init.js`'s
+  dynamic import, only when used.
+- The emulator seam spans both files through `firebaseEmulatorsEnabled`.
+- The Realtime Database is gone: production always used Firestore
+  (`USE_FIRESTORE` was hard-coded `true` and no caller passed `false`), so the
+  engine's RTDB session and flush paths, the SDK import, `database.rules.json`
+  and the database emulator were dead.
+
+**After.** Measured the same way on the deploy preview of PR #540: every marketing page
+downloads 136 KB of script instead of 291 KB (332 KB on the mobile user agent),
+59 KB of it Firebase (`firebase-app`, `firebase-auth`) instead of 216 KB, and
+parses 465 KB of JavaScript instead of 1,067 KB. The mobile auth iframe is gone
+(31 to 32 requests instead of 33 to 34). App pages still load Firestore, 168 KB
+of Firebase instead of 216 KB because the Realtime Database SDK went. The auth
+adapter is ready at the same moment or earlier (the home page on a phone, 546 ms
+median before, 501 ms on the preview) and DOMContentLoaded did not move. A
+disposable-account probe on the preview signed up, synced, switched accounts,
+deleted accounts and uploaded signed-out work exactly as on production.
+
+Compare LOAD time on production, never on a deploy preview: previews inject
+Netlify's collaboration drawer (`<script async src="/.netlify/scripts/cdp">`),
+which production never serves, and it adds requests and delays `load` on every
+page it lands on.
+
+**Traps.** `firebase-firestore.js` must stay on the publish allow-list
+(`scripts/build-publish-dir.mjs`), in Trip Planner's precache, in the Arena
+workflow's inputs, and in both `eslint.config.mjs` blocks that name
+`firebase-config.js` (the module block alone gave it 0 lint rules; the
+correctness-rules block is the one that counts). Pinned by
+`sync-system/tests/firebase-config-shape.test.mjs` ("firebase-config imports
+only the app and auth SDKs", the `initializeAuth` persistence pin, and the
+direct-Firestore-import allowlist).
+
 ## The index baseline, measured 2026-09-05
 
 Read from the Search Console URL Inspection API the day the SEO round shipped,
