@@ -143,6 +143,22 @@ doing.**
   tree is the tree its pull request tested, which is the same guarantee the
   plan job relies on when it skips a person's merge (#543's merge tree and its
   tested head are both `7039607c`).
+
+  A dispatched refresh on the same day proved the warm-up end to end (run
+  34896187775; IMDb had replaced `title.basics.tsv.gz` after the morning run,
+  so the content hash really changed). The new pin's key,
+  `rising-shows-dataset-1bcf0dba…`, missed, the split ran, and the entry was
+  saved on `refs/heads/master`. Bot PR #546's test job and all six browser
+  shards logged `Cache hit for` that key and skipped the save. Its merge
+  `5293edc6` carried the tested head's tree (`3dfdffa5`) and started no
+  workflow run at all.
+
+  The same run exposed a race in `scripts/bot-pr-autopilot.mjs`, now fixed.
+  GitHub merged #546 at 21:46:25, and the autopilot's poll a second later
+  still read it as open and `behind`, because master already held the merge.
+  Update-branch then answered 422 and the refresh job went red, with its data
+  merged and its bot branch left on the remote. A 422 there now continues the
+  bounded poll, which sees the merge on its next read.
 - *The mandatory local browser gate then caught a real Gym Tracker data race*
   (three `gym-units F` checks), which CI and every earlier run had missed only
   because their test clicked before the app's sync refresh ran. It was not a

@@ -297,7 +297,23 @@ export async function drivePullRequest(api, number, {
       }
       branchUpdates += 1;
       log(`#${number} is behind ${pr.base.ref}; updating the branch (${branchUpdates}/${maxBranchUpdates})`);
-      await updateBranch(api, number);
+      try {
+        await updateBranch(api, number);
+      } catch (err) {
+        // GitHub answers update-branch with a 422 when there is nothing it can
+        // update, and the one time that happened for real, auto-merge had just
+        // merged the pull request: #546 (2026-09-14) merged at 21:46:25, the
+        // poll a second later still read it as open and `behind` (master
+        // already held the merge), and update-branch said "422 merge conflict
+        // between base and head". That used to throw, so the refresh job went
+        // red with its data merged and its branch left on the remote. The next
+        // poll reads the pull request again, so a merge, a real conflict
+        // (`dirty`) or a base that keeps moving each reach their own outcome,
+        // and this attempt still counts against maxBranchUpdates. Any other
+        // failure is not this and still throws.
+        if (err.status !== 422) throw err;
+        log(`#${number}: GitHub refused the branch update (${err.message}); reading the pull request again`);
+      }
     }
 
     const state = `${pr.mergeable_state}/${checks.filter(isOurCheck).map((c) => `${c.name}:${c.status}`).sort().join(',')}`;
