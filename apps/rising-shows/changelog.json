@@ -1,6 +1,35 @@
 {
   "updates": [
     {
+      "builtAt": "2026-09-14T21:36:02.783Z",
+      "totals": {
+        "seasons": 66707,
+        "delta": 0
+      },
+      "shapeCounts": {
+        "rebound": 10179,
+        "rising": 2612,
+        "slow-burn": 4416,
+        "big-finale": 12163,
+        "u-shaped": 3084,
+        "rollercoaster": 14160,
+        "saved-best-for-last": 1490,
+        "mid-peak": 4642,
+        "front-loaded": 3507,
+        "declining": 1888,
+        "bad-finale": 4653,
+        "consistent": 2620,
+        "shape-drift": 1574
+      },
+      "shapeDeltas": {},
+      "added": [],
+      "removed": [],
+      "ratingSwings": [],
+      "modifiedCounts": {
+        "providers": 2
+      }
+    },
+    {
       "builtAt": "2026-09-14T11:27:50.259Z",
       "totals": {
         "seasons": 66707,
@@ -7780,202 +7809,6 @@
         "providers": 15,
         "poster": 1,
         "overview": 1
-      }
-    },
-    {
-      "builtAt": "2026-08-12T07:38:12.729Z",
-      "totals": {
-        "seasons": 66238,
-        "delta": 9
-      },
-      "shapeCounts": {
-        "mid-peak": 4644,
-        "rebound": 10086,
-        "rising": 2909,
-        "slow-burn": 4379,
-        "big-finale": 12128,
-        "u-shaped": 3091,
-        "rollercoaster": 14057,
-        "saved-best-for-last": 1544,
-        "front-loaded": 3469,
-        "declining": 1871,
-        "bad-finale": 4675,
-        "consistent": 2627,
-        "shape-drift": 1641
-      },
-      "shapeDeltas": {
-        "mid-peak": 6,
-        "rebound": 11,
-        "rising": -1,
-        "slow-burn": 7,
-        "big-finale": 1,
-        "u-shaped": -2,
-        "rollercoaster": -5,
-        "front-loaded": -1,
-        "declining": -5,
-        "bad-finale": 9,
-        "consistent": -2
-      },
-      "added": [
-        {
-          "seriesId": "tt0149460",
-          "title": "Futurama",
-          "season": 14,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt0410965",
-          "title": "Blood of the Vikings",
-          "season": 1,
-          "seasonYear": 2001
-        },
-        {
-          "seriesId": "tt15127174",
-          "title": "Mafia Nights",
-          "season": 2,
-          "seasonYear": 2021
-        },
-        {
-          "seriesId": "tt43648966",
-          "title": "My Bias, My Boss",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt8266218",
-          "title": "T.O.T.S.",
-          "season": 2,
-          "seasonYear": 2020
-        },
-        {
-          "seriesId": "tt35932159",
-          "title": "Your Third",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt5004632",
-          "title": "Meiden van de Herengracht",
-          "season": 1,
-          "seasonYear": 2015
-        },
-        {
-          "seriesId": "tt39345375",
-          "title": "Seytan Üçgeni",
-          "season": 1,
-          "seasonYear": 2024
-        },
-        {
-          "seriesId": "tt37831901",
-          "title": "Seven Wonders of the Ancient World with Bettany Hughes",
-          "season": 1,
-          "seasonYear": 2025
-        },
-        {
-          "seriesId": "tt35781996",
-          "title": "The Chosen in the Wild with Bear Grylls",
-          "season": 1,
-          "seasonYear": 2026
-        }
-      ],
-      "removed": [
-        {
-          "seriesId": "tt32896333",
-          "title": "No One Will Miss Us",
-          "season": 2,
-          "seasonYear": 2026
-        }
-      ],
-      "ratingSwings": [
-        {
-          "seriesId": "tt36596401",
-          "title": "Minecraft Cops and Robbers",
-          "season": 1,
-          "from": 8.7,
-          "to": 7.4,
-          "delta": -1.3
-        },
-        {
-          "seriesId": "tt1756927",
-          "title": "American Restoration",
-          "season": 7,
-          "from": 3.93,
-          "to": 3.33,
-          "delta": -0.6
-        },
-        {
-          "seriesId": "tt3810466",
-          "title": "WWE Slam City",
-          "season": 1,
-          "from": 7.09,
-          "to": 7.65,
-          "delta": 0.56
-        },
-        {
-          "seriesId": "tt3482114",
-          "title": "Theater Class",
-          "season": 1,
-          "from": 7.81,
-          "to": 8.24,
-          "delta": 0.43
-        },
-        {
-          "seriesId": "tt43632572",
-          "title": "Gurthukosthunnayi",
-          "season": 1,
-          "from": 6.53,
-          "to": 6.96,
-          "delta": 0.43
-        },
-        {
-          "seriesId": "tt1232714",
-          "title": "True Beauty",
-          "season": 1,
-          "from": 6.05,
-          "to": 6.43,
-          "delta": 0.38
-        },
-        {
-          "seriesId": "tt2114184",
-          "title": "The High Fructose Adventures of Annoying Orange",
-          "season": 2,
-          "from": 6.89,
-          "to": 6.52,
-          "delta": -0.37
-        },
-        {
-          "seriesId": "tt8975856",
-          "title": "Care Bears: Unlock the Magic",
-          "season": 1,
-          "from": 8.4,
-          "to": 8.05,
-          "delta": -0.35
-        },
-        {
-          "seriesId": "tt43636687",
-          "title": "Amdré e Seus Amigos",
-          "season": 1,
-          "from": 9.6,
-          "to": 9.27,
-          "delta": -0.33
-        },
-        {
-          "seriesId": "tt41278615",
-          "title": "Oh Boy, Was I Wrong About Her",
-          "season": 1,
-          "from": 8.28,
-          "to": 7.95,
-          "delta": -0.33
-        }
-      ],
-      "modifiedCounts": {
-        "seriesVotes": 22595,
-        "avgRating": 1234,
-        "shapes": 211,
-        "seriesRating": 491,
-        "episodeCount": 63,
-        "overview": 2,
-        "poster": 3
       }
     }
   ]
