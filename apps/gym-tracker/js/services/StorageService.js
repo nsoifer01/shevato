@@ -304,6 +304,16 @@ export class StorageService {
         return this.getMeasurementUnits()?.status === 'resolved';
     }
 
+    /**
+     * True while the question has been asked and not answered. Persisted
+     * because the evidence that made the measurements ambiguous is gone once
+     * the damaged sessions are repaired, and without this a later scan decides
+     * them for the user (see reconcileUnits in utils/data-migrations.js).
+     */
+    measurementUnitsOwed() {
+        return this.getMeasurementUnits()?.status === 'unresolved';
+    }
+
     /** Rollback copy taken immediately before measurements are rewritten. */
     saveMeasurementsBackup(measurements) {
         return this.set(this.keys.MEASUREMENTS_BACKUP, {

@@ -722,6 +722,27 @@ any future repair:
   rewrite. A kg account is never asked: for kg, v1 was a no-op on measurements,
   so the numbers are correct either way.
 
+**Once asked, the question has to stay open (found 2026-09-14).** The evidence
+that makes a damaged lb install's measurements ambiguous is the unstamped legacy
+sessions `detectClobber()` looks for, and the same boot that asks the question
+repairs and stamps those sessions. From then on `measurementProvenance()` read
+the install as intact and called the unanswered measurements canonical, so the
+next scan stamped 34 in as 34 cm and 180 lb as 180 kg. The Imperial answer,
+which never converts a stamped record, then changed nothing. The next scan
+comes quickly: the `syncSystemReady` refresh a second after boot, any remote
+update, Settings re-check, or the next boot after "Decide later". The local
+browser gate caught it when a loaded machine let the sync refresh beat the
+test's click (`gym-units F`, three checks), while CI and every earlier run had
+clicked first. `gymTrackerMeasurementUnits` now records `{ status: 'unresolved' }`
+the first time a scan needs an answer, and `reconcileUnits()` keeps every
+unstamped measurement asked about while that holds and no answer is recorded.
+Pinned by the RACE tests in `tests/unit-provenance.test.mjs`, which fail
+against the old reconciler, and by `gym-units F`, which now forces a second
+scan before answering instead of leaving it to timing. The record is synced,
+so `privacy.html` now says it holds a note that the question is waiting for an
+answer before it holds the answer; the note is the status alone, with no
+timestamp, because nothing needs to know when the question first came up.
+
 **Settings > Data > Re-check stored units** is the permanent escape hatch. It
 is a diagnostic, NOT "run all migrations again": it repairs only provable
 cases, reports ambiguous ones, and changes nothing on a healthy profile no

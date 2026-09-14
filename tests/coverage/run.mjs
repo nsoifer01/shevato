@@ -93,12 +93,14 @@ const FLOORS = JSON.parse(await readFile(path.join(HERE, 'floors.json'), 'utf8')
 // files many times slower, and unevenly (one file alone on four local cores,
 // 2026-09-14): backtest.test.mjs 21.9 s plain and 173.4 s covered,
 // optimizer-consistency 51.0 s and 125.1 s. At the 180 s npm test first used,
-// the weekly job killed both files with all their tests passing. At 900 s a
-// runner measured backtest.test.mjs, the slowest covered file, at 281.5 s
-// (31%). The slowest files and their share of this bound are printed on every
-// run (scripts/test-file-times.mjs); the job's own timeout-minutes in
-// scheduled.yml leaves room for a hang to reach this bound and be named.
-const FILE_TIMEOUT_MS = 900000;
+// the weekly job killed both files with all their tests passing. Runners also
+// differ from one another: two dispatches an hour apart measured
+// backtest.test.mjs, the slowest covered file, at 281.5 s and 491.2 s, and
+// 1200 s is 2.4 times the slower. The slowest files and their share of this
+// bound are printed on every run (scripts/test-file-times.mjs); the job's own
+// timeout-minutes in scheduled.yml leaves room for a hang to reach this bound
+// and be named.
+const FILE_TIMEOUT_MS = 1200000;
 
 function runCoverage() {
   return new Promise((resolve) => {

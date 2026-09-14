@@ -822,11 +822,11 @@ What changed in the testing architecture itself:
   failure summary to the run page.
 - **Hangs are bounded.** `--test-timeout` bounds each test FILE, every test in
   it together, not each test (two 1.2 s tests under a 2 s bound are cancelled
-  at 2 s). `npm test` passes 600 s and the coverage runner 900 s. Both were
+  at 2 s). `npm test` passes 600 s and the coverage runner 1200 s. Both were
   set from a runner's own per-file times (2026-09-14): plain, the heaviest file
   (`apps/fpl-planner/tests/optimizer-consistency.test.mjs`) took 156.9 s, 87%
-  of the 180 s first chosen; under coverage `backtest.test.mjs` took 281.5 s,
-  and at 180 s the first scheduled run killed it and optimizer-consistency with
+  of the 180 s first chosen; under coverage `backtest.test.mjs` took 281.5 s
+  on one runner and 491.2 s on another an hour later, and at 180 s the first scheduled run killed it and optimizer-consistency with
   every test in them passing. Both runs print their slowest files against the
   bound (`scripts/test-file-times.mjs`), and every CI job has a timeout.
   `tests/static/npm-test-script.test.mjs` pins the script's shape (the bound as

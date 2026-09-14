@@ -216,6 +216,26 @@ export async function run({ base, cdpPort }) {
       `JSON.parse(localStorage.getItem('gymTrackerMeasurements'))[0].waist`);
     t('gym-units F: nothing is rewritten while the question is open', before === 34, `waist ${before}`);
 
+    // THE RACE, forced rather than left to timing (2026-09-14). A second scan
+    // before the answer used to stamp 34 in as 34 cm, because repairing the
+    // damaged sessions had erased the only evidence that the measurements
+    // were ambiguous; the Imperial answer below then converted nothing. The
+    // sync-ready refresh a second after boot is such a scan, and this block
+    // failed on a loaded machine the day it won that race. A reload is the
+    // same scan, on demand.
+    t('gym-units F: the open question is recorded as owed',
+      (await evaluate(s, `(JSON.parse(localStorage.getItem('gymTrackerMeasurementUnits') || 'null') || {}).status`)) === 'unresolved',
+      '');
+    await goto(s, APP, { settle: 3500 });
+    const reopened = await evaluate(s, `(() => {
+      const m = document.getElementById('measurement-units-modal');
+      const rec = JSON.parse(localStorage.getItem('gymTrackerMeasurements'))[0];
+      return { active: !!m && m.classList.contains('active'), waist: rec.waist, stamped: rec.unitsCanonical === true };
+    })()`);
+    t('gym-units F: a second scan before the answer still asks', reopened.active, '');
+    t('gym-units F: a second scan before the answer stamps nothing',
+      reopened.waist === 34 && !reopened.stamped, `waist ${reopened.waist} stamped ${reopened.stamped}`);
+
     await evaluate(s, `(async () => {
       document.getElementById('measurement-units-imperial').click();
       await new Promise(r => setTimeout(r, 900)); return true; })()`);

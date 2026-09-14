@@ -273,3 +273,55 @@ test('the active workout is repaired with the same rules', () => {
     closeTo(firstWeight(out.activeWorkout), LB_TO_KG[65], 'active workout repaired');
     assert.equal(out.report.activeWorkoutRepaired, true);
 });
+
+// ---------------------------------------------------------------------------
+// THE RACE (found by e2e/units-migration.mjs, 2026-09-14). Repairing the
+// damaged install's sessions removes the only evidence that its measurements
+// are ambiguous, so the scan AFTER the one that asked stamped the unanswered
+// 34 in / 180 lb as centimetres and kilograms, and the Imperial answer then
+// converted nothing. The app persists that the question is owed; these pin
+// what the reconciler does with it.
+const damagedLb = () => ({ sessions: [session({ sessionUnit: null })], measurements: [measurement()] });
+
+test('THE RACE: an asked question stays open through every later scan until it is answered', () => {
+    const asked = reconcileUnits(damagedLb(), { accountUnit: 'lb', dataVersion: 2 });
+    assert.equal(asked.report.measurementsNeedingConfirmation, 1, 'precondition: the first scan asks');
+
+    let snap = { sessions: asked.sessions, measurements: asked.measurements };
+    assert.equal(detectClobber(snap.sessions, 2), false, 'precondition: the repaired sessions are no longer evidence');
+    for (const dataVersion of [2, DATA_SCHEMA_VERSION, DATA_SCHEMA_VERSION]) {
+        const again = reconcileUnits(snap, { accountUnit: 'lb', dataVersion, measurementsOwed: true });
+        assert.equal(again.report.measurementsNeedingConfirmation, 1, `scan at v${dataVersion} still asks`);
+        assert.equal(isCanonicalRecord(again.measurements[0]), false, 'never stamped while unanswered');
+        assert.equal(again.measurements[0].waist, 34);
+        assert.equal(again.measurements[0].weight, 180);
+        snap = { sessions: again.sessions, measurements: again.measurements };
+    }
+
+    const answered = resolveMeasurementUnits(snap.measurements, null, MEASUREMENT_CHOICE_IMPERIAL);
+    closeTo(answered.measurements[0].waist, IN_TO_CM[34], 'the Imperial answer still converts the waist');
+    closeTo(answered.measurements[0].weight, 81.6466266, 'and the body weight');
+});
+
+test('the next boot after "Decide later" asks again rather than deciding', () => {
+    const settings = { weightUnit: 'lb' };
+    const first = migrateStoredData({ ...damagedLb(), settings }, 2);
+    assert.equal(first.report.measurementsNeedingConfirmation, 1, 'precondition: the first boot asks');
+    const reboot = migrateStoredData({ sessions: first.sessions, measurements: first.measurements, settings },
+        first.version, { measurementsOwed: true });
+    assert.equal(reboot.report.measurementsNeedingConfirmation, 1);
+    assert.equal(reboot.measurements[0].waist, 34);
+    assert.equal(isCanonicalRecord(reboot.measurements[0]), false);
+});
+
+test('an answer settles an owed question, and only unstamped records are owed one', () => {
+    const settled = reconcileUnits(damagedLb(),
+        { accountUnit: 'lb', dataVersion: 2, measurementsOwed: true, measurementsResolved: true });
+    assert.equal(settled.report.measurementsNeedingConfirmation, 0, 'resolved wins over owed');
+
+    const stamped = reconcileUnits({ sessions: [], measurements: [stampCanonical(measurement({ waist: 86.36 }))] },
+        { accountUnit: 'lb', dataVersion: DATA_SCHEMA_VERSION, measurementsOwed: true });
+    assert.equal(stamped.measurements[0].waist, 86.36);
+    assert.equal(stamped.report.measurementsNeedingConfirmation, 0);
+    assert.equal(stamped.report.changed, false);
+});

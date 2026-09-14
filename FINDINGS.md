@@ -116,8 +116,9 @@ doing.**
   bound was no safer: on a runner `optimizer-consistency.test.mjs` took 156.9 s
   of `npm test`'s 180 (87%), one slow runner away from killing a passing file
   on an unrelated pull request. Both bounds are set from those runner numbers
-  now: `npm test` 600 s, coverage 900 s (the slowest covered file took 281.5 s)
-  with 30 minutes for the job. The coverage job also restores the Rising Shows
+  now: `npm test` 600 s, coverage 1200 s (the slowest covered file took 281.5 s
+  on one runner and 491.2 s on another an hour later) with 45 minutes for the
+  job. The coverage job also restores the Rising Shows
   dataset; without it the real-catalogue tests skipped there (16 skips to the
   unit job's 7).
 - *Coverage, once nothing was killed: two FPL CPU budgets* (a live-sized plan
@@ -131,6 +132,12 @@ doing.**
   at 11:37 UTC, master's entry for its pin was saved only by the weekly run at
   13:49. `refresh-rising-shows.yml` now saves the new pin's entry on master
   itself, before it opens the pull request.
+- *The mandatory local browser gate then caught a real Gym Tracker data race*
+  (three `gym-units F` checks), which CI and every earlier run had missed only
+  because their test clicked before the app's sync refresh ran. It was not a
+  flaky test: an asked measurement-units question could be decided for the
+  user by the next scan, storing 34 in as 34 cm. Details in
+  `apps/gym-tracker/FINDINGS.md`.
 - *Arena S5: `timeout: Runtime.evaluate`* from a polling loop that read the
   page with plain `evaluate()`, the send-timeout hole `waitForExpr` had closed
   for itself. `probe()` in `tests/browser/cdp.mjs` closes it for hand-written

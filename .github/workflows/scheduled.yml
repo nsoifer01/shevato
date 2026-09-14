@@ -35,11 +35,12 @@ jobs:
 
   coverage:
     runs-on: ubuntu-latest
-    # The estate takes about ten minutes under coverage. The runner bounds each
-    # test file at 15 minutes (FILE_TIMEOUT_MS in tests/coverage/run.mjs), and
-    # a hung file can start late in the run; 30 leaves room for that bound to
-    # fire and name the file before the job itself is cancelled.
-    timeout-minutes: 30
+    # The estate took 8 to 14 minutes under coverage on three runners
+    # (2026-09-14). The runner bounds each test file at 20 minutes
+    # (FILE_TIMEOUT_MS in tests/coverage/run.mjs), and a hung file can start
+    # late in the run; 45 leaves room for that bound to fire and name the file
+    # before the job itself is cancelled.
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-node@v6

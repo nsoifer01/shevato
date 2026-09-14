@@ -307,6 +307,9 @@ function emptyReport() {
  * @param {number} ctx.dataVersion         stored schema version
  * @param {boolean} ctx.measurementsResolved  user has already answered the
  *   measurement-units question (or it never needed asking)
+ * @param {boolean} ctx.measurementsOwed  the question has been asked and not
+ *   answered; every unstamped measurement stays asked about, whatever the
+ *   evidence says now (see the measurements section below)
  * @returns {{sessions, measurements, activeWorkout, goals, report}}
  */
 export function reconcileUnits(snapshot = {}, ctx = {}) {
@@ -368,8 +371,24 @@ export function reconcileUnits(snapshot = {}, ctx = {}) {
     let outMeasurements = measurements;
     let outGoals = snapshot.goals || null;
 
+    // A question already put to the user stays open until they answer it.
+    // The evidence that made these measurements ambiguous does not survive
+    // being asked: repairing the damaged install's sessions stamps them, so
+    // detectClobber() stops firing and measurementProvenance() calls the same
+    // unanswered 34 in / 180 lb canonical. Every later scan (the sync-ready
+    // refresh a second after boot, a remote update, Settings, the next boot
+    // after "Decide later") then stamped them unconverted, and an Imperial
+    // answer, which never converts a stamped record, changed nothing. Found by
+    // e2e/units-migration.mjs on 2026-09-14, when the sync refresh won the
+    // race against the click.
+    const questionOwed = !measurementsResolved && !!ctx.measurementsOwed;
+
     if (measurements.length === 0) {
         report.measurementsCanonical = 0;
+    } else if (questionOwed) {
+        const unstamped = measurements.filter(m => !isCanonicalRecord(m));
+        report.measurementsCanonical = measurements.length - unstamped.length;
+        report.measurementsNeedingConfirmation = unstamped.length;
     } else if (provenance === LEGACY) {
         outMeasurements = measurements.map((m) => {
             if (isCanonicalRecord(m)) { report.measurementsCanonical += 1; return m; }
@@ -445,7 +464,7 @@ export function resolveMeasurementUnits(measurements, goals, choice) {
  *
  * @param {object} snapshot { sessions, measurements, activeWorkout, goals, settings }
  * @param {number} fromVersion the stored DATA_SCHEMA_VERSION (0 = never run)
- * @param {object} [options] { measurementsResolved }
+ * @param {object} [options] { measurementsResolved, measurementsOwed }
  */
 export function migrateStoredData(snapshot = {}, fromVersion = 0, options = {}) {
     const sessions = Array.isArray(snapshot.sessions) ? snapshot.sessions : [];
@@ -463,7 +482,11 @@ export function migrateStoredData(snapshot = {}, fromVersion = 0, options = {}) 
     // v1 did for the ordinary case.
     const reconciled = reconcileUnits(
         { sessions, measurements, activeWorkout: snapshot.activeWorkout || null, goals: snapshot.goals || null },
-        { accountUnit, dataVersion: version, measurementsResolved: options.measurementsResolved },
+        {
+            accountUnit, dataVersion: version,
+            measurementsResolved: options.measurementsResolved,
+            measurementsOwed: options.measurementsOwed,
+        },
     );
 
     let outSessions = reconciled.sessions;
