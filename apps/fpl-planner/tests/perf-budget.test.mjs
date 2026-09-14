@@ -66,6 +66,7 @@ import { assembleSampleBundle } from '../js/data/sample.js';
 import { buildGameState } from '../js/engine/normalize.js';
 import { buildSquadState } from '../js/engine/squad.js';
 import { buildPlan } from '../js/engine/planner.js';
+import { assertCpuBudget } from './helpers/cpu-budget.mjs';
 
 // Measured in CPU TIME, not wall time.
 //
@@ -163,7 +164,7 @@ test('full plan generation on the committed fixture is complete and reports its 
   );
 });
 
-test('the longest horizon the settings offer is still inside a budget', async () => {
+test('the longest horizon the settings offer is still inside a budget', async (t) => {
   const { gameState, squadState, planEvent } = realInputs();
 
   const { elapsed, bundle } = await fastest(() => buildPlan({ gameState, squadState, options: { horizon: 8 } }));
@@ -172,10 +173,10 @@ test('the longest horizon the settings offer is still inside a budget', async ()
   // The budget covers the work the horizon actually asks for: this gameweek
   // plus seven planned ahead, not a horizon that was quietly truncated.
   assert.deepEqual(bundle.future.map(f => f.gw), [1, 2, 3, 4, 5, 6, 7].map(n => planEvent + n));
-  assert.ok(
-    elapsed < LONGEST_HORIZON_BUDGET_MS,
-    `an 8-gameweek plan took ${elapsed}ms, over the ${LONGEST_HORIZON_BUDGET_MS}ms budget`,
-  );
+  // Compared on every uninstrumented run, only reported under V8 coverage
+  // (helpers/cpu-budget.mjs).
+  assertCpuBudget(t, elapsed, LONGEST_HORIZON_BUDGET_MS,
+    `an 8-gameweek plan took ${elapsed}ms, over the ${LONGEST_HORIZON_BUDGET_MS}ms budget`);
 });
 
 test('progress is reported for every stage the loading screen draws', async () => {

@@ -24,6 +24,7 @@ import { assembleSampleBundle } from '../js/data/sample.js';
 import { buildGameState } from '../js/engine/normalize.js';
 import { buildSquadState } from '../js/engine/squad.js';
 import { buildPlan } from '../js/engine/planner.js';
+import { assertCpuBudget } from './helpers/cpu-budget.mjs';
 
 // The live 2026/27 pool, measured against the real API on 2026-08-14.
 const LIVE_POOL = 587;
@@ -36,6 +37,9 @@ const LIVE_POOL = 587;
 // actually costs, it is what a user's device has to spend, and it does not move
 // when a neighbouring test file starts. Wall time is still reported in the
 // failure message, because that is what a person experiences.
+//
+// Compared on every uninstrumented run and only reported under V8 coverage,
+// where the instrumentation is the cost (helpers/cpu-budget.mjs).
 function cpuMs() {
   const u = process.cpuUsage();
   return (u.user + u.system) / 1000;
@@ -158,7 +162,7 @@ test('the expanded pool really is live-sized and still legal to build from', () 
   }
 });
 
-test(`a pre-season build on a live-sized pool stays inside ${OPENING_BUILD_BUDGET_MS}ms`, async () => {
+test(`a pre-season build on a live-sized pool stays inside ${OPENING_BUILD_BUDGET_MS}ms`, async (t) => {
   // The opening fifteen is what every user builds in the week before GW1, and
   // it is a full squad search rather than a transfer search.
   const squadState = buildSquadState({
@@ -167,11 +171,11 @@ test(`a pre-season build on a live-sized pool stays inside ${OPENING_BUILD_BUDGE
   const { ms, result: bundle } = await fastest(() => buildPlan({ gameState, squadState, options: {} }));
   assert.equal(bundle.validation.ok, true);
   assert.equal(bundle.current.squad.length, gameState.rules.squadSize);
-  assert.ok(ms < OPENING_BUILD_BUDGET_MS,
+  assertCpuBudget(t, ms, OPENING_BUILD_BUDGET_MS,
     `a live-sized opening build took ${ms}ms of CPU against a ${OPENING_BUILD_BUDGET_MS}ms budget`);
 });
 
-test(`a full plan on a live-sized pool stays inside ${FULL_PLAN_BUDGET_MS}ms`, async () => {
+test(`a full plan on a live-sized pool stays inside ${FULL_PLAN_BUDGET_MS}ms`, async (t) => {
   const squadState = buildSquadState({
     entry: B.entry, history: B.history, transfers: B.transfers, picks: B.picks,
     gameState, gw: B.planEvent,
@@ -183,17 +187,17 @@ test(`a full plan on a live-sized pool stays inside ${FULL_PLAN_BUDGET_MS}ms`, a
   assert.equal(bundle.current.squad.length, gameState.rules.squadSize);
   assert.ok(bundle.current.xPointsGw > 0);
 
-  assert.ok(ms < FULL_PLAN_BUDGET_MS,
+  assertCpuBudget(t, ms, FULL_PLAN_BUDGET_MS,
     `a live-sized plan took ${ms}ms against a ${FULL_PLAN_BUDGET_MS}ms budget`);
 });
 
-test(`the longest horizon on a live-sized pool stays inside ${LONGEST_HORIZON_BUDGET_MS}ms`, async () => {
+test(`the longest horizon on a live-sized pool stays inside ${LONGEST_HORIZON_BUDGET_MS}ms`, async (t) => {
   const squadState = buildSquadState({
     entry: B.entry, history: B.history, transfers: B.transfers, picks: B.picks,
     gameState, gw: B.planEvent,
   });
   const { ms, result: bundle } = await fastest(() => buildPlan({ gameState, squadState, options: { horizon: 8 } }));
   assert.equal(bundle.validation.ok, true);
-  assert.ok(ms < LONGEST_HORIZON_BUDGET_MS,
+  assertCpuBudget(t, ms, LONGEST_HORIZON_BUDGET_MS,
     `a live-sized horizon-8 plan took ${ms}ms against a ${LONGEST_HORIZON_BUDGET_MS}ms budget`);
 });

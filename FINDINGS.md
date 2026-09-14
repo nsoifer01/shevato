@@ -97,6 +97,52 @@ privacy review-date guard, which compares against today by design. That realm
 is the limit of the method: code under `apps/arena/tests/helpers/app-vm.js`
 was not swept.
 
+**The first scheduled run (34815661555) was red twice, both times CI's own
+doing.**
+
+- *Coverage: "FAIL: 2 test(s) failed under coverage", and no names.* The pull
+  request had added `--test-timeout=180000` to `npm test` and the coverage
+  runner as a per-test bound. It is per FILE: with process isolation it bounds
+  every test in a file together (two 1.2 s tests under a 2 s bound are
+  cancelled at 2 s). V8 coverage slows the heavy FPL files unevenly, measured
+  one file alone on four cores: `backtest.test.mjs` 21.9 s plain and 173.4 s
+  covered, `optimizer-consistency.test.mjs` 51.0 s and 125.1 s. A runner took
+  2.1 times as long as those four cores for the covered estate (606 s against
+  288 s), so both files ran past 180 s and were killed, all their tests
+  passing. The runner now names every failing test with its location and
+  error, and the unit job and the coverage runner both print their slowest
+  files against the bound (`scripts/test-file-times.mjs`), so the margin is on
+  every run instead of discovered by a kill. That table then showed the plain
+  bound was no safer: on a runner `optimizer-consistency.test.mjs` took 156.9 s
+  of `npm test`'s 180 (87%), one slow runner away from killing a passing file
+  on an unrelated pull request. Both bounds are set from those runner numbers
+  now: `npm test` 600 s, coverage 1200 s (the slowest covered file took 281.5 s
+  on one runner and 491.2 s on another an hour later) with 45 minutes for the
+  job. The coverage job also restores the Rising Shows
+  dataset; without it the real-catalogue tests skipped there (16 skips to the
+  unit job's 7).
+- *Coverage, once nothing was killed: two FPL CPU budgets* (a live-sized plan
+  at 10062 ms against 10000, a transfer search at 2315 ms against 1500), both
+  passed by the same run's plain unit job. Instrumented CPU is not planner CPU,
+  so the six budgets compare only on the plain run and report under coverage;
+  details in `apps/fpl-planner/FINDINGS.md`.
+- *The dataset cache went cold after every data refresh.* The refresh bot's
+  pull request merges with GITHUB_TOKEN, and that push starts no workflow, so
+  the push-only `dataset-cache` job never ran for a new pin: after #543 merged
+  at 11:37 UTC, master's entry for its pin was saved only by the weekly run at
+  13:49. `refresh-rising-shows.yml` now saves the new pin's entry on master
+  itself, before it opens the pull request.
+- *The mandatory local browser gate then caught a real Gym Tracker data race*
+  (three `gym-units F` checks), which CI and every earlier run had missed only
+  because their test clicked before the app's sync refresh ran. It was not a
+  flaky test: an asked measurement-units question could be decided for the
+  user by the next scan, storing 34 in as 34 cm. Details in
+  `apps/gym-tracker/FINDINGS.md`.
+- *Arena S5: `timeout: Runtime.evaluate`* from a polling loop that read the
+  page with plain `evaluate()`, the send-timeout hole `waitForExpr` had closed
+  for itself. `probe()` in `tests/browser/cdp.mjs` closes it for hand-written
+  loops; details in `apps/arena/FINDINGS.md`.
+
 ## A stalled third-party CDN held every page (2026-09-13)
 
 A request that is refused fails fast. One that is accepted and never answered

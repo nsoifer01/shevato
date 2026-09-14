@@ -308,7 +308,13 @@ Designed for gym environments with low lighting:
   so a second device never re-asks); `gymTrackerMeasurementsBackup` is the
   local-only rollback copy taken immediately before that answer is applied.
   Measurements carry no evidence of their original units, so the app asks
-  rather than inferring from whether a value "looks like" inches or centimetres
+  rather than inferring from whether a value "looks like" inches or centimetres.
+  From the moment the question is first asked until it is answered, the record
+  says `unresolved`, and no scan stamps an unanswered measurement: repairing a
+  damaged install's sessions erases the only evidence that its measurements are
+  ambiguous, and without that status the next scan (the sync-ready refresh a
+  second after boot, or the next boot after "Decide later") stamped 34 in as
+  34 cm (see FINDINGS, 2026-09-14)
 - **Settings → Data → Re-check stored units** rescans every unit-bearing
   record on demand, repairs only what can be proven legacy, reports anything
   ambiguous, and changes nothing on a healthy profile however often it is run

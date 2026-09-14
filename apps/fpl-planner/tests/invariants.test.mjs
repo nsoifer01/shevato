@@ -30,6 +30,7 @@ import { validatePlan, assertValidPlan } from '../js/engine/validate.js';
 import { buildPlan } from '../js/engine/planner.js';
 import { makeRng } from '../js/engine/ml.js';
 import { assembleSampleBundle } from '../js/data/sample.js';
+import { assertCpuBudget } from './helpers/cpu-budget.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const read = (...p) => JSON.parse(readFileSync(join(here, ...p), 'utf8'));
@@ -484,7 +485,7 @@ test('a full transfer search over the sample dataset stays inside its budget', (
     + `(wall ${wallTimings.join(', ')} ms; median ${median.toFixed(0)} ms CPU, budget ${TRANSFER_SEARCH_BUDGET_CPU_MS} ms)`);
   t.diagnostic(`plans returned: ${plans.length}, best: ${plans[0].transferCount} transfer(s)`);
 
-  assert.ok(median < TRANSFER_SEARCH_BUDGET_CPU_MS, `transfer search took ${median.toFixed(0)} ms CPU`);
+  assertCpuBudget(t, median, TRANSFER_SEARCH_BUDGET_CPU_MS, `transfer search took ${median.toFixed(0)} ms CPU`);
 
   // A budget that is met by returning nothing is not a budget.
   assert.ok(plans.length > 1);
@@ -554,7 +555,9 @@ test('end to end plan generation stays inside its budget at the default horizon'
   t.diagnostic(`buildPlan runs: ${timings.join(', ')} ms CPU (median ${median} ms, budget ${PLAN_GENERATION_BUDGET_MS} ms; wall ${wallTimings.join(', ')} ms)`);
   t.diagnostic(`horizon used: ${out.current.horizon}, reported durationMs: ${Math.round(out.current.durationMs)}`);
 
-  assert.ok(median < PLAN_GENERATION_BUDGET_MS, `plan generation took ${median} ms of CPU`);
+  // Compared on every uninstrumented run, only reported under V8 coverage
+  // (helpers/cpu-budget.mjs); the same holds for the transfer search above.
+  assertCpuBudget(t, median, PLAN_GENERATION_BUDGET_MS, `plan generation took ${median} ms of CPU`);
 
   // A budget met by producing nothing, or something illegal, is not a budget.
   assert.equal(out.current.startingXI.length, 11);

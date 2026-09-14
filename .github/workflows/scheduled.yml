@@ -9,8 +9,10 @@ name: scheduled
 #                    change: a new Chrome, a new Java. The Arena suites run
 #                    unscoped here, which covers emulator and tooling drift.
 #   coverage ....... per-area line-coverage floors (tests/coverage/floors.json).
-#                    It re-runs the unit estate under V8 coverage, roughly
-#                    doubling its cost, and coverage moves over weeks.
+#                    It re-runs the unit estate under V8 coverage, which costs
+#                    about 2.5 times as much (606 s against 245 s on a runner,
+#                    2026-09-14) and up to eight times as much for one file,
+#                    and coverage moves over weeks.
 #   cross-browser .. Firefox + WebKit smoke of every page and app. Engine
 #                    regressions arrive with browser releases, not with commits.
 #
@@ -33,12 +35,21 @@ jobs:
 
   coverage:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    # The estate took 8 to 14 minutes under coverage on three runners
+    # (2026-09-14). The runner bounds each test file at 20 minutes
+    # (FILE_TIMEOUT_MS in tests/coverage/run.mjs), and a hung file can start
+    # late in the run; 45 leaves room for that bound to fire and name the file
+    # before the job itself is cancelled.
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-node@v6
         with:
           node-version-file: '.nvmrc'
+      # The same estate as the `test` job: without the dataset the real-catalogue
+      # tests skip, and the coverage run read 16 skips to the unit job's 7.
+      - name: Rising Shows dataset
+        uses: ./.github/actions/rising-shows-dataset
       - name: Coverage floors
         run: npm run test:coverage
 

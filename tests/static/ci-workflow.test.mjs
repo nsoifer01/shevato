@@ -109,6 +109,16 @@ test('every job has a timeout shorter than GitHub\'s six-hour default', () => {
   }
 });
 
+test('the unit job reports each test file\'s cost against the per-file bound, on every outcome', () => {
+  // --test-timeout bounds whole files. PR #542 took it for a per-test bound,
+  // and nothing showed how close any file ran until the weekly coverage job
+  // killed two (2026-09-14).
+  assert.match(J.test, /--test-reporter=\.\/scripts\/test-file-times\.mjs --test-reporter-destination=unit-file-times\.md/);
+  const summarize = J.test.slice(J.test.indexOf('- name: Summarize results'));
+  assert.match(summarize, /^ {8}if: always\(\)$/m);
+  assert.match(summarize, /unit-file-times\.md \| tee -a "\$GITHUB_STEP_SUMMARY"/);
+});
+
 test('the retired per-suite workflows stay retired', () => {
   // Four workflows used to gate a pull request, each with its own broken
   // "already tested?" guard. A second copy of any of them would run the same

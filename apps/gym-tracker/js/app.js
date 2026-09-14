@@ -152,9 +152,15 @@ class GymTrackerApp {
                 activeWorkout: storageService.getActiveWorkout(),
                 goals: storageService.getMeasurementGoals(),
                 settings: storageService.getSettings() || {},
-            }, from, { measurementsResolved: storageService.measurementUnitsResolved() });
+            }, from, {
+                measurementsResolved: storageService.measurementUnitsResolved(),
+                measurementsOwed: storageService.measurementUnitsOwed(),
+            });
 
             this.lastUnitsReport = result.report;
+            // Before the sync-ready refresh a second from now scans again: by
+            // then the repaired sessions no longer prove anything is ambiguous.
+            this.recordOwedMeasurementQuestion(result.report);
 
             if (result.changed) {
                 storageService.saveWorkoutSessions(result.sessions);
@@ -216,6 +222,7 @@ class GymTrackerApp {
             accountUnit: (storageService.getSettings() || {}).weightUnit,
             dataVersion: storageService.getDataVersion(),
             measurementsResolved: storageService.measurementUnitsResolved(),
+            measurementsOwed: storageService.measurementUnitsOwed(),
         });
 
         if (result.report.changed) {
@@ -224,8 +231,23 @@ class GymTrackerApp {
             if (result.goals) storageService.saveMeasurementGoals(result.goals);
             if (result.activeWorkout) storageService.saveActiveWorkout(result.activeWorkout);
         }
+        this.recordOwedMeasurementQuestion(result.report);
         this.lastUnitsReport = result.report;
         return result.report;
+    }
+
+    /**
+     * The first scan that finds measurements only the user can decide records
+     * that the question is owed, in the same synced record the answer later
+     * replaces. From then on no scan may stamp those measurements until the
+     * user answers, even after the evidence that made them ambiguous is gone.
+     */
+    recordOwedMeasurementQuestion(report) {
+        if (!report || !(report.measurementsNeedingConfirmation > 0)) return;
+        if (storageService.measurementUnitsResolved() || storageService.measurementUnitsOwed()) return;
+        // Only the status: the record is synced and disclosed in privacy.html,
+        // and nothing needs to know when the question first came up.
+        storageService.saveMeasurementUnits({ status: 'unresolved' });
     }
 
     /**

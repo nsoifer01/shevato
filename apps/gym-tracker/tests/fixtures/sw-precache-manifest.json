@@ -1,5 +1,5 @@
 {
-  "cacheVersion": "1.16.0",
+  "cacheVersion": "1.16.1",
   "files": {
     "./": "4c6fd52ba763debf",
     "./manifest.webmanifest": "6c315a53fd6b2577",
@@ -8,7 +8,7 @@
     "./css/refresh.css": "d760b2a08a39ce43",
     "./data/exercises-db.js": "6d76270ef9f4ccec",
     "./data/exercises-db.json": "add8daa820e058e3",
-    "./js/app.js": "d6b46f1353e64a44",
+    "./js/app.js": "4525d3c518f7ee97",
     "./js/models/Achievement.js": "8e10d9b67c55e980",
     "./js/models/Measurement.js": "10a04756682c51dd",
     "./js/models/Program.js": "35af62f7c9fb6564",
@@ -19,7 +19,7 @@
     "./js/models/WorkoutSession.js": "5c34a52b4c92e0a8",
     "./js/services/AchievementService.js": "f878fe00dfc68ccd",
     "./js/services/AnalyticsService.js": "82553ee45fde59a6",
-    "./js/services/StorageService.js": "a0a9d295a7e0c436",
+    "./js/services/StorageService.js": "009c788f9c58815a",
     "./js/services/TimerService.js": "8fd0a41893bc6c0c",
     "./js/utils/analytics.js": "c0cd0f352f60f64b",
     "./js/utils/dark-calendar.js": "f55e4c2dbb206d29",
@@ -39,7 +39,7 @@
     "./js/utils/paginator.js": "81446f236c15b20b",
     "./js/utils/sync-status.js": "0445011e3b029830",
     "./js/utils/active-workout.js": "3dacfac7189e065c",
-    "./js/utils/data-migrations.js": "76b64c71fc4e5f77",
+    "./js/utils/data-migrations.js": "e865b9b0e2a6bb50",
     "./js/utils/exercise-search.js": "bddaca3253bb9789",
     "./js/utils/exercise-taxonomy.js": "e29d504e2fb500ae",
     "./js/utils/import-merge.js": "a633aa748d76f736",

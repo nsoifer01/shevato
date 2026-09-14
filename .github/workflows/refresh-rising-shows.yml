@@ -406,6 +406,26 @@ jobs:
             gh release delete-asset rising-shows-data "show-modal-extras-${stamp}.json.gz" -y || true
           done < /tmp/rs-prune-data
 
+      # WARM CI'S DATASET CACHE FOR THE NEW PIN, BEFORE THE PULL REQUEST OPENS.
+      #
+      # ci.yml's jobs restore the dataset from a cache keyed by
+      # data-release.json, and an entry saved inside one pull request is
+      # invisible to every other. ci.yml's `dataset-cache` job warms master's
+      # entry on a push, but the merge below is made with GITHUB_TOKEN, and a
+      # push made with GITHUB_TOKEN starts no workflow run: after #543 merged on
+      # 2026-09-14 no ci.yml run started on master, and pull requests missed the
+      # new pin until the weekly scheduled run saved it two hours later. The
+      # data refreshes daily, so on most days nothing else would.
+      #
+      # This run is on master and its workspace already holds the new dataset
+      # and the pin the upload step just wrote (byte for byte what fetch-data.js
+      # would download for it), so the shared action finds the files, splits
+      # them if needed, and saves them under exactly the key ci.yml looks for.
+      # The bot pull request's own shards are the first to hit it.
+      - name: Warm the CI dataset cache for the new pin
+        if: steps.change.outputs.changed == 'true'
+        uses: ./.github/actions/rising-shows-dataset
+
       # master is protected by a "PR before Merge" ruleset AND by classic
       # branch protection that requires the lint, test, browser and rules
       # checks, strictly (the branch must also be up to date). So a direct push

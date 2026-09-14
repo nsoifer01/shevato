@@ -15,7 +15,7 @@
 // of coverage silently gone, on a suite that passed locally every time.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { waitForExpr } from '../browser/cdp.mjs';
+import { waitForExpr, probe, evaluate } from '../browser/cdp.mjs';
 
 // A Session stand-in: `send` is the only thing waitForExpr reaches, through
 // evaluate(). Each entry in `script` is what the next Runtime.evaluate does.
@@ -74,4 +74,32 @@ test('waitForExpr: an in-page exception is falsy, not fatal', async () => {
   // ready yet" (the element does not exist yet), not "give up".
   const s = fakeSession([{ __evalError: 'x is not defined' }]);
   assert.equal(await waitForExpr(s, 'x', { timeout: 120, poll: 10 }), false);
+});
+
+// probe(): the same rule for polling loops that are not waitForExpr. The Arena
+// e2e's advanceThroughPick polled with plain evaluate(), so one page too busy
+// to answer a single read within 45 s threw the whole S5 scenario away on the
+// scheduled run of 2026-09-14.
+test('probe: a value comes back as a value', async () => {
+  const s = fakeSession([{ ready: true }]);
+  assert.deepEqual(await probe(s, 'x'), { ready: true });
+});
+
+test('probe: a send timeout is "not known yet" (null), never a thrown scenario', async () => {
+  const s = fakeSession([sendTimeout()]);
+  assert.equal(await probe(s, 'x'), null);
+});
+
+test('probe: a REAL page error still throws', async () => {
+  const s = fakeSession([new Error('Target closed')]);
+  await assert.rejects(() => probe(s, 'x'), /Target closed/);
+});
+
+test('evaluate: a send timeout names the page and the read, and keeps its prefix', async () => {
+  const s = fakeSession([sendTimeout()]);
+  s.lastUrl = 'http://localhost:8137/apps/arena/';
+  const err = await evaluate(s, "document.getElementById('question-text').textContent").catch((e) => e);
+  assert.match(err.message, /^timeout: Runtime\.evaluate/, 'callers recognise a send timeout by this prefix');
+  assert.match(err.message, /on http:\/\/localhost:8137\/apps\/arena\//);
+  assert.match(err.message, /question-text/);
 });

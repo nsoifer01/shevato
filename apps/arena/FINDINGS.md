@@ -702,6 +702,21 @@ only here: every expression `waitForExpr` takes is a predicate.
 `tests/static/cdp-harness.test.mjs` covers it, and two of its six checks fail
 against the pre-fix driver.
 
+The same hole stayed open wherever the e2e polled with plain `evaluate()`
+instead of `waitForExpr`. The first scheduled run of the new pipeline
+(34815661555, 2026-09-14) lost S5 with a bare `timeout: Runtime.evaluate`
+straight after "the registered host starts the game", thrown from
+`advanceThroughPick`'s own polling loop: group 1 read 61/62, every check before
+it passed, and the 15 checks after it (a whole group 1 is 76) never ran. `probe()` in `cdp.mjs` is that rule as a
+single read: a send timeout returns null ("not known yet") and the caller's
+loop keeps polling to its own deadline, so a page that never answers still
+fails that caller's check, while a closed target or detached session still
+throws. `advanceThroughPick`'s pick and question polls, `clickAnswerText`'s
+scroll and the two question-text reads use it. A send timeout from anywhere
+else now names the page it was on and the expression it was reading, and a
+scenario that throws reports each client page's URL and any open dialog, so
+the next one of these is a read, not a re-run.
+
 ## Two red checks, one root cause: the test raced an async write (2026-09-08)
 
 `arena-rules` stayed red after #513 and #514, in two different places on two
