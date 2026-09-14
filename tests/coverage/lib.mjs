@@ -34,6 +34,41 @@ export function parseTapSummary(out) {
   return summary;
 }
 
+/**
+ * Every failing test in the TAP stream, as { name, error, location }.
+ *
+ * The runner used to print only a COUNT: the scheduled run of 2026-09-14
+ * reported "FAIL: 2 test(s) failed under coverage" and nothing else, so the two
+ * tests could not even be named without re-running the estate. `not ok` lines
+ * with a TODO directive are known-defect quarantines, not failures.
+ */
+export function parseTapFailures(out) {
+  const lines = String(out).split('\n');
+  const failures = [];
+  for (let i = 0; i < lines.length; i++) {
+    const m = /^(\s*)not ok \d+ - (.*)$/.exec(lines[i]);
+    if (!m || /#\s*TODO\b/i.test(m[2])) continue;
+    let error = '';
+    let location = '';
+    for (let j = i + 1; j < lines.length && j < i + 60; j++) {
+      const l = lines[j];
+      if (/^\s*(not )?ok \d+ - /.test(l) || /^\s*# Subtest: /.test(l)) break;
+      const loc = /^\s*location: '(.*)'\s*$/.exec(l);
+      if (loc && !location) location = loc[1];
+      const err = /^\s*error: (.*)$/.exec(l);
+      if (err && !error) {
+        error = err[1].trim();
+        // A multi-line YAML scalar (`|-`) carries the message on the next line.
+        if (/^[|>][-+]?$/.test(error)) error = String(lines[j + 1] || '').trim();
+        error = error.replace(/^'(.*)'$/, '$1');
+      }
+      if (/^\s*\.\.\.\s*$/.test(l)) break;
+    }
+    failures.push({ name: m[2].trim(), error, location });
+  }
+  return failures;
+}
+
 const addHits = (map, key, hits) => map.set(key, (map.get(key) ?? 0) + (hits > 0 ? hits : 0));
 
 // Percentage of keys hit at least once. An empty set is 100%, the way Node's

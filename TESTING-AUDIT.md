@@ -820,8 +820,14 @@ What changed in the testing architecture itself:
   once as `INFRASTRUCTURE` and the next suite gets a new browser; a browser that
   never starts reports its exit and stderr; each shard and the unit job write a
   failure summary to the run page.
-- **Hangs are bounded.** `npm test` and the coverage runner pass
-  `--test-timeout=180000`; every CI job has a timeout.
+- **Hangs are bounded.** `--test-timeout` bounds each test FILE, every test in
+  it together, not each test (two 1.2 s tests under a 2 s bound are cancelled
+  at 2 s). `npm test` passes 180 s; the coverage runner passes 900 s, because
+  V8 coverage makes `apps/fpl-planner/tests/backtest.test.mjs` eight times
+  slower (21.9 s to 173.4 s alone on four cores), and at 180 s the first
+  scheduled run killed it and `optimizer-consistency.test.mjs` with every test
+  in them passing. Both runs print their slowest files against the bound
+  (`scripts/test-file-times.mjs`), and every CI job has a timeout.
 - **Coverage merges module instances.** The floors are measured from LCOV with
   every instance of a file merged (the table counted one `?page=N` instance
   and failed sync-system at 69.54%; merged it is 93.36%). Floors unchanged.

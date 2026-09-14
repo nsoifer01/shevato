@@ -23,7 +23,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { AREAS, parseLcov, parseTapSummary, evaluateAreas, isTestFile } from '../coverage/lib.mjs';
+import { AREAS, parseLcov, parseTapSummary, parseTapFailures, evaluateAreas, isTestFile } from '../coverage/lib.mjs';
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const FLOORS = JSON.parse(readFileSync(join(REPO_ROOT, 'tests', 'coverage', 'floors.json'), 'utf8'));
@@ -152,4 +152,60 @@ test('every floor in floors.json names an area the runner buckets', () => {
   const known = new Set(AREAS.map(([area]) => area));
   const unknown = Object.keys(FLOORS).filter((area) => !known.has(area));
   assert.deepEqual(unknown, []);
+});
+
+// 3. A red run NAMES what failed (2026-09-14). The runner printed only
+//    "FAIL: 2 test(s) failed under coverage", so the scheduled job's two
+//    failures could not be identified without re-running the whole estate.
+const TAP_WITH_FAILURES = `TAP version 13
+# Subtest: a passing test
+ok 1 - a passing test
+  ---
+  duration_ms: 1.2
+  ...
+# Subtest: a pre-season build on a live-sized pool stays inside 18000ms
+not ok 2 - a pre-season build on a live-sized pool stays inside 18000ms
+  ---
+  duration_ms: 23001.5
+  location: '/repo/apps/fpl-planner/tests/perf.test.mjs:40:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    took 23001 ms against a budget of 18000 ms
+  code: 'ERR_ASSERTION'
+  ...
+# Subtest: a quarantined defect
+not ok 3 - a quarantined defect # TODO KNOWN DEFECT: x
+  ---
+  duration_ms: 0.4
+  location: '/repo/apps/x/tests/y.test.mjs:9:1'
+  error: 'still broken'
+  ...
+# Subtest: a parent
+    # Subtest: a nested case
+    not ok 1 - a nested case
+      ---
+      duration_ms: 2
+      location: '/repo/sync-system/tests/z.test.mjs:12:3'
+      error: 'expected 1, got 2'
+      ...
+not ok 4 - a parent
+  ---
+  duration_ms: 3
+  location: '/repo/sync-system/tests/z.test.mjs:10:1'
+  error: '1 subtest failed'
+  ...
+# fail 2
+`;
+
+test('every failing test is named with its location and error; a TODO quarantine is not a failure', () => {
+  const failures = parseTapFailures(TAP_WITH_FAILURES);
+  assert.deepEqual(failures.map((f) => f.name), [
+    'a pre-season build on a live-sized pool stays inside 18000ms',
+    'a nested case',
+    'a parent',
+  ]);
+  assert.equal(failures[0].error, 'took 23001 ms against a budget of 18000 ms', 'a |- block scalar carries the message on the next line');
+  assert.equal(failures[0].location, '/repo/apps/fpl-planner/tests/perf.test.mjs:40:1');
+  assert.equal(failures[1].error, 'expected 1, got 2');
+  assert.deepEqual(parseTapFailures('TAP version 13\nok 1 - fine\n# fail 0\n'), []);
 });

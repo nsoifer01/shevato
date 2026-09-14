@@ -163,6 +163,8 @@ export async function closePage(port, s) {
 }
 
 export async function goto(s, url, { settle = 2500 } = {}) {
+  // Remembered so a transport timeout can say WHICH page stopped answering.
+  s.lastUrl = url;
   s.errors.length = 0;
   s.netFails.length = 0;
   if (s.netReqs) s.netReqs.clear(); // absent on bare connectTarget() sessions
@@ -224,10 +226,22 @@ export function firstPartyFailures(s, base) {
 }
 
 export async function evaluate(s, expression) {
-  const r = await s.send('Runtime.evaluate', {
-    expression: `(()=>{ try { return JSON.stringify((${expression})); } catch(e) { return JSON.stringify({__evalError: String(e && e.message || e)}); } })()`,
-    returnByValue: true, awaitPromise: false,
-  });
+  let r;
+  try {
+    r = await s.send('Runtime.evaluate', {
+      expression: `(()=>{ try { return JSON.stringify((${expression})); } catch(e) { return JSON.stringify({__evalError: String(e && e.message || e)}); } })()`,
+      returnByValue: true, awaitPromise: false,
+    });
+  } catch (e) {
+    // A bare "timeout: Runtime.evaluate" said nothing about which page or
+    // which read stalled (an Arena scenario was lost that way on 2026-09-14
+    // with three pages open). The prefix is unchanged, so every caller that
+    // recognises a send timeout still does.
+    if (isSendTimeout(e)) {
+      e.message += ` on ${s.lastUrl || 'a page never navigated by goto()'} reading ${String(expression).replace(/\s+/g, ' ').slice(0, 140)}`;
+    }
+    throw e;
+  }
   const v = r.result && r.result.value;
   if (v == null) return null;
   try { return JSON.parse(v); } catch { return v; }
@@ -270,6 +284,22 @@ export async function evalAsync(s, expression) {
 // takes is a PREDICATE, evaluated for its truthiness. `evaluate()` keeps
 // throwing, because its callers pass side-effecting expressions too.
 const isSendTimeout = (e) => /^timeout: /.test(String((e && e.message) || ''));
+
+// One read of a PREDICATE, for polling loops that are not waitForExpr: the
+// same rule, "a send timeout is a slow poll, not a verdict", as a single call.
+// A renderer too busy to answer within the driver's 45 s returns null (not
+// known yet) instead of throwing the whole scenario over, and the caller's own
+// loop keeps polling to ITS deadline, so a page that never answers still fails
+// the caller's check. Only for expressions whose null result the caller treats
+// as "not ready"; a real page error (closed target, detached session) throws.
+export async function probe(s, expression) {
+  try {
+    return await evaluate(s, expression);
+  } catch (e) {
+    if (isSendTimeout(e)) return null;
+    throw e;
+  }
+}
 
 export async function waitForExpr(s, expression, { timeout = 8000, poll = 150 } = {}) {
   const start = Date.now();

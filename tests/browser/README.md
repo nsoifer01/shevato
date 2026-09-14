@@ -375,3 +375,9 @@ Driver notes:
   the fallback path).
 - Prefer `waitForExpr` on the app's own readiness signal over fixed sleeps;
   the suites' remaining `sleep`s are short settles, not waits.
+- A hand-written polling loop reads its predicate with `probe()`, not
+  `evaluate()`. Both return the value; a renderer too busy to answer within the
+  driver's 45 s send timeout makes `evaluate()` throw (the message names the
+  page and the expression) and makes `probe()` return null, so the loop keeps
+  polling to its own deadline instead of losing the scenario. A closed target
+  or detached session throws from either.

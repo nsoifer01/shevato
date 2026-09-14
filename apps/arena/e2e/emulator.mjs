@@ -47,7 +47,7 @@
 import {
   newPage, closePage, goto, evaluate, evalAsync, clickSel, clickText, clickAt, setViewport,
   setValue, sleep, waitForExpr, interceptNetwork, setOffline, screenshot,
-  snapshotWaits, waitsSince,
+  snapshotWaits, waitsSince, probe,
 } from '../../../tests/browser/cdp.mjs';
 import {
   loadRulesFile, clearData, ownerGetDocRaw,
@@ -325,9 +325,13 @@ export async function run({ base, cdpPort, base2 = null }) {
     // is ever missed the round ends on its own timer, and a shorter wait
     // would give up mid-round and strand the rest of the scenario.
     const start = Date.now();
+    // probe(), not evaluate(): these are predicate polls with their own
+    // deadline. One page too busy to answer a single read within 45 s used to
+    // throw out of this loop and lose the whole scenario (S5 on the scheduled
+    // run of 2026-09-14, four rounds from the end of a passing game).
     while (Date.now() - start < timeout) {
       for (const s of pages) {
-        const canPick = await evaluate(s, `(()=>{
+        const canPick = await probe(s, `(()=>{
           const g=document.getElementById('pick-category-grid');
           if(!g) return false;
           const st=document.getElementById('stage-picking');
@@ -343,7 +347,7 @@ export async function run({ base, cdpPort, base2 = null }) {
           catch (e) { if (!/timeout/i.test(String(e && e.message))) throw e; await sleep(800); }
         }
       }
-      const asking = await Promise.all(pages.map((s) => evaluate(s, `(()=>{
+      const asking = await Promise.all(pages.map((s) => probe(s, `(()=>{
         const st=document.getElementById('stage-game');
         const q=document.getElementById('question-text');
         return (!!st && !st.hidden && !!q && q.textContent.trim().length>0)
@@ -362,7 +366,7 @@ export async function run({ base, cdpPort, base2 = null }) {
   const answerFinder = (text) => `[...document.querySelectorAll('#answer-grid .answer-btn')]
       .find(x => x.textContent.includes(${JSON.stringify(text)}))`;
   async function clickAnswerText(s, text) {
-    const scrolled = await evaluate(s, `(()=>{ const b=${answerFinder(text)};
+    const scrolled = await probe(s, `(()=>{ const b=${answerFinder(text)};
       if(!b) return false; b.scrollIntoView({block:'center', inline:'nearest'}); return true; })()`);
     if (!scrolled) return false;
     const ready = await waitForExpr(s, `(()=>{ const b=${answerFinder(text)};
@@ -430,13 +434,13 @@ export async function run({ base, cdpPort, base2 = null }) {
   };
   // Reads 'Question N: ...' off the page and clicks 'Correct-N'.
   async function answerCorrectly(s) {
-    const text = await evaluate(s, "document.getElementById('question-text').textContent");
+    const text = await probe(s, "document.getElementById('question-text').textContent");
     const m = /Question (\d+):/.exec(String(text || ''));
     if (!m) return false;
     return clickAnswerText(s, `Correct-${m[1]}`);
   }
   async function answerWrong(s) {
-    const text = await evaluate(s, "document.getElementById('question-text').textContent");
+    const text = await probe(s, "document.getElementById('question-text').textContent");
     const m = /Question (\d+):/.exec(String(text || ''));
     if (!m) return false;
     return clickAnswerText(s, `Wrong-${m[1]}-a`);
@@ -571,7 +575,13 @@ export async function run({ base, cdpPort, base2 = null }) {
         await ensurePages();
         await fn();
       } catch (e) {
-        t(`arena-emulator: ${label} ran to completion`, false, String(e && e.message || e).slice(0, 200));
+        // The pages' state goes into the detail: which origin each page is on
+        // and any JavaScript dialog it had open (a blocking dialog freezes the
+        // renderer and surfaces as a 45 s timeout somewhere unrelated).
+        const pagesNow = [['A', A], ['B', B], ['C', C]].filter(([, p]) => p)
+          .map(([n, p]) => `${n}=${p.lastUrl || '?'}${p.dialogs && p.dialogs.length ? ` dialogs=${JSON.stringify(p.dialogs.slice(-2))}` : ''}`);
+        t(`arena-emulator: ${label} ran to completion`, false,
+          `${String(e && e.message || e).slice(0, 360)} | pages: ${pagesNow.join('; ')}`);
       } finally {
         const w = waitsSince(waitsBefore);
         console.log(`  [scenario] ${scenario} took ${((Date.now() - started) / 1000).toFixed(1)}s`

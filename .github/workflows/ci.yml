@@ -99,8 +99,9 @@ jobs:
     if: ${{ !cancelled() && (github.event_name != 'push' || needs.plan.result != 'success' || needs.plan.outputs.run == 'true') }}
     runs-on: ubuntu-latest
     # About four minutes on a runner. The cap exists so a hung test fails in
-    # minutes with a name (package.json sets --test-timeout) instead of holding
-    # a runner for GitHub's six-hour default.
+    # minutes with a name instead of holding a runner for GitHub's six-hour
+    # default: package.json sets --test-timeout, which bounds each test FILE
+    # (every test in it together), not each test.
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v6
@@ -116,18 +117,23 @@ jobs:
       # failure was a search, not a read. `dot` prints one character per test
       # and then every failure in full at the END of the log; the JUnit file
       # feeds the run summary and is kept as an artifact when something fails.
+      # The third reporter times each test FILE against --test-timeout, which
+      # bounds whole files, not tests (scripts/test-file-times.mjs), so a file
+      # creeping toward the bound shows on a green run before it is killed.
       # Passed through NODE_OPTIONS so `npm test` stays the single definition
       # of what runs (no test in the estate spawns `node --test` itself).
       - name: Unit, integration and static tests
         env:
-          NODE_OPTIONS: --test-reporter=dot --test-reporter-destination=stdout --test-reporter=junit --test-reporter-destination=unit-tests.junit.xml
+          NODE_OPTIONS: --test-reporter=dot --test-reporter-destination=stdout --test-reporter=junit --test-reporter-destination=unit-tests.junit.xml --test-reporter=./scripts/test-file-times.mjs --test-reporter-destination=unit-file-times.md
         run: npm test
       # On EVERY outcome: `dot` prints no totals, so on a green run this line is
       # the evidence of how many tests actually executed (and how many were
       # skipped or quarantined as todo). Printed to the log and the run summary.
       - name: Summarize results
         if: always()
-        run: node scripts/ci-junit-summary.mjs unit-tests.junit.xml | tee -a "$GITHUB_STEP_SUMMARY"
+        run: |
+          node scripts/ci-junit-summary.mjs unit-tests.junit.xml | tee -a "$GITHUB_STEP_SUMMARY"
+          cat unit-file-times.md | tee -a "$GITHUB_STEP_SUMMARY"
       - name: Keep the JUnit report
         if: failure()
         uses: actions/upload-artifact@v7

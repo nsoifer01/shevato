@@ -97,6 +97,30 @@ privacy review-date guard, which compares against today by design. That realm
 is the limit of the method: code under `apps/arena/tests/helpers/app-vm.js`
 was not swept.
 
+**The first scheduled run (34815661555) was red twice, both times CI's own
+doing.**
+
+- *Coverage: "FAIL: 2 test(s) failed under coverage", and no names.* The pull
+  request had added `--test-timeout=180000` to `npm test` and the coverage
+  runner as a per-test bound. It is per FILE: with process isolation it bounds
+  every test in a file together (two 1.2 s tests under a 2 s bound are
+  cancelled at 2 s). V8 coverage slows the heavy FPL files unevenly, measured
+  one file alone on four cores: `backtest.test.mjs` 21.9 s plain and 173.4 s
+  covered, `optimizer-consistency.test.mjs` 51.0 s and 125.1 s. A runner took
+  2.1 times as long as those four cores for the covered estate (606 s against
+  288 s), so both files ran past 180 s and were killed, all their tests
+  passing. The coverage runner now bounds files at 900 s, the job allows 30
+  minutes for that bound to fire, the runner names every failing test with
+  its location and error, and the unit job and the coverage runner both print
+  their slowest files against the bound (`scripts/test-file-times.mjs`), so
+  the margin is on every run instead of discovered by a kill. The coverage job
+  also restores the Rising Shows dataset now; without it the real-catalogue
+  tests skipped there (16 skips to the unit job's 7).
+- *Arena S5: `timeout: Runtime.evaluate`* from a polling loop that read the
+  page with plain `evaluate()`, the send-timeout hole `waitForExpr` had closed
+  for itself. `probe()` in `tests/browser/cdp.mjs` closes it for hand-written
+  loops; details in `apps/arena/FINDINGS.md`.
+
 ## A stalled third-party CDN held every page (2026-09-13)
 
 A request that is refused fails fast. One that is accepted and never answered
