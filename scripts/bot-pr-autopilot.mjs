@@ -48,11 +48,12 @@ import { pathToFileURL } from 'node:url';
 
 const DEFAULT_API = 'https://api.github.com';
 
-// The merge commit matters. tests.yml and browser-tests.yml both skip a
-// push-to-master run whose tree is byte-identical to the pull request head
-// they already tested, and they find that out from `HEAD^2`. A squash has no
-// second parent, so squashing here would turn every refresh into a redundant
-// full re-run of a tree that just went green.
+// Refresh pull requests merge with a merge commit. That used to be load-bearing:
+// the old per-suite workflows skipped a redundant push-to-master run only for a
+// merge commit, by reading `HEAD^2`. Since 2026-09-14 ci.yml asks
+// scripts/ci-already-tested.mjs instead, which compares the pushed tree with the
+// pull request head through the API, so a squash would be recognised just as
+// well. The method is unchanged so the refresh history keeps its existing shape.
 export const MERGE_METHOD = 'MERGE';
 
 export const BOT_BRANCH_PREFIX = 'bot/refresh-rising-shows-';

@@ -1064,6 +1064,41 @@ The rule this earns, for any timing bug in this suite:
    and check the emulator ports are free first: a leftover emulator makes the
    harness SKIP, and a skipped batch looks like a finished one.
 
+## The e2e runs on two machines, split at the end of the chain (2026-09-14)
+
+The multiplayer e2e was the longest job on a pull request (about ten minutes on
+one runner) and it now prints each scenario's time as it runs. Measured locally
+on 2026-09-14, full run 106/106:
+
+| Scenario | Seconds | Where the time goes |
+| --- | ---: | --- |
+| S1 fresh guest + full three-client game | 118 | 52 s fixed waits |
+| S2 host handoff in the lobby | 109 | 90 s polling (the handoff waits out real presence timing) |
+| S3 password room + D1 exploit | 26 | |
+| S4 invalid codes | 11 | |
+| S5 registered host vs two guests | 161 | 54 s fixed, 52 s polling |
+| S6 Globe Drop clock | 60 | |
+| S7 decider abandons picking | 40 | |
+| S8 refresh mid-game | 52 | |
+| S9 chat window | 31 | |
+| S10 host tab disappears | 9 | |
+
+S1-S5 are one chained session (S1 seats and parks the third client, S2-S4
+bring it back, S5 relies on all of it), so they can only run together and in
+order. S6 onward each start from `resetToLobby()` on pages `ensurePages()`
+opens. So `ARENA_E2E_GROUP=1` runs S1-S5 and `=2` runs S6 onward, and CI puts
+them on separate machines with their own emulators. Each group run ALONE on
+fresh emulators passed: group 1 76/76 in 6.1 min, group 2 30/30 in 3.5 min,
+together exactly the full run's 106 checks. (S5 took 92 s alone against 161 s
+at the end of a full run; nothing asserted differs, so that is load, not a
+dependency.)
+
+A scenario is placed by its number against `CHAIN_LAST`, and a label without an
+`S<n>:` prefix throws, so a new scenario can fail loudly but never fall between
+the groups; `tests/static/ci-workflow.test.mjs` checks the labels too. A new
+scenario that DOES depend on the chain has to be numbered into it (and
+`CHAIN_LAST` raised); run its group alone once to prove it.
+
 ## The Ready-skip check: where six seconds went (2026-09-08, PR #505)
 
 `rules` went pass, fail, pass, fail, pass, fail on six consecutive runs of
@@ -1215,7 +1250,8 @@ was filtered is the one that could not. The correlation was not a coincidence,
 and it was not noticed until it cost two red merges.
 
 The fix moves the filter off the trigger and into the job. `arena-rules.yml`
-now starts on every pull request and every push to master, and a first "Scope"
+(since 2026-09-14 the `rules` job of `ci.yml`, same Scope step) now starts on
+every pull request and every push to master, and a first "Scope"
 step diffs the change (three-dot for a PR, two-dot for a push) and sets an
 output that gates the six expensive steps. A change with no emulator inputs
 takes about half a minute and reports success; a change with them runs the full

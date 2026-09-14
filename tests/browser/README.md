@@ -12,7 +12,7 @@ The runner starts its own static server and headless Chrome, runs every suite,
 tears both down, and exits non-zero on any failure. Nothing needs to be running
 beforehand.
 
-Four runner-level guarantees:
+Six runner-level guarantees:
 
 - **Crash containment.** Each suite runs in its own try/catch; a suite that
   throws (import error included) records one `<suite>: suite completed`
@@ -23,11 +23,10 @@ Four runner-level guarantees:
   summary under "Asserted NOTHING in this run", and FAILS them unless they are
   in `ZERO_RUN_ALLOWED` with a written reason. Today the one entry is
   `apps/rising-shows/e2e/audit-2026-08.mjs`: its dataset is a gitignored
-  release asset, so on a clone without it every check skips. The browser
-  workflow now fetches and caches the dataset before the suites run, so on CI
-  the suite normally executes; the exemption covers a failed fetch (that step
-  may fail without failing the job) and a local clone without the data, and
-  the summary names the suite whenever it asserted nothing. Note that suite
+  release asset, so on a clone without it every check skips. The exemption is
+  for a local clone only: CI prepares the dataset and fails the shard if it
+  cannot, and in CI mode (below) the exemption does not apply. The summary
+  names the suite whenever it asserted nothing. Note that suite
   emits 51 checks when the dataset IS present and 11 when it is not, which is
   why it cannot also carry an `EXPECTED_CHECKS` pin.
 - **Check-count pinning.** `EXPECTED_CHECKS` in run.mjs pins the number of
@@ -42,6 +41,20 @@ Four runner-level guarantees:
 - **Ordered teardown.** kill() is followed by a bounded wait for the actual
   process exits before the Chrome profile dir is removed, so teardown never
   races Chrome's open file handles.
+- **CI mode.** `BROWSER_TEST_CI=1` (set by the `browser-shard` jobs of
+  `.github/workflows/ci.yml`) turns every precondition skip, and every suite
+  that asserted nothing, into a FAILURE. CI prepares every precondition (the
+  Rising Shows dataset, the generated Gym Tracker pages and the one built
+  Rising Shows show page), so a skip there would mean the run checked less than
+  the previous run of the same commit. Known-defect quarantines (a detail
+  starting `KNOWN DEFECT`) stay skips, because they execute every run.
+- **Infrastructure is labelled as infrastructure.** A browser that exits
+  mid-run fails the suite it was running with one `INFRASTRUCTURE - Chrome
+  exited` check, and the next suite gets a fresh browser, so one crash no longer
+  reads as a wall of unrelated `ECONNREFUSED` failures. A browser that never
+  comes up reports whether it exited and the tail of its own stderr. With
+  `GITHUB_STEP_SUMMARY` set, each shard writes its failures (infrastructure
+  first, then application checks) and its timing table to the job summary.
 
 ## Requirements
 
@@ -58,6 +71,11 @@ Four runner-level guarantees:
   waiting for headless Chrome unless `TMPDIR` points inside the repo:
   `TMPDIR=$PWD/.screenshots/tmp npm run test:browser` (`.screenshots/` is
   gitignored).
+- Playwright's bundled Chromium (`~/.cache/ms-playwright/chromium-*`) aborts
+  with SIGABRT when this runner launches it with a debugging port on the
+  maintainer's machine, although it renders fine on its own (measured
+  2026-09-14; the runner now prints the exit and Chrome's stderr instead of a
+  bare "timed out waiting for headless Chrome"). Use the snap `chromium`.
 - Snap chromium ignores the SIGTERM from `child.kill()`, so a relaunch on the
   same CDP port silently attaches to the OLD browser with its tabs still
   open. Kill by port before relaunching (e.g. `pkill -f
@@ -93,12 +111,12 @@ minutes end to end. Keeping them separate means the fast gate stays fast and
 dependency-free, while this runs on PRs, master pushes, and locally before a
 release.
 
-## How CI keeps that to about 12 minutes
+## How CI runs it
 
 The estate is 32 suites (`SUITES` in run.mjs, counted 2026-09-13) walked one at
-a time in one browser, so the only way to finish sooner is to put the suites on
-more machines. `.github/workflows/browser-tests.yml`
-runs a four-job matrix, each job taking a quarter of the list:
+a time in one browser per machine, so the way to finish sooner is to put the
+suites on more machines. The `browser-shard` jobs of `.github/workflows/ci.yml`
+are a matrix, each job taking its share of the list:
 
 ```bash
 node --experimental-websocket tests/browser/run.mjs --shard=2/4
@@ -120,8 +138,51 @@ that the estate was fully run.
 
 The workflow derives `<n>` from `strategy.job-total`, the matrix size itself,
 so the shard count is never written down twice. Changing the parallelism is
-one edit to the `shard:` list. A `browser` job gathers the four results into a
-single verdict.
+one edit to the `shard:` list. A `browser` job gathers the shard results into a
+single verdict (the required status check).
+
+Before its suites, every shard restores the Rising Shows dataset from a cache
+keyed by `apps/rising-shows/data-release.json` (downloading and splitting it on
+a miss, and failing the shard if that fails), builds the Gym Tracker exercise
+pages, and builds the one Rising Shows show page the suite visits
+(`build-show-pages.js --only=tt0903747`). Failure screenshots under
+`.screenshots/` are kept as a job artifact.
+
+## Third-party requests never reach the internet
+
+Every page `cdp.mjs` opens answers third-party requests locally, through
+`tests/browser/third-party.mjs`:
+
+- the CDN assets the site references (the Firebase SDK from www.gstatic.com,
+  Google Fonts, Font Awesome from cdnjs) come from the committed mirror in
+  `vendor/third-party/`, stored as the CDN served them (text with LF line
+  endings);
+- the MapTap daily puzzle, which is a different file every day, gets one fixed
+  stand-in;
+- every other third-party request (analytics, TMDB posters, map tiles, trip
+  APIs, Wikipedia) is refused immediately, as a blocked network refuses it.
+
+Measured on 2026-09-14 before this existed, one estate run sent 3,072 requests
+to the real internet, so a result depended on those services and on the date;
+a stalled www.gstatic.com request had already failed a CI run on 2026-09-13.
+
+A suite's own `interceptNetwork(s, rules)` rule is consulted first. A rule
+returns `null` (no opinion: first-party goes through, third-party gets the
+answer above), `'fail'`, a canned `{ status, body, contentType, headers }`, or
+`'hold'`, which leaves the request paused forever: that is how `site.mjs`
+simulates a stalled CDN. Offline emulation (`setOffline`) refuses the mirror
+too. `s.blockedThirdParty` lists what a page had refused, for a check's detail.
+
+When the site starts referencing a CDN asset that is not mirrored (a new font
+weight, an SDK version), `tests/static/browser-third-party.test.mjs` fails in
+`npm test` and names the fix:
+
+```bash
+node tests/browser/refresh-third-party.mjs
+```
+
+That script is the only networked thing in this tree, and nothing runs it
+automatically.
 
 Sharding is safe on separate runners and NOT safe on one machine: two runs on
 the same host share CDP port 9222 and silently drive each other's browser. The
@@ -155,7 +216,9 @@ never mistaken for a full one.
 The rising-shows dataset is the current case: `data.json` and
 `shows-index.json` are gitignored and pulled from / derived from a GitHub release, so a clean
 clone has no shows and every finder assertion would fail for a reason that is
-not a bug. Those six checks skip with the fix in the message. To run them:
+not a bug. Those checks skip with the fix in the message, locally. On CI they
+never skip: the shards prepare the dataset, and CI mode fails any skip that
+remains. To run them locally:
 
 ```bash
 npm run fetch:rising-shows-data
@@ -168,6 +231,8 @@ npm run fetch:rising-shows-data
 | `BROWSER_TEST_PORT` | `8099` | Static server port |
 | `BROWSER_TEST_CDP_PORT` | `9222` | Chrome DevTools Protocol port |
 | `CHROME_BIN` | `chromium` | Browser binary |
+| `BROWSER_TEST_CI` | unset | `1` on CI: precondition skips and zero-assertion suites fail |
+| `BROWSER_TEST_TIMING_JSON` | unset | Write per-suite timings (including fixed waits by source) to this file; `run-parallel.mjs` suffixes it per shard |
 
 Ports 8080 and 8081 are reserved on the maintainer's machine and must never
 become defaults here (local servers go on 8082+, see `CLAUDE.md`).
@@ -179,6 +244,8 @@ tests/browser/
   run.mjs            # lifecycle: start server + Chrome, run suites, tear down
   cdp.mjs            # DevTools Protocol driver (evaluate, clicks, keys,
                      #   network interception, offline emulation, targets)
+  third-party.mjs    # the answer to every third-party request: mirror or refusal
+  refresh-third-party.mjs # re-downloads the mirror (the only networked script)
   suites/site.mjs    # 8 marketing pages: meta/robots, first-party network
                      #   failures, apps-hub search + category filters, header
                      #   apps dropdown, moadon-alef language switcher, apex
@@ -199,6 +266,7 @@ tests/browser/
   suites/csp.mjs     # the enforced CSP, verified by a browser refusing what it
                      #   blocks rather than by reading the header as a string
   vendor/axe.min.js  # vendored axe-core (same convention as site jQuery)
+  vendor/third-party/ # committed CDN mirror + manifest (sources and licences in its README)
 
 apps/trip-planner/e2e/   # the trip-planner E2E regression suites (registered
                          #   in run.mjs; see that app's README + FINDINGS)
@@ -212,7 +280,7 @@ apps/<app>/e2e/          # audit-2026-08.mjs regressions for every app except
 apps/arena/e2e/          # two-client multiplayer suite vs local Firebase
                          #   emulators: NOT in run.mjs (needs Java); run it
                          #   with npm run test:arena:emulator. CI runs it in
-                         #   .github/workflows/arena-rules.yml
+                         #   the `rules` job of .github/workflows/ci.yml
 ```
 
 A suite exports `run({ base, cdpPort })` and returns

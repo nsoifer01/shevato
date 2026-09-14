@@ -63,7 +63,11 @@ REJECT, whichever way it goes.
   under `sync-system/tests/` catch tiny edits (sitemap forms, A-Z ordering,
   shared-UI scoping).
 - **`npm run test:browser:parallel` must be green BEFORE `gh pr create`, not
-  after.** About twelve minutes, four shards at once; budget it into the round.
+  after.** About eleven minutes (11.1, measured 2026-09-14), four shards at
+  once; budget it into the round. It never touches the internet: third-party
+  requests are answered from `tests/browser/vendor/third-party/`, and when
+  `npm test` says the mirror is missing an asset, run
+  `node tests/browser/refresh-third-party.mjs`.
   `npm test` structurally cannot see browser-only breakage: 71 of 187 source
   files are never imported by the unit estate, and every one of them loads
   cleanly on its own under `node --test` even when it is dead in a browser. On
@@ -133,8 +137,8 @@ REJECT, whichever way it goes.
   (used solely by `tests/cross-browser/`), and the dev-only ESLint and its
   `globals` package (both used solely by `npm run lint`, through
   `eslint.config.mjs`). None is ever imported by app or test code. Only the
-  `lint` and `cross-browser` workflows run npm install; the push/PR TEST
-  workflows stay dependency-free.
+  `lint` job of `ci.yml` and the `cross-browser` job of `scheduled.yml` run npm
+  install; the unit, browser and Arena jobs stay dependency-free.
 - **`npm run lint` is a correctness gate, not a style one.** It exists because
   a dead store to an undeclared binding (`wasOpen`) shipped to production and
   threw on every mobile menu toggle for 12 days while the whole test estate

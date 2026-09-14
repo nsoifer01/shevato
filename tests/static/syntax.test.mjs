@@ -3,7 +3,8 @@
 // complete: a parse error in any of these files currently ships silently to
 // the browser unless CI's hand-maintained list happens to cover it.
 //
-// Mirrors .github/workflows/test.yml:
+// Replaced the two bash `node --check` loops the old tests workflow ran, and
+// covers a superset of them:
 //   - gym-tracker tree: apps/gym-tracker/js/**/*.js + sw.js (parsed as ESM
 //     via apps/gym-tracker/package.json "type": "module", exactly like CI).
 //   - site scripts list: the eight classic scripts CI checks.
@@ -30,8 +31,8 @@ import { execFileSync, spawnSync } from 'node:child_process';
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 
-// The eight classic site scripts CI checks (keep in sync with
-// .github/workflows/test.yml "Syntax check (site scripts)").
+// The classic site scripts the old CI loop checked, kept as the named core of
+// this list (the loop itself is gone; this test is the only syntax gate).
 const CI_SITE_SCRIPTS = [
   'assets/js/analytics.js',
   'assets/js/apex-redirect.js',

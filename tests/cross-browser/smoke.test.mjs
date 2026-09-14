@@ -79,7 +79,7 @@ async function loadPlaywright() {
 // purpose is engine coverage was green having tested one engine. A skip that
 // is invisible is indistinguishable from a pass.
 //
-// CROSS_BROWSER_REQUIRE=1 (set by .github/workflows/cross-browser.yml) turns
+// CROSS_BROWSER_REQUIRE=1 (set by .github/workflows/scheduled.yml) turns
 // the skip into a failure. Same mechanism as ARENA_RULES_REQUIRE.
 const REQUIRE_ENGINES = process.env.CROSS_BROWSER_REQUIRE === '1';
 
@@ -155,7 +155,7 @@ for (const engine of ['firefox', 'webkit']) {
     await withBrowser(t, engine, async (browser) => {
       for (const app of APPS) {
         // Rising Shows boots from a gitignored dataset (fetched on CI by
-        // cross-browser.yml, absent in a fresh clone). Without it the app
+        // scheduled.yml, absent in a fresh clone). Without it the app
         // requests shows-index.json and gets a 404, which is a missing
         // precondition, not a boot failure: skip with a reason, the way the
         // CDP harness does, instead of turning the whole smoke red.

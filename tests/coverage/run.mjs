@@ -3,14 +3,18 @@
 //
 //   npm run test:coverage
 //
-// Node 20 ships --experimental-test-coverage but not the threshold flags
-// (those arrived in Node 22), so this wrapper runs the same suite list as
-// `npm test` under coverage, parses the per-file table out of the TAP
-// output, and enforces per-area floors itself. It writes a readable report
-// to .coverage/summary.md (gitignored) and exits non-zero if any area falls
+// Node's own coverage thresholds are global, not per area, so this wrapper
+// runs the same suite list as `npm test` under
+// --experimental-test-coverage, reads per-file coverage from Node's LCOV reporter
+// (.coverage/lcov.info), takes the test counts from the TAP stream, and
+// enforces per-area floors itself. It writes a readable report to
+// .coverage/summary.md (gitignored) and exits non-zero if any area falls
 // below its floor or any test fails.
 //
 // Notes on the numbers:
+// - A file loaded as several module instances (a `?page=N` re-import) is
+//   measured as the UNION of its instances. The TAP table credits only one
+//   instance per path, which is why it is not read; see parseLcov in lib.mjs.
 // - Test files themselves are excluded from every figure below.
 // - Only files a test actually loads appear in V8 coverage at all. Files
 //   with zero coverage because nothing imports them are invisible here;
@@ -20,13 +24,14 @@
 //   weighted by its on-disk line count), which tracks the executable-line
 //   weighting closely enough to be stable over time.
 import { spawn } from 'node:child_process';
-import { mkdir, writeFile, readFile } from 'node:fs/promises';
+import { mkdir, writeFile, readFile, rm } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { parseTable, isTestFile, aggregate, evaluateAreas } from './lib.mjs';
+import { parseLcov, parseTapSummary, isTestFile, aggregate, evaluateAreas } from './lib.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.resolve(HERE, '..', '..');
+const LCOV = path.join(REPO, '.coverage', 'lcov.info');
 
 // Same directories as the package.json `test` script; keep in sync.
 //
@@ -83,7 +88,12 @@ const FLOORS = JSON.parse(await readFile(path.join(HERE, 'floors.json'), 'utf8')
 
 function runCoverage() {
   return new Promise((resolve) => {
-    const args = ['--test', '--experimental-test-coverage', ...SUITE_GLOBS];
+    // TAP on stdout for the test counts, LCOV to a file for the coverage.
+    // Same per-test bound as `npm test`: a hang fails with a name, not a job timeout.
+    const args = ['--test', '--test-timeout=180000', '--experimental-test-coverage',
+      '--test-reporter=tap', '--test-reporter-destination=stdout',
+      '--test-reporter=lcov', `--test-reporter-destination=${LCOV}`,
+      ...SUITE_GLOBS];
     const child = spawn(process.execPath, args, { cwd: REPO });
     let out = '';
     child.stdout.on('data', (c) => { out += c; });
@@ -93,8 +103,11 @@ function runCoverage() {
 }
 
 async function lineCount(file) {
-  try { return (await readFile(path.join(REPO, file), 'utf8')).split('\n').length; }
-  catch { return 0; }
+  try {
+    const text = await readFile(path.join(REPO, file), 'utf8');
+    // A final newline ends the last line; it does not start another one.
+    return text.split('\n').length - (text.endsWith('\n') ? 1 : 0);
+  } catch { return 0; }
 }
 
 /** Every production source file under INVENTORY_ROOTS, repo-relative. */
@@ -116,8 +129,16 @@ async function productionInventory() {
   return found;
 }
 
+// A report left over from an earlier run must never be read as this run's: if
+// the reporter writes nothing, the rows come back empty and every floor fails.
+await mkdir(path.join(REPO, '.coverage'), { recursive: true });
+await rm(LCOV, { force: true });
 const { code, out } = await runCoverage();
-const { rows, summary } = parseTable(out);
+const summary = parseTapSummary(out);
+let lcov = '';
+try { lcov = await readFile(LCOV, 'utf8'); }
+catch { console.error(`No LCOV report was written to ${path.relative(REPO, LCOV)}.`); }
+const rows = parseLcov(lcov, REPO);
 const srcRows = rows.filter((r) => !isTestFile(r.file));
 for (const r of srcRows) r.lines = await lineCount(r.file);
 

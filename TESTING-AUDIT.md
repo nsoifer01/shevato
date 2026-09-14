@@ -247,6 +247,13 @@ Unit/integration layer, source files only, test files excluded, line-weighted
 
 Read these numbers with care, in both directions:
 
+- Per-file figures come from Node's LCOV report with every module instance
+  of a file merged (since 2026-09-14): a line counts as covered if any
+  instance ran it. Node's TAP table credits one instance per path, so tests
+  that re-import a module with `?page=N` (the sync account-boundary suite)
+  made storage-sync-robust.js read 59.61% and sync-system 69.54%; merged,
+  they read 93.98% and 93.36%. Branch and function % are approximate across
+  instances; the floors use line % only.
 - Files that only browser tests exercise never appear in V8 coverage, and
   neither do files loaded via `node:vm` or tested by source extraction
   (mario-kart's core files, football-h2h's sidebar, analytics.js, both
@@ -772,4 +779,40 @@ are recorded here so the next session does not have to re-measure.
 **Also not adopted:** Prettier, any style preset, or `eslint:recommended`
 wholesale. The `eslint-disable` comments already in the codebase refer to the
 unenabled hygiene rules, which is why `reportUnusedDisableDirectives` is off.
+
+## Addendum, 2026-09-14: CI made deterministic
+
+Pull-request CI had become slow and red for reasons unrelated to the change
+under review. The evidence (400 runs, every failed log, the mechanism behind
+each failure class) and the full list of defects are in the root
+`FINDINGS.md`, "Why pull-request CI failed, and what the pipeline is now".
+What changed in the testing architecture itself:
+
+- **One pipeline.** `.github/workflows/ci.yml` replaces `test.yml`, `lint.yml`,
+  `browser-tests.yml` and `arena-rules.yml`; `scheduled.yml` replaces
+  `cross-browser.yml` and the weekly coverage and Arena schedules. The required
+  checks (`lint`, `test`, `browser`, `rules`) keep their names. A push to master
+  whose exact tree already passed on its pull request is skipped by
+  `scripts/ci-already-tested.mjs`; every uncertain answer runs the suites.
+- **The browser layer no longer touches the internet.** Every page answers
+  third-party requests from `tests/browser/third-party.mjs`: the CDN assets the
+  site references from a committed mirror, the date-varying MapTap puzzle from
+  a fixture, everything else refused. `tests/static/browser-third-party.test.mjs`
+  keeps the mirror complete. This extends the standing rule "Depend on live
+  third-party APIs in the deterministic suites: never" from APIs to every
+  third-party byte.
+- **CI mode.** On CI (`BROWSER_TEST_CI=1`) a precondition skip or a suite that
+  asserted nothing is a failure, and CI prepares every precondition (the Rising
+  Shows dataset, the generated Gym Tracker pages, the one built show page), so a
+  commit asserts the same set of things on every run. Known-defect quarantines
+  are unaffected.
+- **Infrastructure is labelled.** A browser that dies mid-run fails its suite
+  once as `INFRASTRUCTURE` and the next suite gets a new browser; a browser that
+  never starts reports its exit and stderr; each shard and the unit job write a
+  failure summary to the run page.
+- **Hangs are bounded.** `npm test` and the coverage runner pass
+  `--test-timeout=180000`; every CI job has a timeout.
+- **Coverage merges module instances.** The floors are measured from LCOV with
+  every instance of a file merged (the table counted one `?page=N` instance
+  and failed sync-system at 69.54%; merged it is 93.36%). Floors unchanged.
 

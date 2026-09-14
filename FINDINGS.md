@@ -8,6 +8,72 @@ Site-level knowledge that belongs to no single app: the marketing pages
 lives in `apps/<app>/FINDINGS.md`; this file follows the same living-document
 rule (rewrite, merge, delete; never an append-only diary).
 
+## Why pull-request CI failed, and what the pipeline is now (2026-09-14)
+
+Evidence: the 400 most recent Actions runs (2026-09-08 to 09-14), every failed
+job's log, per-step timings, and local measurement runs. Pull-request CI was
+four workflows (tests, lint, browser tests, arena emulator), about 13 minutes
+of wall clock, and red for one reason or another on a large share of runs.
+
+**What actually failed, by mechanism** (not by test name):
+
+| Mechanism | Runs | State before this change |
+| --- | ---: | --- |
+| Arena Globe Drop "Ready advances the round early": a two-RPC transaction whose read/commit stall under CPU starvation ate the reveal window | ~15 | fixed 2026-09-12 (single-write advance, `apps/arena/FINDINGS.md`); no recurrence in ~30 runs since |
+| Arena S6 "timeout: Runtime.evaluate": a send timeout inside `waitForExpr` aborted the scenario | 5 | fixed 2026-09-08 (a slow poll is not a verdict, `cdp.mjs`) |
+| Arena Scope step exiting on `grep` matching nothing under `bash -e` | 2 | fixed 2026-09-08 |
+| Real-clock tests: MapTap "UTC+12 counts today's games" failed whenever the host day and Auckland's matched (00:00-12:00 UTC, every day); gym "quick session counts toward week stats" failed early on Mondays | 3 | fixed on master in #538; the failing runs were a branch that predated it |
+| A stalled www.gstatic.com request kept Gym Tracker from booting (six "unrelated" 390 px failures on a data-only bot PR) | 1 | boot path fixed in #535; the suites still loaded the SDK live (fixed here) |
+| Auth-modal busy state read 300 ms after a 1,200 ms stub | 2 | fixed 2026-09-09 (wait for the re-enable) |
+| Trip Planner "scrolling fetches the venues that came into view" (9 -> 9): the check's scroll jumped past the lazily loaded venues instead of moving through the board | 2 | test fixed in d59eb11 before #530 merged |
+| Real regressions caught correctly (#530's `API` collision, check-count pins after an app was removed, the Rising Shows perf contract) | 4 | not failures of CI |
+
+The Arena flake was most of the pain, and the clock and CDN failures were most
+of the "completely unrelated to my PR" reports: they depended on the time of
+day and on a CDN, not on the change.
+
+**Live defects in CI itself, found and fixed in this round:**
+
+- **The browser suites depended on the internet.** One run sent 3,072
+  requests to real third-party hosts (Firebase SDK, Google Fonts, Font Awesome,
+  TMDB, the MapTap daily puzzle which changes daily, map tiles, trip APIs).
+  Every page now answers them locally: a committed mirror for the CDN assets,
+  a fixed puzzle, refusal for the rest (`tests/browser/third-party.mjs`).
+- **Every squash merge re-ran the whole estate on master.** The "already
+  tested?" guard compared `HEAD^{tree}` with `HEAD^2^{tree}`, which a squash
+  commit does not have, and the Arena workflow had no guard at all. A flake in
+  that duplicate run turned master red for a tree that had passed.
+  `scripts/ci-already-tested.mjs` now compares the pushed tree with the pull
+  request head through the API and requires that head's CI run to have passed.
+- **The Rising Shows dataset step made CI check less, silently**: a run-id
+  cache key that never hit (evicting other caches), a cached directory that
+  restored a stale copy over the tracked `season-overviews.json`, and
+  `continue-on-error` that turned a failed download into 64 skipped assertions.
+  Details in `apps/rising-shows/FINDINGS.md`.
+- **Five checks never ran on CI**: the generated Gym Tracker exercise pages and
+  the built Rising Shows show page were never built, so those checks always
+  skipped. They are built now, and CI mode (`BROWSER_TEST_CI=1`) fails any
+  precondition skip, so a commit asserts the same things on every run.
+- **The weekly coverage job was red for a measurement artifact.** Node's
+  coverage table credits one module instance per file, and
+  `sync-account-boundary.test.mjs` loads its engine as `?page=N` instances, so
+  sync-system read 69.54% against a floor of 82. Merged from LCOV it is 93.36%;
+  no floor changed.
+- **Nothing bounded a hang** (the `test` job had no timeout, tests no
+  per-test timeout), superseded pull-request runs were never cancelled, and
+  failures were hard to read: 60,000 lines of TAP, "timed out waiting for
+  headless Chrome" with no cause, and an Arena e2e that printed nothing for
+  eleven minutes.
+
+**Real-clock sweep.** The unit estate was run under eight shifted clocks and
+zones (early Monday UTC, late Sunday Los Angeles, Monday in Auckland, New
+Year's Eve, both DST changes, a leap day, month end at UTC+14). Apart from the
+two already fixed, nothing failed except tests whose code runs in a `node:vm`
+realm (its `Date` is not the shifted one, so that is an artifact) and the
+privacy review-date guard, which compares against today by design. That realm
+is the limit of the method: code under `apps/arena/tests/helpers/app-vm.js`
+was not swept.
+
 ## A stalled third-party CDN held every page (2026-09-13)
 
 A request that is refused fails fast. One that is accepted and never answered
@@ -76,7 +142,9 @@ no third-party script without `async`; no blocking third-party stylesheet in
 any page or generator template; no third-party `@import`) and
 `tests/browser/suites/site.mjs` "boots with every third-party CDN stalled",
 which pauses every gstatic, cdnjs and Google Fonts request on each page and
-requires DOMContentLoaded. `tests/static/stylesheet-chain.test.mjs` counts the
+requires DOMContentLoaded. Since 2026-09-14 no browser suite reaches those CDNs
+at all (they are served from a committed mirror, see the CI section above), so
+that check produces its stall deliberately with a `'hold'` interception rule. `tests/static/stylesheet-chain.test.mjs` counts the
 Raleway link outside its `<noscript>` copy.
 
 ## Marketing pages load auth only; Firestore is imported where it is used (2026-09-13, audit S-7)
@@ -748,6 +816,13 @@ Measured 2026-09-05 across all 28 suites (`run.mjs` prints the breakdown): the
 estate spends **60% of its wall clock on fixed sleeps**, 20% on navigation, 6%
 on condition polling. There are 249 explicit `sleep(N)` sites totalling 142.5
 seconds, before the `settle:` values and before loop multiplication.
+
+Re-measured 2026-09-14 over 32 suites, now split by WHERE the wait comes from
+(`cdp.mjs` tags each fixed wait; `run.mjs` prints "fixed waits by source"): of
+2,561 suite-seconds, **1,928 (75%) are fixed waits**: 1,015 s of `goto()`
+settle, 486 s of click settle, 377 s of explicit `sleep()`, 47 s after key
+presses. Condition polling is 154 s and navigation 278 s. The settle after a
+navigation is the largest single lever.
 
 Triaged by what surrounds them:
 

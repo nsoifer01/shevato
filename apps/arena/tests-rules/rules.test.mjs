@@ -10,8 +10,8 @@
 // NOT part of `npm test`: this suite needs Java plus a one-time
 // firebase-tools/emulator download, which the dependency-free push/PR CI
 // deliberately does not have. Run locally with `npm run test:arena:rules`;
-// CI runs it on every change that can move its outcome, and weekly, via
-// .github/workflows/arena-rules.yml with
+// CI runs it on every change that can move its outcome (the `rules` job of
+// .github/workflows/ci.yml), and weekly through scheduled.yml, with
 // ARENA_RULES_REQUIRE=1 so an environment problem fails loudly there
 // instead of skipping.
 //

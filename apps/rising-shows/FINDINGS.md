@@ -1086,9 +1086,11 @@ PR and every push to master, which is where it belongs.
 
 ## A cache-hit guard has to test the file the CONSUMER needs (2026-09-12)
 
-`browser-tests.yml` downloads the gitignored dataset, splits it, and caches the
-result. 64 assertions across three suites are gated on it being present; without
-it they SKIP, and a skipped assertion is a green shard that checked nothing.
+The browser CI job (then `browser-tests.yml`, since 2026-09-14 the
+`browser-shard` jobs of `ci.yml`) downloads the gitignored dataset, splits it,
+and caches the result. 64 assertions across three suites are gated on it being
+present; without it they SKIP, and a skipped assertion is a green shard that
+checked nothing.
 
 Two halves drifted apart and stayed broken for a week:
 
@@ -1104,6 +1106,26 @@ assertions. Run 34672062079 shows it plainly: `dataset restored from cache`
 immediately followed by 21 `no show data` skips. The a11y contrast regression
 above shipped straight past four green browser shards because of it, and the
 first local run against real data caught it in eleven minutes.
+
+**Three more ways the same step made CI check less, fixed 2026-09-14** (CI
+audit; the shell is still pinned by `tests/static/ci-rising-shows-dataset.test.mjs`):
+
+- **The cache restored OVER a tracked file.** The `path:` list cached the whole
+  `apps/rising-shows/data` directory, which also holds the committed
+  `season-overviews.json`. A restore replaced the pull request's copy with
+  whatever the cache had saved, so a change to that file was tested against a
+  stale version. The list now names the split outputs file by file, and the
+  test fails if any cached path covers a tracked file (`git ls-files`).
+- **The key was the run id.** It could never hit exactly, so every run saved
+  another ~100 MB entry and evicted other caches under GitHub's 10 GB limit.
+  The key is now `data-release.json` (the committed pin) plus the two scripts,
+  which changes only when the refresh bot publishes new data.
+- **Preparation was `continue-on-error`.** A failed download turned the 64
+  assertions into skips and the shard stayed green. It is a normal step now,
+  and the shards run in CI mode (`BROWSER_TEST_CI=1`), where any precondition
+  skip is a failure. The built SEO show page the audit suite visits is built
+  per shard with `build-show-pages.js --only=tt0903747`, which writes that one
+  page, byte-identical to the full build's, instead of skipping.
 
 Fixed on both halves: `shows-index.json` is cached by name, and the guard tests
 what the suites test (`shows-index.json` + `data-index.json` + `data/detail`),

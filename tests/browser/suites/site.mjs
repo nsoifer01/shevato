@@ -560,8 +560,7 @@ export async function run({ base, cdpPort }) {
   // the stall really happened. Arena is not listed: its own js/app.js imports
   // firebase-config.js, and a multiplayer room has nothing to show without the
   // SDK. tests/static/third-party-boot-path.test.mjs pins the markup this needs.
-  const CDN_PATTERNS = ['https://www.gstatic.com/*', 'https://cdnjs.cloudflare.com/*',
-    'https://fonts.googleapis.com/*', 'https://fonts.gstatic.com/*'];
+  const CDN_HOSTS = /^https:\/\/(www\.gstatic\.com|cdnjs\.cloudflare\.com|fonts\.googleapis\.com|fonts\.gstatic\.com)\//;
   const STALL_PAGES = [
     'home.html', 'work.html', 'apps.html', 'about.html', 'contact.html', 'privacy.html', '404.html',
     'moadon-alef.html',
@@ -571,13 +570,18 @@ export async function run({ base, cdpPort }) {
   for (const p of STALL_PAGES) {
     const sp = await newPage(cdpPort);
     let held = 0;
-    sp.on((method) => { if (method === 'Fetch.requestPaused') held += 1; });
     try {
       await setViewport(sp, 1280, 900);
       await sp.send('Page.addScriptToEvaluateOnNewDocument', {
         source: "document.addEventListener('DOMContentLoaded', () => { window.__dclFired = true; });",
       });
-      await sp.send('Fetch.enable', { patterns: CDN_PATTERNS.map((urlPattern) => ({ urlPattern })) });
+      // 'hold' leaves each CDN request paused and never answered: a stall, not
+      // a refusal (a refusal fails fast, and the page would simply move on).
+      await interceptNetwork(sp, (url) => {
+        if (!CDN_HOSTS.test(url)) return null;
+        held += 1;
+        return 'hold';
+      });
       await sp.send('Page.navigate', { url: `${base}/${p}` });
       const readyExpr = p === 'apps/gym-tracker/'
         ? 'window.__dclFired === true && !!window.gymApp && !!window.gymApp.currentView'

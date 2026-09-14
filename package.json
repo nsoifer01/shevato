@@ -7,7 +7,7 @@
   "type": "commonjs",
   "scripts": {
     "pretest": "node scripts/require-node.mjs",
-    "test": "node --test \"apps/gym-tracker/tests/**/*.test.*\" \"apps/football-h2h/tests/**/*.test.*\" \"apps/fpl-planner/tests/**/*.test.*\" \"apps/rising-shows/tests/**/*.test.*\" \"apps/mario-kart/tests/**/*.test.*\" \"apps/arena/tests/**/*.test.*\" \"apps/maptap-rivals/tests/**/*.test.*\" \"apps/trip-planner/tests/**/*.test.*\" \"netlify/functions/tests/**/*.test.*\" \"sync-system/tests/**/*.test.*\" \"assets/js/tests/**/*.test.*\" \"tests/static/**/*.test.*\"",
+    "test": "node --test --test-timeout=180000 \"apps/gym-tracker/tests/**/*.test.*\" \"apps/football-h2h/tests/**/*.test.*\" \"apps/fpl-planner/tests/**/*.test.*\" \"apps/rising-shows/tests/**/*.test.*\" \"apps/mario-kart/tests/**/*.test.*\" \"apps/arena/tests/**/*.test.*\" \"apps/maptap-rivals/tests/**/*.test.*\" \"apps/trip-planner/tests/**/*.test.*\" \"netlify/functions/tests/**/*.test.*\" \"sync-system/tests/**/*.test.*\" \"assets/js/tests/**/*.test.*\" \"tests/static/**/*.test.*\"",
     "lint": "eslint .",
     "test:browser": "node --experimental-websocket tests/browser/run.mjs",
     "test:browser:parallel": "node --experimental-websocket tests/browser/run-parallel.mjs",

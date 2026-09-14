@@ -1,0 +1,71 @@
+name: scheduled
+
+# Weekly deeper validation: the things that drift WITHOUT a commit, and the
+# checks too slow or too broad to earn a place on every pull request.
+#
+#   full ........... the whole `ci` pipeline against master's tip. Pushes to
+#                    master are mostly skipped now (their tree already passed on
+#                    the pull request), so this is what notices a runner-image
+#                    change: a new Chrome, a new Java. The Arena suites run
+#                    unscoped here, which covers emulator and tooling drift.
+#   coverage ....... per-area line-coverage floors (tests/coverage/floors.json).
+#                    It re-runs the unit estate under V8 coverage, roughly
+#                    doubling its cost, and coverage moves over weeks.
+#   cross-browser .. Firefox + WebKit smoke of every page and app. Engine
+#                    regressions arrive with browser releases, not with commits.
+#
+# Formerly three separate schedules (test.yml's coverage job on Wednesday,
+# arena-rules.yml on Tuesday, cross-browser.yml on Monday); one run means one
+# place to look.
+on:
+  schedule:
+    - cron: '0 7 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+  pull-requests: read
+
+jobs:
+  full:
+    uses: ./.github/workflows/ci.yml
+
+  coverage:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: '.nvmrc'
+      - name: Coverage floors
+        run: npm run test:coverage
+
+  cross-browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: '.nvmrc'
+          cache: npm
+      # Playwright is a dev dependency used by tests/cross-browser/ alone.
+      - name: Install dev dependencies
+        run: npm ci
+      - name: Install browsers
+        run: npx playwright install --with-deps firefox webkit
+      # The smoke asserts no first-party request 404s, and the Rising Shows
+      # finder fetches its index at boot: a missing build prerequisite, not the
+      # engine breakage this job exists to catch.
+      - name: Prepare the Rising Shows dataset
+        run: |
+          npm run fetch:rising-shows-data
+          npm run build:rising-shows:split
+      # CROSS_BROWSER_REQUIRE=1 turns the harness's launch-failure SKIP into a
+      # failure: without it this job once went green having tested one engine.
+      - name: Run cross-browser smoke suite
+        env:
+          CROSS_BROWSER_REQUIRE: '1'
+        run: npm run test:cross-browser

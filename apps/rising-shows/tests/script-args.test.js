@@ -86,6 +86,39 @@ for (const script of SCRIPTS) {
   });
 }
 
+// --only=<seriesId> exists for CI, which needs ONE built show page for the
+// browser suite and not the full ~34k-page build on every shard. It must write
+// that page and nothing else, and the page must be the one the full build
+// writes, or the suite would be checking a page the site never serves.
+test('build-show-pages.js --only writes exactly that show page, identical to the full build', () => {
+  const { showPath } = require('../scripts/slugify.js');
+  const rel = path.join('shows', showPath('Probe', 'tt0000001'), 'index.html');
+
+  const one = appTree();
+  const before = snapshot(one);
+  const r = run(one, 'build-show-pages.js', ['--only=tt0000001']);
+  assert.equal(r.status, 0, `exit ${r.status} stderr=${r.stderr}`);
+  assert.deepEqual(snapshot(one), [...before, rel].sort(),
+    'only the one page may appear: no wipe, no index, no hubs, no sitemap');
+
+  const full = appTree();
+  const rf = run(full, 'build-show-pages.js', []);
+  assert.equal(rf.status, 0, `full build: exit ${rf.status} stderr=${rf.stderr}`);
+  assert.equal(fs.readFileSync(path.join(one, rel), 'utf8'), fs.readFileSync(path.join(full, rel), 'utf8'));
+});
+
+test('build-show-pages.js --only refuses a malformed or unknown id without writing', () => {
+  const app = appTree();
+  const before = snapshot(app);
+  const bad = run(app, 'build-show-pages.js', ['--only=breaking-bad']);
+  assert.equal(bad.status, 2, `exit ${bad.status} stdout=${bad.stdout}`);
+  assert.match(bad.stderr, /--only needs an IMDb series id/);
+  const missing = run(app, 'build-show-pages.js', ['--only=tt9999999']);
+  assert.equal(missing.status, 1, `exit ${missing.status} stdout=${missing.stdout}`);
+  assert.match(missing.stderr, /no series with that id/);
+  assert.deepEqual(snapshot(app), before, 'the app tree must be untouched');
+});
+
 // The guard must not break the real run: no arguments still does the job.
 test('split-data.js with no arguments still writes the index (guard is argument-gated)', () => {
   const app = appTree();

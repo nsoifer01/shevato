@@ -47,6 +47,7 @@
 import {
   newPage, closePage, goto, evaluate, evalAsync, clickSel, clickText, clickAt, setViewport,
   setValue, sleep, waitForExpr, interceptNetwork, setOffline, screenshot,
+  snapshotWaits, waitsSince,
 } from '../../../tests/browser/cdp.mjs';
 import {
   loadRulesFile, clearData, ownerGetDocRaw,
@@ -532,16 +533,50 @@ export async function run({ base, cdpPort, base2 = null }) {
       if (!B) B = await arenaPage(baseB, { width: 360, height: 740, mobile: true });
       if (!C && baseC) C = await arenaPage(baseC);
     };
+    // ARENA_E2E_GROUP=1|2 splits the suite across two machines (ci.yml's
+    // rules-shard matrix), and the split sits at the only boundary the
+    // scenarios allow. S1-S5 are ONE chained multi-client session: S1 seats
+    // and parks the third client, S2-S4 bring it back, S5 relies on all of
+    // it, so they always run together and in order (group 1). From S6 on,
+    // each scenario starts from resetToLobby() on the pages ensurePages()
+    // opens and stands alone (group 2; both groups verified alone on
+    // 2026-09-14). Every scenario lands in exactly one group by its number,
+    // and a label without an S<n>: prefix THROWS, so a new scenario can fail
+    // loudly but never fall between the groups and silently not run.
+    const CHAIN_LAST = 5;
+    const group = process.env.ARENA_E2E_GROUP || '';
+    if (group && !/^[12]$/.test(group)) throw new Error(`ARENA_E2E_GROUP must be 1 or 2, got "${group}"`);
     const guard = async (label, fn) => {
+      if (group) {
+        const n = /^S(\d+):/.exec(label);
+        if (!n) throw new Error(`scenario "${label}" has no S<n>: prefix, so ARENA_E2E_GROUP cannot place it`);
+        const home = Number(n[1]) <= CHAIN_LAST ? '1' : '2';
+        if (home !== group) {
+          skip(`arena-emulator: ${label}`, `runs in ARENA_E2E_GROUP=${home}`);
+          return;
+        }
+      }
       if (onlyFilter && !onlyFilter.some((f) => label.includes(f))) {
         skip(`arena-emulator: ${label}`, `skipped by ARENA_E2E_ONLY=${onlyFilter.join(',')}`);
         return;
       }
+      // Printed as each scenario starts and ends, always: the runner prints
+      // the checks only after the whole suite, so an 11-minute run used to
+      // show nothing at all until it finished, and a hang could not be placed.
+      const scenario = label.split(':')[0];
+      const started = Date.now();
+      const waitsBefore = snapshotWaits();
+      console.log(`  [scenario] ${label}`);
       try {
         await ensurePages();
         await fn();
       } catch (e) {
         t(`arena-emulator: ${label} ran to completion`, false, String(e && e.message || e).slice(0, 200));
+      } finally {
+        const w = waitsSince(waitsBefore);
+        console.log(`  [scenario] ${scenario} took ${((Date.now() - started) / 1000).toFixed(1)}s`
+          + ` (fixed waits ${(w.fixedMs / 1000).toFixed(1)}s, polling ${(w.pollMs / 1000).toFixed(1)}s,`
+          + ` navigation ${(w.navMs / 1000).toFixed(1)}s)`);
       }
     };
 
