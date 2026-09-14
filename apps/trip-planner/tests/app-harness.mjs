@@ -223,12 +223,20 @@ export function bootApp({ storage = makeStorage(), hash = '' } = {}) {
     runTimers() { while (timers.length) timers.shift()(); },
     /** Let promise chains already started run out (a bounded number of turns, no clock). */
     async settle(turns = 50) { for (let i = 0; i < turns; i++) await new Promise((r) => setImmediate(r)); },
-    /** Resolve once `pred()` holds, turning the event loop; never a fixed sleep. */
-    async until(pred, what = 'condition') {
-      for (let i = 0; i < 500; i++) {
+    /**
+     * Resolve once `pred()` holds, turning the event loop; never a fixed sleep.
+     * Bounded by wall time, not by turns: a share link boots through
+     * DecompressionStream, which runs on libuv's thread pool, and 500 turns
+     * came to about 13 ms, so a loaded machine gave up while the inflate was
+     * still queued (19 of 40 concurrent runs failed).
+     */
+    async until(pred, what = 'condition', timeoutMs = 10000) {
+      const deadline = performance.now() + timeoutMs;
+      while (performance.now() < deadline) {
         if (pred()) return;
         await new Promise((r) => setImmediate(r));
       }
+      if (pred()) return;
       throw new Error(`timed out waiting for ${what}`);
     },
   };
