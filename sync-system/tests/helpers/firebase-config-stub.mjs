@@ -1,12 +1,12 @@
 // Stands in for the repo root's firebase-config.js under `node --test`.
 //
 // The real file initialises the Firebase app from SDK URLs and wires auth
-// adapters onto window; the sync engine only needs `db`, `rtdb` and `auth`.
+// adapters onto window; the sync engine only needs `auth` (and `db`, which
+// it takes from firebase-firestore.js, redirected here too).
 // The current user is read from globalThis.__syncAuthFakes so a test can
 // swap users or sign out between assertions.
 
 export const db = { __kind: 'fake-firestore-db' };
-export const rtdb = { __kind: 'fake-rtdb' };
 
 export function authFakes() {
   return (globalThis.__syncAuthFakes ||= { currentUser: null, authListeners: [] });

@@ -65,7 +65,7 @@ shevato/
 ├── site.webmanifest                  # PWA manifest for the marketing site
 ├── netlify.toml                      # Netlify build, headers, and CSP config (enforced baseline + report-only policy)
 ├── firebase-config.js                # Firebase v10 modular SDK bootstrap
-├── firestore.rules, database.rules.json
+├── firestore.rules
 ├── CLAUDE.md                         # Repo-wide rules for Claude Code sessions (read first)
 ├── TESTING-AUDIT.md                  # Testing-system audit: rationale, coverage matrices, counts as of its date
 └── package.json                      # Test + build scripts (build:site runs on every deploy)
@@ -468,7 +468,7 @@ Latest two versions of Chrome, Edge, Firefox, and Safari (desktop and mobile).
 - Vanilla JavaScript with jQuery for the partials/auth UI.
 - FontAwesome (4.x and 6.x).
 - Chart.js (Mario Kart tracker, MapTap Rivals).
-- Firebase Auth + Firestore (optional sync; Arena requires Firestore for room state). Realtime Database is only a sync-engine option in `sync-system/storage-sync-robust.js`; no app depends on it.
+- Firebase Auth + Firestore (optional sync; Arena requires Firestore for room state). `firebase-config.js` is auth only and loads on every page; `firebase-firestore.js` brings Firestore in for the sync engine, Arena and the MapTap rival network. There is no Realtime Database.
 - Netlify Functions: `tp-assist` and `tp-places` (Trip Planner AI assistant and venue ratings) and `fpl` (the cached, allowlisted read proxy in front of the public Fantasy Premier League API, which sends no CORS headers and is otherwise unreachable from a browser), and `csp-report` (the endpoint `netlify.toml` names for CSP violation reports; it logs them and stores nothing).
 
 ## Contact

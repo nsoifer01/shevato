@@ -183,7 +183,7 @@ export default [
     // catalogue loader sits outside `js/` and matched nothing.
     files: [
       'assets/**/*.js', 'apps/*/js/**/*.js', 'apps/*/data/**/*.js',
-      'sync-system/**/*.js', 'sync-system/**/*.mjs', 'firebase-config.js',
+      'sync-system/**/*.js', 'sync-system/**/*.mjs', 'firebase-config.js', 'firebase-firestore.js',
     ],
     languageOptions: {
       ecmaVersion: 'latest',
@@ -205,6 +205,7 @@ export default [
       'apps/gym-tracker/js/**/*.js',
       'apps/arena/js/**/*.js',
       'firebase-config.js',
+      'firebase-firestore.js',
       'sync-system/app-sync-init.js',
       'sync-system/storage-sync-robust.js',
       // The three standalone sync modules, and gym-tracker's catalogue loader.

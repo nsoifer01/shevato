@@ -290,8 +290,7 @@ export async function initAppSync() {
       keys: config.keys,
       // Per-key conflict policy, optional. Absent, every key is 'auto',
       // which is what every namespace had before policies existed.
-      policies: config.policies,
-      useFirestore: true
+      policies: config.policies
     })
   }));
 

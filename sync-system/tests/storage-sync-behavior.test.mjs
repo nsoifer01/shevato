@@ -37,9 +37,6 @@
 //   9. Delayed start when auth has no current user yet.
 //
 // Deliberately NOT covered here, and why:
-//   - The Realtime Database path (initRealtimeDbSync / flushToRealtimeDb).
-//     Reachable via useFirestore:false, but production pins USE_FIRESTORE =
-//     true and no caller passes false; the RTDB stub is inert.
 //   - setCloudItem / eraseCloudData / eraseAccountProfile /
 //     eraseRivalNetworkIdentity: exercised by account-deletion.test.mjs at
 //     the orchestration level; re-testing them here would duplicate it.
@@ -63,7 +60,6 @@ const here = dirname(fileURLToPath(import.meta.url));
 register('./helpers/storage-sync-hook.mjs', import.meta.url, {
   data: {
     firestoreUrl: pathToFileURL(join(here, 'helpers', 'firestore-stub.mjs')).href,
-    databaseUrl: pathToFileURL(join(here, 'helpers', 'firebase-database-stub.mjs')).href,
     firebaseConfigUrl: pathToFileURL(join(here, 'helpers', 'firebase-config-stub.mjs')).href
   }
 });

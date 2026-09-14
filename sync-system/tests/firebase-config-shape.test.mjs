@@ -11,24 +11,40 @@ import { fileURLToPath } from 'node:url';
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const CONFIG = readFileSync(join(REPO_ROOT, 'firebase-config.js'), 'utf8');
+const FIRESTORE_MODULE = readFileSync(join(REPO_ROOT, 'firebase-firestore.js'), 'utf8');
+const sdkImports = (text) => [...text.matchAll(/gstatic\.com\/firebasejs\/[0-9.]+\/(firebase-[a-z]+)\.js/g)].map((m) => m[1]);
 
 test('firebase-config calls initializeApp exactly once', () => {
     const matches = CONFIG.match(/\binitializeApp\s*\(/g) || [];
     assert.equal(matches.length, 1, 'expected exactly one initializeApp() call');
 });
 
-test('firebase-config initialises Firestore with the modern persistent cache API', () => {
-    assert.match(CONFIG, /initializeFirestore/);
-    assert.match(CONFIG, /persistentLocalCache/);
-    assert.match(CONFIG, /persistentMultipleTabManager/);
+test('firebase-firestore initialises Firestore with the modern persistent cache API', () => {
+    assert.match(FIRESTORE_MODULE, /initializeFirestore/);
+    assert.match(FIRESTORE_MODULE, /persistentLocalCache/);
+    assert.match(FIRESTORE_MODULE, /persistentMultipleTabManager/);
+    assert.match(FIRESTORE_MODULE, /from '\.\/firebase-config\.js'/, 'Firestore is built on the one app firebase-config.js initialises');
+});
+
+// Every page loads firebase-config.js for the header's sign-in, so anything it
+// imports is paid for on every marketing page (2026-09-12 audit S-7): the
+// Firestore SDK (about 110 KB compressed plus an IndexedDB cache) and the
+// Realtime Database SDK used to ride along on pages that use neither.
+test('firebase-config imports only the app and auth SDKs', () => {
+    assert.deepEqual([...new Set(sdkImports(CONFIG))].sort(), ['firebase-app', 'firebase-auth']);
+    assert.doesNotMatch(CONFIG, /firebase-database|getDatabase|\brtdb\b/);
 });
 
 test('firebase-config wires a persistent onAuthStateChanged listener', () => {
     assert.match(CONFIG, /onAuthStateChanged\(auth/);
 });
 
-test('firebase-config sets browserLocalPersistence so auth survives reloads', () => {
-    assert.match(CONFIG, /setPersistence\(auth,\s*browserLocalPersistence\)/);
+test('firebase-config keeps browserLocalPersistence first so auth survives reloads, with no popup resolver', () => {
+    // getAuth() would install the popup/redirect resolver, which loads Google's
+    // auth iframe on mobile page views; nothing on the site signs in that way.
+    assert.match(CONFIG, /initializeAuth\(app,\s*\{\s*persistence:\s*\[browserLocalPersistence,/);
+    assert.doesNotMatch(CONFIG, /\bgetAuth\s*\(/);
+    assert.doesNotMatch(CONFIG, /popupRedirectResolver/);
 });
 
 test('firebase-config exposes the cross-tab channel and CHANNEL_MESSAGE_TYPES', () => {
@@ -115,11 +131,11 @@ test('no app file imports Firestore directly except the sync layer', () => {
         (name) => /\.m?js$/i.test(name) && !name.endsWith('.min.js')
     );
 
-    // firebase-config.js is the canonical init point — it must import the
-    // Firestore SDK. storage-sync-robust.js is the only consumer-side
-    // sync module allowed to talk to Firestore. Everything else is wrong.
+    // firebase-firestore.js is the canonical Firestore init point, so it must
+    // import the SDK. storage-sync-robust.js is the only consumer-side sync
+    // module allowed to talk to Firestore. Everything else is wrong.
     const allowed = new Set([
-        join(REPO_ROOT, 'firebase-config.js'),
+        join(REPO_ROOT, 'firebase-firestore.js'),
         join(REPO_ROOT, 'sync-system/storage-sync-robust.js')
     ]);
 

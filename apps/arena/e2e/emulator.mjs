@@ -442,7 +442,7 @@ export async function run({ base, cdpPort, base2 = null }) {
   }
 
   // Runs the page's own Firestore SDK instance (same module app.js uses).
-  const sdk = (s, body) => evalAsync(s, `(async()=>{ const m = await import('/firebase-config.js'); const F = m.firestore; const db = m.db;
+  const sdk = (s, body) => evalAsync(s, `(async()=>{ const m = await import('/firebase-firestore.js'); const F = m.firestore; const db = m.db;
     const uid = window.firebaseAuth.getCurrentUser() && window.firebaseAuth.getCurrentUser().uid;
     try { ${body} } catch(e) { return 'ERR:' + (e.code || '') + ' ' + String(e.message || e).slice(0, 80); } })()`);
 

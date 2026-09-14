@@ -36,12 +36,13 @@
  *     { uid, displayName, xp, gamesPlayed, wins, lastPlayedAt }
  */
 
-// All Firestore SDK access flows through firebase-config.js (the single
-// init point) so we don't import the SDK URL directly here - the
+// All Firestore SDK access flows through firebase-firestore.js (the single
+// Firestore init point, which brings in firebase-config.js for the app and
+// auth) so we don't import the SDK URL directly here - the
 // `no app file imports Firestore directly` invariant test forbids it.
 // Path: this file is /apps/arena/js/app.js, so we go up three
 // directories (js → arena → apps → repo root).
-import { db, firestore } from '../../../firebase-config.js';
+import { db, firestore } from '../../../firebase-firestore.js';
 const {
     doc, collection, getDoc, getDocs, setDoc, updateDoc, deleteDoc, addDoc,
     onSnapshot, query, orderBy, limit, limitToLast, serverTimestamp, runTransaction,

@@ -105,14 +105,14 @@ jobs:
           # The inputs, and why each one is an input:
           #   firestore.rules        the authorization boundary under test
           #   firebase.json          emulator ports and the ruleset wiring
-          #   database.rules.json    the RTDB half of that boundary
-          #   firebase-config.js     the emulator seam: every client in both suites reaches Firestore through it
+          #   firebase-config.js     the emulator seam for auth, and the app every client signs in through
+          #   firebase-firestore.js  the emulator seam for Firestore: every client in both suites reaches Firestore through it
           #   apps/arena/**          the app that writes through it, plus both suites
           #   sync-system/**         the layer the app writes through
           #   tests/browser/cdp.mjs  the driver the multiplayer e2e imports
           #   package.json/.nvmrc    the scripts this job runs, and the node it runs them on
           #   this workflow          its own steps
-          INPUTS='^(firestore\.rules|firebase\.json|database\.rules\.json|firebase-config\.js|package\.json|\.nvmrc|apps/arena/|sync-system/|tests/browser/cdp\.mjs|\.github/workflows/arena-rules\.yml)'
+          INPUTS='^(firestore\.rules|firebase\.json|firebase-config\.js|firebase-firestore\.js|package\.json|\.nvmrc|apps/arena/|sync-system/|tests/browser/cdp\.mjs|\.github/workflows/arena-rules\.yml)'
           # sync-system/tests/** is the one carve-out: those files are node
           # tests and their stubs, already covered by the `test` workflow, and
           # nothing in the app or in either emulator suite loads them. Left in,

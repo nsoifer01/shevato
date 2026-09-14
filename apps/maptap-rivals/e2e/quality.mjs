@@ -575,12 +575,13 @@ export async function run({ base, cdpPort }) {
       t('UTC+12: the prediction day tabs start at Today, not yesterday', /Today/.test(String(dayTabs[0] || '')), JSON.stringify(dayTabs.slice(0, 3)));
       const tzSummary = await evaluate(tzPage, "((document.querySelector('#dash-summary')||{}).textContent||'').replace(/\\s+/g,'')");
       // The expected count is DERIVED from the seed, not hardcoded. The fixture
-      // dates some games relative to the host clock, so under a UTC host (CI)
-      // one of them also lands on Auckland's today and the summary correctly
-      // reads "Today 2 games logged", while on a UTC-5 host it reads 1. The
-      // rule being asserted is that the summary counts the games whose LOCAL
-      // day is today, whatever that number is.
-      const tzExpected = f.games.filter((g) => g.date === bToday).length;
+      // dates some games relative to the host clock, so whenever the host's day
+      // is also Auckland's (a UTC host before 12:00) its synced Ari game lands
+      // on the same day as tz-today. One rival has one game per day (audit R-1),
+      // so those two rows are ONE game and the summary reads 1, as it does when
+      // the days differ. The rule being asserted is that the summary counts the
+      // rival-days whose LOCAL day is today, whatever that number is.
+      const tzExpected = new Set(f.games.filter((g) => g.date === bToday).map((g) => g.rivalId)).size;
       const tzWord = tzExpected === 1 ? 'game' : 'games';
       t('UTC+12: the summary counts the games logged today',
         new RegExp(`Today${tzExpected}${tzWord}logged`).test(tzSummary),

@@ -20,30 +20,14 @@
 // adapter below provides the same surface main.js needs.
 
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+// Auth only. Firestore lives in firebase-firestore.js, imported by the sync
+// engine and by the apps that talk to Firestore, so a page that needs nothing
+// but the header's sign-in no longer downloads and starts the Firestore SDK
+// (2026-09-12 audit S-7). The Realtime Database path is gone everywhere.
 import {
-  initializeFirestore,
-  persistentLocalCache,
-  persistentMultipleTabManager,
-  connectFirestoreEmulator,
-  setLogLevel as setFirestoreLogLevel
-} from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
-
-// Silence Firestore's INFO/WARN logs. The most common offender is the
-// "BloomFilter error" warning the SDK emits when it tears down a
-// listen-stream while a server-side existence-filter check is in flight —
-// purely an internal optimization log, harmless to callers, but visible
-// in production consoles every time a user leaves a room. Errors still
-// surface so real failures aren't hidden.
-setFirestoreLogLevel('error');
-// Re-export the Firestore SDK as a single namespace so app modules can
-// reach `doc`, `onSnapshot`, etc. without re-importing the SDK URL
-// themselves. The invariant test in sync-system/tests/firebase-config-shape.test.mjs
-// (`no app file imports Firestore directly except the sync layer`) keeps
-// every consumer routed through this file.
-export * as firestore from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
-import { getDatabase, connectDatabaseEmulator } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
-import {
-  getAuth,
+  initializeAuth,
+  indexedDBLocalPersistence,
+  browserSessionPersistence,
   connectAuthEmulator,
   onAuthStateChanged,
   signInWithEmailAndPassword,
@@ -51,7 +35,6 @@ import {
   sendPasswordResetEmail,
   signInAnonymously,
   signOut,
-  setPersistence,
   browserLocalPersistence
 } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
 import { createCrossTabChannel, CHANNEL_MESSAGE_TYPES } from './sync-system/cross-tab-channel.mjs';
@@ -68,24 +51,20 @@ const firebaseConfig = {
   storageBucket: "shevato-site.firebasestorage.app",
   messagingSenderId: "1082724320778",
   appId: "1:1082724320778:web:e374cbaeeae1bdaeee81f3",
-  measurementId: "G-2C9F2PCXHP",
-  databaseURL: "https://shevato-site-default-rtdb.firebaseio.com/"
+  measurementId: "G-2C9F2PCXHP"
 };
 
 const app = initializeApp(firebaseConfig);
 
-export const auth = getAuth(app);
-// Firestore with offline persistence configured at init time (modern API).
-// Replaces the deprecated enableMultiTabIndexedDbPersistence() call that used
-// to live in a separate persistence shim (sync-system/firebase-persistence.js,
-// now retired). If IndexedDB is unavailable (Safari private mode, etc.), the
-// SDK falls back to in-memory cache itself.
-export const db = initializeFirestore(app, {
-  localCache: persistentLocalCache({
-    tabManager: persistentMultipleTabManager()
-  })
+// initializeAuth rather than getAuth: getAuth also installs the popup and
+// redirect resolver, which on a mobile browser loads Google's auth iframe on
+// every page view, and nothing on this site signs in by popup or redirect
+// (email and password, plus anonymous guests for Arena). localStorage comes
+// first, as setPersistence(browserLocalPersistence) used to make it; the other
+// two are only read to find a session saved before that.
+export const auth = initializeAuth(app, {
+  persistence: [browserLocalPersistence, indexedDBLocalPersistence, browserSessionPersistence]
 });
-export const rtdb = getDatabase(app);
 export { app };
 
 // Test-only emulator seam. Provably inert in production: enabling it
@@ -96,8 +75,8 @@ export { app };
 // harness opts in. The decision logic is a pure module
 // (sync-system/firebase-emulator-flag.mjs) with its own unit tests; the
 // Arena emulator e2e (apps/arena/e2e/) is the intended consumer. Must
-// run before any Firestore/Auth/RTDB network traffic, hence directly
-// after the instances are created.
+// run before any auth network traffic, hence directly after the instance
+// is created; firebase-firestore.js does the same for Firestore.
 const useEmulators = (() => {
   try {
     return typeof window !== 'undefined' && shouldUseFirebaseEmulators(
@@ -111,16 +90,10 @@ const useEmulators = (() => {
 })();
 if (useEmulators) {
   connectAuthEmulator(auth, `http://127.0.0.1:${FIREBASE_EMULATOR_PORTS.auth}`, { disableWarnings: true });
-  connectFirestoreEmulator(db, '127.0.0.1', FIREBASE_EMULATOR_PORTS.firestore);
-  connectDatabaseEmulator(rtdb, '127.0.0.1', FIREBASE_EMULATOR_PORTS.database);
   console.warn('[firebase-config] EMULATOR MODE: all Firebase traffic is routed to local emulators.');
 }
-
-// Persistence — survive reloads across tabs. Best-effort; mobile
-// private mode and quota-exhausted browsers fall back to in-memory.
-setPersistence(auth, browserLocalPersistence).catch((err) => {
-  console.warn('Firebase auth persistence setup failed:', err.message);
-});
+// firebase-firestore.js connects Firestore through the same decision.
+export const firebaseEmulatorsEnabled = useEmulators;
 
 // Adapter for non-module callers.
 let currentUser = null;

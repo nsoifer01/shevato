@@ -468,12 +468,9 @@ beside it, so a regression fails a suite rather than reappearing silently.
 - **Defect 24**: `normalizeRoomCode` is the single validity notion
   (length AND alphabet); `parseUrlState` routes through it. Codes with
   0/O/1/I/L are rejected before any Firestore lookup.
-- **RTDB rules are not emulator-tested** (database.rules.json): they
-  cover only the sync system's per-user namespace, arena never touches
-  RTDB, and the equivalent Firestore sync namespace has a no-regression
-  rules test. The RTDB emulator still RUNS in the e2e because the seam
-  points the page's rtdb handle at 127.0.0.1:9000 and the shared sync
-  scripts hold an RTDB reference.
+- **There are no RTDB rules any more** (2026-09-13, audit S-7): the Realtime
+  Database path, its SDK import and `database.rules.json` were removed, so
+  the e2e starts only the Firestore and Auth emulators.
 - privacy.html verified: it makes no claims about room passwords (only
   that rooms are readable by signed-in visitors with the code), so no
   change was needed for the hashing migration.

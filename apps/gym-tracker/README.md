@@ -526,7 +526,7 @@ Firebase sync) live in the `.features/` human test plan.
 Built with:
 - Vanilla JavaScript (ES6 modules)
 - CSS3 (Grid, Flexbox)
-- Firebase (Authentication, Realtime Database)
+- Firebase (Authentication, Firestore)
 - Font Awesome (Icons)
 
 ## License

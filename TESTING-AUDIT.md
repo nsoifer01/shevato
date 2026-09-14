@@ -205,7 +205,7 @@ coverage.
 | Mario Kart | FULL | FULL | FULL | FULL | FULL | part | Achievements engine still uncovered (large, low risk) |
 | Rising Shows | FULL | FULL | FULL | FULL | FULL | FULL | Producers + consumers tied; finder E2E data-gated |
 | Trip Planner | FULL | FULL | FULL | FULL | FULL | FULL | Reference estate |
-| sync-system | FULL | part | n/a | n/a | n/a | FULL | Behavioral harness on the real engine; RTDB path out of scope |
+| sync-system | FULL | part | n/a | n/a | n/a | FULL | Behavioral harness on the real engine |
 | Netlify functions | FULL | n/a | n/a | n/a | n/a | FULL | fpl/tp-assist/tp-places incl. degradation paths |
 
 ## Final counts
@@ -624,8 +624,6 @@ defect fixes stamped above:
 - **tp-assist's `callGemini` upstream behavior** is tested via stubs, not a
   live contract check (a deliberate CI-determinism choice; the fpl proxy has
   the same property and verifies its header contract producer-side).
-- **The RTDB path of the sync engine** stays untested (production pins
-  Firestore; documented in the sync behavioral suite header).
 - **The arena rules/emulator suites need Java plus a one-time
   firebase-tools download**, so they are separate commands with their own CI
   workflow (arena-rules.yml: pull requests and master pushes that can affect
