@@ -17,6 +17,7 @@ import { makeReason, fmtValue, squadTrajectory, chipLabel, xpOf, discountWeights
 import { hitCost, transferStateOf, isUnlimited } from './transfer-state.js';
 import { openingSquadMoney } from './squad.js';
 import { CAPTAIN_PARAMS } from './captain.js';
+import { projectionDistance } from './confidence.js';
 
 // The exact neutral wording used whenever the squad on file differs from what
 // was recommended last time. Exported so the UI cannot reinvent it in a less
@@ -544,11 +545,15 @@ export function explainPlan(plan, context = {}) {
     bullets.push(makeReason('squad_changed', `${REBUILD_NOTICE} It now holds {v} of your players.`, plan.squad.length, 'count'));
   }
   if (ctx.projected) {
+    // Distance in gameweeks rather than "N% as certain as this week", which read
+    // as a probability. The distance is the value, so the sentence still carries
+    // its own number.
+    const distance = projectionDistance(plan);
     bullets.push(makeReason(
       'projected_plan',
-      'This is a projection for a later gameweek, so it is {v} as certain as this week and will be recomputed nearer the deadline.',
-      plan.confidence === undefined ? 1 : plan.confidence,
-      'percent',
+      `This is ${distance.phrase}, so it is less certain than this week's plan and will be recomputed nearer the deadline.`,
+      distance.value,
+      distance.unit,
     ));
   }
 

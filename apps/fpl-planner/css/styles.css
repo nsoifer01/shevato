@@ -1170,8 +1170,9 @@ body.fpl-page {
   border-top: 1px solid var(--border-soft);
 }
 
-/* Verdict rows under "How sure is this?": a leading dot ties each sentence to
-   its verdict, the trailing tag names it in the header's words. */
+/* Verdict rows under "How sure is this plan?": a leading dot ties each sentence
+   to its verdict, the trailing tag names its effect on the plan (Supports or
+   Weakens). */
 .fpl-planner-app .fpl-reasons.is-verdicts li.fpl-conf-row {
   display: grid;
   grid-template-columns: 8px minmax(0, 1fr) auto;
@@ -1189,7 +1190,7 @@ body.fpl-page {
 .fpl-planner-app .fpl-conf-row.is-for .fpl-conf-dot { background: var(--green); }
 .fpl-planner-app .fpl-conf-row.is-against .fpl-conf-dot { background: var(--amber); }
 
-/* The confidence band as a standalone pill (on the "How sure is this?"
+/* The confidence band as a standalone pill (on the "How sure is this plan?"
    header). Same tones as the hero strip. */
 .fpl-planner-app .fpl-conf-pill.is-high,
 .fpl-planner-app .fpl-conf-pill.is-moderate,

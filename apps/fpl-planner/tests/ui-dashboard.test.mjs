@@ -179,12 +179,17 @@ test('the why panel shows the plan bullets and answers "how sure" in its own wor
   const text = textOf(node);
   assert.match(text, /Why this plan\?/);
   assert.match(text, /The plan/);
-  assert.match(text, /How sure is this\?/);
-  // Every factor row answers the header's question in its words: a verdict
-  // mark reading "For"/"Against" is the truncated version this replaced.
-  const marks = queryAll(node, 'fpl-conf-mark').map(textOf);
+  assert.match(text, /How sure is this plan\?/);
+  // Every factor row names what it does to the recommendation. "For"/"Against"
+  // read as truncated words and "More sure"/"Less sure" as a claim about the
+  // sentence itself; both are pinned out here.
+  const marks = queryAll(node, 'fpl-conf-mark');
   assert.ok(marks.length >= 1, 'the band shows its working');
-  for (const mark of marks) assert.match(mark, /^(More sure|Less sure)$/);
+  for (const mark of marks) {
+    assert.match(textOf(mark), /^(Supports|Weakens)$/);
+    assert.equal(textOf(mark) === 'Weakens', /is-against/.test(mark.className), 'the word and its colour agree');
+  }
+  assert.doesNotMatch(text, /More sure|Less sure/);
   // The engine bullets arrive verbatim.
   for (const bullet of (plan.explanation.bullets || []).slice(0, 2)) {
     assert.ok(text.includes(bullet.text), `bullet rendered: "${bullet.text.slice(0, 60)}..."`);

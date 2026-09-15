@@ -199,6 +199,18 @@ function availabilityFactor({ plan, gameState }) {
   };
 }
 
+// "a projection {v} gameweeks ahead" with the distance as the reason's value, or
+// the unnumbered form (no value) for a plan that does not say how far ahead it
+// is, such as one stored before `gwsAhead` existed. The number in the sentence
+// IS the value, as every reason's must be (makeReason, and the honesty sweep in
+// tests/explain.test.mjs). Shared with the projected-plan bullet in explain.js
+// so the two sentences cannot describe the same distance differently.
+export function projectionDistance(plan) {
+  const n = plan ? plan.gwsAhead : null;
+  if (!Number.isInteger(n) || n < 1) return { phrase: 'a projection for a later gameweek', value: null, unit: 'none' };
+  return { phrase: `a projection {v} gameweek${n === 1 ? '' : 's'} ahead`, value: n, unit: 'count' };
+}
+
 // How far into the future the claim reaches. Two different ways it can reach:
 // the plan is FOR a later gameweek, or the plan is for this one but the move it
 // recommends does not pay until later.
@@ -207,11 +219,16 @@ function reachFactor({ plan }) {
   if (plan.certainty === 'projected' || certainty < 0.999) {
     const weight = certainty >= CONFIDENCE_PARAMS.projectedFirm ? 2
       : certainty >= CONFIDENCE_PARAMS.projectedSoft ? 3 : 4;
+    // The distance in gameweeks, never the discount as a percentage: "85% of
+    // this week's certainty" read as a probability, which this module refuses to
+    // print (see WHY NOT A PERCENTAGE above). The discount itself stays on this
+    // factor as `certainty`.
+    const distance = projectionDistance(plan);
     return {
       key: 'reach',
       weight,
       certainty,
-      reason: makeReason('confidence_projected', 'this is a projection for a later gameweek, which the planner discounts to {v} of this week\'s certainty', certainty, 'percent'),
+      reason: makeReason('confidence_projected', `this is ${distance.phrase}, so it is less certain than this week's plan`, distance.value, distance.unit),
     };
   }
 

@@ -409,6 +409,12 @@ function planFromScored(scored, { squadState, gameState, rules, cfg, gw, certain
     // `gw`, so measuring against it would report every future plan as fully
     // certain.
     confidence: certainty === 'projected' ? Math.pow(cfg.discount, gw - (baseGw ?? squadState.gw)) : 1,
+    // Whole gameweeks between this plan and the one being decided now: 0 for
+    // the current plan, k for the kth projected one. The confidence and
+    // explanation sentences say "a projection 2 gameweeks ahead" from this,
+    // rather than printing the discount above as "85% of this week's
+    // certainty", which read as a probability.
+    gwsAhead: certainty === 'projected' ? gw - (baseGw ?? squadState.gw) : 0,
     explanation: null,
     alternatives: [],
     computedAt: new Date().toISOString(),

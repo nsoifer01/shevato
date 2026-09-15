@@ -686,7 +686,12 @@ number in the model):
 - **Confidence** (`js/engine/confidence.js`) renders HIGH / MODERATE / LOW with
   the reasons, derived from minutes uncertainty, injury flags, data freshness,
   horizon distance and how close the runner-up plan is. Never an invented
-  percentage.
+  percentage. "Why this plan?" shows the working under **How sure is this
+  plan?**: one row per factor, tagged **Supports** or **Weakens** by what it
+  does to the recommendation. A projected gameweek is described by its distance
+  ("a projection 2 gameweeks ahead", from `plan.gwsAhead`), never by the
+  discount as a percentage of this week's certainty, which read as a
+  probability.
 - **Why this captain, and why this vice?** (`js/engine/explain.js`) The pitch
   prints one number per player, xP, and the armband is not ranked on it, so
   whenever the two disagree the app shows a captain or a vice standing below a

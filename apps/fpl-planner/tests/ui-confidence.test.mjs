@@ -189,7 +189,25 @@ test('a projection for a later gameweek can never reach the top band', () => {
   assert.equal(far.band, 'moderate');
   assert.equal(distant.band, 'low', 'far enough out, the claim is a guess and says so');
   assert.ok(next.score < far.score && far.score < distant.score, 'further out is never firmer');
-  assert.match(next.reason, /projection for a later gameweek, which the planner discounts to 85% of this week's certainty/);
+  // A plan that does not say how far ahead it is gets the unnumbered sentence.
+  assert.match(next.reason, /this is a projection for a later gameweek, so it is less certain than this week's plan/);
+  assert.doesNotMatch(next.reason, /certainty|\d+%/, 'the discount is never printed as a percentage');
+  assert.equal(next.factors.find(f => f.key === 'reach').value, null, 'no distance, no number');
+});
+
+test('a projected plan names its distance in gameweeks, never the discount as a percentage', () => {
+  // SPEC: "85% of this week's certainty" read as a probability, which this
+  // module refuses to print. The distance says the same thing plainly.
+  const w = world();
+  const one = assess(planOf({ certainty: 'projected', confidence: 0.85, gwsAhead: 1 }), w);
+  const three = assess(planOf({ certainty: 'projected', confidence: 0.61, gwsAhead: 3 }), w);
+  const reach = (out) => out.factors.find(f => f.key === 'reach');
+  assert.equal(reach(one).text, "this is a projection 1 gameweek ahead, so it is less certain than this week's plan");
+  assert.equal(reach(three).text, "this is a projection 3 gameweeks ahead, so it is less certain than this week's plan");
+  assert.doesNotMatch(one.reason, /certainty|\d+%/);
+  assert.doesNotMatch(three.reason, /certainty|\d+%/);
+  assert.equal(reach(one).value, 1, 'the number in the sentence is its value');
+  assert.equal(reach(three).value, 3);
 });
 
 test('this gameweek is firmer than the same plan one gameweek out', () => {
@@ -387,7 +405,9 @@ test('the committed sample plan gets a band and a reason built from its own numb
     const band = assessConfidence({ plan: future, projections: out.projections, gameState, dataStatus: out.dataStatus, now });
     assert.notEqual(band.band, 'high', `GW${future.gw} is a projection and cannot be high confidence`);
     assert.ok(band.score >= previousScore, `GW${future.gw} must not be firmer than the gameweek before it`);
-    assert.ok(band.reason.includes('projection for a later gameweek'));
+    assert.equal(future.gwsAhead, future.gw - out.current.gw, 'the plan records how far ahead it is');
+    assert.ok(band.reason.includes(`projection ${future.gwsAhead} gameweek${future.gwsAhead === 1 ? '' : 's'} ahead`), band.reason);
+    assert.doesNotMatch(band.reason, /of this week's certainty/);
     previousScore = band.score;
   }
 });
