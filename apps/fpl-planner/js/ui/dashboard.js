@@ -524,17 +524,20 @@ export function whyCard({ bundle, gameState, open = false, onToggle = null, sour
   // trailing tag in the header's own words.
   const band = bandFor(plan, { bundle, gameState, sources, now });
   body.push(whyGroup(
-    subhead('How sure is this?', el('span', { class: `fpl-conf-pill is-${band.band}`, text: band.label })),
+    subhead('How sure is this plan?', el('span', { class: `fpl-conf-pill is-${band.band}`, text: band.label })),
     el('ul', { class: 'fpl-reasons is-verdicts' }, band.factors.filter(f => f.text).map(f => {
-      // "For" and "Against" once stood here and read as truncated words; the
-      // heading asks "How sure is this?", so each row answers in those words.
+      // The tag names what the row does to the recommendation. "For" and
+      // "Against" read as truncated words, and "More sure" / "Less sure" read
+      // as a claim about the sentence itself ("we are more sure nobody is
+      // injured") rather than about the plan. "Supports" / "Weakens" names the
+      // effect, and still reads correctly without the colour.
       const dir = f.weight > 0 ? 'against' : 'for';
       return el('li', { class: `fpl-conf-row is-${dir}` }, [
         el('span', { class: 'fpl-conf-dot', 'aria-hidden': 'true' }),
         el('span', { class: 'fpl-reason-text' }, emphasize(`${f.text.charAt(0).toUpperCase()}${f.text.slice(1)}.`)),
         el('span', {
           class: `fpl-conf-mark is-${dir}`,
-          text: f.weight > 0 ? 'Less sure' : 'More sure',
+          text: f.weight > 0 ? 'Weakens' : 'Supports',
         }),
       ]);
     })),

@@ -2801,6 +2801,43 @@ counts in the browser needs one `event/<gw>/live` fetch per finished gameweek
 sound design and it is written down here so nobody re-derives it, but there is
 no reason to build it for a change worth zero points.
 
+## The words in "How sure is this plan?" (2026-09-15)
+
+The confidence breakdown inside "Why this plan?" has had three sets of row
+tags, and each replacement fixed a reading problem rather than a taste:
+
+- **"For" / "Against"** read as truncated words, and "Against" overstated a
+  close runner-up as an argument not to make the move.
+- **"More sure" / "Less sure"** matched the old heading ("How sure is this?")
+  but was a comparative with no reference, and under a pill that already said
+  HIGH CONFIDENCE a column of MORE SURE, MORE SURE, LESS SURE read like the
+  answer changing row by row. Worse, "Nobody in this eleven is injured... MORE
+  SURE" reads as certainty about the SENTENCE, not as its effect on the plan.
+- **"Supports" / "Weakens"** (current) names what the row does to the
+  recommendation, reads correctly without the green/amber colour, and is
+  narrower than the pill it replaced (88px for MORE SURE at 9.5px uppercase).
+  Two pairs were rejected on the way: "Boost" (FPL managers read it as Bench
+  Boost) and "Raises / Lowers" (bare verbs that need "confidence" beside them,
+  the same cut-off reading as For/Against).
+
+The heading became "How sure is this plan?" because "this" was ambiguous in a
+section whose rows are about players and data. The band pills (High / Moderate
+/ Low confidence, and "Recommendations paused") did not change.
+
+A projected gameweek used to say "which the planner discounts to 85% of this
+week's certainty" in the band row and "{v} as certain as this week" in its own
+explanation bullet: a percentage beside the word certainty reads as a
+probability, which `confidence.js` exists to refuse. Both now say "a projection
+2 gameweeks ahead, so it is less certain than this week's plan", from
+`plan.gwsAhead` (set in `planFromScored`, 0 for the current plan) through one
+shared `projectionDistance()`. The discount still rides on the reason's
+`value`. A stored plan without `gwsAhead` gets the unnumbered sentence rather
+than a wrong number.
+
+One nuance the tags cannot carry: the engine only ever SUBTRACTS confidence. A
+"Supports" row scored zero ("no problem found"); it does not offset a
+"Weakens" row, and the band is the sum of the penalties alone.
+
 ## Open questions / next highest-value work
 
 Ranked 2026-08-12, evening, after 2025-26 qualified (entry 15), bonus closed

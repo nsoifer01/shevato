@@ -199,6 +199,16 @@ function availabilityFactor({ plan, gameState }) {
   };
 }
 
+// "a projection 2 gameweeks ahead", or the unnumbered form for a plan that does
+// not say how far ahead it is (one stored before `gwsAhead` existed). Shared
+// with the projected-plan bullet in explain.js so the two sentences cannot
+// describe the same distance differently.
+export function projectionDistance(plan) {
+  const n = plan ? plan.gwsAhead : null;
+  if (!Number.isInteger(n) || n < 1) return 'a projection for a later gameweek';
+  return `a projection ${n} gameweek${n === 1 ? '' : 's'} ahead`;
+}
+
 // How far into the future the claim reaches. Two different ways it can reach:
 // the plan is FOR a later gameweek, or the plan is for this one but the move it
 // recommends does not pay until later.
@@ -211,7 +221,11 @@ function reachFactor({ plan }) {
       key: 'reach',
       weight,
       certainty,
-      reason: makeReason('confidence_projected', 'this is a projection for a later gameweek, which the planner discounts to {v} of this week\'s certainty', certainty, 'percent'),
+      // The distance in gameweeks, never the discount as a percentage: "85% of
+      // this week's certainty" read as a probability, which this module refuses
+      // to print (see WHY NOT A PERCENTAGE above). The discount still rides on
+      // `value` for anything that wants the number.
+      reason: makeReason('confidence_projected', `this is ${projectionDistance(plan)}, so it is less certain than this week's plan`, certainty, 'percent'),
     };
   }
 

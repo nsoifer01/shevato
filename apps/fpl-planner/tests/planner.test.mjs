@@ -676,6 +676,7 @@ test('the current recommendation and the projected plans are distinguished, and 
   assert.equal(bundle.current.gw, GW);
   assert.equal(bundle.current.certainty, 'current');
   assert.equal(bundle.current.confidence, 1);
+  assert.equal(bundle.current.gwsAhead, 0, 'the current plan is zero gameweeks ahead');
 
   assert.deepEqual(bundle.future.map(p => p.gw), [GW + 1, GW + 2, GW + 3, GW + 4]);
   const discount = RISK_PROFILES.balanced.discount;
@@ -687,7 +688,9 @@ test('the current recommendation and the projected plans are distinguished, and 
     const projected = plan.explanation.bullets.find(b => b.code === 'projected_plan');
     assert.ok(projected, 'a projected plan says so in its own explanation');
     assert.equal(projected.value, plan.confidence);
-    assert.ok(projected.text.includes(`${Math.round(plan.confidence * 100)}%`));
+    assert.equal(plan.gwsAhead, k + 1, 'a projected plan records how far ahead it is');
+    assert.ok(projected.text.includes(`a projection ${k + 1} gameweek${k === 0 ? '' : 's'} ahead`), projected.text);
+    assert.doesNotMatch(projected.text, /\d+%|as certain as/, 'the discount is never printed as a percentage');
   });
 
   // A projected gameweek inherits the squad the gameweek before it left behind.
