@@ -268,6 +268,20 @@ test('the chip carries an accessible label that does not read as an arrow', () =
   assert.equal(label, chip.title, 'the tooltip and the accessible name say the same thing');
 });
 
+test('the confidence tier in the tooltip is a sentence of its own, capitalised', () => {
+  // SPEC: seen live on 2026-09-15, Foden's chip read "... 06:00 PM. strong
+  // signal." because the label was lowercased after a full stop.
+  const rise = chipOn(cardFor({ [pair.in]: RISE_TONIGHT }), 'in');
+  assert.match(rise.title, /\. Strong signal\.$/);
+  const moderate = chipOn(cardFor({
+    [pair.out]: { price_change_projections: [{ offset: 1, projected_percent: '-120.0', likelihood: -3 }] },
+  }), 'out');
+  assert.match(moderate.title, /\. Moderate signal\.$/);
+  for (const title of [rise.title, moderate.title]) {
+    assert.doesNotMatch(title, /\.\s+[a-z]/, 'no sentence starts in lowercase');
+  }
+});
+
 /* ------------------------------------------------------------- the drawer */
 
 test('the drawer breaks the prediction out into the three published windows', () => {
