@@ -65,7 +65,7 @@ const html = readFileSync(join(REPO_ROOT, 'privacy.html'), 'utf8');
 // The two most recent reviews. Append by moving CURRENT down to PREVIOUS.
 const PREVIOUS = { date: '14 September 2026', digest: '4351bc291b5a3173df07cd933517cbbb7db10ced9d142900912c601876f0d8ef' };
 const CURRENT = {
-  date: '14 September 2026',
+  date: '15 September 2026',
   digest: '0cb35252ddb8c21102864552ac04a8a8d433e5760a4e61776ab659afbd90cd06',
 };
 
