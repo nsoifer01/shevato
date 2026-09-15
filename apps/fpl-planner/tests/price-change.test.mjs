@@ -20,6 +20,7 @@ import {
   likelihoodTier,
   upcomingDeadlines,
   PRICE_CHANGE_THRESHOLD,
+  PRICE_CHANGE_NEAR,
 } from '../js/engine/price-change.js';
 import { priceAdjustment, priceUrgencyCap, TRANSFER_DEFAULTS } from '../js/engine/transfers.js';
 
@@ -520,4 +521,163 @@ test('sorting on the bounded key is a total order and only reorders near-ties', 
   const tied = mk(50 - 0.01, CAP);
   const resorted = [clearly, tied].sort((a, b) => b.sortScore - a.sortScore);
   assert.equal(resorted[0], tied, 'a near-tie is broken by the price signal');
+});
+
+// ========================================================= near a change ====
+
+// Foden on 2026-09-15, verbatim: suspended, sold by 97k managers, and projected
+// to finish the third window 0.3 short of a fall. Before the near state the
+// transfer card showed him exactly like a player drifting at -3%.
+const FODEN = {
+  price_change_percent: '-62.3',
+  price_change_projections: [
+    { offset: 0, projected_percent: '-64.4', likelihood: -3 },
+    { offset: 1, projected_percent: '-82.1', likelihood: -3 },
+    { offset: 2, projected_percent: '-99.7', likelihood: -4 },
+  ],
+};
+
+test('a projection just short of the threshold is near a change, and is not a change', () => {
+  const m = readPriceChange(player(FODEN), { now: NOW, deadlines: DEADLINES });
+  assert.equal(m.direction, 'none', 'nothing crosses, so no move is claimed');
+  assert.equal(m.displayable, false, 'the default badge stays silent');
+  assert.deepEqual(m.near, {
+    direction: 'fall',
+    offset: 2,
+    timing: 'in-2-days',
+    timingLabel: 'in 2 days',
+    projectedPercent: -99.7,
+    changeAt: CANON[2],
+  });
+});
+
+test('the near band is inclusive at its floor and stops short of the threshold', () => {
+  const at = (v) => readPriceChange(player({
+    price_change_projections: [{ offset: 0, projected_percent: String(v), likelihood: 3 }],
+  }), { now: NOW, deadlines: DEADLINES });
+
+  assert.ok(PRICE_CHANGE_NEAR < PRICE_CHANGE_THRESHOLD);
+  assert.equal(at(PRICE_CHANGE_NEAR - 0.1).near, null, 'just below the floor is ordinary drift');
+  assert.equal(at(PRICE_CHANGE_NEAR).near.direction, 'rise');
+  assert.equal(at(-PRICE_CHANGE_NEAR).near.direction, 'fall');
+  assert.equal(at(99.9).near.direction, 'rise');
+  const crossing = at(PRICE_CHANGE_THRESHOLD);
+  assert.equal(crossing.direction, 'rise');
+  assert.equal(crossing.near, null, 'a crossing is a change, never also "near" one');
+});
+
+test('near names the window that comes CLOSEST, not the earliest', () => {
+  const m = readPriceChange(player({
+    price_change_projections: [
+      { offset: 0, projected_percent: '91.0', likelihood: 3 },
+      { offset: 1, projected_percent: '98.5', likelihood: 4 },
+      { offset: 2, projected_percent: '93.0', likelihood: 3 },
+    ],
+  }), { now: NOW, deadlines: DEADLINES });
+  assert.equal(m.near.offset, 1);
+  assert.equal(m.near.timing, 'tomorrow');
+  assert.equal(m.near.projectedPercent, 98.5);
+  assert.equal(m.near.changeAt, CANON[1]);
+});
+
+test('equal approaches keep the earliest window', () => {
+  const m = readPriceChange(player({
+    price_change_projections: [
+      { offset: 0, projected_percent: '-95.0', likelihood: -4 },
+      { offset: 1, projected_percent: '-95.0', likelihood: -4 },
+    ],
+  }), { now: NOW, deadlines: DEADLINES });
+  assert.equal(m.near.offset, 0);
+});
+
+test('a crossing in any window wins over a near approach in another', () => {
+  const m = readPriceChange(player({
+    price_change_projections: [
+      { offset: 0, projected_percent: '96.0', likelihood: 4 },
+      { offset: 1, projected_percent: '104.0', likelihood: 5 },
+    ],
+  }), { now: NOW, deadlines: DEADLINES });
+  assert.equal(m.direction, 'rise');
+  assert.equal(m.offset, 1);
+  assert.equal(m.near, null);
+});
+
+test('progress alone is never a near approach', () => {
+  // SPEC: the same refusal as for a crossing. 99% now is not a projection.
+  const m = readPriceChange(player({
+    price_change_percent: '99.0',
+    price_change_projections: [],
+  }), { now: NOW, deadlines: DEADLINES });
+  assert.equal(m.near, null);
+});
+
+test('a live lock gates a near approach exactly as it gates a crossing', () => {
+  const nearTonightAndTomorrow = {
+    price_change_projections: [
+      { offset: 0, projected_percent: '97.0', likelihood: 4 },
+      { offset: 1, projected_percent: '92.0', likelihood: 3 },
+    ],
+  };
+
+  const covered = readPriceChange(player({
+    ...nearTonightAndTomorrow, price_change_locked_until: '2026-09-12T14:30:00Z',
+  }), { now: NOW, deadlines: DEADLINES });
+  assert.equal(covered.near, null, 'no window the lock covers can be near a move');
+  assert.equal(covered.displayable, false, 'and a lock suppressing no crossing stays silent');
+
+  const lifting = readPriceChange(player({
+    ...nearTonightAndTomorrow, price_change_locked_until: '2026-09-06T09:00:00Z',
+  }), { now: NOW, deadlines: DEADLINES });
+  assert.equal(lifting.near.offset, 1, 'tonight is locked out; tomorrow is not');
+
+  const unknown = readPriceChange(player({
+    ...nearTonightAndTomorrow, price_change_locked_until: '2026-09-06T09:00:00Z',
+  }), { now: NOW, deadlines: [] });
+  assert.equal(unknown.near, null, 'under a live lock with no known windows, nothing is claimed');
+});
+
+test('the near badge is opt-in, quiet, and worded as near', () => {
+  const m = readPriceChange(player(FODEN), { now: NOW, deadlines: DEADLINES });
+  assert.equal(priceBadge(m, 'out'), null, 'a surface that does not ask for it shows nothing');
+
+  const badge = priceBadge(m, 'out', { near: true });
+  assert.equal(badge.kind, 'near');
+  assert.equal(badge.text, '↓ Near fall in 2 days');
+  assert.equal(badge.urgent, false, 'selling a near-faller is not urgent: no fall is projected');
+
+  const rise = priceBadge(readPriceChange(player({
+    price_change_projections: [{ offset: 1, projected_percent: '95.0', likelihood: 4 }],
+  }), { now: NOW, deadlines: DEADLINES }), 'in', { near: true });
+  assert.equal(rise.text, '↑ Near rise tomorrow');
+  assert.equal(rise.urgent, false, 'buying a near-riser is not urgent either');
+});
+
+test('a near approach on a calibrating prediction is hedged', () => {
+  const badge = priceBadge(
+    readPriceChange(player({ ...FODEN, price_change_calibrating: true }), { now: NOW, deadlines: DEADLINES }),
+    'out',
+    { near: true },
+  );
+  assert.equal(badge.text, '↓ Near fall in 2 days?');
+  assert.equal(badge.urgent, false);
+});
+
+test('asking for near never changes a badge that already exists', () => {
+  const rise = readPriceChange(player(), { now: NOW, deadlines: DEADLINES });
+  assert.deepEqual(priceBadge(rise, 'in', { near: true }), priceBadge(rise, 'in'));
+  const locked = readPriceChange(player({ price_change_locked_until: '2026-09-12T14:30:00Z' }), { now: NOW, deadlines: DEADLINES });
+  assert.equal(priceBadge(locked, 'in', { near: true }).kind, 'locked');
+});
+
+test('a near approach moves no decision: zero urgency and zero adjustment', () => {
+  // SPEC: the tie-break is reserved for moves FPL actually projects.
+  const nearFall = modelFor(FODEN);
+  const nearRise = modelFor({
+    price_change_projections: [{ offset: 0, projected_percent: '99.9', likelihood: 5 }],
+  });
+  for (const dir of ['in', 'out']) {
+    assert.equal(priceUrgency(nearFall, dir), 0);
+    assert.equal(priceUrgency(nearRise, dir), 0);
+  }
+  assert.equal(priceAdjustment([1], [9], new Map([[1, nearFall], [9, nearRise]]), cfg), 0);
 });

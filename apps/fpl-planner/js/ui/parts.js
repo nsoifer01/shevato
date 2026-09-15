@@ -7,7 +7,7 @@
 
 import { el } from './dom.js';
 import { PROGRESS_STAGES } from '../engine/planner.js';
-import { readPriceChange, priceBadge } from '../engine/price-change.js';
+import { readPriceChange, priceBadge, PRICE_CHANGE_THRESHOLD } from '../engine/price-change.js';
 import { dateTime } from './format.js';
 
 // The price-change chip, in ONE place because five surfaces show a player's
@@ -23,12 +23,18 @@ import { dateTime } from './format.js';
 // selling a faller). `dir` is 'in', 'out', or null where the surface is not a
 // transfer and there is no side to be urgent about, which is every surface
 // except the transfer card.
-export function priceChangeChip({ dir = null, player, gameState, now = Date.now(), compact = false }) {
+//
+// `near` adds the quiet "Near fall in 2 days" state for a player projected
+// within reach of a change without crossing it. Only the transfer card asks for
+// it: a transfer is the one decision a nearly-moving price bears on before a
+// deadline, and the pitch, table and sandbox cards are too crowded for a chip
+// about a move that is not projected.
+export function priceChangeChip({ dir = null, player, gameState, now = Date.now(), compact = false, near = false }) {
   const model = readPriceChange(player, {
     now,
     deadlines: (gameState && gameState.rules && gameState.rules.priceChangeDeadlines) || [],
   });
-  const badge = priceBadge(model, dir);
+  const badge = priceBadge(model, dir, { near });
   if (!badge) return null;
 
   const title = priceChipTitle(badge);
@@ -46,6 +52,9 @@ export function priceChangeChip({ dir = null, player, gameState, now = Date.now(
 // the arrow is the direction and the direction is the point.
 function compactText(badge) {
   if (badge.kind === 'locked') return 'Locked';
+  if (badge.kind === 'near') {
+    return `${badge.model.near.direction === 'rise' ? '↑' : '↓'} Near${badge.model.calibrating ? '?' : ''}`;
+  }
   const arrow = badge.model.direction === 'rise' ? '↑' : '↓';
   const when = badge.model.timingLabel || 'soon';
   return `${arrow} ${when.charAt(0).toUpperCase()}${when.slice(1)}${badge.kind === 'calibrating' ? '?' : ''}`;
@@ -53,6 +62,14 @@ function compactText(badge) {
 
 export function priceChipTitle(badge) {
   const m = badge.model;
+  if (badge.kind === 'near') {
+    // The one place the approach is given as a number, and it is phrased as a
+    // distance ("of the way to a fall") so it cannot be read as a probability.
+    const n = m.near;
+    const at = n.changeAt ? ` at ${dateTime(n.changeAt)}` : '';
+    const hedge = m.calibrating ? ' It also says the prediction is still calibrating.' : '';
+    return `Fantasy Premier League projects this price ${Math.abs(n.projectedPercent).toFixed(1)}% of the way to a ${n.direction}${at}, just short of the ${PRICE_CHANGE_THRESHOLD}% at which it changes. No change is projected yet.${hedge}`;
+  }
   if (badge.kind === 'locked') {
     return m.lockedUntil
       ? `Fantasy Premier League has locked this price until ${dateTime(m.lockedUntil)}, so it cannot change before then.`
