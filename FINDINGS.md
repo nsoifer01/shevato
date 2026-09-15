@@ -102,11 +102,12 @@ Nine logs, 2-14 September:
 `build-publish-dir.mjs` awaits one `mkdir` and one `link` per file: 140,000
 thread-pool round trips. The same walk with synchronous calls, creating each
 directory once, ran in 4.4 s instead of 22.8 s locally and produced the
-identical file list with identical inodes. It is part of the 1 October change.
+identical file list with identical inodes. It went synchronous with the
+October change.
 Nothing else is worth changing: install is cached, generation scales with the
 dataset, and hashing is Netlify's.
 
-### The ignore rule: `scripts/netlify-ignore.mjs` (committed, not wired)
+### The ignore rule: `scripts/netlify-ignore.mjs` (wired in `netlify.toml`, October 2026)
 
 It skips a build only when every file that differs between the commit
 production serves and the commit being built is Markdown, under a `tests/`,
@@ -178,35 +179,28 @@ skipped build 15 s, an upper bound on its undocumented cost. With both October
 changes, 300 is reached at about 343 human merges a month (11 a day, every
 day); today's setup reaches it at 249, and the one before 14 September at 51.
 
-### 1 October: activation
+### October 2026: what went live, and how to check it
 
-The local branch `netlify-activation-2026-10-01` (not pushed) holds one commit
-on top of this work: `ignore = "node ./scripts/netlify-ignore.mjs"` under
-`[build]` in `netlify.toml`, the synchronous `build-publish-dir.mjs`, and the
-docs describing both as live.
+`netlify.toml` names the script as `ignore`, and `build-publish-dir.mjs` is
+synchronous. Both went live after the 1 October reset, through the normal
+pull-request gates.
 
-1. After 07:00 UTC on 1 October, confirm the reset: `minutes.current` near 0
-   and `period_start_date` on 2026-10-01.
-2. Cherry-pick the branch's last commit onto a branch from `master`, run
-   `npm test`, `npm run lint` and `npm run test:browser:parallel`, open the pull
-   request, merge when green. It changes `netlify.toml`, so its own production
-   build runs. In that log the gap between the last `[stamp-sitemap-index]`
-   line and `[publish]` must be a few seconds, not 18-20.
-3. Re-enable the Rising Shows refresh (`gh workflow enable
-   refresh-rising-shows.yml`, then `gh workflow run refresh-rising-shows.yml`).
-   Its merge must build, with `[netlify-ignore] BUILD` in the log.
-4. On the first docs-only merge the deploy must be cancelled with
-   `[netlify-ignore] SKIP` naming only inert files, and production's
-   `analytics.js` must still name the previous commit. Record that deploy's
-   `deploy_time` and the account minutes before and after it: that is what a
-   cancelled build really costs.
-5. For the first week, every deploy whose commit touched a non-inert file must
-   be `ready` in `listSiteDeploys`.
+- A relevant commit's log shows `[netlify-ignore] BUILD: ...` and deploys as
+  before, and the gap between the last `[stamp-sitemap-index]` line and
+  `[publish]` is a few seconds, not 18-20.
+- A deploy for a commit that changed only docs, tests, workflows or the lint
+  config is cancelled with `[netlify-ignore] SKIP: ...` naming only inert
+  files, and production's `analytics.js` still names the previous commit.
+  Compare that deploy's `deploy_time` and the account minutes before and after
+  it to learn what a cancelled build really costs; the budget above assumes
+  15 s.
+- The Rising Shows refresh always builds: its merge changes published data
+  files.
 
-Rollback: revert the pull request (the revert changes `netlify.toml`, so it
-builds). To force a build at any moment, "Clear cache and deploy project"; it
-also ships anything a skip ever held back. "Publish deploy" restores any deploy
-from the last 30 days.
+Rollback: revert the change (the revert touches `netlify.toml`, so it builds).
+To force a build at any moment, "Clear cache and deploy project"; it also ships
+anything a skip ever held back. "Publish deploy" restores any deploy from the
+last 30 days.
 
 ### Rejected
 

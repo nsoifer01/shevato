@@ -5,9 +5,9 @@
 //   [build]
 //     ignore = "node ./scripts/netlify-ignore.mjs"
 //
-// NOT WIRED YET. netlify.toml does not name this script; it activates on
-// 2026-10-01 by the procedure in FINDINGS.md, "Netlify build minutes". Until
-// then nothing runs it except tests/static/netlify-ignore.test.mjs.
+// Wired in netlify.toml in October 2026, after the monthly reset. The audit,
+// the proofs and how to verify a skip are in FINDINGS.md, "Netlify build
+// minutes".
 //
 // WHY THIS EXISTS
 // ---------------
