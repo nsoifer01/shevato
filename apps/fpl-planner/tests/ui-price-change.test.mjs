@@ -26,6 +26,7 @@ const { buildPlan } = await import('../js/engine/planner.js');
 const { transfersCard } = await import('../js/ui/dashboard.js');
 const { drawerBodyForTest } = await import('../js/ui/player-drawer.js');
 const { readPriceChange } = await import('../js/engine/price-change.js');
+const { priceChangeChip } = await import('../js/ui/parts.js');
 
 const APP = join(dirname(fileURLToPath(import.meta.url)), '..');
 const sample = (name) => JSON.parse(readFileSync(join(APP, 'data', 'sample', `${name}.json`), 'utf8'));
@@ -188,6 +189,55 @@ test('a player drifting in the middle gets no chip at all', () => {
     ] },
   });
   assert.deepEqual(chips(card), []);
+});
+
+/* ------------------------------------------------------- near a change */
+
+// Foden's live numbers on 2026-09-15: -99.7% by the third window, which is not
+// a fall, and which the card used to show as nothing at all.
+const NEAR_FALL = {
+  price_change_percent: '-62.3',
+  price_change_projections: [
+    { offset: 0, projected_percent: '-64.4', likelihood: -3 },
+    { offset: 1, projected_percent: '-82.1', likelihood: -3 },
+    { offset: 2, projected_percent: '-99.7', likelihood: -4 },
+  ],
+};
+const NEAR_RISE = {
+  price_change_percent: '88.0',
+  price_change_projections: [
+    { offset: 0, projected_percent: '94.0', likelihood: 4 },
+    { offset: 1, projected_percent: '89.0', likelihood: 3 },
+  ],
+};
+
+test('an outgoing player just short of a fall is chipped as near, quietly', () => {
+  // SPEC: it must not read as a fall or be marked urgent, because none is
+  // projected, but a card that says nothing is how a manager holds him through
+  // the window that would have moved him.
+  const chip = chipOn(cardFor({ [pair.out]: NEAR_FALL }), 'out');
+  assert.equal(chip.text, '↓ Near fall in 2 days');
+  assert.match(chip.className, /is-near/);
+  assert.doesNotMatch(chip.className, /is-urgent|is-fall/);
+  assert.match(chip.title, /99\.7% of the way to a fall/);
+  assert.match(chip.title, /No change is projected yet/);
+});
+
+test('an incoming player just short of a rise is chipped as near, quietly', () => {
+  const chip = chipOn(cardFor({ [pair.in]: NEAR_RISE }), 'in');
+  assert.equal(chip.text, '↑ Near rise tonight');
+  assert.match(chip.className, /is-near/);
+  assert.doesNotMatch(chip.className, /is-urgent|is-rise/);
+});
+
+test('the near state belongs to the transfer card only', () => {
+  // SPEC: the pitch, the squad table and the sandbox call the chip without
+  // `near`, and must keep showing projected moves only.
+  const state = stateWith({ [pair.out]: NEAR_FALL });
+  const player = state.players.get(pair.out);
+  assert.equal(priceChangeChip({ player, gameState: state, now: NOW, compact: true }), null);
+  assert.equal(priceChangeChip({ player, gameState: state, now: NOW }), null);
+  assert.ok(priceChangeChip({ dir: 'out', player, gameState: state, now: NOW, near: true }));
 });
 
 test('with no price data the transfer card is byte-for-byte what it was before', () => {
@@ -361,12 +411,14 @@ test('the sample data exercises every state the UI can render', () => {
     if (m.calibrating) return 'calibrating';
     return `${m.direction}-${m.timing}`;
   }));
-  for (const state of ['rise-tonight', 'fall-tonight', 'rise-tomorrow', 'locked', 'calibrating']) {
+  for (const m of models) if (!m.displayable && m.near) seen.add(`near-${m.near.direction}`);
+  for (const state of ['rise-tonight', 'fall-tonight', 'rise-tomorrow', 'locked', 'calibrating', 'near-rise', 'near-fall']) {
     assert.ok(seen.has(state), `sample data must produce a ${state} player; saw ${[...seen].join(', ')}`);
   }
   // And most players must stay quiet, or the demo teaches the wrong lesson
-  // about how often prices actually move.
-  const quiet = models.filter(m => !m.displayable).length;
+  // about how often prices actually move. A near player is not quiet on the
+  // transfer card, so it does not count as quiet here.
+  const quiet = models.filter(m => !m.displayable && !m.near).length;
   assert.ok(quiet / models.length > 0.4, `only ${quiet}/${models.length} players are quiet`);
 });
 

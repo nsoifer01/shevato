@@ -116,6 +116,38 @@ Raw test count is not evidence of correctness. Do not report it as if it were.
   what differs between candidates. Pinned both ways in
   `tests/transfers-price-tiebreak.test.mjs`.
 
+- **The ±100 edge hid a player 0.3 short of a fall, so transfer cards now show
+  a near state (2026-09-15).** Foden, suspended and sold by 97,284 net managers
+  in GW5, was the recommended sale with projections -64.4 / -82.1 / -99.7, and
+  his card showed nothing, exactly like a player drifting at -3%. Measured on
+  that day's payload (659 players): 48 crossed ±100 in some window, and a
+  further 18 peaked in [90, 100), 50 in [80, 100), 155 in [50, 100).
+  `PRICE_CHANGE_NEAR = 90` adds the 18. It is a PRESENTATION choice, not a fact
+  about the game, which is why it gets the quiet gray chip and the threshold
+  keeps the colours.
+
+  Decisions and their reasons, all in `js/engine/price-change.js`:
+  - **Not "progress now".** Showing `price_change_percent` on every card was
+    considered and rejected: current progress ranks players the wrong way
+    (Foden -62 vs Gabriel -69 that day, heading for -99.7 vs -71), 84 of the
+    148 players at ±50 or more would not reach ±90 inside three days, and a bare
+    "-62%" on a card reads as a probability.
+  - **The CLOSEST window, not the earliest.** "Near" is a claim about how close.
+    A crossing in any window still wins, and a crossing is never also "near".
+  - **The same lock gate as a crossing** (the `reachable` closure), so "near a
+    rise tonight" under a lock that covers tonight is never claimed.
+  - **`near` never sets `direction` or `displayable`.** That is what keeps it
+    out of `priceUrgency` and `priceAdjustment` by construction rather than by
+    a check someone could forget; tests pin both at zero. A future caller that
+    keys urgency off `model.near` would let a price FPL does not project
+    reorder plans.
+  - **Opt-in per surface** (`priceBadge(model, dir, { near: true })`), and only
+    the transfer card opts in. Progress alone (no projections) is never near.
+
+  The demo carries it in sample slot `id % 30 === 29` (8 of 320 players; the
+  live share was 18 of 659). Re-measure the band's size if FPL ever changes the
+  field's scale, alongside the threshold.
+
 - **The API is fully public.** No key, no registration, no terms-acceptance
   flow, no robots.txt on the host. The authenticated `my-team` endpoint (exact
   selling prices, FTs) needs the user's FPL login, so nothing THIS APP runs ever

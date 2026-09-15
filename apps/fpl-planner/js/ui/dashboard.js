@@ -170,7 +170,9 @@ function transferSide({ dir, playerId, gameState, projections, gw, horizon, now 
   const row = getProjection(projections, playerId, gw);
   const player = gameState.players.get(playerId);
   const avail = availability(player);
-  const priceChip = priceChangeChip({ dir, player, gameState, now });
+  // `near: true` is what makes a player projected just short of a change visible
+  // here, and only here (see priceChangeChip).
+  const priceChip = priceChangeChip({ dir, player, gameState, now, near: true });
   return el('div', { class: `fpl-tr-side is-${dir}` }, [
     el('div', { class: 'fpl-tr-dir' }, [
       dir === 'out' ? 'Out' : 'In',

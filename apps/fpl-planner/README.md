@@ -73,14 +73,39 @@ answers the question directly. Nothing extrapolates from the rate and
 
 **The demo shows it.** `data/sample/bootstrap.json` carries the fields, so
 `?demo=1` demonstrates the feature rather than hiding it. The states are spread
-deterministically by player id (`id % 30`), leaving about 79% of the sample
-quiet, which keeps the demo honest about how rarely prices actually move.
+deterministically by player id (`id % 30`): slots 0 to 5 carry a projected
+change, a lock or a calibrating prediction, and slot 29 is near a change
+(Foden's live 2026-09-15 numbers, a near fall, where `id % 60 === 59`, and a
+near rise otherwise). That leaves 76.6% of the sample with nothing to show
+anywhere, which keeps the demo honest about how rarely prices actually move. On
+the default demo plan Garner's outgoing side carries the near chip.
 
 **Where it shows.** A compact chip under the price on each transfer side, and a
 "Price change" section in the player drawer. The chip appears only when a
-crossing is actually projected, never for the hundreds of players drifting in
-the middle. A player FPL has locked reads "Price locked" and never claims a move
-the game forbids; a calibrating one is hedged and never marked urgent.
+crossing is actually projected (or, on a transfer card, nearly projected; see
+below), never for the hundreds of players drifting in the middle. A player FPL
+has locked reads "Price locked" and never claims a move the game forbids; a
+calibrating one is hedged and never marked urgent.
+
+**Near a change, on the transfer card only.** The ±100 edge is hard, so a player
+projected at -99.7% by the last window before a deadline looked exactly like one
+drifting at -3%: Foden on 2026-09-15, suspended and sold by 97k managers. A
+transfer side now carries a quiet "↓ Near fall in 2 days" chip when a projection
+reaches `PRICE_CHANGE_NEAR` (90) without crossing, naming the window that comes
+closest rather than the earliest. Its tooltip gives the approach as a distance
+("99.7% of the way to a fall") and says no change is projected. It is gray like
+the locked and calibrating chips, never urgent, passes the same lock gate as a
+crossing, and never reaches `priceUrgency` or the tie-break, because FPL projects
+no move. 90 is a presentation choice rather than a measurement: on that day's
+payload it added 18 players to the 48 projected to cross, where 80 would have
+added 50 and 50 would have added 155. The pitch, squad table and sandbox cards
+do not ask for it; `priceChangeChip({ near: true })` is the transfer card's
+opt-in.
+
+The raw current progress is deliberately NOT put on the card. It is the drawer's
+number, and on its own it ranks players the wrong way: that day Foden sat at
+-62% and Gabriel at -69%, heading for -99.7% and -71%, and 84 of the 148 players
+at ±50% or more would not reach ±90% within the three published windows.
 
 **Urgency is asymmetric.** Buying a riser and selling a faller are the two cases
 where waiting costs money, and only those are highlighted. Selling a riser or
@@ -144,7 +169,7 @@ apps/fpl-planner/
                          season totals, all read from the plan's own inputs
     engine/price-change.js  FPL's own price predictions -> one safe display
                          model; the only module that knows the threshold,
-                         the tier scale and the lock gating
+                         the near band, the tier scale and the lock gating
     ui/scroll-lock.js    reference-counted page scroll lock for modal overlays;
                          any future modal locks through it, never its own way
     ui/combobox.js       searchable, keyboard-accessible player picker
