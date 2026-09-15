@@ -424,3 +424,32 @@ test('network_* rejections park on the same bucket edges as client_*', () => {
   assert.notEqual(L.placesRetryDelay('network_hour', t), L.placesRetryDelay('', t),
     'and are NOT falling through to the default guess');
 });
+
+// ---------- the pause toast's wording ----------
+
+// The toast is all the traveller is told, and it is read to decide whether to
+// wait an hour, a day or a month. On 2026-09-15 the owner tier's own monthly
+// share ran out with 89 of the shared 850 lookups still unspent, and the toast
+// said the month's free allowance was gone, because owner_month fell through
+// to a default that claimed exactly that.
+test('the pause toast names the allowance the server refused, never a bigger one', () => {
+  for (const s of ['client_hour', 'network_hour']) {
+    assert.match(L.placesPauseReason(s), /hourly/);
+  }
+  for (const s of ['client_day', 'network_day', 'global_day', 'owner_day']) {
+    assert.match(L.placesPauseReason(s), /daily|today/);
+    assert.doesNotMatch(L.placesPauseReason(s), /month/);
+  }
+  assert.match(L.placesPauseReason('client_day'), /browser/);
+  assert.match(L.placesPauseReason('network_day'), /connection/);
+  assert.match(L.placesPauseReason('free_month'), /free lookup allowance for this month/);
+  assert.match(L.placesPauseReason('global_month'), /free lookup allowance for this month/);
+  assert.match(L.placesPauseReason('owner_month'), /owner share of this month/);
+  assert.doesNotMatch(L.placesPauseReason('owner_month'), /free/, 'the shared free budget is not what refused');
+});
+
+test('a pause with no quota scope does not blame a quota', () => {
+  for (const s of ['', 'network', 'contention', undefined, 'some_future_scope']) {
+    assert.doesNotMatch(L.placesPauseReason(s), /allowance|used up/, String(s));
+  }
+});

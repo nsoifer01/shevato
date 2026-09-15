@@ -549,11 +549,21 @@ and coordinate have different rules and must never be given one lifetime.
   day-pool pause into a 15-minute retry loop.
   **Reading the blob is the fastest diagnosis** for any live 429: the counters
   are current-bucket only, so the exhausted row is visible directly.
-- **The quota toast used to name the wrong allowance.** Every pause said "the
-  free lookup allowance is used up" whatever refused it; on the 2026-09-06
-  daily cap that was false, with 411 of the 850 monthly lookups unspent and
-  ratings back the same evening. `placesPauseReason` now keys the wording on
-  `status().scope`, which the queue already tracked.
+- **The quota toast must name the allowance that actually refused.** Every
+  pause once said "the free lookup allowance is used up" whatever refused it;
+  on the 2026-09-06 daily cap that was false, with 411 of the 850 monthly
+  lookups unspent and ratings back the same evening. `placesPauseReason`
+  (trip-logic.js, pinned in `tests/places-queue.test.js`) keys the wording on
+  `status().scope`. On 2026-09-15 it was still wrong twice, because the
+  monthly claim was its `default`: `owner_month` (the owner tier's 600
+  sub-ceiling, hit while `billedMonth` sat at 761 of 850 and the public tier
+  at 161) told the owner the month's free allowance was gone, and a pause with
+  no quota scope (a 5xx, or a 429 with no body, which parks the default 15
+  minutes and so clears the toast's 5-minute bar) blamed a quota that never
+  spoke. Every quota scope is now named explicitly and the default blames
+  none. An `owner_month` pause lifts at the shifted month boundary (08:00Z on
+  the 1st); a browser without the owner token draws on the public tier
+  instead, which spends what is left for visitors.
 - **The public $10/month and owner $40/month ceilings are NOT additive with two
   free allowances.** Google's 1,000 complimentary Place Details Enterprise
   calls are per SKU per PROJECT, and both pools (globalMonth 1500 + ownerMonth
