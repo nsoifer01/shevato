@@ -35,6 +35,17 @@ A first draft of that copy over-promised against `privacy.html`, which is bindin
   change to sw.js's precache list needs a `CACHE_VERSION` bump or old entries
   are never evicted. `styles.css?v=` and `trip-logic.js?v=` follow the same
   rule (index.html + sw.js in step).
+  **Nothing checks that a pin MOVED when its file changed.**
+  `tests/sw-precache-completeness.test.mjs` only proves index.html and sw.js
+  agree with each other, so an edit to app.js or trip-logic.js with every pin
+  left alone is green everywhere. PR #550 (2026-09-15) shipped exactly that
+  and was caught only at deploy time, by comparing the live `?v=53` with the
+  diff; the bump went out as a separate PR before production. It matters twice
+  over when a change MOVES a name between the two files (#550 moved
+  `placesPauseReason` into trip-logic.js): an installed worker keeps serving
+  the old pair, and any path that pairs a new app.js with an old trip-logic.js
+  destructures `undefined`. Bump both pins, TP_BUILD and `CACHE_VERSION`
+  whenever either file changes.
 - **The trip db schema has no version migrations** - `repairDb()` normalizes
   on load instead (types, statuses, money via `parseMoney`, `order` bounds,
   currency stamps, and since 2026-08-22 every string/clock/enum field a
