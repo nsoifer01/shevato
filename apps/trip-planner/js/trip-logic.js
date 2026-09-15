@@ -4954,6 +4954,39 @@ const TripLogic = (() => {
     }
   }
 
+  // The one line the traveller reads when ratings pause, keyed on the same
+  // scope placesRetryDelay parks on. WHICH allowance ran out matters because
+  // they are days apart and the line is read to decide whether to wait. Until
+  // 2026-09-06 every pause said "the free lookup allowance is used up", which on
+  // a daily cap was simply untrue: the day pool emptied with 411 of the 850
+  // monthly lookups still unspent, and ratings were back the same evening.
+  // Until 2026-09-15 that monthly claim was still the DEFAULT, so two more
+  // pauses told it: owner_month (the owner tier's own sub-ceiling, hit with 89
+  // of the shared 850 unspent) and a pause with no quota scope at all (a 5xx,
+  // or a 429 with no body, which parks the default 15 minutes). Every quota
+  // scope is named below, and the default blames no quota.
+  function placesPauseReason(scope) {
+    switch (scope) {
+      case 'client_hour': return "this browser's hourly lookup allowance is used up";
+      case 'client_day': return "this browser's daily lookup allowance is used up";
+      // Named apart from the browser scopes on purpose: the traveller has not
+      // done anything, and telling them their browser is at its limit when
+      // somebody else on the same connection spent the share would send them
+      // clearing storage for nothing.
+      case 'network_hour': return "this connection's hourly lookup allowance is used up";
+      case 'network_day': return "this connection's daily lookup allowance is used up";
+      case 'global_day':
+      case 'owner_day': return "today's lookup allowance is used up";
+      // Only a browser holding the owner token can be refused this, and the
+      // shared free budget may still have room for visitors, so it names the
+      // owner's share rather than the month's free allowance.
+      case 'owner_month': return "your owner share of this month's lookups is used up";
+      case 'global_month':
+      case 'free_month': return 'the free lookup allowance for this month is used up';
+      default: return 'the ratings lookup is not answering right now';
+    }
+  }
+
   function createPlacesQueue(opts) {
     const o = opts || {};
     const send = o.send;
@@ -11053,7 +11086,7 @@ const TripLogic = (() => {
     DISCOVERY_REPLACEMENT_ROUNDS, DISCOVERY_REPLACEMENTS_PER_ROUND, DISCOVERY_CANDIDATE_MAX,
     SLOT_REPLACEMENT_BUDGET, SLOT_REPLACEMENT_SEARCHES,
     PLACE_AREA_MAX_KM, PLACE_RECORD_TTL_MS, cleanAssistTitle, stripTitlePrefixes,
-    createPlacesQueue, placesRetryDelay,
+    createPlacesQueue, placesRetryDelay, placesPauseReason,
     sanitizeHours, normalizeGoogleHours, hoursVerdict, nextOpeningMin, hoursIntervalsForDate, hoursLineText,
     HOURS_CLOSING_SOON_MIN, RECOMMEND_HOURS_WINDOWS, recommendWindowMin,
     scheduleEligibility, candidateScheduleTier, SCHEDULE_REASONS, SCHEDULE_TIER_ORDER,

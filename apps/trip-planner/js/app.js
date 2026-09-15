@@ -135,7 +135,7 @@
     extractTripActions, validateTripAction, buildAssistPackage, buildAssistSystemPrompt,
     planReplyIncomplete, PLAN_REPAIR_REQUEST,
     buildPlanRequest, groupProposals, linkifySegments, parseMarkdown,
-    normalizePlaceQuery, placeCacheKey, createPlacesQueue, mapsSearchUrl, assistMapsLink, placeStateLabel, costDisplayParts,
+    normalizePlaceQuery, placeCacheKey, createPlacesQueue, placesPauseReason, mapsSearchUrl, assistMapsLink, placeStateLabel, costDisplayParts,
     // the one place identity every surface resolves through, plus the record
     // it becomes once a place is verified and saved (see placeLookupFor)
     placeLookupFor, placeLookupRequest, placeRecordFrom, normalizePlaceRecord, areaAnchorFor,
@@ -10443,28 +10443,8 @@
   // One quiet word per session, and only when the wait is long enough that the
   // traveller would otherwise wonder why half the rows never got a rating. A
   // short contention backoff resolves itself in seconds and says nothing; a
-  // per-row error badge on forty rows is exactly the noise this avoids.
-  // WHICH allowance ran out, because the two are days apart and the traveller
-  // reads this line to decide whether to wait. Until 2026-09-06 every pause
-  // said "the free lookup allowance is used up", which on a daily cap was
-  // simply untrue: the day pool emptied with 411 of the 850 monthly lookups
-  // still unspent, and ratings were back the same evening.
-  function placesPauseReason(scope) {
-    switch (scope) {
-      case 'client_hour': return "this browser's hourly lookup allowance is used up";
-      case 'client_day': return "this browser's daily lookup allowance is used up";
-      // Named apart from the browser scopes on purpose: the traveller has not
-      // done anything, and telling them their browser is at its limit when
-      // somebody else on the same connection spent the share would send them
-      // clearing storage for nothing.
-      case 'network_hour': return "this connection's hourly lookup allowance is used up";
-      case 'network_day': return "this connection's daily lookup allowance is used up";
-      case 'global_day':
-      case 'owner_day': return "today's lookup allowance is used up";
-      default: return 'the free lookup allowance for this month is used up';
-    }
-  }
-
+  // per-row error badge on forty rows is exactly the noise this avoids. The
+  // wording names WHICH allowance ran out (placesPauseReason, trip-logic.js).
   let placesNoticeShown = false;
   const PLACES_NOTICE_MIN_MS = 5 * 60000;
   function placesQuotaNotice() {
