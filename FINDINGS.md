@@ -79,7 +79,8 @@ Netlify documentation. Nothing was built to measure it.
 | Pull request opened or updated | GitHub App | Deploy Preview, OFF since 2026-09-14 |
 | Push to any other branch | none (`allowed_branches: [master]`) | none |
 | Rising Shows refresh (daily 06:00 UTC, disabled until 1 October) | its merge to `master` | one production build a day, about 33 min a month |
-| Build hook, CLI deploy, workflow calling Netlify | none exist: `listSiteBuildHooks` is empty and every deploy is `deploy_source: api`, `manual_deploy: false` | none |
+| Build hook, CLI deploy, workflow calling Netlify | none existed: `listSiteBuildHooks` is empty and every deploy to 14 September is `deploy_source: api`, `manual_deploy: false` | none |
+| Merge to `master` from 2026-09-15 to the 1 October reset | none: `build_settings.stop_builds: true`; each merge is built locally and published with `netlify deploy --prod --no-build` | none (a CLI deploy costs no build minutes) |
 
 Functions are bundled inside every build (1 s). There are no edge functions and
 no build plugins.
@@ -102,12 +103,12 @@ Nine logs, 2-14 September:
 `build-publish-dir.mjs` awaits one `mkdir` and one `link` per file: 140,000
 thread-pool round trips. The same walk with synchronous calls, creating each
 directory once, ran in 4.4 s instead of 22.8 s locally and produced the
-identical file list with identical inodes. It went synchronous with the
-October change.
+identical file list with identical inodes. It has been synchronous since
+2026-09-15.
 Nothing else is worth changing: install is cached, generation scales with the
 dataset, and hashing is Netlify's.
 
-### The ignore rule: `scripts/netlify-ignore.mjs` (wired in `netlify.toml`, October 2026)
+### The ignore rule: `scripts/netlify-ignore.mjs` (wired in `netlify.toml` 2026-09-15, running from 1 October)
 
 It skips a build only when every file that differs between the commit
 production serves and the commit being built is Markdown, under a `tests/`,
@@ -175,16 +176,32 @@ Billed minutes a month, from September's per-build costs.
 | Extreme: 1.5 times September's merges, 282 production builds | 989 | 299 | 271 | 226 (75%) |
 
 The normal row reproduces August's actual 319. The ignore column charges each
-skipped build 15 s, an upper bound on its undocumented cost. With both October
+skipped build 15 s, an upper bound on its undocumented cost. With both
 changes, 300 is reached at about 343 human merges a month (11 a day, every
 day); today's setup reaches it at 249, and the one before 14 September at 51.
 
-### October 2026: what went live, and how to check it
+### 15 September to 1 October, and what to check after
 
-`netlify.toml` names the script as `ignore`, and `build-publish-dir.mjs` is
-synchronous. Both went live after the 1 October reset, through the normal
-pull-request gates.
+`netlify.toml` has named the script as `ignore`, and `build-publish-dir.mjs`
+has been synchronous, since 2026-09-15. That day Netlify builds on the
+production project were stopped (`build_settings.stop_builds: true`) so that
+nothing could spend any more of September's minutes. Until the 1 October reset
+every merge to `master` is published by hand: `npm run build:site` in a clean,
+detached checkout of `origin/master`, then `netlify deploy --no-build --dir
+dist --functions netlify/functions --prod`. With no `COMMIT_REF`,
+`scripts/stamp-release.mjs` stamps `git rev-parse HEAD`, so the release id
+production serves still names the exact commit it was built from, and that is
+the baseline the ignore rule reads. A deploy from a dirty tree would break that
+promise; a deploy from an unpushed commit is caught, because the commit is not
+in Netlify's clone and the rule builds.
 
+After the reset `stop_builds` goes back to `false`, merges build on Netlify
+again, and the ignore rule decides each one:
+
+- The first Netlify build compares against the last CLI deploy's commit. If
+  only inert files changed since then it is cancelled, which is correct. To
+  force it anyway use "Clear cache and deploy project", or
+  `netlify api createSiteBuild` with `"clear_cache": true` in the body.
 - A relevant commit's log shows `[netlify-ignore] BUILD: ...` and deploys as
   before, and the gap between the last `[stamp-sitemap-index]` line and
   `[publish]` is a few seconds, not 18-20.

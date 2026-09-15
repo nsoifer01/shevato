@@ -5,9 +5,10 @@
 //   [build]
 //     ignore = "node ./scripts/netlify-ignore.mjs"
 //
-// Wired in netlify.toml in October 2026, after the monthly reset. The audit,
-// the proofs and how to verify a skip are in FINDINGS.md, "Netlify build
-// minutes".
+// Wired in netlify.toml on 2026-09-15, while Netlify builds were stopped until
+// the 1 October reset, so it first runs on the first Netlify build after that.
+// The audit, the proofs and how to verify a skip are in FINDINGS.md, "Netlify
+// build minutes".
 //
 // WHY THIS EXISTS
 // ---------------

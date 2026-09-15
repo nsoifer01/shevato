@@ -26,7 +26,9 @@
   # while their source stops being downloadable.
   publish = "dist"
   # SKIP A BUILD ONLY WHEN IT CANNOT CHANGE THE SITE (2026-09-14 audit, wired
-  # October 2026). The team has 300 build minutes a month. The script exits 0
+  # 2026-09-15 while builds were stopped until the 1 October reset, so it runs
+  # from the first Netlify build after that). The team has 300 build minutes a
+  # month. The script exits 0
   # (skip) only when every file changed since the commit production serves is
   # Markdown, a test, the root .github/ or eslint.config.mjs, and exits 1
   # (build) on any doubt. "Clear cache and deploy project" always builds.
