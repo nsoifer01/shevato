@@ -80,7 +80,9 @@ export function priceChipTitle(badge) {
   if (badge.kind === 'calibrating') {
     return `Fantasy Premier League projects a ${verb}${when}, but says the prediction is still calibrating.`;
   }
-  const tier = m.tierLabel ? ` ${m.tierLabel.toLowerCase()}.` : '';
+  // The tier label is its own sentence after the full stop, so it keeps its
+  // capital: "... at Thu, Sep 17, 06:00 PM. Strong signal."
+  const tier = m.tierLabel ? ` ${m.tierLabel}.` : '';
   return `Fantasy Premier League projects a ${verb}${when}.${tier}`;
 }
 
