@@ -25,6 +25,16 @@
   # the repository, not from the publish directory, so they keep deploying
   # while their source stops being downloadable.
   publish = "dist"
+  # SKIP A BUILD ONLY WHEN IT CANNOT CHANGE THE SITE (2026-09-14 audit, wired
+  # 2026-09-15 while builds were stopped until the 1 October reset, so it runs
+  # from the first Netlify build after that). The team has 300 build minutes a
+  # month. The script exits 0
+  # (skip) only when every file changed since the commit production serves is
+  # Markdown, a test, the root .github/ or eslint.config.mjs, and exits 1
+  # (build) on any doubt. "Clear cache and deploy project" always builds.
+  # Proofs: tests/static/netlify-ignore.test.mjs; FINDINGS.md, "Netlify build
+  # minutes".
+  ignore = "node ./scripts/netlify-ignore.mjs"
 
 # The build and the functions both run on the version .nvmrc names. Netlify
 # reads NODE_VERSION for the BUILD; the functions runtime is pinned separately

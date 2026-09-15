@@ -128,6 +128,16 @@ REJECT, whichever way it goes.
   third-party URL, and anything needed in order is served from this origin.
   Enforced by `tests/static/third-party-boot-path.test.mjs` and the site
   suite's stall check; the account is in the root `FINDINGS.md`.
+- **Netlify build minutes are a budget.** The production project is on legacy
+  Free: 300 build minutes a calendar month (Pacific), one production build of
+  about a minute per push to `master`. Deploy Previews are OFF on it on purpose
+  (2026-09-14; they were 69% of September's minutes). Do not re-enable them, add
+  a build hook or add a Netlify build trigger without reading "Netlify build
+  minutes" in the root `FINDINGS.md`. `scripts/netlify-ignore.mjs` skips builds
+  that cannot change the site, so a cancelled deploy with `[netlify-ignore] SKIP`
+  in its log is intentional, and "Clear cache and deploy project" forces one.
+  Widening what it skips needs the proofs in
+  `tests/static/netlify-ignore.test.mjs` extended first.
 - Dark theme only, never add a light theme or toggle. LF line endings, never
   CRLF. No asset build step at the root (`npm run build:site` only generates
   data-driven pages and stamps sitemaps at deploy), and effectively no npm dependencies: code

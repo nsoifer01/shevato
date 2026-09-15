@@ -8,6 +8,235 @@ Site-level knowledge that belongs to no single app: the marketing pages
 lives in `apps/<app>/FINDINGS.md`; this file follows the same living-document
 rule (rewrite, merge, delete; never an append-only diary).
 
+## Netlify build minutes: where they went, and the plan from 1 October (2026-09-14)
+
+Evidence: the Netlify API for the production project (account capabilities and
+usage, `build_settings`, all 475 retained deploys and 542 builds), nine deploy
+logs replayed through Netlify's log socket, an strace of a full
+`npm run build:site`, a tree-only mirror of every pull-request ref, and current
+Netlify documentation. Nothing was built to measure it.
+
+### The allowance
+
+- The production project `shevato` (id `fe5f021f`) belongs to team "Nikita
+  Soifer" (`nsoifer`) on the LEGACY Free plan (`type_slug: free-is-free`, no
+  payment method): `build_minutes.included: 300`, one concurrent build. The
+  duplicate `shevato-site` project builds on the other account's quota, not
+  this one.
+- The period is the calendar month in Pacific time: it started
+  `2026-09-01T00:00:00-07:00` and resets `2026-10-01T00:00:00-07:00` (07:00 UTC).
+  `netlify api getAccountBuildStatus --data '{"account_id":"5cc8698d7d8bfb2393910ada"}'`
+  gives `minutes.current` (326 on 14 September) and `previous` (319, August).
+- Counted, per Netlify's pricing FAQ: from `Fetching cached dependencies` to
+  just before `Starting post processing`, for production builds, Deploy
+  Previews and branch deploys alike, failed builds included. Post-processing,
+  "Site is live" and the cache upload fall outside it. `netlify deploy` from the
+  CLI costs nothing. What a build cancelled by an `ignore` command costs is not
+  documented.
+- `deploy_time` times 0.92 reproduced the counter twice: 327.2 raw minutes when
+  the account recorded passing 300 (13 September 22:17 UTC), 352.6 at the
+  reading of 326. The budget below uses that factor.
+- Over the limit, the docs say new builds stop for every site on the team while
+  sites keep serving. The account instead recorded
+  `usages_exceeded: build_minutes, limit_type: "unenforced"` and every later
+  build ran. Neither source explains the other, so treat a hard stop as
+  possible. The more dangerous limits are the others: exceeding bandwidth
+  (100 GB) or function invocations (125,000 per site) on legacy Free pauses
+  every site on the team. Neither is close.
+- Deploys are kept 30 days: the API's history starts on 2026-08-15 and the 67
+  older builds read `deleted`. The published deploy and the latest successful
+  production deploy are always kept, so rollback reaches back 30 days.
+- Credit-based plans are a one-way move off legacy. The new Free plan charges
+  15 of its 300 credits per production deploy (20 deploys a month); Personal is
+  $9 for 1,000 credits (about 66). This site ships 95-200 production deploys a
+  month, so neither fits, and neither is needed (see the budget).
+
+### Where the minutes went
+
+| Period (Pacific) | Production builds | raw min | Deploy Preview builds | raw min |
+|---|---|---|---|---|
+| 15-31 August | 70 (12 bot) | 65.4 | 119 (12 bot) | 143.1 |
+| 1-14 September | 93 (16 bot) | 107.4 | 183 (18 bot) | 246.5 |
+
+- Previews were 69% of September's minutes. A pull request built 1.65
+  (August) to 1.99 (September) previews, every previewed pull request then
+  built again as its production merge, and the Rising Shows bot's previews took
+  140-181 s each (they upload thousands of changed data files), the slowest
+  builds of the period.
+- Deploy Previews were switched off on 2026-09-14 (`build_settings.skip_prs:
+  true`). Production is what remains: 69 s average, 67 s median, 89 s slowest in
+  September, with 16, 12 and 14 production deploys on 6, 7 and 8 September.
+- No commit was built twice: no two retained deploys share a `commit_ref`. The
+  six `Skipped` builds were superseded in the queue and cost nothing.
+- Netlify runs no tests. `build:site` only generates; every test runs in
+  GitHub Actions, so there is no duplicated safety layer to remove.
+
+### Why Netlify builds
+
+| Event | Trigger | Build |
+|---|---|---|
+| Push to `master` (a squash merge, or the Rising Shows bot's merge commit) | GitHub App | production, about 1.1 billed min |
+| Pull request opened or updated | GitHub App | Deploy Preview, OFF since 2026-09-14 |
+| Push to any other branch | none (`allowed_branches: [master]`) | none |
+| Rising Shows refresh (daily 06:00 UTC, disabled until 1 October) | its merge to `master` | one production build a day, about 33 min a month |
+| Build hook, CLI deploy, workflow calling Netlify | none existed: `listSiteBuildHooks` is empty and every deploy to 14 September is `deploy_source: api`, `manual_deploy: false` | none |
+| Merge to `master` from 2026-09-15 to the 1 October reset | none: `build_settings.stop_builds: true`; each merge is built locally and published with `netlify deploy --prod --no-build` | none (a CLI deploy costs no build minutes) |
+
+Functions are bundled inside every build (1 s). There are no edge functions and
+no build plugins.
+
+### Where one build's time goes
+
+Nine logs, 2-14 September:
+
+| Step | Time |
+|---|---|
+| cache download and extract (391 MB, when the cache is not local) | 0-8 s |
+| repo prep and dependency install (npm itself reports 0.6 s, cached) | 5-8 s |
+| `fetch-data.js`, the pinned dataset | 3.4-4.3 s |
+| `build-show-pages.js`, 34,873 pages | 15-22 s |
+| `split-data.js`, 34,873 detail files | 4.4-6.3 s |
+| `build-publish-dir.mjs`, 70,789 files | 8-20 s, 18-20 on most |
+| functions bundling | 1 s |
+| deploy step, including 8-14 s hashing 70,789 files | 13-22 s |
+
+`build-publish-dir.mjs` awaits one `mkdir` and one `link` per file: 140,000
+thread-pool round trips. The same walk with synchronous calls, creating each
+directory once, ran in 4.4 s instead of 22.8 s locally and produced the
+identical file list with identical inodes. It has been synchronous since
+2026-09-15.
+Nothing else is worth changing: install is cached, generation scales with the
+dataset, and hashing is Netlify's.
+
+### The ignore rule: `scripts/netlify-ignore.mjs` (wired in `netlify.toml` 2026-09-15, running from 1 October)
+
+It skips a build only when every file that differs between the commit
+production serves and the commit being built is Markdown, under a `tests/`,
+`test/`, `tests-rules/` or `e2e/` directory, under the root `.github/`, or
+`eslint.config.mjs`, and is neither published nor under `netlify/`. Everything
+else builds.
+
+- **The baseline is what production serves, not `CACHED_COMMIT_REF`.** Netlify's
+  documented pattern diffs from the last commit the build CACHE saw, and the
+  docs do not say whether previews and production share that cache. If they do,
+  a squash merge whose tree a preview built would diff as empty and never
+  deploy. `scripts/stamp-release.mjs` stamps `COMMIT_REF` into
+  `assets/js/analytics.js`, so the script reads that file from the live site and
+  diffs from the commit it names. A stale read can only name an older commit,
+  and an older baseline builds.
+- **`--no-renames`.** With rename detection, a published file moved into
+  `tests/` lists only its new, inert-looking name.
+- **Fail-safe.** A missing variable, failed request, unstamped helper, unknown
+  or non-ancestor commit, or git error exits 1, and Netlify builds.
+- **Forcing a build** (an environment-variable change needs one): "Clear cache
+  and deploy project". Without a cache `CACHED_COMMIT_REF` equals
+  `COMMIT_REF`, which always builds. A build hook bypasses `ignore` entirely.
+- **Proofs.** `tests/static/netlify-ignore.test.mjs` classifies real merges,
+  drives every fail-safe path, runs real git histories (the rename, a docs
+  commit on top of an unshipped CSS change, a live commit on another branch,
+  non-ASCII paths), and derives from the real inputs that no inert file is
+  published or reached by the build command, the functions bundle or
+  `netlify.toml`, and that the script imports only builtins (Netlify runs
+  `ignore` on Node 18 without dependencies). The strace of `build:site` read no
+  inert file. Replayed over all 163 retained production deploys against the
+  blobless mirror, the script would have skipped 20 (21.9 raw minutes), and not
+  one blob differed among published files, build inputs or `netlify/` in any of
+  them. 14 of the 20 predate the publish directory (7 September), when Markdown
+  was still served, so they show today's rule on yesterday's commit shapes.
+  Run on Node 18.20.8 against the live site, a docs-only commit returned SKIP
+  (exit 0); the live commit and a CSS change returned BUILD (exit 1).
+- **Wider rules were measured and refused.** Treating non-build `scripts/` and
+  function tests as inert raised September's skip rate from 12% to 16%, and
+  everything plausible to 17%, at the price of maintaining a list of which
+  scripts the build runs.
+
+### Deploy Previews stay off
+
+- They cost more than production: 69% of September. None of the four preview
+  checks is required, and no workflow reads a preview URL.
+- A narrower policy, previews only for pull requests that touch Netlify config,
+  package manifests, `.nvmrc` or build scripts, still built 42-48 previews per
+  half month (about 130 raw minutes a month). Every other pull request push
+  would also start a build just to cancel it, and billing starts before an
+  `ignore` command can run.
+- What was given up: a pre-merge Netlify build (it caught the config schema
+  error on #506) and a preview URL. Production safety is unchanged: a failed
+  production build publishes nothing, and the previous deploy keeps serving.
+  The duplicate `shevato-site` project still builds previews on its own
+  account, but nothing may rely on it.
+
+### Budget
+
+Billed minutes a month, from September's per-build costs.
+
+| Month | Previews on (to 14 Sep) | Previews off (now) | + ignore rule | + publish dir (1 Oct) |
+|---|---|---|---|---|
+| Normal: August's volume, 95 production builds | 316 | 102 | 94 | 78 (26%) |
+| Heavy: 1-14 September's pace, 199 production builds | 699 | 212 | 193 | 161 (54%) |
+| Extreme: 1.5 times September's merges, 282 production builds | 989 | 299 | 271 | 226 (75%) |
+
+The normal row reproduces August's actual 319. The ignore column charges each
+skipped build 15 s, an upper bound on its undocumented cost. With both
+changes, 300 is reached at about 343 human merges a month (11 a day, every
+day); today's setup reaches it at 249, and the one before 14 September at 51.
+
+### 15 September to 1 October, and what to check after
+
+`netlify.toml` has named the script as `ignore`, and `build-publish-dir.mjs`
+has been synchronous, since 2026-09-15. That day Netlify builds on the
+production project were stopped (`build_settings.stop_builds: true`) so that
+nothing could spend any more of September's minutes. Until the 1 October reset
+every merge to `master` is published by hand: `npm run build:site` in a clean,
+detached checkout of `origin/master`, then `netlify deploy --no-build --dir
+dist --functions netlify/functions --prod`. With no `COMMIT_REF`,
+`scripts/stamp-release.mjs` stamps `git rev-parse HEAD`, so the release id
+production serves still names the exact commit it was built from, and that is
+the baseline the ignore rule reads. A deploy from a dirty tree would break that
+promise; a deploy from an unpushed commit is caught, because the commit is not
+in Netlify's clone and the rule builds.
+
+After the reset `stop_builds` goes back to `false`, merges build on Netlify
+again, and the ignore rule decides each one:
+
+- The first Netlify build compares against the last CLI deploy's commit. If
+  only inert files changed since then it is cancelled, which is correct. To
+  force it anyway use "Clear cache and deploy project", or
+  `netlify api createSiteBuild` with `"clear_cache": true` in the body.
+- A relevant commit's log shows `[netlify-ignore] BUILD: ...` and deploys as
+  before, and the gap between the last `[stamp-sitemap-index]` line and
+  `[publish]` is a few seconds, not 18-20.
+- A deploy for a commit that changed only docs, tests, workflows or the lint
+  config is cancelled with `[netlify-ignore] SKIP: ...` naming only inert
+  files, and production's `analytics.js` still names the previous commit.
+  Compare that deploy's `deploy_time` and the account minutes before and after
+  it to learn what a cancelled build really costs; the budget above assumes
+  15 s.
+- The Rising Shows refresh always builds: its merge changes published data
+  files.
+
+Rollback: revert the change (the revert touches `netlify.toml`, so it builds).
+To force a build at any moment, "Clear cache and deploy project"; it also ships
+anything a skip ever held back. "Publish deploy" restores any deploy from the
+last 30 days.
+
+### Rejected
+
+- **Promoting a Deploy Preview to production instead of rebuilding.** It is not
+  a documented feature, and a preview is built in the `deploy-preview` context
+  and stamped with the pull request's commit, not the commit on `master`.
+- **Deploying from GitHub Actions with `netlify deploy --prod`** (zero Netlify
+  minutes). It means a custom pipeline plus an account-wide token in repository
+  secrets, for a site the October setup already keeps at 26-54%.
+- **Caching generated pages between builds** with a local build plugin. It saves
+  about 12 s a build, against a cache key that must name every generator input
+  or production ships stale pages.
+- **Batching or delaying production deploys, or refreshing Rising Shows less
+  often** (33 minutes a month). Both trade what the site serves for minutes the
+  budget no longer needs.
+- **`NPM_FLAGS=--omit=dev`.** npm install already takes 0.6 s from cache.
+- **A credit-based plan.** Irreversible, and 20 or 66 production deploys a month
+  is below what this site ships.
+
 ## Why pull-request CI failed, and what the pipeline is now (2026-09-14)
 
 Evidence: the 400 most recent Actions runs (2026-09-08 to 09-14), every failed
