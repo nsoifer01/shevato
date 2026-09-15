@@ -2830,8 +2830,12 @@ explanation bullet: a percentage beside the word certainty reads as a
 probability, which `confidence.js` exists to refuse. Both now say "a projection
 2 gameweeks ahead, so it is less certain than this week's plan", from
 `plan.gwsAhead` (set in `planFromScored`, 0 for the current plan) through one
-shared `projectionDistance()`. The discount still rides on the reason's
-`value`. A stored plan without `gwsAhead` gets the unnumbered sentence rather
+shared `projectionDistance()`. The distance is the reason's `value` (unit
+`count`), not the discount: every reason's sentence must carry its own value,
+and `tests/explain.test.mjs` sweeps every sentence for exactly that. The first
+cut printed the distance while leaving 0.85 on `value`, and that sweep failed
+it. The discount is still on the confidence factor as `certainty`. A stored
+plan without `gwsAhead` gets the unnumbered sentence, with no value, rather
 than a wrong number.
 
 One nuance the tags cannot carry: the engine only ever SUBTRACTS confidence. A

@@ -192,6 +192,7 @@ test('a projection for a later gameweek can never reach the top band', () => {
   // A plan that does not say how far ahead it is gets the unnumbered sentence.
   assert.match(next.reason, /this is a projection for a later gameweek, so it is less certain than this week's plan/);
   assert.doesNotMatch(next.reason, /certainty|\d+%/, 'the discount is never printed as a percentage');
+  assert.equal(next.factors.find(f => f.key === 'reach').value, null, 'no distance, no number');
 });
 
 test('a projected plan names its distance in gameweeks, never the discount as a percentage', () => {
@@ -205,8 +206,8 @@ test('a projected plan names its distance in gameweeks, never the discount as a 
   assert.equal(reach(three).text, "this is a projection 3 gameweeks ahead, so it is less certain than this week's plan");
   assert.doesNotMatch(one.reason, /certainty|\d+%/);
   assert.doesNotMatch(three.reason, /certainty|\d+%/);
-  assert.equal(reach(one).value, 0.85, 'the discount still rides on the value');
-  assert.equal(reach(three).value, 0.61);
+  assert.equal(reach(one).value, 1, 'the number in the sentence is its value');
+  assert.equal(reach(three).value, 3);
 });
 
 test('this gameweek is firmer than the same plan one gameweek out', () => {

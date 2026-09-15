@@ -545,13 +545,15 @@ export function explainPlan(plan, context = {}) {
     bullets.push(makeReason('squad_changed', `${REBUILD_NOTICE} It now holds {v} of your players.`, plan.squad.length, 'count'));
   }
   if (ctx.projected) {
+    // Distance in gameweeks rather than "N% as certain as this week", which read
+    // as a probability. The distance is the value, so the sentence still carries
+    // its own number.
+    const distance = projectionDistance(plan);
     bullets.push(makeReason(
       'projected_plan',
-      // Distance in gameweeks rather than "{v} as certain as this week", which
-      // read as a probability; the discount stays on `value`.
-      `This is ${projectionDistance(plan)}, so it is less certain than this week's plan and will be recomputed nearer the deadline.`,
-      plan.confidence === undefined ? 1 : plan.confidence,
-      'percent',
+      `This is ${distance.phrase}, so it is less certain than this week's plan and will be recomputed nearer the deadline.`,
+      distance.value,
+      distance.unit,
     ));
   }
 

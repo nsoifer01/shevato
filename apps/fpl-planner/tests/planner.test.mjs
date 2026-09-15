@@ -687,8 +687,9 @@ test('the current recommendation and the projected plans are distinguished, and 
     if (k > 0) assert.ok(plan.confidence < bundle.future[k - 1].confidence, 'certainty decays with distance');
     const projected = plan.explanation.bullets.find(b => b.code === 'projected_plan');
     assert.ok(projected, 'a projected plan says so in its own explanation');
-    assert.equal(projected.value, plan.confidence);
     assert.equal(plan.gwsAhead, k + 1, 'a projected plan records how far ahead it is');
+    assert.equal(projected.value, plan.gwsAhead, 'the number in the sentence is its value');
+    assert.equal(projected.unit, 'count');
     assert.ok(projected.text.includes(`a projection ${k + 1} gameweek${k === 0 ? '' : 's'} ahead`), projected.text);
     assert.doesNotMatch(projected.text, /\d+%|as certain as/, 'the discount is never printed as a percentage');
   });
