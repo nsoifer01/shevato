@@ -21,7 +21,7 @@
 //
 // The fixtures are derived by scripts/derive-gw4-fixtures.mjs.
 
-import { test } from 'node:test';
+import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
@@ -38,8 +38,19 @@ import {
 } from '../js/engine/readiness.js';
 import { buildSquadState } from '../js/engine/squad.js';
 import { buildPlan } from '../js/engine/planner.js';
+import { counterfactual } from '../js/engine/counterfactual.js';
+import { installDom, walk } from './helpers/mini-dom.mjs';
 
 const { gameweekLifecycle, matchesPlayedByClub } = lifecycleModule;
+
+// The two tests at the bottom read the rendered hero, because the pause being
+// CORRECT in the engine was never the problem: it was correct in both live
+// incidents while the card printed the numbers anyway.
+const teardownDom = installDom();
+after(() => teardownDom());
+
+/** Every string the rendered node would put on screen. */
+const screenText = (node) => [...walk(node)].map((n) => n.textContent || n.text || '').join(' ');
 
 const DIR = join(dirname(fileURLToPath(import.meta.url)), 'fixtures', 'gw4-2026');
 const J = (f) => JSON.parse(readFileSync(join(DIR, f), 'utf8'));
@@ -353,6 +364,69 @@ test('the collapsed reading, if it ever comes back, still pauses every recommend
   const bundle = await buildPlan({ gameState: gs, squadState, options: { horizon: 3 }, now: NOW });
   assert.equal(bundle.dataStatus.readiness.level, LEVEL.DISPLAY, 'the plan carries the pause');
   assert.equal((bundle.current.transfersOut || []).length, 0, 'and proposes no transfer');
+});
+
+/* ======================================================================== */
+/* A PAUSE HAS TO WITHHOLD THE NUMBER, NOT SIT NEXT TO IT                    */
+/* ======================================================================== */
+
+// Both live incidents ended here rather than in the engine. The ladder refused,
+// assessConfidence returned the `unusable` band, and the hero card printed
+// "Recommendations paused" directly above a captain worth "1.0 xP doubled" and
+// a 7.5 xP gameweek total. A caption does not unsay a number.
+
+/** The gw4 world with the collapsed reading forced, planned. */
+async function pausedBundle() {
+  const gs = world(payload());
+  for (const p of gs.players.values()) p.evidenceMatches = gs.rules.totalEvents;
+  const gw = gameweekLifecycle(gs, { now: NOW }).planGw;
+  const squadState = buildSquadState({ entry: null, history: null, transfers: null, picks: null, gameState: gs, gw });
+  const bundle = await buildPlan({ gameState: gs, squadState, options: { horizon: 3 }, now: NOW });
+  assert.ok(!bundle.dataStatus.readiness.allow.lineup, 'this fixture must actually be paused');
+  return { gs, gw, bundle };
+}
+
+test('the hero states no projected number while the projections are paused', async () => {
+  const { gs, gw, bundle } = await pausedBundle();
+  const { heroCard } = await import('../js/ui/dashboard.js');
+  const event = gs.events.find((e) => e.id === gw) || null;
+  const text = screenText(heroCard({ bundle, gameState: gs, event, now: NOW }));
+
+  assert.match(text, /paused/i, 'the card must say why it is not answering');
+  // The three figures the incidents put on screen. Any "N xP" at all is the
+  // claim being made, so none of them may survive the pause.
+  assert.equal(/\bxP\b/.test(text), false, `the hero quoted a projection while paused: ${text}`);
+  assert.equal(/xP doubled/.test(text), false, 'the captain line quoted a doubled projection while paused');
+  assert.equal(/Projected points/.test(text), false, 'the projected-points fact rendered while paused');
+});
+
+test('the hero states its numbers again once the reading is sound', async () => {
+  // The guard above must not be a blanket silence: the same card on the same
+  // fixture, read correctly, still answers.
+  const gs = world(payload());
+  const gw = gameweekLifecycle(gs, { now: NOW }).planGw;
+  const squadState = buildSquadState({ entry: null, history: null, transfers: null, picks: null, gameState: gs, gw });
+  const bundle = await buildPlan({ gameState: gs, squadState, options: { horizon: 3 }, now: NOW });
+  assert.ok(bundle.dataStatus.readiness.allow.lineup, 'the healthy fixture must not be paused');
+  const { heroCard } = await import('../js/ui/dashboard.js');
+  const text = screenText(heroCard({ bundle, gameState: gs, event: gs.events.find((e) => e.id === gw) || null, now: NOW }));
+  assert.match(text, /xP/, 'a sound reading must still state the projection');
+  assert.match(text, /Projected points/, 'and still show the projected-points fact');
+});
+
+test('"why not this player" refuses while the projections are paused', async () => {
+  const { gs, bundle } = await pausedBundle();
+  // A counterfactual re-runs the optimizer off the same projections and used to
+  // ask nothing: during both incidents it would answer "why not Haaland?" with a
+  // worded verdict and a point delta while every other surface said paused.
+  const outsider = [...gs.players.values()].find((p) => !bundle.current.squad.includes(p.id));
+  const answer = counterfactual(outsider.id, { planBundle: bundle, gameState: gs, rules: gs.rules });
+
+  assert.equal(answer.verdict, 'unknown', `published a verdict while paused: ${answer.headline}`);
+  assert.equal(answer.deltaHorizon, null, 'published a points delta while paused');
+  assert.deepEqual(answer.rows, [], 'published a comparison table while paused');
+  assert.match(answer.headline, /paused/i);
+  assert.equal(answer.blockers[0].code, 'data_unusable');
 });
 
 test('season counts served as strings project exactly as the numbers do', () => {

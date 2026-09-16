@@ -261,3 +261,50 @@ export function pausedHeadline(readiness) {
   if (!readiness.allow.transfers) return 'Transfer and chip advice paused';
   return 'Chip advice paused';
 }
+
+// THE INVARIANT AT THE POINT OF PRODUCTION
+// ----------------------------------------
+// Both live-season incidents ended the same way: the ladder correctly refused
+// to recommend, `assessConfidence` correctly returned the `unusable` band, and
+// the dashboard printed "Recommendations paused" NEXT TO "7.5 xP", a captain
+// "1.0 xP doubled" and a projected total. The refusal was a caption on the
+// numbers, not a refusal to state them, and a number on screen is a claim
+// whatever the label beside it says.
+//
+// The shared root cause under both incidents is not a football question, it is
+// a freshness one: every vintage signal is a ratio whose numerator and
+// denominator are refreshed by DIFFERENT, independently observable events.
+// Season totals roll over at one instant and the finished-fixture count rolls
+// over per match, hours later (GW1). Starts are credited at kickoff and the
+// played-out count moves at full time, up to two hours later (GW4). The
+// bootstrap and fixtures caches expire on different TTLs, so the totals can
+// lead the fixture list by half an hour (not yet triggered, held off only by a
+// one-match tolerance). Each time the window opens, the ratio inverts and
+// every projection downstream is wrong while looking ordinary.
+//
+// The ladder is the right place to DECIDE that. These two predicates are the
+// place to ENFORCE it, so a new surface that forgets to ask cannot quietly
+// become the next one that publishes garbage confidently.
+
+/**
+ * May a number derived from the projections be shown as a fact?
+ *
+ * Lineup level is the threshold because that is the first rung that claims the
+ * projections describe football at all: below it the ladder has already found
+ * the evidence unusable, or the projections collapsed, implausible or
+ * inverted, and every xP downstream is an artefact of that.
+ */
+export function canQuoteProjections(readiness) {
+  return !readiness || readiness.allow.lineup === true;
+}
+
+/**
+ * May one player be compared against another and a verdict published?
+ *
+ * Transfer level, because a counterfactual IS a transfer recommendation
+ * wearing a question mark: "you would gain 2.1 points" is the same claim as
+ * "make this transfer", and it must not outrun what the ladder allows.
+ */
+export function canCompareSquads(readiness) {
+  return !readiness || readiness.allow.transfers === true;
+}
