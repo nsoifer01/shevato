@@ -1013,7 +1013,7 @@ function submitSidebarGame() {
             return;
         }
         if (window.updateUI) window.updateUI();
-        
+
         // Add to history for undo/redo
         if (window.addToHistory) {
             window.addToHistory({
@@ -1021,7 +1021,15 @@ function submitSidebarGame() {
                 data: newGame
             });
         }
-        
+
+        // The completion half of the match_form_opened funnel. Whether the
+        // game went to penalties only, never scores, teams or notes.
+        if (typeof window !== 'undefined' && window.shevatoAnalytics) {
+            try {
+                window.shevatoAnalytics.trackAction('match_logged', { has_shootout: penaltyWinner !== null });
+            } catch (e) { /* analytics must never break the app */ }
+        }
+
         // Show success and close form
         if (window.showToast) window.showToast('Game added successfully!', 'success');
         closeSidebarGameForm();

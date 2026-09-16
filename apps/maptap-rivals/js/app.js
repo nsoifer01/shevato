@@ -1226,6 +1226,7 @@
     }
     const maptapUsername = normalizeMapTapUsername($('#rival-maptap-username').value);
     let saved = null;
+    const isNewRival = !state.editingRivalId;
     if (state.editingRivalId) {
       const r = state.rivals.find(x => x.id === state.editingRivalId);
       if (r) {
@@ -1247,6 +1248,9 @@
       state.rivals.push(saved);
     }
     persistRivals();
+    // Funnel start: pairs with games_logged to show how many added rivals
+    // ever get a game logged against them. No params: just that one exists.
+    if (isNewRival && saved) track('trackAction', 'rival_added');
     // Network side-effects are fire-and-forget: the rival is already saved
     // locally, and both calls no-op when we are not on the network.
     netFire(publishNetworkDoc());

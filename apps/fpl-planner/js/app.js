@@ -51,9 +51,10 @@ import { createPlayerDrawer } from './ui/player-drawer.js';
 /* --------------------------------------------------------------- analytics */
 
 // Resolved at call time because /assets/js/analytics.js is deferred and this
-// module can run first. The privacy policy commits this app to exactly one
-// event, carrying the optimizer duration and the model version: never the team
-// ID, the squad, a player name or a transfer.
+// module can run first. The privacy policy commits this app to exactly two
+// events: team_connected (has_history only) when a Team ID is validated, and
+// gameweek_plan_calculated (optimizer duration + model version) when a plan
+// is built. Never the team ID, the squad, a player name or a transfer.
 function track(method, ...args) {
   try {
     const a = typeof window !== 'undefined' ? window.shevatoAnalytics : null;
@@ -423,7 +424,7 @@ async function computePlan(squadState, { reason }) {
 
   persistPlan(bundle, record);
 
-  // The one analytics event this app sends. Duration and model version only.
+  // The terminal half of the team_connected funnel. Duration and model version only.
   track('trackAction', 'gameweek_plan_calculated', {
     optimizer_ms: Math.round(bundle.dataStatus.durationMs || 0),
     model_version: bundle.dataStatus.modelVersion,
@@ -503,7 +504,14 @@ async function connectAndPlan({ reason = 'first-calculation' } = {}) {
     // The link is saved as soon as the API confirms the team exists, not when a
     // plan is finished: pre-season there is no plan to finish, and the ID still
     // has to survive a reload and reach the user's other devices.
-    if (!state.sample) store.setTeamId(state.teamId);
+    if (!state.sample) {
+      store.setTeamId(state.teamId);
+      // Funnel start: pairs with gameweek_plan_calculated to show how many
+      // validated teams ever reach a plan (a pre-season team may not).
+      track('trackAction', 'team_connected', {
+        has_history: Array.isArray(state.history && state.history.past) && state.history.past.length > 0,
+      });
+    }
 
     if (state.preSeason) {
       // A squad built or typed on an earlier visit comes back, rather than the

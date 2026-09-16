@@ -23,7 +23,7 @@
   // js/app.js, in index.html and in sw.js's PRECACHE list alike. Bumping the
   // cache-buster without bumping this number is what made "build 31" outlive
   // v=32..38 and stop identifying anything.
-  const TP_BUILD = 82;
+  const TP_BUILD = 83;
   const LS_KEY = 'trip-planner:v1';
   // Which trip THIS DEVICE has open. Navigation, not data: it is not part of
   // the synced value and is deliberately absent from app-sync-init.js's key
@@ -5221,6 +5221,9 @@
       // land on Timeline (and its empty state) instead of an empty map. The
       // render below repaints the view and syncViewHash clears the fragment.
       ui.view = 'timeline';
+      // Funnel start: pairs with trip_shared to show how many new trips are
+      // ever shared. No params: not even a name leaves this app.
+      track('trackAction', 'trip_created');
     } else {
       const t = editTrip;
       if ((t.currency || 'USD') !== currency) stampCostCurrencies(t, t.currency || 'USD');

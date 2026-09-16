@@ -262,7 +262,11 @@ function toggleSidebarRaceForm() {
         form.classList.add('open');
         button.classList.add('active');
         sidebarRaceFormOpen = true;
-        
+
+        // Funnel start: how many people who open the add-race form ever
+        // reach race_logged (dataManager.js).
+        track('trackAction', 'race_form_opened');
+
         // Focus first input after animation completes
         setTimeout(() => {
             const firstInput = form.querySelector('input[type="number"]');

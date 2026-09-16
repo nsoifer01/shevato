@@ -1597,6 +1597,18 @@ case 'toggle-warmup':
 
         this.currentWorkoutSession.startWorkout();
 
+        // Funnel start: pairs with workout_completed to show how many started
+        // sessions are ever finished. No params: which program it was is not
+        // sent anywhere else in this app's analytics either. Guarded inline
+        // (not the imported `track` shim) so this survives being extracted
+        // and executed on its own in tests, the way dataManager.js does it
+        // for mario-kart's race_logged.
+        if (typeof window !== 'undefined' && window.shevatoAnalytics) {
+            try {
+                window.shevatoAnalytics.trackAction('workout_started');
+            } catch (e) { /* analytics must never break the app */ }
+        }
+
         // GT-07: a NEW workout gets a clean finish form. Reopening the finish
         // dialog for the SAME session keeps whatever the user typed.
         this.resetFinishWorkoutForm();
@@ -1690,6 +1702,15 @@ case 'toggle-warmup':
         });
 
         this.currentWorkoutSession.startWorkout();
+
+        // Funnel start: pairs with workout_completed to show how many started
+        // sessions are ever finished. No params, same as the program path.
+        // Guarded inline for the same reason as startWorkout() above.
+        if (typeof window !== 'undefined' && window.shevatoAnalytics) {
+            try {
+                window.shevatoAnalytics.trackAction('workout_started');
+            } catch (e) { /* analytics must never break the app */ }
+        }
 
         // GT-07: a NEW workout gets a clean finish form.
         this.resetFinishWorkoutForm();
