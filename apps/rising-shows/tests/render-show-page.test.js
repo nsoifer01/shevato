@@ -5,6 +5,7 @@ const assert = require('node:assert/strict');
 
 const {
   renderShowPage, buildDescription, buildTvSeasonSchema, renderSeasonNav, normalizeProviders,
+  SHAPE_LABELS, SHAPE_DESCS,
 } = require('../scripts/render-show-page.js');
 const { groupBySeries } = require('../scripts/build-show-pages.js');
 
@@ -708,4 +709,40 @@ test('a finished show carries no still-airing marker anywhere on its page', () =
   delete finished.seasons[3].inProgress;
   assert.doesNotMatch(renderShowPage({ ...finished, ...computeDominantShape(finished) }), /Still airing/);
   assert.doesNotMatch(renderShowPage({ ...BREAKING_BAD, ...computeDominantShape(BREAKING_BAD) }), /Still airing/);
+});
+
+// The generated pages are where essentially all of this app's inbound traffic
+// lands (717 arrivals on show pages against 9 who reached the finder, GA4 over
+// 60 days to 2026-09-15), and they used to badge the shape without defining it
+// anywhere a visitor would see: the only definition was a hover-only `title`
+// on the season chips, and the prose explainer sat below the whole grid.
+test('a show page explains its trajectory in plain English and links into a pre-filtered finder', () => {
+  const html = renderShowPage({ ...BREAKING_BAD, dominantShape: 'rising', dominantShapeSlug: 'rising' });
+  const m = /<p class="show-trajectory">([\s\S]*?)<\/p>/.exec(html);
+  assert.ok(m, 'the hero must carry a trajectory explainer');
+  const text = m[1];
+  assert.match(text, /<strong>Rising trajectory:<\/strong>/);
+  // The definition itself, taken from SHAPE_DESCS rather than written twice.
+  assert.match(text, /each season at least as good as the last/);
+  // Why a reader should care, not just what the word means.
+  assert.match(text, /shape<\/em> of their rating trend rather than one average score/);
+  // The way onward is a PRE-FILTERED finder view, not the app's front door.
+  assert.match(text, /href="\/apps\/rising-shows\/#shape=rising"/);
+});
+
+test('every shape label the pages can print has a plain-English definition', () => {
+  // A shape with a label but no description would render "X trajectory:" and
+  // then jump straight to the generic sentence, which reads as a missing word.
+  for (const shape of Object.keys(SHAPE_LABELS)) {
+    assert.ok(SHAPE_DESCS[shape], `${shape} has a label but no SHAPE_DESCS entry`);
+  }
+});
+
+test('a show with no dominant shape still explains what the app sorts by', () => {
+  const html = renderShowPage({ ...BREAKING_BAD, dominantShape: null, dominantShapeSlug: null });
+  const m = /<p class="show-trajectory">([\s\S]*?)<\/p>/.exec(html);
+  assert.ok(m, 'a shapeless show still gets the concept explained');
+  assert.match(m[1], /do not settle into one shape/);
+  // Nothing to pre-filter by, so it must not invent a shape link.
+  assert.equal(/#shape=/.test(m[1]), false, 'a shapeless show must not link to a shape filter');
 });

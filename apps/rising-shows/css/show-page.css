@@ -216,6 +216,21 @@ main { max-width: 1080px; margin: 0 auto; padding: 24px; }
 .show-stats dd { margin: 2px 0 0; font-size: 15px; }
 .show-stats .muted { color: var(--muted); font-size: 13px; }
 
+/* The trajectory explainer: the first thing on the page that says what a
+   "shape" is, for a reader who arrived from a search engine and has never
+   seen this taxonomy. Sits directly above the CTAs it explains. */
+.show-trajectory {
+  margin: 0 0 18px;
+  max-width: 60ch;
+  padding: 12px 14px;
+  border-left: 3px solid var(--accent, #f5c518);
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 0 8px 8px 0;
+  line-height: 1.5;
+}
+.show-trajectory strong { color: var(--accent, #f5c518); }
+.trajectory-link { white-space: nowrap; }
+
 .hero-actions { display: flex; gap: 12px; flex-wrap: wrap; }
 .primary-btn, .secondary-btn, .app-btn {
   display: inline-block; padding: 10px 16px; border-radius: 8px;

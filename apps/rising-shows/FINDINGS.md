@@ -3,6 +3,44 @@
 A living document: best current understanding, not a diary. See the
 repo-root `CLAUDE.md` for the convention.
 
+## The generated pages never said what a shape is (2026-09-16)
+
+Measured over 60 days to 2026-09-15, GA4 with the owner excluded:
+
+| Where | Views | Users |
+|---|---:|---:|
+| generated show pages | 743 | 717 |
+| the finder itself | 24 | 9 |
+
+So essentially all inbound traffic lands on a generated page, and almost none
+of it continues into the app. (Read that reach with care: those sessions fire
+zero `scroll` events and only 60 `user_engagement` events across 35 countries,
+which is a crawler signature more than an audience. The funnel shape is still
+the point.)
+
+The pages were not the problem people assumed. Pre-filtered deep links into
+the finder ALREADY existed and already worked: `#shape=<slug>` is parsed by
+`parseFinderQuery` in `finder-lib.js`, which the browser and the page builder
+both require, and the hero CTA plus the sticky banner have pointed at it for
+months. What was missing was the sentence that makes anyone want to follow it.
+A visitor met the shape as a coloured badge, and the only definition on the
+page was a `title` tooltip on the season chips, which is hover-only and so
+does nothing at all on a phone. The one prose explainer lived in
+`index.html`'s `.app-about`, below the entire results grid and pager.
+
+`SHAPE_DESCS` was already defined in `render-show-page.js` and read only by
+`render-shape-hub.js`. It now prints in the hero, above the CTAs it explains,
+as `renderTrajectoryLine()`: the shape named and defined in plain English,
+one sentence on why trend shape is a different question from average score,
+and the pre-filtered link. Shows with no dominant shape (about a quarter of
+the catalogue) get the concept without an invented shape link.
+
+Pinned by three tests in `tests/render-show-page.test.js`, including one that
+asserts every entry in `SHAPE_LABELS` has a `SHAPE_DESCS` definition, because
+a label without one renders "X trajectory:" and then jumps to the generic
+sentence, which reads as a missing word rather than as a bug.
+
+
 ## The boot payload was uncacheable, and revalidating it did nothing (2026-09-16)
 
 `shows-index.json` is 16,766,995 bytes of JSON, 3.12 MB once Netlify
