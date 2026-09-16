@@ -367,6 +367,44 @@ export async function run({ base, cdpPort }) {
       const tip = await txt(s, '#heatmap-tap-tip');
       await rec('D9: tapping a heatmap cell writes its day tooltip into a live region',
         !!cellBox && tip === cellBox.title, `tip:${tip} title:${cellBox && cellBox.title}`, s);
+      // D19: the calendar heatmap used to be a wall of coloured <span>s with an
+      // onclick and nothing else: no role, no tabindex, no key handler, and
+      // win/loss/tie told apart by background colour alone. A keyboard could
+      // not reach a single day, so the live-region text a tap produces was
+      // unreachable too.
+      const a11y = await evaluate(s, `(()=>{const cells=[...document.querySelectorAll('#heatmap-grid .heatmap-cell:not(.heatmap-empty)')];
+        return {n:cells.length,
+          roles:cells.every(c=>c.getAttribute('role')==='button'),
+          labels:cells.every(c=>(c.getAttribute('aria-label')||'').length>3),
+          tabbable:cells.filter(c=>c.getAttribute('tabindex')==='0').length,
+          padHidden:[...document.querySelectorAll('#heatmap-grid .heatmap-empty')].every(c=>c.getAttribute('aria-hidden')==='true')}})()`);
+      await rec('D19: every heatmap day is a labelled button and the grid is ONE tab stop',
+        a11y.n > 0 && a11y.roles && a11y.labels && a11y.tabbable === 1 && a11y.padHidden, JSON.stringify(a11y), s);
+
+      // Outcome must survive without colour. A cell is ~10px on a phone, so a
+      // letter does not fit; the outline convention is the one the
+      // round-by-round heatmap in this app already uses.
+      const shapes = await evaluate(s, `(()=>{const one=sel=>{const c=document.querySelector(sel);if(!c)return null;const o=getComputedStyle(c);return o.outlineStyle+' '+o.outlineWidth};
+        return {loss:one('#heatmap-grid .heatmap-L'),tie:one('#heatmap-grid .heatmap-T'),win:one('#heatmap-grid .heatmap-W')}})()`);
+      await rec('D19: loss and tie carry a non-colour channel (outline), win stays plain',
+        (!shapes.loss || /solid/.test(shapes.loss)) && (!shapes.tie || /dashed/.test(shapes.tie)) && !!(shapes.loss || shapes.tie),
+        JSON.stringify(shapes), s);
+
+      // Arrow keys move within the grid, Enter announces, both through the
+      // same live region a tap uses.
+      const start = await evaluate(s, `(()=>{const c=document.querySelector('#heatmap-grid .heatmap-cell[tabindex="0"]');if(!c)return null;c.focus();return {label:c.getAttribute('aria-label'),row:c.getAttribute('data-row'),col:c.getAttribute('data-col')}})()`);
+      await pressKey(s, 'ArrowLeft', 'ArrowLeft', 37);
+      await sleep(120);
+      const moved = await evaluate(s, `(()=>{const a=document.activeElement;if(!a||!a.getAttribute)return null;return {label:a.getAttribute('aria-label'),row:a.getAttribute('data-row'),col:a.getAttribute('data-col'),tabbable:a.getAttribute('tabindex')}})()`);
+      await rec('D19: ArrowLeft moves focus one week back and takes the tabindex with it',
+        !!start && !!moved && moved.row === start.row && Number(moved.col) === Number(start.col) - 1 && moved.tabbable === '0',
+        `${JSON.stringify(start)} -> ${JSON.stringify(moved)}`, s);
+      await pressKey(s, 'Enter', 'Enter', 13);
+      await sleep(200);
+      const keyTip = await txt(s, '#heatmap-tap-tip');
+      await rec('D19: Enter on a focused day announces it in the same live region a tap uses',
+        !!moved && keyTip === moved.label, `tip:${keyTip} label:${moved && moved.label}`, s);
+
       const overflow = await evaluate(s, 'document.documentElement.scrollWidth>document.documentElement.clientWidth');
       await rec('D9: the rival view has no horizontal page overflow at 390', !overflow, '', s);
     } finally { await closePage(cdpPort, s); }

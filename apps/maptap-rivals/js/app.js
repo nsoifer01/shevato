@@ -4192,6 +4192,28 @@
       `grid-template-columns:repeat(${weeks.length},1fr);` +
       `gap:${GAP}px;` +
       `width:100%;`;
+    // One tab stop for the whole calendar, not one per day: this grid is up to
+    // 80 weeks wide on a desktop (about 560 cells), and putting every cell in
+    // the tab order would make crossing the widget a few hundred key presses.
+    // Arrow keys move within it, which is the roving-tabindex pattern.
+    gridEl.setAttribute('role', 'group');
+    gridEl.setAttribute('aria-label', 'Daily results calendar. Use the arrow keys to move between days.');
+    // (col,row) -> cell, so an arrow key can find its neighbour without
+    // depending on DOM order, which is week-major and has padding cells in it.
+    const cellAt = new Map();
+    const cellKey = (col, row) => `${col}:${row}`;
+
+    // The live region under the grid already exists for taps (hover tooltips do
+    // not exist on a touch screen). Keyboard activation writes to the same
+    // node rather than inventing a second announcement channel.
+    const announceDay = (text) => {
+      let tip = $('#heatmap-tap-tip');
+      if (!tip) {
+        tip = el('div', { id: 'heatmap-tap-tip', class: 'heatmap-tap-tip', role: 'status', 'aria-live': 'polite' });
+        gridEl.parentElement.appendChild(tip);
+      }
+      tip.textContent = text;
+    };
 
     for (let wi = 0; wi < weeks.length; wi++) {
       const days = weeks[wi]; // array of ISO strings (1–7 items)
@@ -4202,6 +4224,8 @@
       for (let pad = 0; pad < firstDow; pad++) {
         const empty = el('span', {
           class: 'heatmap-cell heatmap-empty',
+          // Padding before the first Sunday: no day, nothing to announce.
+          'aria-hidden': 'true',
           style: `grid-column:${wi + 1};grid-row:${pad + 1};`,
         });
         gridEl.appendChild(empty);
@@ -4215,21 +4239,75 @@
         const cell = el('span', {
           class: cls,
           title,
+          // The same sentence the tooltip and the tap tip use. Without it a
+          // screen reader reaches a coloured span with no text at all: `title`
+          // is not reliably announced, and the colour is not text.
+          'aria-label': title,
+          role: 'button',
+          tabindex: '-1',
+          'data-col': String(wi + 1),
+          'data-row': String(dow + 1),
           style: `grid-column:${wi + 1};grid-row:${dow + 1};`,
           // Hover tooltips do not exist on touch screens: a tap writes the
-          // same text into the live region under the grid.
-          onclick: () => {
-            let tip = $('#heatmap-tap-tip');
-            if (!tip) {
-              tip = el('div', { id: 'heatmap-tap-tip', class: 'heatmap-tap-tip', role: 'status', 'aria-live': 'polite' });
-              gridEl.parentElement.appendChild(tip);
+          // same text into the live region under the grid. Enter and Space do
+          // the same thing for a keyboard, through the same helper.
+          onclick: () => announceDay(title),
+          onkeydown: (ev) => {
+            if (ev.key === 'Enter' || ev.key === ' ' || ev.key === 'Spacebar') {
+              ev.preventDefault();
+              announceDay(title);
             }
-            tip.textContent = title;
           },
         });
+        cellAt.set(cellKey(wi + 1, dow + 1), cell);
         gridEl.appendChild(cell);
       }
     }
+
+    // Roving tabindex: exactly one cell is tabbable at a time. Seed it on the
+    // most recent day, which is the one a reader almost always wants first.
+    const focusables = [...cellAt.values()];
+    let roving = focusables[focusables.length - 1] || null;
+    if (roving) roving.setAttribute('tabindex', '0');
+
+    const moveTo = (cell) => {
+      if (!cell || cell === roving) return;
+      if (roving) roving.setAttribute('tabindex', '-1');
+      roving = cell;
+      roving.setAttribute('tabindex', '0');
+      roving.focus();
+    };
+
+    gridEl.onkeydown = (ev) => {
+      const from = ev.target;
+      if (!from || !from.getAttribute || from.getAttribute('role') !== 'button') return;
+      const col = Number(from.getAttribute('data-col'));
+      const row = Number(from.getAttribute('data-row'));
+      // Left/Right walk the calendar a week at a time (a column is a week);
+      // Up/Down walk within the week. Home/End jump to the ends of the run.
+      const step = {
+        ArrowLeft: [col - 1, row], ArrowRight: [col + 1, row],
+        ArrowUp: [col, row - 1], ArrowDown: [col, row + 1],
+      }[ev.key];
+      if (step) {
+        const next = cellAt.get(cellKey(step[0], step[1]));
+        if (next) { ev.preventDefault(); moveTo(next); }
+        return;
+      }
+      if (ev.key === 'Home') { ev.preventDefault(); moveTo(focusables[0]); }
+      if (ev.key === 'End') { ev.preventDefault(); moveTo(focusables[focusables.length - 1]); }
+    };
+
+    // Clicking a day makes it the tabbable one, so Tab then arrows continue
+    // from where the pointer left off rather than jumping back to the end.
+    gridEl.onfocusin = (ev) => {
+      const t = ev.target;
+      if (t && t.getAttribute && t.getAttribute('role') === 'button' && t !== roving) {
+        if (roving) roving.setAttribute('tabindex', '-1');
+        roving = t;
+        roving.setAttribute('tabindex', '0');
+      }
+    };
 
     // Total days spanned (for the sub label)
     const totalDays = daysBetweenISO(startISO, today) + 1;

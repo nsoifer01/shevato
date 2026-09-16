@@ -3,6 +3,60 @@
 Living document: the current best understanding of how this app behaves and
 where it bites. Rewrite sections rather than appending to them.
 
+## The calendar heatmap was unreachable by keyboard, and colour-only (2026-09-16)
+
+Each day in the rival calendar was a bare `<span>` with a class, a `title`, an
+inline `grid-column`/`grid-row` and an `onclick`. No `role`, no `tabindex`, no
+key handler. Two separate defects fell out of that:
+
+- **Keyboard: nothing.** Tab never reached a day, so the live-region text a tap
+  produces (`#heatmap-tap-tip`) had no keyboard path to it either. The tooltip
+  was hover-only and `title` is not reliably announced anyway, so a screen
+  reader met a coloured span with no text.
+- **Colour only.** Win, loss and tie differed by `background` alone
+  (`--good`/`--bad`/`--tie`), which is no difference at all to a reader who
+  cannot separate the green from the red.
+
+Worth noting why the existing gates missed it. The seeded axe scan (D10) passes
+and always did: axe has no rule for "a non-interactive element has a click
+handler but no keyboard equivalent" - that check lives in lint-time JSX tools,
+not in a DOM ruleset. And the app already knew better twenty lines away: the
+round-by-round heatmap prints the score as text AND an explicit W/L/T letter,
+with a comment saying the colour must not be read as "is my score high?".
+
+### The fix, and why it is shaped this way
+
+- **One tab stop, not 560.** The grid spans up to about 80 weeks on a desktop,
+  so putting every day in the tab order would make crossing the widget a few
+  hundred key presses. `#heatmap-grid` is a `role="group"` with a label; each
+  day is a `role="button"` with `aria-label` (the same sentence the tooltip and
+  the tap tip use) and `tabindex="-1"`, except exactly one at `tabindex="0"`.
+  Arrow keys move it: left/right by a week (a column IS a week), up/down within
+  the week, Home/End to the ends. `focusin` hands the tabindex to whatever was
+  clicked, so pointer and keyboard do not fight over where the tab stop is.
+  Navigation goes through a `(col,row)` map rather than DOM order, because DOM
+  order is week-major and has padding cells in it.
+- **Enter and Space announce through the SAME live region a tap uses.** The
+  announcement logic moved into one `announceDay()` helper rather than being
+  duplicated for the keyboard path.
+- **Outcome survives without colour by outline**, not by a letter: a cell is
+  about 10px wide at 390px (26 weeks in a 326px card), so a glyph does not fit,
+  but an inset outline does and costs no space. Solid for a loss, dashed for a
+  tie, nothing for a win, which is the vocabulary the round-by-round heatmap in
+  this same app already uses, so it is a second channel and not a second thing
+  to learn. The legend swatches carry the same outlines, otherwise the legend
+  would teach a convention the grid does not use.
+- Padding cells before the first Sunday are `aria-hidden`: they are not days.
+- Focus ring is OUTSIDE the cell (`outline-offset: 1px`) while the outcome
+  outlines are inset, so focus can never be misread as a result.
+
+Pinned by four new D19 checks in `e2e/audit-2026-08.mjs`, at 390: every day is
+a labelled button and exactly one is tabbable; loss and tie carry a non-colour
+outline and a win does not; ArrowLeft moves focus one week back and takes the
+tabindex with it; Enter announces the focused day into the same live region.
+`quality.mjs` is the pinned-count suite, not this one, so no check total moved.
+
+
 ## Chart.js is served from this site (2026-09-13)
 
 `index.html` loaded Chart.js 4.4.1 from cdnjs as a synchronous script, so a
