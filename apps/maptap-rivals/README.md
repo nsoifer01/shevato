@@ -85,6 +85,24 @@ npx -y firebase-tools@15.27.0 deploy --only firestore:rules --project shevato-si
 
 That gap is not hypothetical. Between 2026-08-04 and 2026-09-08 the repo's ruleset moved twice - the 2026-08-23 Arena hardening and the 2026-09-05 audit's F01/F02/F03 fixes - while production kept serving the 2026-08-04 ruleset, because a merged PR looks exactly like a deploy from inside the repo. Both landed in production on 2026-09-08.
 
+**As of 2026-09-16 a deploy is outstanding.** `firestore.rules` last changed in
+PR #538 (2026-09-13) and the most recent recorded deploy is 2026-09-08, so
+production is most likely still serving the pre-#538 ruleset. That change is
+security hardening: audit R-3 found `maptapRivalsHandles` readable and listable
+by any signed-in user (Arena anonymous guests included), which enumerated every
+claimed handle with its uid, and #538 narrowed `get` to registered accounts and
+`list` to the caller's own claims. It also bounded `memberResume` and
+`memberRematch` and tightened chat creation.
+
+The repo now carries that gap as a fact rather than leaving it to be noticed:
+`firestore-rules-deploy.json` records the digest of what was last released,
+`node scripts/firestore-rules-status.mjs` prints whether the tree is in step,
+and `tests/static/firestore-rules-deploy.test.mjs` fails if the rules change
+without the record being updated, or if an unreleased ruleset carries no note
+saying what is waiting. After deploying, run
+`node scripts/firestore-rules-status.mjs --record-deployed` and commit the
+result.
+
 To check what production is actually running, rather than what the file says:
 
 ```sh

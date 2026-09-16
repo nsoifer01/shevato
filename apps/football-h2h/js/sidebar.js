@@ -586,6 +586,14 @@ function toggleSidebarGameForm() {
         button.classList.add('active');
         sidebarGameFormOpen = true;
 
+        // Funnel start: how many people who open the add-match form ever
+        // reach match_logged. football-h2h had no action event at all before this.
+        if (typeof window !== 'undefined' && window.shevatoAnalytics) {
+            try {
+                window.shevatoAnalytics.trackAction('match_form_opened');
+            } catch (e) { /* analytics must never break the app */ }
+        }
+
         // Keyboard users land on the first goals field instead of tabbing
         // three times to reach it.
         const firstGoals = document.getElementById('sidebar-player1-goals');
