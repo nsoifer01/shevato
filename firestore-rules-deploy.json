@@ -2,9 +2,9 @@
   "comment": "Firestore rules are NOT deployed by CI, by a Netlify build, or by merging a PR. This file is the repo's record of what has actually been released, so the gap between the two cannot be held silently. tests/static/firestore-rules-deploy.test.mjs enforces it; scripts/firestore-rules-status.mjs prints and updates it.",
   "digest": "750c9d13e71e1e12fa51c29f3c28c530bcd936cbf1d96ca96fbbf308b23717bb",
   "lastConfirmedDeploy": {
-    "digest": "707e06c50b07025e337f555d8c7a9b7258962bbf5598f2878086e0d855c58d0d",
-    "on": "2026-09-08",
-    "how": "npx -y firebase-tools@15.27.0 deploy --only firestore:rules --project shevato-site, recorded in apps/maptap-rivals/README.md"
+    "digest": "750c9d13e71e1e12fa51c29f3c28c530bcd936cbf1d96ca96fbbf308b23717bb",
+    "on": "2026-09-16",
+    "how": "npx -y firebase-tools@15.27.0 deploy --only firestore:rules --project shevato-site"
   },
-  "awaitingDeploy": "PR #538 (997c9891, 2026-09-13) changed firestore.rules by 76 insertions and 12 deletions and no deploy has been recorded since 2026-09-08. It is security hardening, not cosmetics: maptapRivalsHandles get/list were narrowed after audit R-3 found the handle directory readable and listable by ANY signed-in user (Arena anonymous guests included), which enumerated every claimed handle with its uid; memberResume was bounded so one resume cannot move questionStartedAt backwards or park it; memberRematch was bounded so one member cannot pre-accept for everyone; chat create gained a field allowlist, a 20-character displayName cap and the expiresAt the TTL policy needs. Run the deploy command above, then `node scripts/firestore-rules-status.mjs --record-deployed`."
+  "awaitingDeploy": null
 }

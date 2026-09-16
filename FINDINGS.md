@@ -8,6 +8,48 @@ Site-level knowledge that belongs to no single app: the marketing pages
 lives in `apps/<app>/FINDINGS.md`; this file follows the same living-document
 rule (rewrite, merge, delete; never an append-only diary).
 
+## A stale deploy log reads exactly like a missed deploy (2026-09-16)
+
+The Firestore rules were verified in production and are byte-identical to the
+committed `firestore.rules` (sha256 `750c9d13`). Getting there corrected a
+wrong conclusion worth writing down.
+
+The 2026-09-15 portfolio audit reasoned: rules deploys are manual, the MapTap
+README's deploy log stops at 2026-09-08, and `firestore.rules` last changed in
+PR #538 on 2026-09-13, therefore production is probably serving the pre-#538
+ruleset and is missing the R-3 handle-directory fix. Every one of those
+premises was true and the conclusion was still wrong.
+
+Reading the live state settled it. The released ruleset was CREATED at
+`2026-09-13T20:55:10Z`, 37 seconds after #538's commit timestamp, which is what
+`firebase deploy` run straight after a merge looks like. The drift was in the
+documentation, not in production.
+
+Two durable lessons:
+
+- **A deploy log that nobody updates is indistinguishable from a deploy that
+  never happened.** That is why the record is now `firestore-rules-deploy.json`
+  with a test over it, rather than a paragraph in a README.
+- **Read the live state before concluding from the repo.** It took one
+  authenticated GET. The reason the audit did not is that the first attempt
+  returned 403: local Application Default Credentials need a quota project for
+  `firebaserules.googleapis.com`, and the fix is an
+  `x-goog-user-project: shevato-site` header on the request, not new
+  credentials. Worth keeping, because that 403 looks like "no access" and is
+  actually "say which project pays for the call".
+
+  ```sh
+  TOKEN=$(gcloud auth print-access-token)
+  curl -s -H "Authorization: Bearer $TOKEN" -H "x-goog-user-project: shevato-site" \
+    https://firebaserules.googleapis.com/v1/projects/shevato-site/releases
+  # then GET the rulesetName it points at; source.files[0].content is the live text
+  ```
+
+The Rules API exposes only the CURRENT release, not its history, so there is no
+way to prove after the fact which ruleset was live on a given day. Recording a
+deploy when it happens is the only way to know, which is the whole point of the
+committed record.
+
 ## Revalidation on this site returns 200, not 304 (2026-09-16)
 
 Netlify's default for any path with no `[[headers]]` rule is

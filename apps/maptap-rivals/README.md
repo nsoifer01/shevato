@@ -85,23 +85,31 @@ npx -y firebase-tools@15.27.0 deploy --only firestore:rules --project shevato-si
 
 That gap is not hypothetical. Between 2026-08-04 and 2026-09-08 the repo's ruleset moved twice - the 2026-08-23 Arena hardening and the 2026-09-05 audit's F01/F02/F03 fixes - while production kept serving the 2026-08-04 ruleset, because a merged PR looks exactly like a deploy from inside the repo. Both landed in production on 2026-09-08.
 
-**As of 2026-09-16 a deploy is outstanding.** `firestore.rules` last changed in
-PR #538 (2026-09-13) and the most recent recorded deploy is 2026-09-08, so
-production is most likely still serving the pre-#538 ruleset. That change is
-security hardening: audit R-3 found `maptapRivalsHandles` readable and listable
-by any signed-in user (Arena anonymous guests included), which enumerated every
-claimed handle with its uid, and #538 narrowed `get` to registered accounts and
-`list` to the caller's own claims. It also bounded `memberResume` and
-`memberRematch` and tightened chat creation.
+**Verified in production on 2026-09-16.** The live ruleset is byte-identical to
+this repo's `firestore.rules` (sha256 `750c9d13`), confirmed by reading it back
+from the Rules API rather than by trusting a deploy log.
 
-The repo now carries that gap as a fact rather than leaving it to be noticed:
-`firestore-rules-deploy.json` records the digest of what was last released,
-`node scripts/firestore-rules-status.mjs` prints whether the tree is in step,
-and `tests/static/firestore-rules-deploy.test.mjs` fails if the rules change
-without the record being updated, or if an unreleased ruleset carries no note
-saying what is waiting. After deploying, run
-`node scripts/firestore-rules-status.mjs --record-deployed` and commit the
-result.
+Worth recording how that was nearly got wrong, because the same mistake is easy
+to repeat. The README's deploy log stopped at 2026-09-08 while `firestore.rules`
+last changed in PR #538 on 2026-09-13, so an audit concluded production was
+probably serving the pre-#538 ruleset and missing the R-3 handle-directory fix.
+Reading the live state showed otherwise: the released ruleset was CREATED at
+`2026-09-13T20:55:10Z`, 37 seconds after #538's commit, which is what a
+`firebase deploy` run straight after a merge looks like. The gap was in the
+DOCUMENTATION, not in production. A stale deploy log reads exactly like a
+missed deploy, which is the reason the record below is now a file a test
+checks rather than a paragraph somebody remembers to update.
+
+One thing the Rules API cannot answer: it exposes only the CURRENT release, not
+its history, so there is no way to prove after the fact which ruleset was live
+on a given day. Recording a deploy when it happens is the only way to know.
+
+The record lives in `firestore-rules-deploy.json`. `npm run rules:status` prints
+whether the committed ruleset is in step with the last recorded deploy, and
+`node scripts/firestore-rules-status.mjs --record-deployed` updates it after a
+real deploy. `tests/static/firestore-rules-deploy.test.mjs` fails if the rules
+change without the record moving, or if an unreleased ruleset carries no note
+saying what is waiting.
 
 To check what production is actually running, rather than what the file says:
 
