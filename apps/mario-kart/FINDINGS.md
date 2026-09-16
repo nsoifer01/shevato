@@ -6,6 +6,54 @@ section below describes the behaviour as it now stands plus the regression
 that pins it. `README.md` beside this file says what the app is; this file
 says what we learned about it.
 
+## The competing token namespaces, measured and mostly left alone (2026-09-16)
+
+Audited after the 2026-09-15 portfolio review called this app's CSS "three
+unreconciled UI eras". The facts check out; the conclusion does not entirely.
+
+What is true:
+
+- `css/theme.css:2-69` is a LIGHT-theme `:root` (`--bg-page: #ffffff`,
+  `--text-primary: #1a202c`), and `js/theme.js:2` adds `body.theme`
+  unconditionally with no removal path, no `prefers-color-scheme` query and no
+  `#theme-toggle` in any markup. The dark look comes from a 716-line
+  `body.theme` override block (`theme.css:393-1109`) that re-specifies colours
+  selector by selector rather than redefining the variables.
+- Four component files each invented a namespace (`--activity-*` in
+  `charts.css`, `--history-*` in `race-history.css`, `--stat-*`/`--h2h-*` in
+  `stats.css`, `--viz-*` in `visualizations-modern.css`), all defining the same
+  light gradient verbatim and then their own dark override.
+- The modern `--mk-*` system in `refresh.css:16-42` is used by 4 of 19 files.
+
+What the audit got wrong, and why the light block STAYS: it is a deliberate
+fallback, not neglect. `refresh.css`'s own header says it is scoped to
+`body.mario-kart-app` or the legacy `body.theme` "so the older light theme
+remains untouched if anyone ever toggles it". Deleting 68 lines of unreachable
+variables delivers nothing a user can see and removes a recorded rollback path.
+Checked before concluding that: every property of the 69 light `body X` rules
+in `theme.css:70-392` has a covering `body.theme` rule, and the ~40 uses of
+those variables elsewhere (confined to `sidebar.css` and `utilities.css`) are
+covered by a later or higher-specificity override.
+
+What the audit got right, and is NOT fixed here: there is one real, always
+reachable visual seam. `js/main.js` `toggleView()` hides `.race-history` only
+for the Help and Guide views, so on Stats or H2H the Race History panel sits
+permanently below the active tab, and the two panels use different dark
+surfaces: `stats.css` cards are `#1f2937` to `#111827`, Race History is
+`#2d3748` to `#1a202c` (the same pair `charts.css` and
+`visualizations-modern.css` already use, so the real split is three groups, not
+four).
+
+Left alone deliberately. The fix is small and known: collapse `stats.css`'s two
+dark-gradient blocks (about 15-20 lines around `stats.css:608-632`) onto the
+`#2d3748`/`#1a202c` pair the other three files share. It is not done here
+because the difference is blue-grey against slate-grey on adjacent cards, a
+polish issue rather than a defect, and a visual change in this repo has to be
+screenshot-verified at 1280 and 390 before it counts. Worth doing in a round
+that is already taking screenshots of this app; not worth a visual round of its
+own.
+
+
 ## Two functions were declared twice in the shared scope, and nothing said so (2026-09-15)
 
 `js/playerManager.js` declared a top-level `updatePlayerLabels` that
