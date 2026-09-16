@@ -23,7 +23,7 @@
   // js/app.js, in index.html and in sw.js's PRECACHE list alike. Bumping the
   // cache-buster without bumping this number is what made "build 31" outlive
   // v=32..38 and stop identifying anything.
-  const TP_BUILD = 81;
+  const TP_BUILD = 83;
   const LS_KEY = 'trip-planner:v1';
   // Which trip THIS DEVICE has open. Navigation, not data: it is not part of
   // the synced value and is deliberately absent from app-sync-init.js's key
@@ -2086,10 +2086,28 @@
     }
     lines.push('You can undo this until you reload the page.');
 
+    // The dialog is open for as long as the traveller takes to read it, and a
+    // sync delivery in that window replaces the whole db. Carry IDS across the
+    // wait, not object references, and re-resolve them when Yes is pressed:
+    // mutating the captured objects wrote into an orphaned copy, changed
+    // nothing, and still fired the success toast (audit F9, P3).
+    const tripId = trip.id;
+    const planIds = plan.map(p => ({ id: p.it.id, amount: p.amount }));
     confirmDialog(`Convert ${plan.length} ${plan.length === 1 ? 'cost' : 'costs'} to ${code}?`,
       lines.join(' '), `Convert to ${code}`, () => {
-        for (const p of plan) { p.it.cost = p.amount; p.it.costCurrency = code; }
-        save(`${plan.length} ${plan.length === 1 ? 'cost' : 'costs'} converted to ${code}`);
+        const t = tripForWrite(tripId);
+        if (!t) return;
+        const byId = new Map(t.items.map(it => [it.id, it]));
+        let n = 0;
+        for (const { id, amount } of planIds) {
+          const it = byId.get(id);
+          if (!it) continue;
+          it.cost = amount;
+          it.costCurrency = code;
+          n++;
+        }
+        if (!n) return;
+        save(`${n} ${n === 1 ? 'cost' : 'costs'} converted to ${code}`);
         render();
       });
     resetBulkCurrency();
@@ -2140,10 +2158,14 @@
     }
     if (doomed.some(it => (docCounts.get(it.id) || 0) > 0)) notes.push('Attached documents cannot be recovered.');
     notes.push('You can undo this until you reload the page.');
+    const tripId = trip.id;
     confirmDialog(`Delete ${n} items?`, notes.join(' '), `Delete ${label}`, () => {
+      // Re-resolved by id: see the note on the currency-conversion confirm.
+      const t = tripForWrite(tripId);
+      if (!t) return;
       const ids = new Set(doomed.map(it => it.id));
       for (const id of ids) { if ((docCounts.get(id) || 0) > 0) deleteDocsForItem(id); }
-      trip.items = trip.items.filter(it => !ids.has(it.id));
+      t.items = t.items.filter(it => !ids.has(it.id));
       const ok = save();
       const snapshot = lastSaved;
       render();
@@ -3073,10 +3095,14 @@
       // deleteWarnings already names documents, the one thing an Undo cannot
       // bring back; the item itself always can.
       const notes = [`"${it.title}" will be removed from this trip.`, ...deleteWarnings(it), 'You can undo this until you reload the page.'];
+      const tripId = trip.id;
       confirmDialog(`Delete this ${label}?`, notes.join(' '), `Delete ${label}`, () => {
-        const idx = trip.items.findIndex(x => x.id === id);
+        // Re-resolved by id: see the note on the currency-conversion confirm.
+        const t = tripForWrite(tripId);
+        if (!t) return;
+        const idx = t.items.findIndex(x => x.id === id);
         if (idx < 0) return;
-        trip.items.splice(idx, 1);
+        t.items.splice(idx, 1);
         // Documents are unrecoverable, so that delete is final; a structural
         // item with no documents keeps the undo the confirm just double-checked.
         if (hasDocs) {
@@ -3138,10 +3164,14 @@
     if (spanning) notes.push('A stay that started earlier is kept.');
     notes.push('You can undo this until you reload the page.');
     if (doomed.some(it => (docCounts.get(it.id) || 0) > 0)) notes.push('Attached documents cannot be recovered.');
+    const tripId = trip.id;
     confirmDialog(`Delete ${label} from ${fmtDate(date, false)}?`, notes.join(' '), `Delete ${label}`, () => {
+      // Re-resolved by id: see the note on the currency-conversion confirm.
+      const t = tripForWrite(tripId);
+      if (!t) return;
       const ids = new Set(doomed.map(it => it.id));
       for (const id of ids) { if ((docCounts.get(id) || 0) > 0) deleteDocsForItem(id); }
-      trip.items = trip.items.filter(it => !ids.has(it.id));
+      t.items = t.items.filter(it => !ids.has(it.id));
       const ok = save();
       const snapshot = lastSaved;
       render();
@@ -5191,6 +5221,9 @@
       // land on Timeline (and its empty state) instead of an empty map. The
       // render below repaints the view and syncViewHash clears the fragment.
       ui.view = 'timeline';
+      // Funnel start: pairs with trip_shared to show how many new trips are
+      // ever shared. No params: not even a name leaves this app.
+      track('trackAction', 'trip_created');
     } else {
       const t = editTrip;
       if ((t.currency || 'USD') !== currency) stampCostCurrencies(t, t.currency || 'USD');

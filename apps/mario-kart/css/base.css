@@ -1,3 +1,18 @@
+/* Reset and Base Styles.
+ *
+ * ALSO LOADED BY FOOTBALL H2H, which links this file as
+ * ../mario-kart/css/base.css (apps/football-h2h/index.html, in the block its
+ * own markup labels "Import shared CSS modules"). That app has no universal
+ * reset of its own: measured 2026-09-16, its three stylesheets carry only two
+ * isolated `box-sizing` declarations, so the `*` rule below is doing the
+ * box-model maths for every element on its page too.
+ *
+ * Most of what Football H2H takes from the six shared mario-kart stylesheets
+ * is superseded by its own `--fh-*` layer in css/refresh.css, which is scoped
+ * under body.football-h2h-tracker and loads later. This reset is the part with
+ * no redundancy: changing it changes two apps, and only one of them has a
+ * visual suite that would notice. Same convention as utilities.css's header,
+ * which records the same kind of measurement for the same reason. */
 /* Reset and Base Styles */
 * {
     margin: 0;

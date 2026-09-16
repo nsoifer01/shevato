@@ -1,5 +1,5 @@
 {
-  "cacheVersion": "1.16.1",
+  "cacheVersion": "1.16.3",
   "files": {
     "./": "4c6fd52ba763debf",
     "./manifest.webmanifest": "6c315a53fd6b2577",
@@ -8,7 +8,7 @@
     "./css/refresh.css": "d760b2a08a39ce43",
     "./data/exercises-db.js": "6d76270ef9f4ccec",
     "./data/exercises-db.json": "add8daa820e058e3",
-    "./js/app.js": "4525d3c518f7ee97",
+    "./js/app.js": "2e7b8060a78b9fd2",
     "./js/models/Achievement.js": "8e10d9b67c55e980",
     "./js/models/Measurement.js": "10a04756682c51dd",
     "./js/models/Program.js": "35af62f7c9fb6564",
@@ -57,6 +57,6 @@
     "./js/views/paused-banner.js": "9138214f1a7d7ac6",
     "./js/views/programs-view.js": "a2e395fa7d7f03c7",
     "./js/views/settings-view.js": "beb6e2e261450484",
-    "./js/views/workout-view.js": "315337de9d2a5e1e"
+    "./js/views/workout-view.js": "1c0663694327853f"
   }
 }

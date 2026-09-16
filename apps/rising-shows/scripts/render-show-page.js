@@ -323,6 +323,7 @@ ${seasonSchemas}
           ${language ? `<div><dt>Language</dt><dd>${escapeHtml(language.toUpperCase())}</dd></div>` : ''}
           ${type ? `<div><dt>Type</dt><dd>${escapeHtml(formatType(type))}</dd></div>` : ''}
         </dl>
+        ${renderTrajectoryLine(dominantShape, dominantShapeSlug)}
         <div class="hero-actions">
           ${renderPrimaryCtaBtn(dominantShape, dominantShapeSlug)}
           <a class="app-btn" href="/apps/rising-shows/#show=${escapeHtml(seriesId)}">Open in Rising Shows app →</a>
@@ -439,6 +440,35 @@ function renderSeasonSection(season, seriesId) {
         </table>
         </div>
       </article>`;
+}
+
+// The one sentence that says what this page is FOR.
+//
+// These generated pages are where essentially all of this app's inbound
+// traffic lands, and they used to badge the shape without ever explaining it:
+// the only definition on the page was a `title` tooltip on the season chips,
+// which is hover-only and therefore does nothing on a phone, and the prose
+// explainer sat below the whole results grid. A reader met an unfamiliar
+// taxonomy as a coloured word. SHAPE_DESCS was already defined in this file
+// and read only by the shape hubs; this prints it where somebody arrives.
+function renderTrajectoryLine(dominantShape, dominantShapeSlug) {
+  const WHAT_IT_IS = 'Rising Shows ranks whole shows by the <em>shape</em> of their rating trend rather than one average score,'
+    + ' which is how you find a show that got better rather than a show that started well.';
+  if (!dominantShape || !dominantShapeSlug) {
+    // About a quarter of the catalogue has no single dominant shape. There is
+    // nothing to name, but the concept is still worth explaining here.
+    return `<p class="show-trajectory"><strong>Rating trend:</strong> this show's seasons do not settle into one shape. ${WHAT_IT_IS}</p>`;
+  }
+  const label = SHAPE_LABELS[dominantShape] || dominantShape;
+  const desc = SHAPE_DESCS[dominantShape] || '';
+  // SHAPE_DESCS entries are written as sentences; lowercase the first letter so
+  // the phrase reads correctly after the colon.
+  const phrase = desc ? `${desc.charAt(0).toLowerCase()}${desc.slice(1)}` : '';
+  return `<p class="show-trajectory">`
+    + `<strong>${escapeHtml(label)} trajectory:</strong>${phrase ? ` ${escapeHtml(phrase)}.` : ''}`
+    + ` ${WHAT_IT_IS}`
+    + ` <a class="trajectory-link" href="/apps/rising-shows/#shape=${escapeHtml(dominantShapeSlug)}">See every ${escapeHtml(label)} show in the explorer →</a>`
+    + `</p>`;
 }
 
 function renderPrimaryCtaBtn(dominantShape, dominantShapeSlug) {

@@ -52,6 +52,7 @@
 
 import { buildSquad } from './squad-builder.js';
 import { squadTrajectory, discountWeights, fmtValue } from './chips.js';
+import { canCompareSquads } from './readiness.js';
 
 // Statuses the game will not let anyone buy: gone from the league, or not
 // registered in a Premier League squad. Mirrors squad-builder.js.
@@ -1312,6 +1313,35 @@ function keepAnswer(ctx) {
 
 export function counterfactual(playerId, { planBundle, gameState, rules, opts = {} }) {
   const R = rules || gameState.rules;
+
+  // A counterfactual is a transfer recommendation wearing a question mark:
+  // "you would gain 2.1 points" is the same claim as "make this transfer".
+  // Every other surface that publishes a recommendation asks the readiness
+  // ladder first; this one re-ran the optimizer straight off the same
+  // projections and never asked, so during both live-season incidents a
+  // manager could ask "why not Haaland?" and get a confidently worded verdict
+  // with a point delta while the rest of the screen said recommendations were
+  // paused. Refuse at the same rung transfers are refused at.
+  const readiness = planBundle && planBundle.dataStatus && planBundle.dataStatus.readiness;
+  if (!canCompareSquads(readiness)) {
+    const because = (readiness && readiness.headline) || 'the data behind this plan is incomplete';
+    const name = nameOf(gameState, playerId);
+    return {
+      playerId,
+      name,
+      mode: 'unavailable',
+      verdict: 'unknown',
+      headline: 'Comparisons are paused while the data settles.',
+      rows: [],
+      reasons: [],
+      result: null,
+      blockers: [reason('data_unusable', because, null, 'count')],
+      alternatives: [],
+      deltaHorizon: null,
+      text: `Comparing ${name} against this squad would mean trusting projections that are not trustworthy right now: ${because}`,
+    };
+  }
+
   const ctx = makeContext(playerId, { planBundle, gameState, rules: R, opts });
 
   if (!ctx.target) {

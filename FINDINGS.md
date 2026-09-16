@@ -8,6 +8,66 @@ Site-level knowledge that belongs to no single app: the marketing pages
 lives in `apps/<app>/FINDINGS.md`; this file follows the same living-document
 rule (rewrite, merge, delete; never an append-only diary).
 
+## Revalidation on this site returns 200, not 304 (2026-09-16)
+
+Netlify's default for any path with no `[[headers]]` rule is
+`public, max-age=0, must-revalidate`. That reads as "cheap: the browser keeps
+the bytes and just asks whether they are still good". On this site it is not,
+because the asking does not work.
+
+Measured against production, fetching each URL and immediately re-requesting it
+with the exact `ETag` the edge had just issued and the same `Accept-Encoding`:
+
+| URL | Conditional GET |
+|---|---|
+| `apps/rising-shows/shows-index.json` | 200, 3,122,424 B |
+| `apps/trip-planner/js/app.js` | 200, 226,869 B |
+| `apps/mario-kart/css/sidebar.css` | 200, 7,776 B |
+| `apps/rising-shows/js/app.js` | 200, 88,831 B |
+| `apps/arena/js/app.js` | 200, 102,286 B |
+
+No `Last-Modified` is sent either, so `If-Modified-Since` is never offered.
+`must-revalidate` therefore meant "send it all again", on every navigation, for
+every asset that matched no rule. Mario Kart loads 44 of its own JS and CSS
+files per page.
+
+METHOD NOTE, because this is easy to get wrong in both directions. Fetch the
+ETag and issue the conditional request in ONE sequence with matched
+`Accept-Encoding`. The brotli and identity representations carry DIFFERENT
+ETags (`"...-ssl-df"` vs `"...-ssl"`), so a mismatched pair reports a false
+200; and two separate `curl` runs can land on different edge nodes, which is
+how an earlier pass at this measurement got a 304 for two of these files and
+concluded the opposite. Both traps produce a confident wrong answer.
+
+Fixed by naming the paths in `netlify.toml`, per app rather than as one
+`/apps/*` glob. The glob was rejected on purpose: the two service-worker apps
+(gym-tracker, trip-planner) must keep `max-age=0`, because a fresh-enough
+subresource is served from Chrome's memory cache WITHOUT firing the worker's
+fetch event, and a broad rule plus carve-outs would make the outcome depend on
+rule ordering. An app with no rule is uncached, which is safe; an app wrongly
+caught by a glob is not. Trip Planner was only ACCIDENTALLY safe before this
+(it took the default because nothing named it) and now says so explicitly.
+
+`tests/static/netlify-cache-headers.test.mjs` pins both directions and derives
+the service-worker list from `apps/*/sw.js`, so an app that gains a worker and
+a positive max-age in the same change fails rather than passes.
+
+WHAT WAS REJECTED, and why it is worth not re-litigating: deploy-time
+minification. Measured, minifying would save roughly 26-56% of the
+already-brotli bytes on a COLD load (the comment density in this repo is high,
+so the estimate is unusually favourable). Against that, the entire test estate
+runs against source, not `dist/`: the unit suites `require()` source files, the
+CDP browser suite serves the repo root, and
+`tests/static/classic-script-scope.test.mjs` reads the committed scripts. A
+minifier bug would ship to production invisibly, which is precisely the failure
+mode of PR #530. It would also need a 5th npm dependency against four stated
+exceptions, and would replace `build-publish-dir.mjs`'s hardlinking (chosen to
+cut the Netlify build from 22.8s to 4.4s, for build-minute reasons) with
+read-transform-write. The caching fix above is most of the win for none of
+that risk. What would change the decision: RUM showing cold-load bytes are the
+binding constraint, AND a plan to point the browser suite and the scope guard
+at `dist/`.
+
 ## Netlify build minutes: where they went, and the plan from 1 October (2026-09-14)
 
 Evidence: the Netlify API for the production project (account capabilities and

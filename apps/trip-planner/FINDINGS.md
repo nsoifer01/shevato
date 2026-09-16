@@ -4,6 +4,35 @@ Living document. State the best current understanding; rewrite rather than
 append. Read together with `README.md` (what the app is) - this file is the
 why, the traps, and the invariants.
 
+## A `?v=` pin now has to move when its file does (2026-09-16)
+
+The shell is versioned per FILE (`css/styles.css?v=69`, `js/trip-logic.js?v=54`,
+`js/app.js?v=82`) and the pin is part of the service worker's cache key. That
+gives a pin two jobs, and only one of them was guarded:
+
+- **index.html vs sw.js must name the same pin**, or an offline load asks for a
+  URL the precache does not hold. Guarded since the v=67-vs-v=66 drift, by
+  `tests/sw-precache-completeness.test.mjs`.
+- **The pin must MOVE when its file changes**, or an installed worker keeps
+  serving the old file from a cache key that still matches. Nothing guarded
+  this, and PR #550 (2026-09-15) shipped exactly it: app.js and trip-logic.js
+  changed, every pin stayed, and PR #551 half an hour later was a pure pin
+  bump. Nothing was red in between, because agreeing with each other is all the
+  parity test was asking and the two files still did.
+
+`tests/asset-pin-drift.test.mjs` closes it, on the shape gym-tracker already
+uses for `CACHE_VERSION`: content hashes live in a committed fixture
+(`tests/fixtures/asset-pins.json`), and a pinned file whose hash moved without
+its pin moving fails by name. It also asserts the reverse, so a stale fixture
+cannot silently stop comparing anything, and it pins `TP_BUILD` against the
+`?v=` on app.js - app.js:22 has always stated that as THE RULE in a comment and
+the status panel prints it as "build N", but nothing enforced it.
+
+Bumping a pin means editing index.html AND sw.js (and `TP_BUILD` for app.js),
+then running `node apps/trip-planner/scripts/update-asset-pins.mjs` in the same
+change.
+
+
 ## The page carries its own explanation now (`.app-about`)
 
 Measured on production before 2026-09-04, this page rendered almost nothing but
@@ -396,13 +425,19 @@ and coordinate have different rules and must never be given one lifetime.
 - Known remaining edge (documented, not fixed): a repair write during remote
   apply is swallowed by the sync echo lock, and the next reconcile can fire a
   spurious `remote` event that clears undo history. Rare, self-heals.
-- Known remaining edge (audit F9, P3, not fixed): the confirm dialogs for an
-  item delete, clear day, bulk delete and bulk currency change capture the
-  trip and item OBJECTS when they open. If a delivery replaces the db before
-  Yes, the action mutates those orphans, `save()` writes the new db unchanged,
-  and the success toast still fires. No wrong-trip write, but a delete that
-  did not happen reads as done. The fix is to re-resolve by id inside the
-  confirm's action, the way `tripForWrite` does.
+- FIXED 2026-09-16 (was audit F9, P3): the confirm dialogs for an item delete,
+  clear day, bulk delete and bulk currency change captured the trip and item
+  OBJECTS when they opened. A delivery before Yes replaced the db, so the
+  action mutated orphans, `save()` wrote the new db unchanged, and the success
+  toast still fired: a delete that did not happen read as done. All four now
+  carry only the trip id across the wait and re-resolve through
+  `tripForWrite(tripId)` when Yes is pressed, which is what the other dialogs
+  already did; the bulk currency confirm carries item IDS rather than item
+  objects for the same reason, and reports the count it actually converted.
+  A trip that went away reports `TRIP_GONE` instead of a false success.
+  Pinned by `tests/confirm-resolves-by-id.test.mjs`, which drives a real
+  `deliverRemote` between opening the confirm and pressing Yes; all three of
+  its cases fail against the previous code.
 - **The floor trip is a placeholder, and an early edit never overwrites unread
   trips (2026-09-13, audit T-3).** On a fresh device `ensureTrip()` saves "My
   trip" at boot, before any user gesture, so the sync engine records it as the

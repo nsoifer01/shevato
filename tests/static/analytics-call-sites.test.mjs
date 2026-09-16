@@ -30,18 +30,31 @@ const HELPER = 'assets/js/analytics.js';
  * is a change to what the privacy page promises, so it must be a deliberate
  * edit here rather than a string that appears in an app.
  */
+// Each app pairs a "started the primary workflow" action with the action that
+// completes it, added 2026-09-16. Only completions were recorded before, so
+// "nobody finishes" and "nobody begins" were the same picture: over 180 days
+// the whole portfolio produced 108 non-owner actions and 105 were MapTap's.
+// Football H2H had no action at all, which is why it gains both halves here.
 const ALLOWED_ACTIONS = new Set([
   'assistant_opened',          // trip-planner
   'copy_compare_link',         // rising-shows
   'export_compare_kometa',     // rising-shows
-  'games_logged',              // maptap-rivals
-  'gameweek_plan_calculated',  // fpl-planner
+  'game_started',              // arena          (starts room_created/room_joined)
+  'games_logged',              // maptap-rivals  (completes rival_added)
+  'gameweek_plan_calculated',  // fpl-planner    (completes team_connected)
+  'match_form_opened',         // football-h2h   (starts match_logged)
+  'match_logged',              // football-h2h
+  'race_form_opened',          // mario-kart     (starts race_logged)
   'race_logged',               // mario-kart
+  'rival_added',               // maptap-rivals
   'room_created',              // arena
   'room_joined',               // arena
   'share_chart_image',         // rising-shows
+  'team_connected',            // fpl-planner
+  'trip_created',              // trip-planner   (starts trip_shared)
   'trip_shared',               // trip-planner
   'workout_completed',         // gym-tracker
+  'workout_started',           // gym-tracker    (starts workout_completed)
 ]);
 
 // -- The helper's real public surface ---------------------------------------------

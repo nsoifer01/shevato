@@ -2963,6 +2963,32 @@ body.maptap-rivals-app textarea:focus {
   aspect-ratio: 1 / 1;
 }
 
+/* Win, loss and tie used to differ by BACKGROUND COLOUR ONLY, which is nothing
+   at all to a reader who cannot separate the green from the red. A cell here is
+   about 10px on a phone, so a letter does not fit; an outline does, and the
+   round-by-round heatmap in this same app already uses exactly this vocabulary
+   (solid = lost, dashed = tied), so this adds a second channel without adding a
+   second thing to learn. Inset so it cannot grow the cell or the grid. */
+#heatmap-grid .heatmap-L,
+.heatmap-legend .heatmap-L {
+  outline: 1px solid rgba(248, 113, 113, 0.75);
+  outline-offset: -1px;
+}
+#heatmap-grid .heatmap-T,
+.heatmap-legend .heatmap-T {
+  outline: 1px dashed rgba(154, 163, 178, 0.85);
+  outline-offset: -1px;
+}
+
+/* The calendar is one tab stop with arrow keys inside it, so the focused day
+   has to be obvious. A ring OUTSIDE the cell, unlike the inset outlines above,
+   so focus never reads as an outcome. */
+#heatmap-grid .heatmap-cell:focus-visible {
+  outline: 2px solid var(--accent, #7c8cff);
+  outline-offset: 1px;
+  border-radius: 3px;
+}
+
 /* Heatmap: rows = games, cols = rounds. Cell color = my raw score 0-100. */
 .loc-heatmap {
   display: grid;

@@ -14,6 +14,95 @@ tables.
 
 ---
 
+## The pause was a caption, not a refusal (2026-09-16)
+
+Both live-season incidents are written up in full further down this file. This
+section is about what they had in common, and about the part that was still
+open until now.
+
+The engine was never the last line that failed. In both incidents the ladder in
+`readiness.js` correctly capped the level at DISPLAY, `assessConfidence`
+correctly returned the `unusable` band, and `planner.js` correctly proposed no
+transfer. And then `heroCard` printed "Recommendations paused" directly above a
+captain worth "1.0 xP doubled", a chip verdict and a projected gameweek total,
+because the numeric facts were rendered unconditionally with
+`confidenceStrip(band)` merely inserted alongside them. A caption does not
+unsay a number: anything rendered as a fact is a claim, whatever the label
+beside it says.
+
+Two surfaces were publishing recommendations without asking the ladder anything:
+
+- `heroCard` (`js/ui/dashboard.js`) rendered the captain xP, the chip call and
+  the projected-points fact regardless of band. `readiness.allow.lineup` and
+  `allow.display` were computed by `assessReadiness` and read by NOTHING in
+  production; `pausedHeadline()` existed and was called only by tests.
+- `counterfactual()` (`js/engine/counterfactual.js`) never referenced
+  `readiness` or `evidence` at all. It re-runs `buildSquad`/`squadTrajectory`
+  off the same projections, so during either incident a manager could ask "why
+  not Haaland?" and get a worded verdict and a point delta while every other
+  surface on the screen said recommendations were paused. This path is reached
+  from the UI, from `js/worker.js`'s `why-not` message and from
+  `js/ui/plan-runner.js`, and none of the three guarded it.
+
+### The shared root cause
+
+It is not a football question, it is a freshness one. Every data-vintage signal
+in this app is a RATIO whose numerator and denominator are refreshed by
+different, independently observable events:
+
+| Incident | Numerator moves at | Denominator moves at | Window |
+|---|---|---|---|
+| GW1 wipe | the rollover instant (totals cleared) | per match, as fixtures finish | hours |
+| GW4 live window | kickoff (starts credited) | full time (played-out count) | up to 2h, every matchday |
+| not yet triggered | bootstrap cache, 10 min TTL | fixtures cache, 30 min TTL | up to 30 min |
+
+While a window is open the ratio inverts, every projection downstream is wrong,
+and nothing about the payload looks malformed. That is why each incident was
+found by a human looking at a screen rather than by a test: the arithmetic is
+valid, the inputs are well-formed, and only the MEANING is wrong.
+
+The third row has not fired yet and is currently held off only by
+`TOTALS_LEAD_TOLERANCE_MATCHES = 1`. Expect a fourth instance anywhere two FPL
+fields that update on different clocks get divided by one another.
+
+### What now enforces it
+
+`readiness.js` gained two predicates, and they are the point of the change:
+deciding stays in the ladder, enforcing moves to the places that publish.
+
+- `canQuoteProjections(readiness)` - may a number derived from the projections
+  be shown as a fact? Lineup level, because that is the first rung that claims
+  the projections describe football at all. `heroCard` now renders the pause
+  headline and a plain-English explanation INSTEAD of the three numeric facts
+  and the action line, not beside them.
+- `canCompareSquads(readiness)` - may one player be compared against another
+  and a verdict published? Transfer level, because a counterfactual is a
+  transfer recommendation wearing a question mark: "you would gain 2.1 points"
+  is the same claim as "make this transfer". `counterfactual()` returns a
+  refusal carrying a `data_unusable` blocker before it builds anything, so all
+  three entry points inherit the guard.
+
+A new surface that forgets to ask is the failure mode this is designed against,
+so both predicates are exported from the module that already owns the decision
+rather than being re-derived at each call site.
+
+### Regression cover
+
+`tests/live-match-window.test.mjs` grew three tests on the REAL gw4-2026
+fixture, driven through the rendered card rather than stopping at the engine,
+which is where all the previous coverage stopped:
+
+- the hero states no projected number while paused (no `xP` anywhere in the
+  rendered text, no "xP doubled", no "Projected points")
+- the hero states its numbers again once the reading is sound, on the same
+  fixture, so the guard cannot become a blanket silence
+- "why not this player" refuses while paused: no verdict, no `deltaHorizon`,
+  no comparison rows, and a `data_unusable` blocker
+
+Verified to fail before the fix and pass after it. The middle test is the one
+that matters most in six months: without it, the cheapest way to make the other
+two pass is to stop rendering the hero at all.
+
 ## The verification lesson (read this first)
 
 The app shipped with thousands of passing tests and three serious bugs an owner

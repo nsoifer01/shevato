@@ -5875,6 +5875,9 @@ async function startGame() {
                 revealStartedAt: null,
                 playedQuestionIds: []
             });
+            // The room left the lobby and actual play began - the funnel gap
+            // room_created/room_joined cannot answer on their own.
+            track('trackAction', 'game_started', { game_type: state.roomData.gameType });
             return;
         }
 
@@ -5901,6 +5904,9 @@ async function startGame() {
             playerOrder,
             deciderUid
         });
+        // The room left the lobby and actual play began - the funnel gap
+        // room_created/room_joined cannot answer on their own.
+        track('trackAction', 'game_started', { game_type: state.roomData.gameType });
     } catch (err) {
         console.warn('startGame failed:', err);
         if (startBtn) startBtn.disabled = false;

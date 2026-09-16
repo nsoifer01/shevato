@@ -361,6 +361,137 @@
   [headers.values]
     Cache-Control = "public, max-age=86400, stale-while-revalidate=604800"
 
+# The Rising Shows finder boots on shows-index.json: 16.77 MB of JSON, 3.12 MB
+# over the wire once Netlify brotli-encodes it. It matched no rule above, so it
+# took the platform default, `public, max-age=0, must-revalidate`, and that is
+# the worst possible policy for this file for a reason that is not obvious:
+# revalidation does not work on it. Measured on 2026-09-16, a conditional GET
+# carrying the exact ETag the edge had just issued, with the same
+# Accept-Encoding, comes back 200 with the whole body and `cache-status:
+# fwd=miss ... stored`, not 304. No Last-Modified is sent either, so
+# If-Modified-Since is never offered. must-revalidate therefore meant "fetch
+# 3.12 MB again", on every single load of the finder, forever.
+#
+# One hour of freshness with a day of stale-while-revalidate, the same policy
+# /assets already uses. Within the hour a reload costs no request at all;
+# for the rest of the day the cached copy paints immediately while the new one
+# is fetched in the background, so the re-download stops being something a
+# reader waits for. A day is the right outer bound because the dataset is
+# rebuilt daily by refresh-rising-shows.yml, so a longer window would only
+# serve data the pipeline has already replaced.
+#
+# Deliberately NOT immutable, and deliberately not a content-hashed URL: the
+# file is a build artifact whose name three other places agree on (app.js's
+# boot fetch, split-data.js's SHOWS_OUT, and the README payload table, pinned
+# together by tests/static/docs-contracts.test.mjs), and `immutable` on a
+# mutable path is only safe while every request carries a version the build
+# never fails to stamp. The measured win here is the repeat load, which this
+# gets without putting a year-long cache entry behind a stamp that could break.
+[[headers]]
+  for = "/apps/rising-shows/shows-index.json"
+  [headers.values]
+    Cache-Control = "public, max-age=3600, stale-while-revalidate=86400"
+
+# The per-show detail files are fetched one at a time when a show modal opens,
+# are small (1-20 KB), and change only when the daily rebuild changes that
+# show. They took the same max-age=0 default, so every modal reopen was a
+# round trip for bytes the browser already had.
+[[headers]]
+  for = "/apps/rising-shows/data/*"
+  [headers.values]
+    Cache-Control = "public, max-age=3600, stale-while-revalidate=86400"
+
+# Each app's own js/ and css/ matched no rule either, so they took the same
+# max-age=0 default, and the same measurement applies to them: on 2026-09-16 a
+# conditional GET carrying the exact ETag the edge had just issued, with the
+# same Accept-Encoding, came back 200 with the whole body for
+# trip-planner/js/app.js, mario-kart/css/sidebar.css, rising-shows/js/app.js
+# and arena/js/app.js. Revalidation on this site does not produce 304s, so
+# must-revalidate was costing a round trip AND the bytes on every navigation.
+# Mario Kart alone loads 44 of its own JS/CSS files per page.
+#
+# Listed per app rather than as one /apps/* glob ON PURPOSE: the two
+# service-worker apps must NOT get a positive max-age (see the block below),
+# and a broad rule plus carve-outs would make which one wins depend on
+# ordering. An app with no rule here is uncached, which is safe; an app
+# wrongly caught by a glob is not.
+[[headers]]
+  for = "/apps/arena/js/*"
+  [headers.values]
+    Cache-Control = "public, max-age=3600, stale-while-revalidate=86400"
+
+[[headers]]
+  for = "/apps/arena/css/*"
+  [headers.values]
+    Cache-Control = "public, max-age=3600, stale-while-revalidate=86400"
+
+[[headers]]
+  for = "/apps/football-h2h/js/*"
+  [headers.values]
+    Cache-Control = "public, max-age=3600, stale-while-revalidate=86400"
+
+[[headers]]
+  for = "/apps/football-h2h/css/*"
+  [headers.values]
+    Cache-Control = "public, max-age=3600, stale-while-revalidate=86400"
+
+[[headers]]
+  for = "/apps/fpl-planner/js/*"
+  [headers.values]
+    Cache-Control = "public, max-age=3600, stale-while-revalidate=86400"
+
+[[headers]]
+  for = "/apps/fpl-planner/css/*"
+  [headers.values]
+    Cache-Control = "public, max-age=3600, stale-while-revalidate=86400"
+
+[[headers]]
+  for = "/apps/maptap-rivals/js/*"
+  [headers.values]
+    Cache-Control = "public, max-age=3600, stale-while-revalidate=86400"
+
+[[headers]]
+  for = "/apps/maptap-rivals/css/*"
+  [headers.values]
+    Cache-Control = "public, max-age=3600, stale-while-revalidate=86400"
+
+[[headers]]
+  for = "/apps/mario-kart/js/*"
+  [headers.values]
+    Cache-Control = "public, max-age=3600, stale-while-revalidate=86400"
+
+[[headers]]
+  for = "/apps/mario-kart/css/*"
+  [headers.values]
+    Cache-Control = "public, max-age=3600, stale-while-revalidate=86400"
+
+[[headers]]
+  for = "/apps/rising-shows/js/*"
+  [headers.values]
+    Cache-Control = "public, max-age=3600, stale-while-revalidate=86400"
+
+[[headers]]
+  for = "/apps/rising-shows/css/*"
+  [headers.values]
+    Cache-Control = "public, max-age=3600, stale-while-revalidate=86400"
+
+# Trip Planner is the OTHER service-worker app, and until now it was only
+# accidentally safe: it took the max-age=0 default because nothing named it.
+# Stated explicitly so the next person adding an /apps/* caching rule cannot
+# silently break it. Same reason as Gym Tracker below: a fresh-enough
+# subresource is served from Chrome's memory cache WITHOUT firing the worker's
+# fetch event, which hides the request from a worker whose whole contract is
+# network-first freshness.
+[[headers]]
+  for = "/apps/trip-planner/js/*"
+  [headers.values]
+    Cache-Control = "public, max-age=0, must-revalidate"
+
+[[headers]]
+  for = "/apps/trip-planner/css/*"
+  [headers.values]
+    Cache-Control = "public, max-age=0, must-revalidate"
+
 # Gym Tracker is a service-worker PWA: its worker precaches the shell and
 # serves everything stale-while-revalidate out of CacheStorage, so the SW is
 # the performance layer and the HTTP layer only has to be correct.

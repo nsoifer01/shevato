@@ -48,42 +48,12 @@ if (window.PlayerNameManager) {
     });
 }
 
-function updatePlayerLabels() {
-    // Update input labels for all possible players - now just shows names
-    const label1 = document.getElementById('player1-label');
-    const label2 = document.getElementById('player2-label');
-    const label3 = document.getElementById('player3-label');
-    const label4 = document.getElementById('player4-label');
-    
-    if (label1) label1.textContent = playerNames.player1;
-    if (label2) label2.textContent = playerNames.player2;
-    if (label3) label3.textContent = playerNames.player3;
-    if (label4) label4.textContent = playerNames.player4;
-
-    // Update table headers
-    const headers = document.querySelectorAll('#history-table th');
-    if (headers.length >= 5) {
-        const p1 = escapeHtml(playerNames.player1);
-        const p2 = escapeHtml(playerNames.player2);
-        const p3 = escapeHtml(playerNames.player3);
-        headers[2].innerHTML = `<span style="cursor: pointer;" onclick="sortTable('player1')" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' ')sortTable('player1')" aria-label="Sort by ${p1}'s position">${p1} ↕</span>`;
-        headers[3].innerHTML = `<span style="cursor: pointer;" onclick="sortTable('player2')" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' ')sortTable('player2')" aria-label="Sort by ${p2}'s position">${p2} ↕</span>`;
-        headers[4].innerHTML = `<span style="cursor: pointer;" onclick="sortTable('player3')" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' ')sortTable('player3')" aria-label="Sort by ${p3}'s position">${p3} ↕</span>`;
-    }
-
-    // Update player name inputs if they exist
-    if (document.getElementById('player1-name')) {
-        document.getElementById('player1-name').value = playerNames.player1;
-        document.getElementById('player2-name').value = playerNames.player2;
-        document.getElementById('player3-name').value = playerNames.player3;
-        
-        // Update player4 name input
-        const player4Input = document.getElementById('player4-name');
-        if (player4Input) {
-            player4Input.value = playerNames.player4;
-        }
-    }
-}
+// updatePlayerLabels lives in updatePlayerLabels.js, which loads after this file
+// and so owned the name anyway; the copy that used to sit here was dead from the
+// day the second one was added. Its table-header rewrite was superseded by
+// updateHistoryTableHeaders() in main.js (4 players, aria-sort, sort indicators),
+// and its name-input sync by backup.js and dataManager.js. The subscribe callback
+// above calls the live one.
 
 function updatePlayerName(playerKey, newName) {
     if (newName.trim() === '') return;
@@ -186,7 +156,8 @@ function updateInputGroupClass() {
 window.getPlayerCount = function () { return playerCount; };
 
 
-function getPlayerName(playerKey) {
-    const nameMap = { 'player1': playerNames.player1, 'player2': playerNames.player2, 'player3': playerNames.player3, 'player4': playerNames.player4 };
-    return nameMap[playerKey] || playerKey;
-}
+// getPlayerName lives in playerNameManager.js, which owns the stored names.
+// A second copy here used to shadow it: both are top-level declarations in the
+// page's shared scope, this file loads later, so a bare getPlayerName() call got
+// THIS copy while PlayerNameManager.get() kept the other one (it captured the
+// function object before the overwrite). Two names, two stores, no error.

@@ -9,6 +9,35 @@ works; this file says what we learned building it.
 
 ---
 
+## The debug console API no longer ships to production (2026-09-16)
+
+`window.debugGymTracker` was defined unconditionally in `js/app.js`, on every
+visitor's page. Two of its five helpers erase everything: `clearLocalStorage()`
+removes all eight storage keys, and `fixCorruptedData()` resets programs,
+sessions and achievements to empty.
+
+Typing either into a console is a deliberate act, so on its own this is not an
+exploit. What makes it worth removing is the combination: leaving them on
+`window` means ANY script that runs on the page can call them, and this app has
+shipped stored XSS through `innerHTML` twice (an achievement category key and
+an exercise name in a swap confirmation, both now escaped and regression-tested
+in `tests/confirm-modal-escaping.test.mjs` and
+`tests/achievement-category-escaping.test.mjs`). A wipe on a signed-in device
+would then sync to every other one. Defence in depth: the destructive half has
+no reason to exist on shevato.com, and the diagnostic half is only ever used
+while developing.
+
+The whole object is now gated on a local hostname, with `?debug=1` as a
+deliberate opt-in elsewhere. Nothing in the repo referenced it (grepped), so
+nothing depended on it existing.
+
+Changing `app.js` correctly tripped
+`tests/sw-precache-content-version.test.mjs`, which is the guard that exists
+because `CACHE_VERSION` once sat stale through five precache-changing commits.
+Version bumped 1.16.1 -> 1.16.2 and the manifest regenerated in the same
+change, which is the procedure that test prints when it fails.
+
+
 ## One h1, and why the exercise long tail stays noindex
 
 The app shipped **eleven** `<h1>` elements, one per view, and the first in

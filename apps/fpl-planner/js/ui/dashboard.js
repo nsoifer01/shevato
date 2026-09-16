@@ -22,6 +22,7 @@ import { STRENGTH_PARAMS } from '../engine/strength.js';
 import { formatFreeTransfers } from '../engine/transfer-state.js';
 import { openingSquadMoney, picksCarryLineup } from '../engine/squad.js';
 import { assessConfidence } from '../engine/confidence.js';
+import { canQuoteProjections, pausedHeadline } from '../engine/readiness.js';
 import { describeModelStatus } from '../data/model.js';
 
 const nameOf = (gameState) => (id) => describePlayer(gameState, id).name;
@@ -62,6 +63,15 @@ export function heroCard({ bundle, gameState, event, now, isDraft = false, sourc
   // it does not replace it, and a low band must not read as "no recommendation".
   const band = bandFor(plan, { bundle, gameState, sources, now });
 
+  // ...with one exception, and it is the whole point of the readiness ladder.
+  // When the ladder cannot vouch for the projections, the numbers below are not
+  // a weak answer to be qualified, they are an artefact of misread data: at the
+  // GW1 rollover this card read "Recommendations paused" directly above a
+  // captain worth "1.0 xP doubled" and a 7.5 xP gameweek. A caption does not
+  // unsay a number, so the numbers go instead of the caption going next to them.
+  const readiness = bundle.dataStatus && bundle.dataStatus.readiness;
+  const quotable = canQuoteProjections(readiness);
+
   return el('section', { class: 'fpl-hero' }, [
     el('div', { class: 'fpl-hero-top' }, [
       el('div', { class: 'fpl-gw-label' }, [
@@ -81,12 +91,12 @@ export function heroCard({ bundle, gameState, event, now, isDraft = false, sourc
       ]),
     ]),
 
-    el('h2', { class: 'fpl-hero-headline', text: action.headline }),
-    el('p', { class: 'fpl-hero-sub' }, action.sub),
+    el('h2', { class: 'fpl-hero-headline', text: quotable ? action.headline : (pausedHeadline(readiness) || 'Recommendations paused') }),
+    quotable ? el('p', { class: 'fpl-hero-sub' }, action.sub) : null,
 
     confidenceStrip(band),
 
-    el('div', { class: 'fpl-hero-facts' }, [
+    quotable ? el('div', { class: 'fpl-hero-facts' }, [
       el('div', { class: 'fpl-fact' }, [
         el('div', { class: 'fpl-fact-k', text: 'Captain' }),
         el('div', { class: 'fpl-fact-v', text: captain.name }),
@@ -102,6 +112,11 @@ export function heroCard({ bundle, gameState, event, now, isDraft = false, sourc
         el('div', { class: 'fpl-fact-v', text: `${xp(plan.xPointsNet)} xP` }),
         el('div', { class: 'fpl-fact-note', text: `This gameweek. ${xp(plan.xPointsHorizon)} over ${plan.horizon} gameweeks` }),
       ]),
+    ]) : el('p', { class: 'fpl-hero-withheld' }, [
+      'The squad below is your real team, but the projections behind a captain pick, a chip call'
+      + ' and a points total are not trustworthy right now, so this card is not stating them.'
+      + ' Fantasy Premier League publishes the numbers this is built from at different moments,'
+      + ' and they are mid-change. It resolves on its own once they agree again.',
     ]),
   ]);
 }
