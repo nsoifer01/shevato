@@ -1237,7 +1237,22 @@ document.addEventListener('DOMContentLoaded', () => {
 // Expose app globally for debugging and views
 window.gymApp = app;
 
-// Expose debugging helper
+// Expose debugging helper, on a developer's machine only.
+//
+// Two of these erase everything: clearLocalStorage() removes all eight storage
+// keys, and fixCorruptedData() resets programs, sessions and achievements to
+// empty. Typing either into a console is a deliberate act, but leaving them on
+// `window` in production means any script that runs on the page can call them,
+// and this app has shipped stored XSS through `innerHTML` twice (an
+// achievement category key, an exercise name in a swap confirmation, both now
+// escaped and regression-tested). A signed-in user's wipe would then sync.
+//
+// There is no reason for the destructive half of this to exist on
+// shevato.com, and the diagnostic half is only ever used while developing, so
+// the whole object is gated on a local host. Add `?debug=1` to opt in
+// deliberately elsewhere.
+const GYM_DEBUG_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]', '']);
+if (GYM_DEBUG_HOSTS.has(location.hostname) || new URLSearchParams(location.search).has('debug')) {
 window.debugGymTracker = {
     clearLocalStorage: () => {
         console.log('Clearing all gym tracker localStorage...');
@@ -1300,3 +1315,4 @@ window.debugGymTracker = {
         }
     }
 };
+}
