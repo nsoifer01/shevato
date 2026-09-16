@@ -3,6 +3,50 @@
 Living document: rewrite sections as understanding improves. Started
 2026-08-15 during the data-integrity round that fixed audit defects 4-7.
 
+## This app's base theme is Mario Kart's, and one file of it is load-bearing (2026-09-16)
+
+`index.html` links six stylesheets from a sibling app before its own:
+`../mario-kart/css/{utilities,base,theme,layout,forms,mario-kart-overrides}.css`.
+The markup labels them "Import shared CSS modules". Its own three files are
+5,552 lines carrying 538 `!important` (about one per 10 lines, against
+trip-planner's one per 41) and 447 raw hex values against 199 `var()` uses.
+
+Audited 2026-09-16 by cross-referencing every class and id this app's HTML and
+JS actually use against those six files. The result was NOT what the shape of
+it suggests:
+
+- Most of the VISUAL coupling is already gone. `.stat-card`, `.games-table`
+  and `.player-comparison-table` are fully self-sufficient in this app's own
+  `refresh.css`, under a `--fh-*` token layer scoped to
+  `body.football-h2h-tracker`, mirroring mario-kart's own `--mk-*` pattern.
+- **One dependency is load-bearing and has no redundancy**: `base.css`'s
+  universal reset (`* { margin:0; padding:0; box-sizing:border-box; font-family }`).
+  This app has no equivalent, only two isolated `box-sizing` declarations, so
+  dropping the import would shift the box model on every element of the page.
+- Smaller real dependencies: `layout.css`'s flex-wrap and margins on
+  `.action-buttons`, `.date-filter-controls` and `.custom-date-range` (mobile
+  wrapping), `.sortable-header`'s outline and user-select, and
+  `mario-kart-overrides.css`'s sticky-footer flex on the app wrapper (moot
+  here, since this app has no footer element).
+
+DELIBERATELY NOT UNTANGLED. There is no incident in the history, the cross-app
+coupling has been navigated carefully each time it came up (commit `58045d4a`
+measured utilities.css usage across all three consumers by two independent
+methods before deleting 210 of 217 classes), and 5,552 lines of working,
+already-differentiated styling is not broken. A migration would be a large
+visual-regression surface for no user-visible gain.
+
+What WAS missing is the thing that makes the coupling safe to live with: the
+dependency was undocumented on five of the six shared files. `base.css` now
+carries a header naming this app and the reset it provides, in the same form
+`utilities.css` already used. The risk this closes is a future edit to
+mario-kart's reset silently changing a second app whose visual coverage here is
+incidental (`tests/browser/suites/visual.mjs` probes a couple of pinned buttons
+and body text colour) rather than deliberate, and
+`sync-system/tests/shared-ui-consistency.test.mjs` does not look at cross-app
+`<link>` imports at all.
+
+
 ## The page carries its own explanation now (`.app-about`)
 
 Measured on production before 2026-09-04, this page rendered almost nothing but
