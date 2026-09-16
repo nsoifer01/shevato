@@ -23,7 +23,7 @@
 // slashes, which is why /assets/* covers /assets/js/main.js.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync, existsSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -96,6 +96,45 @@ test('the Rising Shows per-show detail files are cacheable too', () => {
   assert.match(app, /fetch\(`data\/detail\/\$\{[^}]+\}\.json`\)/, 'the show modal fetches data/detail/<id>.json');
   const cc = cacheControlFor(RULES, '/apps/rising-shows/data/detail/tt0903747.json');
   assert.ok(cc && maxAge(cc) > 0, 'reopening a show modal should not re-fetch bytes the browser already has');
+});
+
+// Which apps own a service worker is the thing that decides their caching, so
+// derive it rather than restating it: an app that gains a worker and a
+// positive max-age on the same day would otherwise pass this file.
+const SW_APPS = readdirSync(resolve(REPO_ROOT, 'apps'))
+  .filter((app) => existsSync(resolve(REPO_ROOT, 'apps', app, 'sw.js')))
+  .sort();
+
+test('every app without a service worker has its own js and css cached', () => {
+  const apps = readdirSync(resolve(REPO_ROOT, 'apps'))
+    .filter((app) => existsSync(resolve(REPO_ROOT, 'apps', app, 'index.html')))
+    .filter((app) => !SW_APPS.includes(app));
+  assert.ok(apps.length >= 5, `expected several worker-less apps, found ${apps.join(',')}`);
+  for (const app of apps) {
+    for (const kind of ['js', 'css']) {
+      const path = `/apps/${app}/${kind}/anything.${kind}`;
+      const cc = cacheControlFor(RULES, path);
+      assert.ok(cc, `${path} matches no [[headers]] rule, so it takes Netlify's max-age=0 default.`
+        + ' Measured 2026-09-16: revalidation on this site returns 200 with the full body, not 304,'
+        + ' so that default costs a round trip AND the bytes on every navigation.');
+      assert.ok(maxAge(cc) > 0, `${path} must not be served with max-age=0`);
+    }
+  }
+});
+
+test('every app WITH a service worker keeps its js and css at max-age=0', () => {
+  // The worker is the performance layer for these two; a positive max-age lets
+  // Chrome answer from memory without firing the worker's fetch event.
+  assert.deepEqual(SW_APPS, ['gym-tracker', 'trip-planner'],
+    'a new service-worker app needs a max-age=0 carve-out before this list changes');
+  for (const app of SW_APPS) {
+    for (const kind of ['js', 'css']) {
+      const path = `/apps/${app}/${kind}/anything.${kind}`;
+      const cc = cacheControlFor(RULES, path);
+      assert.ok(cc, `${path} must carry an EXPLICIT rule, not rely on the platform default`);
+      assert.equal(maxAge(cc), 0, `${path} must stay max-age=0 so the service worker sees every request`);
+    }
+  }
 });
 
 test('Gym Tracker assets stay uncacheable at the HTTP layer, because its worker is the cache', () => {

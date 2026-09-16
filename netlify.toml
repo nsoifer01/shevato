@@ -401,6 +401,97 @@
   [headers.values]
     Cache-Control = "public, max-age=3600, stale-while-revalidate=86400"
 
+# Each app's own js/ and css/ matched no rule either, so they took the same
+# max-age=0 default, and the same measurement applies to them: on 2026-09-16 a
+# conditional GET carrying the exact ETag the edge had just issued, with the
+# same Accept-Encoding, came back 200 with the whole body for
+# trip-planner/js/app.js, mario-kart/css/sidebar.css, rising-shows/js/app.js
+# and arena/js/app.js. Revalidation on this site does not produce 304s, so
+# must-revalidate was costing a round trip AND the bytes on every navigation.
+# Mario Kart alone loads 44 of its own JS/CSS files per page.
+#
+# Listed per app rather than as one /apps/* glob ON PURPOSE: the two
+# service-worker apps must NOT get a positive max-age (see the block below),
+# and a broad rule plus carve-outs would make which one wins depend on
+# ordering. An app with no rule here is uncached, which is safe; an app
+# wrongly caught by a glob is not.
+[[headers]]
+  for = "/apps/arena/js/*"
+  [headers.values]
+    Cache-Control = "public, max-age=3600, stale-while-revalidate=86400"
+
+[[headers]]
+  for = "/apps/arena/css/*"
+  [headers.values]
+    Cache-Control = "public, max-age=3600, stale-while-revalidate=86400"
+
+[[headers]]
+  for = "/apps/football-h2h/js/*"
+  [headers.values]
+    Cache-Control = "public, max-age=3600, stale-while-revalidate=86400"
+
+[[headers]]
+  for = "/apps/football-h2h/css/*"
+  [headers.values]
+    Cache-Control = "public, max-age=3600, stale-while-revalidate=86400"
+
+[[headers]]
+  for = "/apps/fpl-planner/js/*"
+  [headers.values]
+    Cache-Control = "public, max-age=3600, stale-while-revalidate=86400"
+
+[[headers]]
+  for = "/apps/fpl-planner/css/*"
+  [headers.values]
+    Cache-Control = "public, max-age=3600, stale-while-revalidate=86400"
+
+[[headers]]
+  for = "/apps/maptap-rivals/js/*"
+  [headers.values]
+    Cache-Control = "public, max-age=3600, stale-while-revalidate=86400"
+
+[[headers]]
+  for = "/apps/maptap-rivals/css/*"
+  [headers.values]
+    Cache-Control = "public, max-age=3600, stale-while-revalidate=86400"
+
+[[headers]]
+  for = "/apps/mario-kart/js/*"
+  [headers.values]
+    Cache-Control = "public, max-age=3600, stale-while-revalidate=86400"
+
+[[headers]]
+  for = "/apps/mario-kart/css/*"
+  [headers.values]
+    Cache-Control = "public, max-age=3600, stale-while-revalidate=86400"
+
+[[headers]]
+  for = "/apps/rising-shows/js/*"
+  [headers.values]
+    Cache-Control = "public, max-age=3600, stale-while-revalidate=86400"
+
+[[headers]]
+  for = "/apps/rising-shows/css/*"
+  [headers.values]
+    Cache-Control = "public, max-age=3600, stale-while-revalidate=86400"
+
+# Trip Planner is the OTHER service-worker app, and until now it was only
+# accidentally safe: it took the max-age=0 default because nothing named it.
+# Stated explicitly so the next person adding an /apps/* caching rule cannot
+# silently break it. Same reason as Gym Tracker below: a fresh-enough
+# subresource is served from Chrome's memory cache WITHOUT firing the worker's
+# fetch event, which hides the request from a worker whose whole contract is
+# network-first freshness.
+[[headers]]
+  for = "/apps/trip-planner/js/*"
+  [headers.values]
+    Cache-Control = "public, max-age=0, must-revalidate"
+
+[[headers]]
+  for = "/apps/trip-planner/css/*"
+  [headers.values]
+    Cache-Control = "public, max-age=0, must-revalidate"
+
 # Gym Tracker is a service-worker PWA: its worker precaches the shell and
 # serves everything stale-while-revalidate out of CacheStorage, so the SW is
 # the performance layer and the HTTP layer only has to be correct.
