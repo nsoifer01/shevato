@@ -3,6 +3,54 @@
 A living document: best current understanding, not a diary. See the
 repo-root `CLAUDE.md` for the convention.
 
+## The boot payload was uncacheable, and revalidating it did nothing (2026-09-16)
+
+`shows-index.json` is 16,766,995 bytes of JSON, 3.12 MB once Netlify
+brotli-encodes it, and the finder fetches it on every load. It matched no
+`[[headers]]` rule in `netlify.toml`, so it took the platform default,
+`public, max-age=0, must-revalidate`.
+
+The interesting part is that `must-revalidate` was not doing the job the name
+suggests. Measured against production on 2026-09-16:
+
+| Request | Result |
+|---|---|
+| `GET --compressed` | 200, 3,122,424 bytes, `etag: "...-ssl-df"` |
+| `GET --compressed` with `If-None-Match` set to that exact etag | **200**, full body again, `cache-status: fwd=miss ... stored` |
+| `GET` with no `Accept-Encoding` | 200, 16,766,995 bytes, a DIFFERENT etag (`"...-ssl"`) |
+
+So the conditional request never produced a 304, and no `Last-Modified` is
+sent either, which means `If-Modified-Since` is never even offered. Every
+single load of the finder re-downloaded 3.12 MB. Note the encoding-varying
+etag in the third row: a check that compares an identity-encoded etag against
+a brotli-encoded response will report a false 304 and conclude the cache is
+fine, which is the trap to avoid when re-measuring this.
+
+Fixed by giving the path, and `data/*` (the per-show detail files the modal
+opens, 34,692 of them), the same policy `/assets` already uses:
+`public, max-age=3600, stale-while-revalidate=86400`.
+
+Deliberately NOT `immutable`, and deliberately not a content-hashed filename.
+Both would be correct for an asset whose URL changes with its content, and
+both were considered. The boot payload's name is agreed on by four places
+(`app.js`'s literal boot fetch, `split-data.js`'s `SHOWS_OUT`, the README
+payload table, and `tests/static/docs-contracts.test.mjs`, which pins them
+together), and `immutable` on a path whose name never changes is only safe
+while every single request carries a version the build never fails to stamp.
+The measured cost here was the repeat load, and an hour of freshness with a
+day of stale-while-revalidate recovers that without putting a year-long cache
+entry behind a stamp that could silently stop happening. A day is the right
+outer bound because `refresh-rising-shows.yml` rebuilds the dataset daily, so
+anything longer would only serve data the pipeline has already replaced.
+
+`tests/static/netlify-cache-headers.test.mjs` pins both directions: the boot
+payload and the detail files must have a positive `max-age` no greater than a
+day, and Gym Tracker's assets must stay at `max-age=0`, because its service
+worker is its performance layer and a positive `max-age` there lets Chrome
+answer from memory without firing the worker's fetch event. The boot path is
+derived from `app.js`'s own fetch literal rather than hardcoded, so renaming
+the payload without renaming the rule fails the test instead of production.
+
 ## `scripts/*.js` are classic scripts and share ONE global scope
 
 `index.html` loads `match.js`, `finder-lib.js` and `providers-lib.js` as plain
