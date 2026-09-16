@@ -6,6 +6,62 @@ section below describes the behaviour as it now stands plus the regression
 that pins it. `README.md` beside this file says what the app is; this file
 says what we learned about it.
 
+## Two functions were declared twice in the shared scope, and nothing said so (2026-09-15)
+
+`js/playerManager.js` declared a top-level `updatePlayerLabels` that
+`js/updatePlayerLabels.js` also declared, and a top-level `getPlayerName` that
+`js/playerNameManager.js` also declared. Classic scripts share one global
+scope, so the file the page loads LAST owned each name. Neither is an error:
+duplicate `var` and function declarations are legal and the second one simply
+replaces the first, so there was no SyntaxError, no console line, and both
+dead copies sat in their files looking live.
+
+What each one actually did:
+
+- `updatePlayerLabels`: `updatePlayerLabels.js` loads after `playerManager.js`
+  (index.html lines 625 and 635), so ITS version ran. The copy in
+  `playerManager.js` had been dead since the day the second file was added.
+  That copy also rewrote three history-table headers with hardcoded
+  `player1..3`; the live rewrite is `updateHistoryTableHeaders()` in `main.js`,
+  which covers four players and carries `aria-sort` and sort indicators. Its
+  name-input sync is done by `backup.js` and `dataManager.js`. Nothing was
+  lost by deleting it; the behaviour had already been gone.
+- `getPlayerName`: `playerManager.js` loads after `playerNameManager.js`, so a
+  bare `getPlayerName()` call reached `playerManager.js`'s version, reading its
+  local `playerNames`. But `window.PlayerNameManager.get` had captured the
+  OTHER function object in its object literal before the overwrite, so
+  `PlayerNameManager.get()` kept reaching `playerNameManager.js`'s version,
+  reading `currentPlayerNames`. Two implementations, two stores, reachable
+  under two different names. `getDisplayName()` in `playerNameManager.js` calls
+  the bare name, so that helper was silently reading the other store than the
+  `get()` beside it.
+
+Both duplicates are deleted from `playerManager.js`; the remaining single
+declaration of each name is the one that was already winning for
+`updatePlayerLabels`, and for `getPlayerName` it is now `playerNameManager.js`
+everywhere, which is the file that owns the stored names.
+
+Why no gate caught it: `tests/static/classic-script-scope.test.mjs` existed
+precisely for this hazard, but it detected only the clashes a browser REFUSES
+(`const`/`let`/`class`, which throw "Identifier has already been declared").
+Its own header recorded the measurement that `var`/`var` and
+`function`/`function` do not throw. The unit estate could not see it either:
+`tests/harness.js` builds a fresh `vm` context per test and loads only the few
+files that test needs, so the colliding pair is never in one scope. And
+`eslint.config.mjs` lists both names in `marioKartGlobals` to suppress
+`no-undef` for cross-file globals, which by construction cannot tell "some file
+declares this" from "exactly one file declares this".
+
+That test now carries a second, complementary checker, `findSilentOverwrites`,
+which reports the legal-but-dangerous half: a top-level `var` or function
+declared by two co-loaded scripts. It measures the same way and just as
+cheaply (instantiating a script creates its global bindings before its first
+statement, and the probe throws there, so diffing the global object's own
+property names around a lone instantiation yields exactly that script's `var`
+and function declarations without running any of it). It runs against every
+published page, not a hand-kept list, and across all 23 pages these two were
+the only findings.
+
 ## Chart.js is served from this site (2026-09-13)
 
 `index.html` loaded Chart.js 4.4.1 from cdnjs as a synchronous script in

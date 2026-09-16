@@ -196,6 +196,76 @@ function describe({ identifier, file, declaredBy }) {
     + ` and again by ${file}; the browser refuses ${file} with "SyntaxError: Identifier '${identifier}' has already been declared"`;
 }
 
+// --- the SILENT half of the same hazard --------------------------------------
+//
+// Everything above finds clashes the browser REFUSES. A duplicate top-level
+// `var` or function declaration is legal, and that is exactly what makes it
+// worse: no SyntaxError, no console line, nothing fails to load. The later
+// declaration simply replaces the earlier one on the global object and the
+// dead version keeps sitting in its file looking live. Reordering two
+// <script> tags then silently swaps which implementation the page runs.
+//
+// Mario Kart shipped two of these. `updatePlayerLabels` was declared by
+// playerManager.js and again by updatePlayerLabels.js, so the accessibility
+// fix in the second file was the one that ran and the first file's
+// table-header rewrite was dead code. `getPlayerName` was declared by
+// playerNameManager.js and again by playerManager.js, so a bare call and
+// `PlayerNameManager.get()` (which had captured the first function object
+// before the overwrite) reached two DIFFERENT implementations reading two
+// different stores.
+//
+// Measured the same way as above and just as cheaply: instantiating a script
+// creates its global bindings BEFORE its first statement, and the probe throws
+// there, so diffing the global object's own property names around a lone
+// instantiation yields exactly that script's `var` and function declarations
+// without running a line of it. `const`, `let` and `class` are absent by
+// design: they make lexical bindings, not global-object properties, and the
+// refusing checker above already owns them.
+const declaredCache = new Map();
+
+/** The names a script puts on the global OBJECT (`var` and function declarations), measured alone. */
+export function declaredGlobalsOf(script) {
+  if (script.file && declaredCache.has(script.file)) return declaredCache.get(script.file);
+  const ctx = browserLikeContext();
+  const before = new Set(vm.runInContext('Object.getOwnPropertyNames(globalThis)', ctx));
+  // A script that cannot instantiate on its own declares nothing we can read;
+  // findScopeCollisions reports that failure, so stay quiet rather than
+  // blaming the same file twice.
+  // Array.from: the vm realm's Array is not this realm's, and a cross-realm
+  // array fails deepStrictEqual against a plain one for a reason that has
+  // nothing to do with what the script declared.
+  const names = instantiate(ctx, script) === null
+    ? Array.from(vm.runInContext('Object.getOwnPropertyNames(globalThis)', ctx)).filter((n) => !before.has(n))
+    : [];
+  if (script.file) declaredCache.set(script.file, names);
+  return names;
+}
+
+/**
+ * Names declared as a global `var`/function by two or more co-loaded scripts.
+ * `file` is the script whose declaration wins; `declaredBy` is the one it replaces.
+ */
+export function findSilentOverwrites(scripts) {
+  const owner = new Map();
+  const overwrites = [];
+  for (const script of scripts) {
+    for (const identifier of declaredGlobalsOf(script)) {
+      const held = owner.get(identifier);
+      if (held !== undefined && held !== script.name) {
+        overwrites.push({ identifier, file: script.name, declaredBy: held });
+      }
+      owner.set(identifier, script.name);
+    }
+  }
+  return overwrites;
+}
+
+function describeOverwrite({ identifier, file, declaredBy }) {
+  return `'${identifier}' is declared at the top level by ${declaredBy} and again by ${file};`
+    + ` the browser accepts both and ${file} silently wins, leaving ${declaredBy}'s version dead.`
+    + ' Rename one, delete the dead one, or give the file its own scope (an IIFE or type="module").';
+}
+
 // --- the checker itself ------------------------------------------------------
 
 test('the checker reports a top-level const declared by two scripts, naming both files and the name', () => {
@@ -266,6 +336,48 @@ test('script extraction follows what a browser actually runs, in the order it ru
   );
 });
 
+test('the silent checker reports a top-level function or var declared by two scripts', () => {
+  const overwrites = findSilentOverwrites([
+    { name: 'js/playerNameManager.js', code: 'function getPlayerName(k) { return k; }' },
+    { name: 'js/other.js', code: 'var unrelated = 1;' },
+    { name: 'js/playerManager.js', code: 'function getPlayerName(k) { return k.toUpperCase(); }' },
+  ]);
+  assert.deepEqual(overwrites, [
+    { identifier: 'getPlayerName', file: 'js/playerManager.js', declaredBy: 'js/playerNameManager.js' },
+  ]);
+});
+
+test('the silent checker covers exactly the legal-but-dangerous half, and nothing the other checker owns', () => {
+  const dupes = (a, b) => findSilentOverwrites([{ name: 'a.js', code: a }, { name: 'b.js', code: b }]).length;
+  // The pairs a browser ACCEPTS, where the second declaration silently wins.
+  for (const [a, b] of [
+    ['function X() {}', 'function X() {}'], ['var X;', 'var X;'],
+    ['var X = 1;', 'function X() {}'], ['function X() {}', 'var X;'],
+  ]) {
+    assert.equal(dupes(a, b), 1, `${a} then ${b} silently overwrites and must be reported`);
+  }
+  // Lexical declarations are findScopeCollisions' job: reporting them here too
+  // would name the same file twice for one mistake.
+  for (const [a, b] of [['const X = 1;', 'const X = 2;'], ['let X;', 'let X;'], ['class X {}', 'class X {}']]) {
+    assert.equal(dupes(a, b), 0, `${a} then ${b} belongs to the refusing checker, not this one`);
+  }
+  // Scoped, assigned or single-file declarations are not overwrites.
+  for (const [a, b] of [
+    ['function X() {}', '(function () { function X() {} })();'],
+    ['function X() {}', 'window.X = 2;'],
+    ['function X() {}', 'function Y() {}'],
+  ]) {
+    assert.equal(dupes(a, b), 0, `${a} then ${b} is not a shared-scope overwrite`);
+  }
+  // One file declaring a name twice is that file's own business.
+  assert.equal(findSilentOverwrites([{ name: 'a.js', code: 'function X() {} function X() {}' }]).length, 0);
+});
+
+test('the silent checker runs no page code either', () => {
+  assert.deepEqual(declaredGlobalsOf({ name: 'a.js', code: 'while (true) {} document.body.x();' }), []);
+  assert.deepEqual(declaredGlobalsOf({ name: 'b.js', code: 'function f() {} throw new Error("boom");' }), ['f']);
+});
+
 // --- every published page --------------------------------------------------
 
 const PAGES = (await publishedFiles())
@@ -302,5 +414,15 @@ for (const { page, scripts } of PAGES.filter((p) => p.scripts.length >= 2)) {
       `${page}: a top-level name is declared twice in the page's shared scope. Rename one, or give the file its own scope (an IIFE or type="module").`,
     );
     assert.deepEqual(errors.map((e) => `${e.file}: ${e.message}`), [], `${page}: a classic script failed to instantiate`);
+  });
+
+  test(`${page}: no classic script silently overwrites another's top-level name`, () => {
+    const loaded = scripts
+      .filter((s) => !s.file || existsSync(join(REPO_ROOT, s.file)))
+      .map((s) => (s.file ? { name: s.name, file: s.file, code: readFileSync(join(REPO_ROOT, s.file), 'utf8') } : s));
+    assert.deepEqual(
+      findSilentOverwrites(loaded).map(describeOverwrite), [],
+      `${page}: a top-level function or var is declared by two scripts in the shared scope.`,
+    );
   });
 }
