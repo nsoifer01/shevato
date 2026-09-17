@@ -703,6 +703,19 @@ it must anchor to the element it cares about, never to the document.
   stalls it mid-run (`timeout: Runtime.evaluate`, then `ECONNREFUSED`); the
   repo runner restarts nothing, so a local sweep should relaunch the browser
   between suites.
+- **`a11y state trip-planner days-view` has flaked once on CI with a single
+  serious `color-contrast` violation `@ span` (2026-09-17, PR #563).** Treat a
+  lone sighting as a flake until it repeats: that PR changed Markdown only, the
+  same commit's previous CI run and master 14 minutes earlier were both green,
+  the next CI run on the same tree was green, the whole a11y suite passed
+  locally (90/90, the same check count CI runs), and a probe that reproduced
+  exactly that state (example trip loaded, Days view, axe over the document)
+  six times at settles of 300-2500 ms found no violation at all. Nothing in
+  the app was changed for it. If it ever repeats, the suite's own record is
+  too thin to work from (`suites/a11y.mjs` keeps only rule id plus target, so
+  "span" is all you get); capture `n.html` and the `any[].data` colours from
+  `axe.run` for that scan first, because the fix depends on which element and
+  which two colours Chrome measured.
 
 ## An optional field pair is two questions, not one (`legArrival`, fixed 2026-09-11)
 
