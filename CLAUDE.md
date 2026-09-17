@@ -186,6 +186,33 @@ REJECT, whichever way it goes.
   cost one scenario".
 - `.features/` holds each app's living test-plan pair (gitignored,
   owner-reviewed); plans are archived, never deleted.
+- **Close the round on the artifacts too: a session cleans up what it
+  created.** Screenshots, probe scripts, debug dumps, one-off fixtures, ad-hoc
+  reports, generated output, scratch HTML: every one of them gets exactly one
+  of three endings before the round is called done, and the chat report says
+  which. (1) DELETE it, the default, because git already holds the change it
+  was evidence for; (2) MOVE it to the permanent home that owns that kind of
+  knowledge, which is the app's `README.md` or `FINDINGS.md` for a finding,
+  `.features/` for an assertion worth re-running, `apps/<app>/.reports/` for a
+  session report, `tests/` for a fixture or a regression; or (3) LEAVE it and
+  write down beside it why it has to stay, the way
+  `apps/trip-planner/AUDIT-2026-08-22.md` is kept because four test files cite
+  it and `images/fpl-planner-logo.png` is kept because the source art is gone
+  (`apps/fpl-planner/FINDINGS.md`). "I might want it next round" is not a
+  reason; take the finding, not the file. The concrete end-of-round check is
+  `.screenshots/` empty, no `dist/` older than the last `npm run build:site`,
+  no `*-debug.log` at the root, the throwaway worktree that "Every PR: a
+  `## DEV vs PROD` section" below builds DEV in removed once its draft deploy
+  is up (`git worktree remove --force`; it carries a whole `dist/` and a
+  `node_modules` with it), and nothing untracked that `git status` did not show
+  at the start. **Three trees are exempt and are never swept**:
+  `.features/` (owner-reviewed plan pairs, archived not deleted),
+  `apps/*/.reports/` and `.reports/` (owner-reviewed session reports), and
+  `.lightshot-screenshots/` (the owner's own uploads). Left alone this accretes
+  fast: on 2026-09-17 a sweep found 78,881 screenshots over 3.0 GB going back
+  to 2026-09-02, every round of it merged and closed, plus a `dist/` four days
+  stale, which is the dangerous one because `netlify deploy --prod --no-build`
+  publishes whatever bytes it finds there.
 
 ## Every PR: a `## DEV vs PROD` section
 
