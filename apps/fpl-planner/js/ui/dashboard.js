@@ -779,11 +779,20 @@ export function alternativesCard({ bundle, open = false, onToggle = null }) {
 
   const rows = alts.map(alt => el('div', { class: 'fpl-alt' }, [
     el('div', { class: 'fpl-alt-title', text: alt.headline }),
-    el('div', { class: 'fpl-alt-delta' }, [
-      el('b', { text: `${signedXp(alt.deltaHorizon)} pts` }),
-      ` over ${bundle.current.horizon} gameweeks`,
-      alt.hits ? `, costs a ${alt.hitCostPoints} point hit` : '',
-    ]),
+    // A plan that plays a different chip is compared on what keeping a chip is
+    // worth, not on this week's chip points alone, which is how the planner
+    // ranked it. That is a sentence rather than a figure, so it may wrap.
+    Number.isFinite(alt.deltaWithChipValue)
+      ? el('div', { class: 'fpl-alt-delta fpl-alt-delta-sentence' }, [
+        el('b', { text: `${signedXp(alt.deltaWithChipValue)} pts` }),
+        ` over ${bundle.current.horizon} gameweeks, counting what the chip is worth later`,
+        alt.hits ? `, costs a ${alt.hitCostPoints} point hit` : '',
+      ])
+      : el('div', { class: 'fpl-alt-delta' }, [
+        el('b', { text: `${signedXp(alt.deltaHorizon)} pts` }),
+        ` over ${bundle.current.horizon} gameweeks`,
+        alt.hits ? `, costs a ${alt.hitCostPoints} point hit` : '',
+      ]),
   ]));
 
   const node = disclosure(`Alternatives considered (${alts.length})`, [

@@ -282,7 +282,8 @@ function engineNumbers(bundle, plan, horizon) {
     RULES.squadSize,
     CHIP_PARAMS.wildcardHorizonThreshold,
     CHIP_PARAMS.freeHitThreshold,
-    CHIP_PARAMS.benchBoostThreshold,
+    CHIP_PARAMS.benchBoostBar,
+    CHIP_PARAMS.benchBoostHoldMargin,
     CHIP_PARAMS.tripleCaptainMargin,
   ]);
   // Gameweek references, and only the ones the engine actually produced: the
@@ -296,6 +297,8 @@ function engineNumbers(bundle, plan, horizon) {
     if (entry.threshold !== null && entry.threshold !== undefined) allowed.add(entry.threshold);
     if (entry.bestGw !== null && entry.bestGw !== undefined) allowed.add(entry.bestGw);
     if (entry.nextLegalGw !== null && entry.nextLegalGw !== undefined) allowed.add(entry.nextLegalGw);
+    if (Number.isFinite(entry.advantage)) allowed.add(Number(fmtValue(Math.abs(entry.advantage), 'points')));
+    if (entry.window) allowed.add(entry.window.to);
   }
   // The formation, which is written into a sentence as "3-4-3".
   for (const part of String(plan.formation).split('-')) allowed.add(Number(part));

@@ -1911,8 +1911,17 @@ async function plannerDecide({ gameState, squadState, rules, gw, opts, dataset, 
       strength,
       futureTransfers: false,
       seed: opts.seed === undefined ? 1 : opts.seed,
+      // Planner option overrides an experiment arm sets (for example
+      // experiments/configs/hit-thresholds.mjs). Absent on every normal replay.
+      ...(opts.planOptions || {}),
     },
   });
+  // A read-only window onto each deadline for measurement scripts
+  // (scripts/calibration/calibrate-chips.mjs): the plan, the projections it was
+  // built from and the state it saw. Absent on every normal replay.
+  if (typeof opts.onPlanBundle === 'function') {
+    await opts.onPlanBundle({ gw, gameState, squadState, rules, projections, bundle });
+  }
   return bundle.current;
 }
 

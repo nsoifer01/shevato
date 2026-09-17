@@ -13,6 +13,12 @@
 // Any plan whose transfer count exceeds the banked free transfers is a hit
 // plan; hits above `opts.maxHits` are never generated.
 //
+// `opts.outIds` limits the players who may be sold to that list, and every one
+// of them is then an outgoing candidate for the pair search. The planner uses
+// it to find the moves that repair a bench before a Bench Boost (planner.js,
+// "THE BENCH REPAIR"): selling a bench player who will not play moves the
+// horizon too little for the open search to rank it.
+//
 // THE PRUNING RULE, stated because a two-transfer search over 600 players is
 // 10^10 pairs and cannot be enumerated:
 //
@@ -296,8 +302,11 @@ export function searchTransfers({ squadState, projections, gameState, rules, hor
 
   push([], []);
 
+  const sellable = Array.isArray(cfg.outIds) ? new Set(cfg.outIds) : null;
+
   if (cfg.maxTransfers >= 1) {
     for (const pick of picks) {
+      if (sellable && !sellable.has(pick.playerId)) continue;
       const position = players.get(pick.playerId).position;
       const budget = bankBefore + pick.sellingTenths;
       for (const cand of pools.get(position) || []) {
@@ -308,7 +317,9 @@ export function searchTransfers({ squadState, projections, gameState, rules, hor
   }
 
   if (cfg.maxTransfers >= 2 && freeTransfers + cfg.maxHits >= 2) {
-    const outCandidates = chooseOutCandidates({ picks, players, horizonValue, pools, bankBefore, cfg });
+    const outCandidates = sellable
+      ? picks.filter(p => sellable.has(p.playerId))
+      : chooseOutCandidates({ picks, players, horizonValue, pools, bankBefore, cfg });
     const pairPools = new Map();
     for (const [position, list] of pools) {
       pairPools.set(position, list.slice(0, cfg.pairPoolPerPosition));

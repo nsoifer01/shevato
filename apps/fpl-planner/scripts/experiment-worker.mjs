@@ -101,6 +101,11 @@ async function runCell({ cell, config, arm }) {
       transfers: report.totals.transfers,
       hits: report.totals.hits,
       chips: report.totals.chips.map(c => `${c.chip}@${c.gw}`),
+      // What each chip actually returned (backtest.js chipValue), so a chip
+      // experiment can read decision quality from the cells, not only points.
+      chipValues: report.totals.chips.map(c => ({ chip: c.chip, gw: c.gw, value: c.value })),
+      hitGain: report.totals.hitGain,
+      hitPoints: report.totals.hitPoints,
       benchPoints: report.totals.benchPoints,
       captaincyValue: report.totals.captaincyValue,
       projectionBias: report.totals.projectionBias,

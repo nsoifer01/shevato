@@ -1426,6 +1426,9 @@ body.fpl-page {
 .fpl-planner-app .fpl-alt-title { font-size: 14px; font-weight: 600; color: var(--text-dim); min-width: 0; }
 .fpl-planner-app .fpl-alt-delta { font-size: 13px; color: var(--text-faint); white-space: nowrap; }
 .fpl-planner-app .fpl-alt-delta b { color: var(--red); font-weight: 650; }
+/* The delta that counts what a chip is worth later is a sentence, and nowrap
+   pushed it off a 390px screen, the same way the why-not routes above were. */
+.fpl-planner-app .fpl-alt-delta-sentence { white-space: normal; min-width: 0; }
 
 /* ---------------------------------------------------------------- banners */
 

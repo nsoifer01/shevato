@@ -27,6 +27,7 @@ import { buildPlan } from '../js/engine/planner.js';
 import { assembleSampleBundle } from '../js/data/sample.js';
 import {
   evaluateChips, squadTrajectory, discountWeights, chipLabel, fmtValue, makeReason, CHIP_PARAMS, xpOf,
+  benchBoostDecision, tripleCaptainDecision, chipWindowAt, dueChipsAt,
 } from '../js/engine/chips.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -515,16 +516,20 @@ test('bench boost values the eleven plus the bench, and fires when the bench is 
   assert.deepEqual(entry.detail.bench.sort(), bench.slice().sort());
   assert.equal(bench.length, 4, 'a bench boost plays four extra players');
 
-  assert.ok(entry.valueNow >= CHIP_PARAMS.benchBoostThreshold);
+  assert.ok(entry.valueNow >= CHIP_PARAMS.benchBoostBar);
   assert.ok(entry.valueNow > entry.bestValue, 'this week beats every week left');
   assert.equal(entry.recommended, true);
+  assert.equal(entry.status, 'play');
   assert.equal(evaluation.recommendation.decision, 'play');
   assert.equal(evaluation.recommendation.chip, 'bboost');
   assert.equal(evaluation.recommendation.value, entry.valueNow);
 
   const gain = reasonOf(entry, 'bboost_value_now');
   assert.equal(gain.value, entry.valueNow);
-  assert.equal(reasonOf(entry, 'bboost_threshold').value, CHIP_PARAMS.benchBoostThreshold);
+  assert.equal(reasonOf(entry, 'bboost_threshold').value, CHIP_PARAMS.benchBoostBar);
+  // What the chip is worth to a plan is this week's bench less what keeping it
+  // is worth, never the raw bench.
+  assert.ok(entry.netValue > 0 && entry.netValue < entry.valueNow);
 });
 
 test('bench boost waits for the double gameweek instead of firing on an ordinary one', () => {
@@ -532,10 +537,12 @@ test('bench boost waits for the double gameweek instead of firing on an ordinary
   const { evaluation } = scenario({ gw: GW, xp: flat, doubles: { [GW + 3]: SQUAD_CLUBS } });
   const entry = evaluation.perChip.bboost;
 
-  assert.ok(entry.valueNow >= CHIP_PARAMS.benchBoostThreshold, 'the bench is good enough in absolute terms');
+  assert.ok(entry.valueNow >= CHIP_PARAMS.benchBoostBar, 'the bench is good enough in absolute terms');
   assert.equal(entry.bestGw, GW + 3, 'and the double three weeks out is better');
-  assert.ok(entry.bestValue > entry.valueNow);
+  assert.ok(entry.bestValue - entry.valueNow > CHIP_PARAMS.benchBoostHoldMargin, 'by more than an estimate moves');
   assert.equal(entry.recommended, false, 'so the chip is held');
+  assert.equal(entry.status, 'later');
+  assert.ok(reasonOf(entry, 'bboost_later'));
 
   const future = reasonOf(entry, 'bboost_best_future');
   assert.ok(future.text.includes(`gameweek ${GW + 3}`));
@@ -554,12 +561,189 @@ test('a bench of players who will not play is not boostable, and says why', () =
   });
   const entry = evaluation.perChip.bboost;
 
-  assert.ok(entry.valueNow < CHIP_PARAMS.benchBoostThreshold, `bench worth ${entry.valueNow}`);
+  assert.ok(entry.valueNow < CHIP_PARAMS.benchBoostBar, `bench worth ${entry.valueNow}`);
   assert.equal(entry.recommended, false);
-  assert.equal(entry.detail.weakBench.length, 4);
-  const weak = reasonOf(entry, 'bboost_weak_bench');
+  assert.equal(entry.status, 'unusable');
+  assert.equal(entry.detail.unusable.length, 4);
+  const weak = reasonOf(entry, 'bboost_unusable');
   assert.equal(weak.value, 4);
-  assert.equal(entry.detail.structureCost, (4 - 1) * RULES.hitCost, 'repairing the bench costs transfers, and they are charged');
+  assert.equal(entry.netValue, 0, 'a chip that is not played adds nothing to a plan');
+});
+
+// ---------------------------------------------------------------------------
+// Bench boost and triple captain decisions (registry entry 30)
+// ---------------------------------------------------------------------------
+
+test('a strong bench with one player who cannot play is not boosted, however much the other three project', () => {
+  const GW = 10;
+  const out = BENCH_FOUR[BENCH_FOUR.length - 1];
+  const { evaluation, projections } = scenario({
+    gw: GW, xp: flat, doubles: { [GW]: SQUAD_CLUBS },
+    pAppearOf: id => (id === out ? 0 : 1),
+  });
+  const entry = evaluation.perChip.bboost;
+  assert.equal(xpOf(projections, out, GW), 0, 'he projects nothing');
+  assert.ok(entry.valueNow >= CHIP_PARAMS.benchBoostBar, `the other three still project ${entry.valueNow}`);
+  assert.equal(entry.status, 'unusable');
+  assert.equal(entry.recommended, false);
+  assert.deepEqual(entry.detail.unusable, [out]);
+  assert.notEqual(evaluation.recommendation.chip, 'bboost');
+});
+
+test('a bench boost is played on a tie, and a later week has to be clearly better to hold it', () => {
+  // Two weeks 0.03 points apart are not distinguishable: a bench estimate moves
+  // by 3 points before its week arrives. Replayed, holding a tied chip slid it
+  // to the season's last week, so the tie is played and the reason says why.
+  const GW = 10;
+  const base = scenario({ gw: GW, xp: flat });
+  const benchIds = [base.evaluation.baseline.gws[0].bench.gk, ...base.evaluation.baseline.gws[0].bench.order];
+  const tiny = (id, gw) => (benchIds.includes(id) && gw === GW + 4 ? 5.0075 : 5);
+  const { evaluation } = scenario({ gw: GW, xp: tiny });
+  const entry = evaluation.perChip.bboost;
+  assert.ok(entry.bestValue > entry.valueNow && entry.bestValue - entry.valueNow < 0.05, `a ${entry.bestValue - entry.valueNow} point edge later`);
+  assert.equal(entry.status, 'play');
+  assert.equal(entry.recommended, true);
+  assert.equal(reasonOf(entry, 'bboost_margin').value, CHIP_PARAMS.benchBoostHoldMargin);
+
+  // The same edge a whole hold margin wider is a different decision.
+  const clear = (id, gw) => (benchIds.includes(id) && gw === GW + 4 ? 5 + (CHIP_PARAMS.benchBoostHoldMargin + 1) / 4 : 5);
+  const held = scenario({ gw: GW, xp: clear }).evaluation.perChip.bboost;
+  assert.equal(held.status, 'later');
+  assert.equal(held.recommended, false);
+
+  // What the planner credits agrees with the status at every edge, so there is
+  // no band where the rule plays and the objective ties or holds.
+  for (let edge = -2; edge <= CHIP_PARAMS.benchBoostHoldMargin + 2; edge += 0.25) {
+    const later = (id, gw) => (benchIds.includes(id) && gw === GW + 4 ? 5 + edge / 4 : 5);
+    const world = scenario({ gw: GW, xp: later });
+    const d = benchBoostDecision({ benchIds, projections: world.projections, gameState: world.gameState, rules: RULES, gw: GW, horizon: 5 });
+    assert.equal(d.status === 'play', d.netValue > 0, `edge ${edge}: status ${d.status}, net ${d.netValue}`);
+    assert.equal(d.recommended, d.netValue > 0);
+  }
+});
+
+test('a triple captain is saved on a tie and spent when this week clears the measured margin', () => {
+  const GW = 10;
+  const star = SQUAD[7];
+  const tie = scenario({ gw: GW, xp: (id, gw) => (id === star ? (gw === GW ? 9.03 : 9) : 4) }).evaluation.perChip['3xc'];
+  assert.ok(Math.abs(tie.advantage) < CHIP_PARAMS.tripleCaptainMargin);
+  assert.equal(tie.status, 'tied');
+  assert.equal(tie.recommended, false);
+  assert.ok(reasonOf(tie, '3xc_tied'));
+
+  const clear = scenario({ gw: GW, xp: (id, gw) => (id === star ? (gw === GW ? 9 + CHIP_PARAMS.tripleCaptainMargin + 0.5 : 9) : 4) }).evaluation.perChip['3xc'];
+  assert.equal(clear.status, 'play');
+  assert.equal(clear.recommended, true);
+  assert.ok(clear.netValue >= CHIP_PARAMS.tripleCaptainMargin);
+});
+
+test('a weak bench is not boosted in an ordinary week', () => {
+  const GW = 10;
+  const { evaluation } = scenario({ gw: GW, xp: ordinaryWeek });
+  const entry = evaluation.perChip.bboost;
+  assert.ok(entry.valueNow < CHIP_PARAMS.benchBoostBar, `bench ${entry.valueNow}`);
+  assert.equal(entry.status, 'below_bar');
+  assert.equal(entry.recommended, false);
+  assert.equal(entry.holdReason.code, 'hold_bboost');
+  assert.equal(entry.holdReason.value, entry.valueNow);
+});
+
+test('in the last week a timing chip can be played, it is played rather than lost, even below its bar; a wildcard and a free hit are not forced', () => {
+  // The first-half chips expire after the window's last gameweek.
+  const firstHalf = RULES.chips.find(c => c.name === 'bboost' && c.startEvent === 1);
+  const GW = firstHalf.stopEvent;
+  const { evaluation } = scenario({ gw: GW, xp: ordinaryWeek });
+  const bb = evaluation.perChip.bboost;
+  assert.ok(bb.valueNow < CHIP_PARAMS.benchBoostBar);
+  assert.equal(bb.lastWeek, true);
+  assert.equal(bb.status, 'last_week');
+  assert.equal(bb.recommended, true);
+  assert.equal(reasonOf(bb, 'bboost_last_week').value, GW);
+  const tc = evaluation.perChip['3xc'];
+  assert.equal(tc.status, 'last_week');
+  assert.equal(tc.recommended, true);
+  for (const chip of ['wildcard', 'freehit']) {
+    const entry = evaluation.perChip[chip];
+    assert.ok(entry.valueNow < entry.threshold, `${chip} gains ${entry.valueNow}`);
+    assert.equal(entry.recommended, false, `${chip} is not played just because its window ends`);
+  }
+});
+
+test('a bench boost and a triple captain that need every week left of their window are both due, so neither is lost to the other', () => {
+  const firstHalf = RULES.chips.find(c => c.name === 'bboost' && c.startEvent === 1);
+  const END = firstHalf.stopEvent;
+  // The two timing chips need the window's last two weeks, whatever the
+  // wildcard and the free hit are doing: those are never forced.
+  assert.equal(dueChipsAt(RULES, END - 2, []).size, 0);
+  assert.deepEqual([...dueChipsAt(RULES, END - 1, [])].sort(), ['3xc', 'bboost']);
+  const spent = [{ name: 'wildcard', event: 3 }, { name: 'freehit', event: 8 }];
+  assert.deepEqual([...dueChipsAt(RULES, END - 1, spent)].sort(), ['3xc', 'bboost']);
+  // One timing chip left needs only the last week.
+  assert.equal(dueChipsAt(RULES, END - 1, [{ name: '3xc', event: 4 }]).size, 0);
+  assert.deepEqual([...dueChipsAt(RULES, END, [{ name: '3xc', event: 4 }])], ['bboost']);
+  // A chip of the other half never counts against this one.
+  assert.equal(dueChipsAt(RULES, END + 1, spent).size, 0);
+
+  // One week before the end, a weak bench and a captain with a double coming in
+  // the last week would both wait; with two chips and two weeks, both are played.
+  const starClub = ROSTER.find(p => p.id === SQUAD[7]).teamId;
+  const { evaluation } = scenario({ gw: END - 1, xp: ordinaryWeek, chipsUsed: spent, doubles: { [END]: [starClub] } });
+  for (const chip of ['bboost', '3xc']) {
+    const entry = evaluation.perChip[chip];
+    assert.equal(entry.lastWeek, true, `${chip} is due`);
+    assert.equal(entry.status, 'last_week');
+    assert.equal(entry.recommended, true);
+    assert.equal(reasonOf(entry, `${chip}_last_week`).value, END);
+  }
+  assert.ok(['bboost', '3xc'].includes(evaluation.recommendation.chip));
+  // Without the collision the same week waits.
+  const alone = scenario({ gw: END - 1, xp: ordinaryWeek, chipsUsed: [...spent, { name: 'bboost', event: 9 }], doubles: { [END]: [starClub] } });
+  assert.equal(alone.evaluation.perChip['3xc'].lastWeek, false);
+  assert.equal(alone.evaluation.perChip['3xc'].recommended, false);
+});
+
+test('a first-half chip is never held for a double gameweek that only a second-half chip can reach', () => {
+  const GW = 10;
+  const star = SQUAD[7];
+  const starClub = ROSTER.find(p => p.id === star).teamId;
+  const firstHalf = RULES.chips.find(c => c.name === '3xc' && c.startEvent === 1);
+  const doubleGw = firstHalf.stopEvent + 5;
+  const { evaluation } = scenario({ gw: GW, xp: id => (id === star ? 9 : 4), doubles: { [doubleGw]: [starClub] } });
+  const entry = evaluation.perChip['3xc'];
+  assert.deepEqual(entry.window, { from: firstHalf.startEvent, to: firstHalf.stopEvent });
+  assert.ok(entry.detail.perGw.every(r => r.gw <= firstHalf.stopEvent), 'only weeks of the same window are compared');
+  assert.notEqual(entry.bestGw, doubleGw);
+});
+
+test('a chip already used in its window has no window to be played in', () => {
+  const GW = 10;
+  assert.notEqual(chipWindowAt(RULES, 'bboost', GW, []), null);
+  assert.equal(chipWindowAt(RULES, 'bboost', GW, [{ name: 'bboost', event: 4 }]), null);
+  const second = RULES.chips.find(c => c.name === 'bboost' && c.startEvent > 1);
+  assert.deepEqual(chipWindowAt(RULES, 'bboost', second.startEvent, [{ name: 'bboost', event: 4 }]), { from: second.startEvent, to: second.stopEvent });
+  const { evaluation } = scenario({ gw: GW, xp: flat, doubles: { [GW]: SQUAD_CLUBS }, chipsUsed: [{ name: 'bboost', event: 4 }] });
+  assert.equal(evaluation.perChip.bboost.available, false);
+  assert.equal(evaluation.perChip.bboost.recommended, false);
+});
+
+test('a bench that blanks this week projects nothing and is not boosted', () => {
+  const GW = 10;
+  const benchClubs = [...new Set(BENCH_FOUR.map(id => ROSTER.find(p => p.id === id).teamId))];
+  const { evaluation } = scenario({ gw: GW, xp: flat, blanks: { [GW]: benchClubs } });
+  const entry = evaluation.perChip.bboost;
+  assert.equal(entry.recommended, false);
+  assert.notEqual(evaluation.recommendation.chip, 'bboost');
+});
+
+test('the decisions are pure functions of a bench and a captain, so the planner can ask them of any squad', () => {
+  const GW = 10;
+  const { gameState, projections } = scenario({ gw: GW, xp: flat, doubles: { [GW]: SQUAD_CLUBS } });
+  const d = benchBoostDecision({ benchIds: BENCH_FOUR, projections, gameState, rules: RULES, gw: GW, horizon: 5 });
+  assert.equal(d.valueNow, BENCH_FOUR.reduce((s, id) => s + xpOf(projections, id, GW), 0));
+  assert.equal(d.recommended, true);
+  const t = tripleCaptainDecision({ squadIds: SQUAD, captainId: SQUAD[7], captainXp: xpOf(projections, SQUAD[7], GW), projections, gameState, rules: RULES, gw: GW, horizon: 5 });
+  assert.equal(t.valueNow, xpOf(projections, SQUAD[7], GW));
+  assert.equal(benchBoostDecision({ benchIds: BENCH_FOUR, projections, gameState, rules: RULES, gw: GW, horizon: 5, chipsUsed: [{ name: 'bboost', event: 3 }] }), null);
 });
 
 // ---------------------------------------------------------------------------
@@ -821,7 +1005,6 @@ test('a chip that clears its bar becomes the plan, and the plan is legal', async
 
   assert.equal(bundle.chipEvaluation.recommendation.chip, 'bboost');
   assert.equal(bundle.current.chip, 'bboost');
-  assert.equal(bundle.current.transferCount, 0, 'a bench boost is not a transfer');
   assert.equal(bundle.current.hits, 0);
   assert.deepEqual(bundle.validation, { ok: true, violations: [] });
   assert.deepEqual(validatePlan(bundle.current, bundle.squadState, gameState, RULES).violations, []);
@@ -846,6 +1029,88 @@ test('the planner never plays a chip outside its window', async () => {
   if (bundle.current.chip) {
     assert.equal(chipAvailableAt(RULES, bundle.current.chip, GW, []), true);
   }
+  assert.deepEqual(bundle.validation, { ok: true, violations: [] });
+});
+
+test('a bench player who cannot play is sold before the bench is boosted, never boosted in place', async () => {
+  const GW = 10;
+  const out = BENCH_FOUR[BENCH_FOUR.length - 1];
+  // An ordinary week everywhere: the bench is strong once it is whole, and
+  // selling the suspended player gains the eleven nothing, so only the bench
+  // boost can justify the move.
+  const fixtures = makeFixtures({ gwTo: RULES.totalEvents });
+  const players = ROSTER.map(p => (p.id === out ? { ...p, status: 's', chanceNext: 0 } : p));
+  const gameState = makeGameState(fixtures, GW, players);
+  const projections = makeProjections(gameState, GW, GW + 8, flat, id => (id === out ? 0 : 1));
+
+  for (const freeTransfers of [1, 2]) {
+    const squadState = makeSquadState({ gw: GW, freeTransfers });
+    // On the squad as it stands the bench is not ready, however much the other
+    // three project.
+    const held = evaluateChips({ squadState, projections, gameState, rules: RULES, horizon: 5, discount: 0.85 });
+    assert.ok(held.perChip.bboost.detail.bench.includes(out));
+    assert.equal(held.perChip.bboost.status, 'unusable');
+    assert.ok(held.perChip.bboost.valueNow >= CHIP_PARAMS.benchBoostBar);
+
+    const bundle = await buildPlan({
+      gameState, squadState, options: { horizon: 5, seed: 3, projections, strength: {} },
+    });
+    const plan = bundle.current;
+    assert.equal(plan.chip, 'bboost', `${freeTransfers} free transfer(s): the bench is repaired and boosted`);
+    assert.deepEqual(plan.transfersOut, [out], 'the one player who cannot play is the one sold');
+    assert.equal(plan.hits, 0);
+    const bench = [plan.bench.gk, ...plan.bench.order];
+    assert.ok(!bench.includes(out) && !plan.squad.includes(out));
+    assert.equal(bundle.chipEvaluation.recommendation.chip, 'bboost', 'the card describes the boost the plan plays');
+    assert.equal(bundle.chipEvaluation.perChip.bboost.status, 'play');
+    assert.deepEqual(bundle.chipEvaluation.perChip.bboost.detail.bench, bench);
+    assert.deepEqual(bundle.validation, { ok: true, violations: [] });
+  }
+});
+
+test('an alternative that plays a different chip is compared on the objective, and one playing the same chip is not', async () => {
+  const GW = 10;
+  const fixtures = makeFixtures({ gwTo: RULES.totalEvents, doubles: { [GW]: SQUAD_CLUBS } });
+  const gameState = makeGameState(fixtures, GW);
+  const projections = makeProjections(gameState, GW, GW + 8, flat);
+  const squadState = makeSquadState({ gw: GW });
+  const bundle = await buildPlan({
+    gameState, squadState, options: { horizon: 5, seed: 3, projections, strength: {} },
+  });
+  const plan = bundle.current;
+  assert.ok(plan.alternatives.length > 0);
+  for (const alt of plan.alternatives) {
+    if (alt.chip === plan.chip) assert.equal(alt.deltaWithChipValue, null);
+    else assert.ok(Number.isFinite(alt.deltaWithChipValue), `${alt.headline}: ${alt.deltaWithChipValue}`);
+  }
+});
+
+test('before the first deadline a squad still being chosen is not told to play a Bench Boost or Triple Captain', async () => {
+  const GW = 1;
+  // A double for every owned club: in season both chips would clear their bars.
+  const fixtures = makeFixtures({ gwTo: RULES.totalEvents, doubles: { [GW]: SQUAD_CLUBS } });
+  const gameState = makeGameState(fixtures, GW);
+  const projections = makeProjections(gameState, GW, GW + 8, flat);
+
+  const inSeason = evaluateChips({ squadState: makeSquadState({ gw: GW }), projections, gameState, rules: RULES, horizon: 5, discount: 0.85 });
+  assert.equal(inSeason.perChip.bboost.recommended, true, 'the same bench with a set squad is boosted');
+
+  const squadState = makeSquadState({ gw: GW, freeTransfers: Infinity });
+  const opening = evaluateChips({ squadState, projections, gameState, rules: RULES, horizon: 5, discount: 0.85 });
+  for (const chip of ['bboost', '3xc']) {
+    const entry = opening.perChip[chip];
+    assert.equal(entry.status, 'opening');
+    assert.equal(entry.recommended, false);
+    assert.equal(entry.netValue, 0);
+    assert.equal(entry.holdReason.value, GW);
+    assert.match(entry.holdReason.text, /Transfers are unlimited until the gameweek 1 deadline/);
+  }
+
+  const bundle = await buildPlan({
+    gameState, squadState, options: { horizon: 5, seed: 3, projections, strength: {} },
+  });
+  assert.equal(bundle.current.chip, null);
+  assert.equal(bundle.chipEvaluation.recommendation.decision, 'hold');
   assert.deepEqual(bundle.validation, { ok: true, violations: [] });
 });
 

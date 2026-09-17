@@ -287,6 +287,25 @@ test('alternatives are ranked against the recommendation with their hit priced',
   assert.match(text, /none of them scored higher/);
 });
 
+test('an alternative that plays a different chip is priced with what keeping the chip is worth', () => {
+  const withAlts = {
+    ...bundle,
+    current: {
+      ...plan,
+      alternatives: [
+        { headline: 'Foden to Gibbs-White', chip: null, deltaHorizon: -13.7, deltaWithChipValue: -4.7, hits: 0 },
+        { headline: 'Play your Bench Boost', chip: 'bboost', deltaHorizon: -0.8, deltaWithChipValue: null, hits: 0 },
+      ],
+    },
+  };
+  const node = alternativesCard({ bundle: withAlts });
+  const text = textOf(node);
+  // The objective gap, not the raw 13.7 the chip's bench adds this week.
+  assert.match(text, /-4\.7 pts over \d+ gameweeks, counting what the chip is worth later/);
+  assert.doesNotMatch(text, /-13\.7/);
+  assert.match(text, /-0\.8 pts over \d+ gameweeks(?!, counting)/);
+});
+
 test('no alternatives is an explicit sentence, not a missing section', () => {
   const node = alternativesCard({ bundle: { ...bundle, current: { ...plan, alternatives: [] } } });
   assert.match(textOf(node), /No other legal plan came within reach/);
