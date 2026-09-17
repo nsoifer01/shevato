@@ -23,7 +23,7 @@ import { snapshotWaits, waitsSince } from './cdp.mjs';
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.resolve(HERE, '..', '..');
 
-// 8080 and 8081 are reserved on the maintainer's machine; never default to them.
+// 8080 is reserved on the maintainer's machine; never default to it.
 const PORT = Number(process.env.BROWSER_TEST_PORT || 8099);
 const CDP_PORT = Number(process.env.BROWSER_TEST_CDP_PORT || 9222);
 const BASE = `http://127.0.0.1:${PORT}`;

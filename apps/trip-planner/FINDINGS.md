@@ -683,7 +683,7 @@ it must anchor to the element it cares about, never to the document.
   (`syncTripMenuShared`), so probing button state without opening reads 0
   disabled; the click handler's `SHARED_MENU_ACTS` allowlist is the backstop.
 - `getComputedStyle` lies after class swaps; trust pixels (screenshots) and
-  DOM facts. Serve on 8082+ (8080 owner, 8081 schwabbot).
+  DOM facts. Serve on 8081+ (8080 is the owner's).
 - Snap chromium ignores `child.kill()`; a second `launch()` on the same
   debugging port silently attaches to the OLD browser with its app tabs still
   open, and those same-origin tabs write back on every storage event (which

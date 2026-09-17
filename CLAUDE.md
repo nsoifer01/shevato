@@ -115,7 +115,7 @@ REJECT, whichever way it goes.
 - **Shared-UI scoping contract**: app styles hang off a root wrapper div, page
   tokens on a body class, never restyle shared chrome. Enforced by
   `sync-system/tests/shared-ui-consistency.test.mjs`.
-- **Ports 8080 and 8081 are reserved on the owner's machine.** Serve on 8082+ and shut servers
+- **Port 8080 is reserved on the owner's machine.** Serve on 8081+ and shut servers
   down when the work ends (`ss -ltn` to verify). `netlify dev` serves the site
   AND functions on 8888 (pinned); its internal static port does not route
   functions.

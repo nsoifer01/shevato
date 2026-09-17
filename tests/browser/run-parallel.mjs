@@ -48,7 +48,7 @@ const USAGE = 'usage: run-parallel.mjs [--shards=<n>] [--only=<path-substring>] 
 
 // Deliberately NOT 8099/9222: those are run.mjs's defaults, and a developer
 // running the serial command in another terminal must not collide with this.
-// 8080 and 8081 are reserved on the owner's machine and are never candidates.
+// 8080 is reserved on the owner's machine and is never a candidate.
 let shards = 4;
 let only = null;
 let portBase = 8300;

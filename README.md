@@ -206,8 +206,8 @@ npx http-server -p 8082 .
 npx serve -l 8082 .
 ```
 
-Then open `http://127.0.0.1:8082/`. Ports 8080 and 8081 are reserved on the
-maintainer's machine (see `CLAUDE.md`); serve on 8082 or higher.
+Then open `http://127.0.0.1:8082/`. Port 8080 is reserved on the maintainer's
+machine (see `CLAUDE.md`); serve on 8081 or higher.
 
 For CSS edits, edit the stylesheets in `assets/css/` directly. There is no
 asset build step: the files served to browsers are the files in the repo
