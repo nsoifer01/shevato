@@ -187,6 +187,55 @@ REJECT, whichever way it goes.
 - `.features/` holds each app's living test-plan pair (gitignored,
   owner-reviewed); plans are archived, never deleted.
 
+## Every PR: a `## DEV vs PROD` section
+
+Owner rule, 2026-09-17. Every PR body carries a short `## DEV vs PROD` section
+under the `## TL;DR`. Its only job is that the owner glances at it, opens DEV
+and PROD themselves, and knows what to look for before merging.
+
+One numbered item per meaningful user-visible change, a PROD line for what they
+see today and a DEV line for what they see with this PR:
+
+```markdown
+## DEV vs PROD
+
+1. FPL captain explanation
+- PROD: Shows the captain recommendation without explaining why that player was chosen.
+- DEV: Shows a short explanation underneath the captain recommendation.
+
+2. Trip Planner hotel cards
+- PROD: Distance appears only after opening the hotel.
+- DEV: Distance is visible directly on each hotel card.
+```
+
+When nothing user-visible changed, the whole section is one line: `No
+user-visible DEV vs PROD differences. This PR only changes internal/docs/test
+code.`
+
+Keep it short and human. It never carries DEV or PROD URLs, commit shas,
+release ids, deploy ids, Netlify, branch or build detail, click-by-click steps,
+implementation notes, a file list or test results, and it gets no "cannot be
+verified" note unless there is something the owner genuinely needs to know.
+Only differences they can see or try for themselves. The per-file enumeration
+still follows below it, unchanged, and the section is rewritten whenever a
+later push changes what the PR does.
+
+DEV itself is the PR head published as a Netlify CLI draft deploy, whose URL
+goes in the chat report, never in the PR body. A CLI upload runs no build on
+Netlify, so it costs no build minutes; Deploy Previews stay off. Build it from
+a detached throwaway worktree of the head (up to date with `origin/master`) on
+Node 22 (`.nvmrc`): `npm ci --omit=dev && npm run build:site`, then, with
+`netlify status` showing the account that owns the `shevato` project,
+`netlify deploy --no-build --dir dist --functions netlify/functions --site
+fe5f021f-f41b-4b5a-b553-a03729fe4f6d`. Never `--prod`, and never `--alias`:
+measured 2026-09-17, an aliased upload is a `branch-deploy` served with NO
+`x-robots-tag` on pages that say `index, follow`, so it is a crawlable copy of
+the site, while the plain draft permalink is served `x-robots-tag: noindex`.
+Two things DEV cannot show, worth knowing when a change depends on them: the
+FPL Planner's data and Trip Planner's place search and trip assist (their
+functions accept only `https://shevato.com` and localhost, so they answer 403
+there), and sign-in (Firebase Auth accepts only its exact listed hosts).
+
 ## Superseded files
 
 `.claude_rules` (a generic YAML checklist from an earlier setup, never

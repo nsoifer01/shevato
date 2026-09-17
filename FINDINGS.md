@@ -266,6 +266,19 @@ else builds.
   production build publishes nothing, and the previous deploy keeps serving.
   The duplicate `shevato-site` project still builds previews on its own
   account, but nothing may rely on it.
+- The preview URL came back on 2026-09-17 without a Netlify build: every PR now
+  publishes its head as a CLI draft deploy (zero build minutes), and the owner
+  is given that deploy's permalink in chat so they can compare it against
+  production (`CLAUDE.md`, "Every PR: a `## DEV vs PROD` section").
+- **A CLI draft deploy is `noindex` only without `--alias`.** Measured the same
+  day on this project: `netlify deploy --alias pr-563` created a
+  `branch-deploy` whose `pr-563--shevato.netlify.app` served NO `x-robots-tag`,
+  while the same `dist` uploaded with no alias became a `deploy-preview` whose
+  permalink served `x-robots-tag: noindex`. Pages carry `<meta name="robots"
+  content="index, follow">` and the draft serves the real `robots.txt`, so an
+  aliased draft is a crawlable duplicate of the site, exactly the
+  `shevato-site` exposure above. The aliased deploy was deleted
+  (`netlify api deleteDeploy`), which 404s its URL.
 
 ### Budget
 
