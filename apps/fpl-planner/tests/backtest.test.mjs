@@ -627,7 +627,7 @@ test('the three baselines are implemented, run, and are scored the same way', as
   // legality: it fields legal elevens through the same optimizer.
   assert.notEqual(fdr.modelVersion, planner.modelVersion);
   assert.match(fdr.modelVersion, /naive-fdr-1$/);
-  assert.match(planner.modelVersion, /analytic-1$/);
+  assert.match(planner.modelVersion, /analytic-2$/);
 
   const comparison = compareStrategies({ primary: planner, baselines: [hold, greedy, fdr] });
   assert.equal(comparison.version, BACKTEST_VERSION);

@@ -38,6 +38,10 @@
 //
 //   node apps/fpl-planner/scripts/experiment.mjs --config apps/fpl-planner/experiments/configs/prior-weight-derived.mjs
 export default {
+  // Measured in the seeded regime (entries 18 and 21), which is the only one
+  // that has a seeding weight. Production carries the previous season as a
+  // prior instead (entry 29), and the replay refuses a weight there.
+  evidenceRegime: 'seeded',
   name: 'prior weight derived',
   question: 'Does the persistence-derived prior weight (w=0.066, K=2.5 equivalent matches) beat the replay default and the no-prior production state?',
   instrument: 'paired',

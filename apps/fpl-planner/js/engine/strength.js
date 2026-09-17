@@ -5,112 +5,131 @@
 //   xG(home) = mu * attack(home) * defence(away) * homeAdvantage
 //   xG(away) = mu * attack(away) * defence(home)
 //
-// `attack` is "goals scored relative to an average club", `defence` is "goals
-// CONCEDED relative to an average club", so a low defence number is a good
-// defence. `mu` is league mean goals per team per match.
+// `attack` is "scoring relative to an average club", `defence` is "conceding
+// relative to an average club", so a low defence number is a good defence.
+// `mu` is the league's away-side goals per match; the home side scores
+// `mu * homeAdvantage`.
 //
 // Why not just use FPL's own FDR: it is a 1-5 integer per fixture and cannot
 // separate "hard because they score a lot" from "hard because they concede
 // nothing". A defender's clean-sheet points depend on exactly that distinction.
 //
-// Two regimes, one code path:
+// THE CONSTRUCTION (2026-09-16, registry entry 29)
 //
-//   PRE-SEASON / EARLY SEASON. No results to fit, so the rating comes from the
-//   squads themselves: aggregate every player's expected goals and expected
-//   goals conceded from bootstrap-static. Pre-season those totals are last
-//   season's; in-season they are this season's, and the same code improves as
-//   the season runs. Confidence in that aggregate is a function of how many
-//   Premier League minutes the squad actually has, so promoted clubs (which
-//   have almost none) fall back to a prior instead of being read as either
-//   average or as zero-strength.
+// Until then a club was "measurable" only once its squad had 10,000 minutes of
+// THIS season (about ten matches), so from gameweek 1 to gameweek 10 every club
+// was flagged promoted, FPL's strength tiers were never read, the squad xG
+// prior kept a quarter of its weight, and the ratings were fitted to actual
+// GOALS with six pseudo-matches of prior. Four matches of finishing variance
+// decided the fixtures: at GW5 of 2026/27 Hull's defence was the fourth best in
+// the league on two goals conceded against 1.49 expected a match, and Leeds v
+// Palace projected more goals than Man City at home to Sunderland.
 //
-//   IN-SEASON. Once results exist the ratings are fitted from them by weighted
-//   Poisson maximum likelihood, with the squad-derived rating entering as a
-//   fixed number of pseudo-matches so the transition is smooth rather than a
-//   step change after gameweek 1, and with exponential recency weighting.
+// It is now built in four steps, every weight fitted leave-one-season-out on
+// the archive (scripts/calibration/calibrate-strength.mjs, Poisson
+// log-likelihood of every fixture's goals from each deadline, 2023-24 to
+// 2025-26), and it beats the old ratings in every held-out season, by about a
+// third over the opening ten gameweeks:
 //
-// Every tunable is a named constant in the PARAMS block below and is reported
-// on the Strength object so the model-status panel can show what was used.
+//   1. LAST SEASON'S SQUAD. Every current player's previous-season xG and xGC,
+//      summed by the club he plays for NOW, so a summer's transfers move a
+//      club's rating before a ball is kicked. Read relative to the league and
+//      damped in log space (attack 0.7, defence 1.2: aggregated xGC
+//      under-disperses because transferred players carry their old club's),
+//      then weighted by how many Premier League minutes the squad actually has,
+//      so a promoted squad falls to a low default instead of to its few
+//      loanees.
+//   2. THIS SEASON'S SQUAD. The same aggregate over this season's totals,
+//      blended in log space with the previous season's worth 16 matches for
+//      attack and 12 for defence.
+//   3. GOALS, and only a little. Iterative proportional fitting on actual
+//      results, recency weighted, with 160 pseudo-matches of step 2 behind
+//      every club. Goals carry about 2% of a rating by gameweek 5 and a fifth
+//      by the end of a season. Goals alone were far worse than any xG
+//      construction.
+//   4. THE LEAGUE LEVEL AND HOME ADVANTAGE, each carried from last season (or
+//      the prior) as 40 matches and updated by this season's goals.
+//
+// FPL's `strength_overall_*` tiers are NOT an input: the archived tables are
+// end-of-season snapshots on a different scale, so no weight for them can be
+// measured, and the live 2026/27 tiers rate the three promoted clubs the same
+// as Fulham and Sunderland at home.
+//
+// Every tunable is a named constant below and is reported on the Strength
+// object so the model-status panel can show what was used.
 
 import { fixtureIsPlayed } from './lifecycle.js';
-import { ridge } from './ml.js';
 import { rateMinutesOf } from './normalize.js';
+import { evidenceView } from './minutes.js';
 
 // --- Model parameters ------------------------------------------------------
 
-// League mean goals per team per match, used only when there is neither a
-// result nor a usable squad aggregate to derive it from.
+// Goals per team match when neither last season nor this one says otherwise.
 const LEAGUE_MEAN_GOALS_FALLBACK = 1.45;
 
-// Squad-minutes at which the squad xG aggregate carries half the weight of the
-// strength-implied prior. Roughly a third of a full season of Premier League
-// minutes for one club (a club plays 11 * 90 = 990 player-minutes per match).
-const MINUTES_SHRINK_K = 12000;
+// A club match is eleven players for ninety minutes.
+const PLAYER_MINUTES_PER_TEAM_MATCH = 990;
 
-// A club whose entire squad has fewer than this many Premier League minutes is
-// treated as promoted: its aggregate says nothing, so the prior does the work.
-const PROMOTED_MINUTES_THRESHOLD = 10000;
+// Step 1. Relative squad ratings are clamped before the log so one tiny sample
+// cannot produce an unbounded term.
+const SQUAD_RELATIVE_MIN = 0.2;
+const SQUAD_RELATIVE_MAX = 5;
+// Log-space damping of last season's squad aggregate (fitted).
+const PRIOR_SQUAD_ATTACK_SCALE = 0.7;
+const PRIOR_SQUAD_DEFENCE_SCALE = 1.2;
+// Previous-season squad minutes at which the aggregate and the no-history
+// default carry equal weight (fitted).
+const PRIOR_COVERAGE_MINUTES = 16000;
+// Where a squad with no Premier League history lands before normalisation
+// (fitted; a promoted club nets about 0.6-0.7 attack and 1.3-1.4 defence).
+const NO_HISTORY_ATTACK = 0.4;
+const NO_HISTORY_DEFENCE = 2.0;
 
-// Promoted clubs score about a fifth less and concede about a fifth more than
-// the league average in their first season back. Applied in log space, blended
-// half and half with whatever the published overall strength implies for them.
-const PROMOTED_ATTACK_PRIOR = 0.82;
-const PROMOTED_DEFENCE_PRIOR = 1.22;
-const PROMOTED_PRIOR_WEIGHT = 0.5;
+// Step 2. What step 1 is worth, in this season's matches (fitted).
+const PRIOR_ATTACK_MATCHES = 16;
+const PRIOR_DEFENCE_MATCHES = 12;
 
-// Home advantage. Fitted from results once there are enough of them, held near
-// the prior before that, and clamped because a 6-match sample can produce
-// nonsense at either end.
+// Step 3. Pseudo-matches of step 2 behind every club when goals are fitted
+// (fitted), and the recency half life of a result.
+const GOALS_PRIOR_MATCHES = 160;
+const RECENCY_HALF_LIFE_GWS = 10;
+const FIT_ITERATIONS = 25;
+
+// Step 4. Last season's level and the home-advantage prior, as matches.
+const LEVEL_PRIOR_MATCHES = 40;
 const HOME_ADVANTAGE_PRIOR = 1.15;
 const HOME_ADVANTAGE_PRIOR_MATCHES = 40;
 const HOME_ADVANTAGE_MIN = 1.0;
 const HOME_ADVANTAGE_MAX = 1.4;
 
-// Exponential recency: a match this many gameweeks ago counts half as much as
-// one played in the most recent gameweek.
-const RECENCY_HALF_LIFE_GWS = 10;
-
-// How many matches of evidence the squad-derived league scoring LEVEL is worth.
-// Without this a single early 0-0 would set league mean goals to zero and take
-// every rating with it; with it, the level moves off the squad aggregate only
-// once a few gameweeks of real scoring exist.
-const MU_PRIOR_MATCHES = 40;
-
-// How many matches of evidence the squad-derived prior is worth. After this
-// many real matches the fit and the prior carry equal weight.
-const PRIOR_STRENGTH_MATCHES = 6;
-
-// Iterative proportional fitting converges in well under this many passes for
-// a 20-team league; the cap only exists so a pathological input terminates.
-const FIT_ITERATIONS = 60;
-
-// No club is four times better than another at either end. Bounds stop a
-// 2-match sample from producing a rating that breaks every downstream model.
+// No club is four times better than another at either end.
 const RATING_MIN = 0.35;
 const RATING_MAX = 2.2;
 
-// Ridge penalty for the small regression that relates published overall
-// strength to the measured ratings. There are at most 20 points, so a little
-// regularization keeps the slope stable when the spread is narrow.
-const OVERALL_FIT_LAMBDA = 0.25;
+// A squad whose previous-season minutes leave it mostly on the no-history
+// default is flagged, for the status panel and the tests.
+const LOW_HISTORY_COVERAGE = 0.25;
 
 export const STRENGTH_PARAMS = Object.freeze({
   leagueMeanGoalsFallback: LEAGUE_MEAN_GOALS_FALLBACK,
-  minutesShrinkK: MINUTES_SHRINK_K,
-  promotedMinutesThreshold: PROMOTED_MINUTES_THRESHOLD,
-  promotedAttackPrior: PROMOTED_ATTACK_PRIOR,
-  promotedDefencePrior: PROMOTED_DEFENCE_PRIOR,
-  promotedPriorWeight: PROMOTED_PRIOR_WEIGHT,
-  homeAdvantagePrior: HOME_ADVANTAGE_PRIOR,
+  priorSquadAttackScale: PRIOR_SQUAD_ATTACK_SCALE,
+  priorSquadDefenceScale: PRIOR_SQUAD_DEFENCE_SCALE,
+  priorCoverageMinutes: PRIOR_COVERAGE_MINUTES,
+  noHistoryAttack: NO_HISTORY_ATTACK,
+  noHistoryDefence: NO_HISTORY_DEFENCE,
+  priorAttackMatches: PRIOR_ATTACK_MATCHES,
+  priorDefenceMatches: PRIOR_DEFENCE_MATCHES,
+  goalsPriorMatches: GOALS_PRIOR_MATCHES,
   recencyHalfLifeGws: RECENCY_HALF_LIFE_GWS,
-  priorStrengthMatches: PRIOR_STRENGTH_MATCHES,
-  muPriorMatches: MU_PRIOR_MATCHES,
+  levelPriorMatches: LEVEL_PRIOR_MATCHES,
+  homeAdvantagePrior: HOME_ADVANTAGE_PRIOR,
+  homeAdvantagePriorMatches: HOME_ADVANTAGE_PRIOR_MATCHES,
   ratingMin: RATING_MIN,
   ratingMax: RATING_MAX,
 });
 
 const clampRating = (v) => Math.min(RATING_MAX, Math.max(RATING_MIN, v));
-const geoMean = (values) => Math.exp(values.reduce((s, v) => s + Math.log(v), 0) / values.length);
+const clampedLog = (v) => Math.log(Math.min(SQUAD_RELATIVE_MAX, Math.max(SQUAD_RELATIVE_MIN, v)));
 
 // ---------------------------------------------------------------------------
 // Squad aggregation
@@ -127,135 +146,67 @@ const geoMean = (values) => Math.exp(values.reduce((s, v) => s + Math.log(v), 0)
 // (squad minutes / 90).
 // ---------------------------------------------------------------------------
 
-export function aggregateSquadXg(gameState) {
-  const minutesPerTeamMatch = gameState.rules.starters * 90;
+function squadTotals(gameState, totalsOf) {
   const agg = new Map();
-  for (const team of gameState.teams.keys()) {
-    agg.set(team, { minutes: 0, xg: 0, xgcMinuteWeighted: 0 });
-  }
+  for (const team of gameState.teams.keys()) agg.set(team, { minutes: 0, xg: 0, xgc: 0 });
   for (const p of gameState.players.values()) {
     const row = agg.get(p.teamId);
-    if (!row) continue;
-    // The minutes the xG/xGC numerators cover, which with a minutes-only
-    // baseline in force are this season's alone (see normalize.js).
-    row.minutes += rateMinutesOf(p);
-    row.xg += p.xG;
-    row.xgcMinuteWeighted += p.xGC;
+    const t = totalsOf(p);
+    if (!row || !t || !(t.minutes > 0) || t.xG === null || t.xGC === null) continue;
+    row.minutes += t.minutes;
+    row.xg += t.xG || 0;
+    row.xgc += t.xGC || 0;
   }
+  return agg;
+}
+
+// Each club's rate relative to the league, or null for a club with nothing to
+// measure.
+function relativeTo(agg) {
+  let xg = 0;
+  let xgc = 0;
+  let minutes = 0;
+  for (const v of agg.values()) { xg += v.xg; xgc += v.xgc; minutes += v.minutes; }
+  if (minutes <= 0 || xg <= 0 || xgc <= 0) return () => null;
+  const refAttack = xg / (minutes / PLAYER_MINUTES_PER_TEAM_MATCH);
+  const refDefence = xgc / (minutes / 90);
+  return (teamId) => {
+    const v = agg.get(teamId);
+    if (!v || v.minutes <= 0) return null;
+    return {
+      attack: (v.xg / (v.minutes / PLAYER_MINUTES_PER_TEAM_MATCH)) / refAttack,
+      defence: (v.xgc / (v.minutes / 90)) / refDefence,
+      minutes: v.minutes,
+    };
+  };
+}
+
+/** Per club: minutes, xG per match and xGC per match of the payload's own totals. */
+export function aggregateSquadXg(gameState) {
+  const agg = squadTotals(gameState, (p) => ({ minutes: rateMinutesOf(p), xG: p.xG, xGC: p.xGC }));
   const out = new Map();
   for (const [teamId, row] of agg) {
-    const teamMatches = row.minutes / minutesPerTeamMatch;
+    const teamMatches = row.minutes / PLAYER_MINUTES_PER_TEAM_MATCH;
     const playerNineties = row.minutes / 90;
     out.set(teamId, {
       minutes: row.minutes,
       xgPerMatch: teamMatches > 0 ? row.xg / teamMatches : null,
-      xgcPerMatch: playerNineties > 0 ? row.xgcMinuteWeighted / playerNineties : null,
+      xgcPerMatch: playerNineties > 0 ? row.xgc / playerNineties : null,
     });
   }
   return out;
 }
 
-// ---------------------------------------------------------------------------
-// The squad-derived prior.
-//
-// Step 1 measure each club from its squad. Step 2 fit, across the clubs we CAN
-// measure, how published overall strength maps onto those measurements. Step 3
-// use that fitted relationship to give the clubs we cannot measure (promoted
-// sides, whose squads have no Premier League minutes) a rating on the same
-// scale, then pull them further toward the promoted prior. This is why the
-// published 1-5 strength matters: it is the only signal that exists for a club
-// with no history, and calibrating it against measurable clubs is better than
-// inventing a mapping.
-// ---------------------------------------------------------------------------
-
-function buildPrior(gameState) {
-  const squad = aggregateSquadXg(gameState);
-  const teamIds = [...gameState.teams.keys()];
-
-  const measurable = teamIds.filter(id => {
-    const s = squad.get(id);
-    return s && s.minutes >= PROMOTED_MINUTES_THRESHOLD && s.xgPerMatch > 0 && s.xgcPerMatch > 0;
-  });
-
-  const baseAttack = measurable.length
-    ? geoMean(measurable.map(id => squad.get(id).xgPerMatch))
-    : LEAGUE_MEAN_GOALS_FALLBACK;
-  const baseDefence = measurable.length
-    ? geoMean(measurable.map(id => squad.get(id).xgcPerMatch))
-    : LEAGUE_MEAN_GOALS_FALLBACK;
-
-  const overallOf = (id) => {
-    const t = gameState.teams.get(id);
-    return (t.strengthOverallHome + t.strengthOverallAway) / 2;
-  };
-  const overallMean = teamIds.reduce((s, id) => s + overallOf(id), 0) / teamIds.length;
-
-  // Regress log(rating) on centred overall strength across measurable clubs.
-  let attackFit = { intercept: 0, weights: [0] };
-  let defenceFit = { intercept: 0, weights: [0] };
-  if (measurable.length >= 4) {
-    const X = measurable.map(id => [overallOf(id) - overallMean]);
-    attackFit = ridge(X, measurable.map(id => Math.log(squad.get(id).xgPerMatch / baseAttack)), OVERALL_FIT_LAMBDA);
-    defenceFit = ridge(X, measurable.map(id => Math.log(squad.get(id).xgcPerMatch / baseDefence)), OVERALL_FIT_LAMBDA);
+function arithmeticNormalise(ratings) {
+  let sa = 0;
+  let sd = 0;
+  for (const r of ratings.values()) { sa += r.attack; sd += r.defence; }
+  const n = ratings.size || 1;
+  const out = new Map();
+  for (const [id, r] of ratings) {
+    out.set(id, { attack: clampRating(r.attack / (sa / n)), defence: clampRating(r.defence / (sd / n)) });
   }
-
-  const priors = new Map();
-  for (const id of teamIds) {
-    const s = squad.get(id);
-    const centred = overallOf(id) - overallMean;
-    const impliedAttack = Math.exp(attackFit.intercept + attackFit.weights[0] * centred);
-    const impliedDefence = Math.exp(defenceFit.intercept + defenceFit.weights[0] * centred);
-
-    const promoted = !s || s.minutes < PROMOTED_MINUTES_THRESHOLD;
-    let priorAttack = impliedAttack;
-    let priorDefence = impliedDefence;
-    if (promoted) {
-      priorAttack = Math.exp(
-        (1 - PROMOTED_PRIOR_WEIGHT) * Math.log(impliedAttack) + PROMOTED_PRIOR_WEIGHT * Math.log(PROMOTED_ATTACK_PRIOR),
-      );
-      priorDefence = Math.exp(
-        (1 - PROMOTED_PRIOR_WEIGHT) * Math.log(impliedDefence) + PROMOTED_PRIOR_WEIGHT * Math.log(PROMOTED_DEFENCE_PRIOR),
-      );
-    }
-
-    // Blend the club's own measurement with the prior by how much evidence the
-    // measurement has. A promoted club with no minutes gets weight 0 and lands
-    // entirely on the prior.
-    const minutes = s ? s.minutes : 0;
-    const w = minutes / (minutes + MINUTES_SHRINK_K);
-    const measuredAttack = s && s.xgPerMatch > 0 ? s.xgPerMatch / baseAttack : priorAttack;
-    const measuredDefence = s && s.xgcPerMatch > 0 ? s.xgcPerMatch / baseDefence : priorDefence;
-
-    priors.set(id, {
-      attack: clampRating(Math.exp(w * Math.log(measuredAttack) + (1 - w) * Math.log(priorAttack))),
-      defence: clampRating(Math.exp(w * Math.log(measuredDefence) + (1 - w) * Math.log(priorDefence))),
-      minutes,
-      minutesWeight: w,
-      promoted,
-      overallStrength: overallOf(id),
-      xgPerMatch: s ? s.xgPerMatch : null,
-      xgcPerMatch: s ? s.xgcPerMatch : null,
-    });
-  }
-
-  // Centre both scales on 1.0 so `mu` carries the level and the ratings carry
-  // only the relative differences.
-  const ga = geoMean([...priors.values()].map(p => p.attack));
-  const gd = geoMean([...priors.values()].map(p => p.defence));
-  for (const p of priors.values()) {
-    p.attack = clampRating(p.attack / ga);
-    p.defence = clampRating(p.defence / gd);
-  }
-
-  // The scoring LEVEL the league sits at, as opposed to the relative ratings.
-  // Attack and defence aggregates should agree in a closed league and differ
-  // only through squad churn and own goals, so the mean of the two is the
-  // steadier estimate.
-  const priorMu = measurable.length
-    ? (baseAttack + baseDefence) / 2
-    : LEAGUE_MEAN_GOALS_FALLBACK;
-
-  return { priors, baseAttack, baseDefence, priorMu, measurableCount: measurable.length };
+  return out;
 }
 
 // ---------------------------------------------------------------------------
@@ -273,9 +224,7 @@ function collectMatches(gameState, asOfGw, opts) {
     if (f.event >= asOfGw) continue;
     // A match that has been PLAYED, whether or not FPL has signed it off. The
     // score is settled at the final whistle; what `finished` waits for is bonus
-    // and stat corrections, which do not change who scored. Reading only
-    // `finished` meant a club's opening result was invisible to its own rating
-    // for as long as FPL took to confirm bonus - on 2026-08-21, over eleven hours.
+    // and stat corrections, which do not change who scored.
     if (!fixtureIsPlayed(f)) continue;
     if (f.teamHScore === null || f.teamAScore === null) continue;
     const xg = teamXg ? teamXg.get(f.id) : null;
@@ -283,9 +232,8 @@ function collectMatches(gameState, asOfGw, opts) {
       event: f.event,
       home: f.teamH,
       away: f.teamA,
-      // Team xG is the better estimator of underlying strength when a caller
-      // can supply it (element-summary aggregation, or a historical dataset);
-      // goals are the fallback and the default.
+      // A caller that can supply per-fixture team xG (a historical dataset)
+      // may fit on it; production fits on goals.
       goalsHome: xg ? xg.home : f.teamHScore,
       goalsAway: xg ? xg.away : f.teamAScore,
     });
@@ -293,139 +241,167 @@ function collectMatches(gameState, asOfGw, opts) {
   return out;
 }
 
-function fitRatings(matches, priors, asOfGw, priorMu) {
-  const teamIds = [...priors.keys()];
-  const weightOf = (event) => Math.pow(0.5, Math.max(0, asOfGw - 1 - event) / RECENCY_HALF_LIFE_GWS);
-
-  let totalWeight = 0;
-  let weightedGoals = 0;
-  let homeGoals = 0;
-  let awayGoals = 0;
+function fitOnResults(matches, prior, { awayLevel, homeAdvantage, asOfGw }) {
+  const ids = [...prior.keys()];
+  const attack = new Map(ids.map(id => [id, prior.get(id).attack]));
+  const defence = new Map(ids.map(id => [id, prior.get(id).defence]));
+  const byTeam = new Map(ids.map(id => [id, []]));
   for (const m of matches) {
-    const w = weightOf(m.event);
-    totalWeight += w;
-    weightedGoals += w * (m.goalsHome + m.goalsAway);
-    homeGoals += w * m.goalsHome;
-    awayGoals += w * m.goalsAway;
+    const w = Math.pow(0.5, Math.max(0, asOfGw - 1 - m.event) / RECENCY_HALF_LIFE_GWS);
+    if (byTeam.has(m.home)) byTeam.get(m.home).push({ opp: m.away, home: true, w, scored: m.goalsHome, conceded: m.goalsAway });
+    if (byTeam.has(m.away)) byTeam.get(m.away).push({ opp: m.home, home: false, w, scored: m.goalsAway, conceded: m.goalsHome });
   }
-
-  const mu = (weightedGoals + 2 * MU_PRIOR_MATCHES * priorMu) / (2 * (totalWeight + MU_PRIOR_MATCHES));
-
-  // Home advantage as a ratio of home to away scoring, pulled toward the prior
-  // by a fixed number of pseudo-matches and then clamped.
-  const pseudo = HOME_ADVANTAGE_PRIOR_MATCHES;
-  const rawHome = (homeGoals + pseudo * mu * HOME_ADVANTAGE_PRIOR) / (awayGoals + pseudo * mu);
-  const homeAdvantage = Math.min(HOME_ADVANTAGE_MAX, Math.max(HOME_ADVANTAGE_MIN, rawHome));
-
-  const attack = new Map();
-  const defence = new Map();
-  for (const id of teamIds) {
-    attack.set(id, priors.get(id).attack);
-    defence.set(id, priors.get(id).defence);
-  }
-
-  const perTeam = new Map(teamIds.map(id => [id, { scored: 0, conceded: 0, weight: 0 }]));
-  for (const m of matches) {
-    const w = weightOf(m.event);
-    const h = perTeam.get(m.home);
-    const a = perTeam.get(m.away);
-    if (!h || !a) continue;
-    h.scored += w * m.goalsHome;
-    h.conceded += w * m.goalsAway;
-    h.weight += w;
-    a.scored += w * m.goalsAway;
-    a.conceded += w * m.goalsHome;
-    a.weight += w;
-  }
-
-  // Iterative proportional fitting: each pass sets a club's attack to the ratio
-  // of what it scored to what an average attack would have scored against the
-  // same opponents at the same venues, and likewise for defence. The prior
-  // enters as PRIOR_STRENGTH_MATCHES pseudo-matches against an average
-  // opponent at a neutral venue.
-  const pw = PRIOR_STRENGTH_MATCHES;
+  // A pseudo-match against an average opponent at a neutral venue.
+  const averageLevel = awayLevel * (1 + homeAdvantage) / 2;
+  const pw = GOALS_PRIOR_MATCHES;
   for (let iter = 0; iter < FIT_ITERATIONS; iter++) {
-    let maxDelta = 0;
-    for (const id of teamIds) {
-      let expFor = 0;
-      let expAgainst = 0;
-      for (const m of matches) {
-        const w = weightOf(m.event);
-        if (m.home === id) {
-          expFor += w * mu * defence.get(m.away) * homeAdvantage;
-          expAgainst += w * mu * attack.get(m.away);
-        } else if (m.away === id) {
-          expFor += w * mu * defence.get(m.home);
-          expAgainst += w * mu * attack.get(m.home) * homeAdvantage;
-        }
+    for (const id of ids) {
+      let scored = 0;
+      let conceded = 0;
+      let expectedFor = 0;
+      let expectedAgainst = 0;
+      for (const e of byTeam.get(id)) {
+        if (!attack.has(e.opp)) continue;
+        scored += e.w * e.scored;
+        conceded += e.w * e.conceded;
+        expectedFor += e.w * awayLevel * defence.get(e.opp) * (e.home ? homeAdvantage : 1);
+        expectedAgainst += e.w * awayLevel * attack.get(e.opp) * (e.home ? 1 : homeAdvantage);
       }
-      const t = perTeam.get(id);
-      const prior = priors.get(id);
-      const nextAttack = clampRating(
-        (t.scored + pw * mu * prior.attack) / Math.max(1e-9, expFor + pw * mu),
-      );
-      const nextDefence = clampRating(
-        (t.conceded + pw * mu * prior.defence) / Math.max(1e-9, expAgainst + pw * mu),
-      );
-      maxDelta = Math.max(maxDelta, Math.abs(nextAttack - attack.get(id)), Math.abs(nextDefence - defence.get(id)));
-      attack.set(id, nextAttack);
-      defence.set(id, nextDefence);
+      const p = prior.get(id);
+      attack.set(id, clampRating((scored + pw * averageLevel * p.attack) / Math.max(1e-9, expectedFor + pw * averageLevel)));
+      defence.set(id, clampRating((conceded + pw * averageLevel * p.defence) / Math.max(1e-9, expectedAgainst + pw * averageLevel)));
     }
-    if (maxDelta < 1e-9) break;
   }
-
-  // Re-centre. Folding the normalizers into mu keeps every fitted expectation
-  // identical while putting the ratings back on a mean-1 scale.
-  const ga = geoMean([...attack.values()]);
-  const gd = geoMean([...defence.values()]);
-  for (const id of teamIds) {
-    attack.set(id, clampRating(attack.get(id) / ga));
-    defence.set(id, clampRating(defence.get(id) / gd));
-  }
-
-  return { attack, defence, mu: mu * ga * gd, homeAdvantage, perTeam };
+  const out = new Map();
+  for (const id of ids) out.set(id, { attack: attack.get(id), defence: defence.get(id) });
+  return out;
 }
 
 // ---------------------------------------------------------------------------
 
 export function buildStrength(gameState, opts = {}) {
   const gw = opts.asOfGw || gameState.nextEvent || gameState.currentEvent || 1;
-  const { priors, priorMu, measurableCount } = buildPrior(gameState);
+  const view = evidenceView(gameState);
+  const teamIds = [...gameState.teams.keys()];
+
+  // Step 1: last season's squad, by current club.
+  const priorAgg = squadTotals(gameState, (p) => view.priorOf(p));
+  const priorRel = relativeTo(priorAgg);
+  // Step 2: this season's squad.
+  const currentAgg = squadTotals(gameState, (p) => view.currentOf(p));
+  const currentRel = relativeTo(currentAgg);
+
   const matches = collectMatches(gameState, gw, opts);
-  const fit = fitRatings(matches, priors, gw, priorMu);
+  const matchesByTeam = new Map(teamIds.map(id => [id, 0]));
+  for (const m of matches) {
+    if (matchesByTeam.has(m.home)) matchesByTeam.set(m.home, matchesByTeam.get(m.home) + 1);
+    if (matchesByTeam.has(m.away)) matchesByTeam.set(m.away, matchesByTeam.get(m.away) + 1);
+  }
+
+  const detail = new Map();
+  const squadRatings = new Map();
+  for (const id of teamIds) {
+    const r = priorRel(id);
+    const coverage = r ? r.minutes / (r.minutes + PRIOR_COVERAGE_MINUTES) : 0;
+    let logAttack = (r ? coverage * PRIOR_SQUAD_ATTACK_SCALE * clampedLog(r.attack) : 0)
+      + (1 - coverage) * Math.log(NO_HISTORY_ATTACK);
+    let logDefence = (r ? coverage * PRIOR_SQUAD_DEFENCE_SCALE * clampedLog(r.defence) : 0)
+      + (1 - coverage) * Math.log(NO_HISTORY_DEFENCE);
+    const priorAttack = Math.exp(logAttack);
+    const priorDefence = Math.exp(logDefence);
+    const c = currentRel(id);
+    const n = view.preseason ? 0 : matchesByTeam.get(id);
+    if (c && n > 0) {
+      logAttack = (PRIOR_ATTACK_MATCHES * logAttack + n * clampedLog(c.attack)) / (PRIOR_ATTACK_MATCHES + n);
+      logDefence = (PRIOR_DEFENCE_MATCHES * logDefence + n * clampedLog(c.defence)) / (PRIOR_DEFENCE_MATCHES + n);
+    }
+    squadRatings.set(id, { attack: Math.exp(logAttack), defence: Math.exp(logDefence) });
+    detail.set(id, {
+      priorAttack,
+      priorDefence,
+      priorMinutes: r ? r.minutes : 0,
+      coverage,
+      currentAttack: c ? c.attack : null,
+      currentDefence: c ? c.defence : null,
+      currentMinutes: c ? c.minutes : 0,
+    });
+  }
+  const squad = arithmeticNormalise(squadRatings);
+
+  // Step 4 first, because the fit reads it: the league level and home
+  // advantage, last season's level carried as LEVEL_PRIOR_MATCHES matches.
+  const priorLevel = (gameState.priorSeason && gameState.priorSeason.goalsPerTeamMatch)
+    || previousSeasonGoalLevel(gameState, view)
+    || LEAGUE_MEAN_GOALS_FALLBACK;
+  let goals = 0;
+  let homeGoals = 0;
+  let awayGoals = 0;
+  for (const m of matches) {
+    goals += m.goalsHome + m.goalsAway;
+    homeGoals += m.goalsHome;
+    awayGoals += m.goalsAway;
+  }
+  const level = (goals + 2 * LEVEL_PRIOR_MATCHES * priorLevel) / (2 * (matches.length + LEVEL_PRIOR_MATCHES));
+  const priorAwayLevel = 2 * priorLevel / (1 + HOME_ADVANTAGE_PRIOR);
+  const rawHome = (homeGoals + HOME_ADVANTAGE_PRIOR_MATCHES * priorAwayLevel * HOME_ADVANTAGE_PRIOR)
+    / (awayGoals + HOME_ADVANTAGE_PRIOR_MATCHES * priorAwayLevel);
+  const homeAdvantage = Math.min(HOME_ADVANTAGE_MAX, Math.max(HOME_ADVANTAGE_MIN, rawHome));
+  const awayLevel = 2 * level / (1 + homeAdvantage);
+
+  // Step 3: goals, with step 2 behind every club.
+  const fitted = matches.length
+    ? arithmeticNormalise(fitOnResults(matches, squad, { awayLevel, homeAdvantage, asOfGw: gw }))
+    : squad;
 
   const teams = new Map();
-  for (const [id, prior] of priors) {
-    const played = fit.perTeam.get(id);
-    const matchesUsed = matches.filter(m => m.home === id || m.away === id).length;
+  for (const id of teamIds) {
+    const d = detail.get(id);
+    const matchesUsed = matchesByTeam.get(id);
+    const lowHistory = d.coverage < LOW_HISTORY_COVERAGE;
     teams.set(id, {
       teamId: id,
-      attack: fit.attack.get(id),
-      defence: fit.defence.get(id),
-      priorAttack: prior.attack,
-      priorDefence: prior.defence,
-      minutes: prior.minutes,
-      minutesWeight: prior.minutesWeight,
-      promoted: prior.promoted,
-      overallStrength: prior.overallStrength,
-      xgPerMatch: prior.xgPerMatch,
-      xgcPerMatch: prior.xgcPerMatch,
+      attack: fitted.get(id).attack,
+      defence: fitted.get(id).defence,
+      squadAttack: squad.get(id).attack,
+      squadDefence: squad.get(id).defence,
+      priorAttack: d.priorAttack,
+      priorDefence: d.priorDefence,
+      priorMinutes: d.priorMinutes,
+      priorCoverage: d.coverage,
+      currentAttack: d.currentAttack,
+      currentDefence: d.currentDefence,
+      minutes: d.currentMinutes,
+      // "Promoted" in the only sense the model can see: a squad with too few
+      // Premier League minutes last season to rate from them.
+      promoted: lowHistory,
       matchesUsed,
-      weightedMatches: played ? played.weight : 0,
-      confidence: matchesUsed >= 8 ? 'high' : (prior.promoted && matchesUsed < 4 ? 'low' : 'medium'),
+      confidence: matchesUsed >= 8 ? 'high' : (lowHistory && matchesUsed < 4 ? 'low' : 'medium'),
     });
   }
 
   return {
     asOfGw: gw,
     source: matches.length ? 'fitted' : 'prior',
-    leagueMeanGoals: fit.mu,
-    homeAdvantage: fit.homeAdvantage,
+    leagueMeanGoals: awayLevel,
+    homeAdvantage,
     matchesUsed: matches.length,
-    measurableTeams: measurableCount,
     teams,
     params: STRENGTH_PARAMS,
   };
+}
+
+// Before a ball is kicked the payload's own totals are last season's, so the
+// league level can be read off them the same way the snapshot's is.
+function previousSeasonGoalLevel(gameState, view) {
+  let goals = 0;
+  let minutes = 0;
+  for (const p of gameState.players.values()) {
+    const t = view.priorOf(p);
+    if (!t || !(t.minutes > 0) || t.goalsScored === null || t.goalsScored === undefined) continue;
+    goals += (t.goalsScored || 0) + (t.ownGoals || 0);
+    minutes += t.minutes;
+  }
+  return minutes > 0 && goals > 0 ? goals / (minutes / PLAYER_MINUTES_PER_TEAM_MATCH) : null;
 }
 
 export function ratingFor(strength, teamId) {

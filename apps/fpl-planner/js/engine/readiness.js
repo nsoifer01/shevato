@@ -62,6 +62,35 @@ export const MIN_TOP_MEDIAN_GAP = 1.0;
 // The real payload carries 600 players and the sample dataset 320.
 export const MIN_POOL_FOR_SHAPE_CHECKS = 200;
 
+// THE MINUTES MODEL'S TWO SELF-EVIDENT FACTS (2026-09-16). The audit that week
+// found every nailed starter in the league projected to start 64% to 76% of
+// the time, and players who had started every match reading LESS likely to
+// play at all than squad players who came off the bench, while the best eleven
+// (40), the spread and the per-position ordering all looked like football. So
+// the pool is also asked two questions about the players whose answer is not in
+// doubt, and neither needs an outcome to ask:
+//
+//   * A player who is available and has started every one of his club's
+//     matches is, in the median, a starter. Across three replayed seasons the
+//     median such player's start probability never read below 0.87 at any
+//     deadline, and the model that shipped read 0.60 to 0.80 through the first
+//     eight gameweeks of every one of them.
+//   * Such a player is at least as likely to appear as a bench player whose
+//     appearances come mostly as a substitute. The share of ever-present
+//     starters below the median bench player's appearance probability was 0.00
+//     at every replayed deadline, and 0.43 to 1.00 under the shipped model.
+//
+// The bars sit between the two with room either side, and only apply once
+// clubs have played twice (one match makes everybody who started it
+// ever-present) and the groups are large enough to have a median.
+export const MIN_EVER_PRESENT_START_MEDIAN = 0.8;
+export const MAX_APPEARANCE_INVERSION_SHARE = 0.25;
+export const MIN_CLUB_MATCHES_FOR_MINUTES_CHECKS = 2;
+export const MIN_GROUP_FOR_MINUTES_CHECKS = 30;
+// A player whose appearance probability exceeds his start probability by this
+// much is read as a bench player: most of his chance to play is off the bench.
+const BENCH_APPEARANCE_MARGIN = 0.2;
+
 // FPL position ids. The inversion check below is a statement about the sport:
 // the best forward and the best midfielder in a league out-project the best
 // defender, because goals outscore clean sheets. When both fall below him the
@@ -70,9 +99,17 @@ const DEF = 2;
 const MID = 3;
 const FWD = 4;
 
+const medianOf = (values) => {
+  if (!values.length) return null;
+  const sorted = values.slice().sort((a, b) => a - b);
+  return sorted[Math.floor((sorted.length - 1) / 2)];
+};
+
 /**
  * Summarise a projection pool: the sanity facts, not the projections.
- * `rows` is an iterable of `{ xPoints, pStart, position? }`.
+ * `rows` is an iterable of `{ xPoints, pStart, position?, pAppear?, fixtureCount?,
+ * clubMatches?, seasonStarts?, available? }`. The minutes facts are only read
+ * off rows that carry the club's matches, a single fixture, and availability.
  */
 export function projectionVitals(rows) {
   const xps = [];
@@ -80,9 +117,19 @@ export function projectionVitals(rows) {
   let pinnedHigh = 0;
   let pinnedLow = 0;
   let counted = 0;
+  const everPresent = [];
+  const bench = [];
   for (const r of rows) {
     if (!r || !Number.isFinite(r.xPoints)) continue;
     xps.push(r.xPoints);
+    if (Number.isFinite(r.clubMatches) && r.clubMatches >= MIN_CLUB_MATCHES_FOR_MINUTES_CHECKS
+        && r.fixtureCount === 1 && Number.isFinite(r.pStart) && Number.isFinite(r.pAppear)) {
+      if (r.seasonStarts >= r.clubMatches) {
+        if (r.available === true) everPresent.push(r);
+      } else if (r.pAppear - r.pStart >= BENCH_APPEARANCE_MARGIN) {
+        bench.push(r);
+      }
+    }
     if (r.position !== undefined && !(bestByPosition[r.position] >= r.xPoints)) {
       bestByPosition[r.position] = r.xPoints;
     }
@@ -96,6 +143,7 @@ export function projectionVitals(rows) {
   xps.sort((a, b) => b - a);
   const best11 = xps.slice(0, 11).reduce((a, b) => a + b, 0);
   const median = xps[Math.floor(xps.length / 2)];
+  const benchAppearMedian = medianOf(bench.map((r) => r.pAppear));
   return {
     empty: false,
     count: xps.length,
@@ -111,6 +159,18 @@ export function projectionVitals(rows) {
     topMedianGap: xps[0] - median,
     pinnedHighShare: counted ? pinnedHigh / counted : 0,
     pinnedLowShare: counted ? pinnedLow / counted : 0,
+    // Available players who have started every club match so far, and the
+    // median start probability the model gives them. Null without the facts.
+    everPresentCount: everPresent.length,
+    everPresentStartMedian: medianOf(everPresent.map((r) => r.pStart)),
+    // Players whose chance to play is mostly off the bench, and the share of
+    // ever-present starters the model thinks less likely to play than the
+    // median of them.
+    benchCount: bench.length,
+    benchAppearMedian,
+    appearanceInversionShare: everPresent.length && benchAppearMedian !== null
+      ? everPresent.filter((r) => r.pAppear < benchAppearMedian).length / everPresent.length
+      : null,
   };
 }
 
@@ -164,6 +224,26 @@ export function assessReadiness({ evidence, lifecycle, vitals = null, baseline =
         'The best forwards and midfielders in the game are projecting below the best defenders, which happens '
         + 'when scoring rates have been cleared while minutes have not. The projection inputs are not trustworthy.',
         LEVEL.DISPLAY);
+    }
+    // The 2026-09-16 shape: every aggregate above healthy, and the players who
+    // had started every match read as rotation risks. Ordering an eleven the
+    // manager owns survives that (his starters are compressed together); buying
+    // and selling across the league does not.
+    if (vitals.everPresentCount >= MIN_GROUP_FOR_MINUTES_CHECKS
+        && vitals.everPresentStartMedian < MIN_EVER_PRESENT_START_MEDIAN) {
+      block('minutes_compressed',
+        `Players who have started every match are being given a ${Math.round(vitals.everPresentStartMedian * 100)}% `
+        + 'chance to start, which understates the regulars against everyone else. The projections are not '
+        + 'separating players well enough to buy and sell on.',
+        LEVEL.LINEUP);
+    }
+    if (vitals.everPresentCount >= MIN_GROUP_FOR_MINUTES_CHECKS
+        && vitals.benchCount >= MIN_GROUP_FOR_MINUTES_CHECKS
+        && vitals.appearanceInversionShare >= MAX_APPEARANCE_INVERSION_SHARE) {
+      block('appearance_inverted',
+        'Players who have started every match are being read as less likely to play than substitutes, which is '
+        + 'the wrong way round. The projections are not trustworthy enough to buy and sell on.',
+        LEVEL.LINEUP);
     }
   }
 

@@ -50,15 +50,28 @@ import { assessReadiness, projectionVitals } from './readiness.js';
 // summary. Kept here rather than in readiness.js so that module stays free of
 // any knowledge of how projections are stored.
 // The rows readiness judges, each tagged with the player's position so the
-// pool's shape can be checked per position as well as in aggregate.
-function projectionRowsFor(projections, gw, gameState) {
+// pool's shape can be checked per position as well as in aggregate, and with
+// the facts that say whether a player is a nailed starter: his club's matches
+// this season (only when the payload IS this season), his starts in them and
+// whether he is fit.
+export function projectionRowsFor(projections, gw, gameState) {
   const out = [];
   if (!projections || !projections.byPlayer) return out;
+  const evidence = gameState ? seasonEvidence(gameState) : null;
+  const clubMatches = evidence && evidence.kind === 'current-season' ? evidence.matchesByClub : null;
   for (const [id, rows] of projections.byPlayer) {
     const row = rows.find(r => r.gw === gw);
     if (!row) continue;
     const player = gameState && gameState.players.get(id);
-    out.push(player ? { ...row, position: player.position } : row);
+    if (!player) { out.push(row); continue; }
+    out.push({
+      ...row,
+      position: player.position,
+      fixtureCount: Array.isArray(row.fixtures) ? row.fixtures.length : null,
+      clubMatches: clubMatches ? (clubMatches.get(player.teamId) ?? null) : null,
+      seasonStarts: player.seasonStarts ?? player.starts ?? 0,
+      available: player.status === 'a' && (player.chanceNext === null || player.chanceNext === undefined || player.chanceNext >= 1),
+    });
   }
   return out;
 }

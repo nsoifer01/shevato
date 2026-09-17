@@ -6,11 +6,11 @@
 // loader; the engine owns every decision about whether the asset may be used.
 //
 // It is fetched, not imported, for the same reason the trained model is: it is
-// data, it is 60 KB, and it is only relevant in the opening weeks of a season.
-// A page that does not need it never pays for it, and a deployment that is
-// missing it degrades to "no baseline" rather than to a blank app.
-
-import { validateOpeningBaseline } from '../engine/baseline.js';
+// data, it is 60 KB, and a payload that is itself last season's (pre-season)
+// does not need it. Since 2026-09-16 it is the previous-season prior for the
+// whole season rather than a stand-in for the opening weeks
+// (`openingBaselineApplies` in engine/world.js). A deployment that is missing it
+// degrades to "no prior" rather than to a blank app.
 
 // Deliberately NOT named after a season. Which season this asset is for is a
 // fact INSIDE it (`appliesToSeason`), checked against the live payload every
@@ -59,18 +59,7 @@ export function resetOpeningBaselineCache() {
   cache.clear();
 }
 
-/**
- * Would this payload be helped by the shipped baseline at all?
- *
- * Answered before the fetch so the file is only requested in the state it
- * exists for: a season that has rolled over, whose totals are not yet a season
- * of their own. Outside that window the answer is no and nothing is loaded.
- */
-export function openingBaselineApplies(gameState, { assessment, superseded }) {
-  if (!gameState || gameState.sample) return false;
-  if (assessment && assessment.complete) return false;
-  return !superseded;
-}
-
-/** Re-export so callers need one import for the whole decision. */
-export { validateOpeningBaseline };
+// Whether a payload needs the shipped asset is an ENGINE decision, shared with
+// the historical replay through engine/world.js, and re-exported here so the
+// loader stays the one import for the whole question.
+export { openingBaselineApplies, validateOpeningBaseline } from '../engine/world.js';

@@ -1,0 +1,20 @@
+{
+  "source": "public FPL API, captured 2026-09-16 21:39 UTC",
+  "pool": 659,
+  "sha256": {
+    "bootstrap.json": "c0edd85a15c4f7efa4558861350d10d3802648ca85b264dba1e291782e9273ce",
+    "fixtures.json": "628822222e7731cb0432e38ab829491ce19d632a22a7ee839b900f5f24f7ef2c",
+    "live3.json": "c33c2af4674b0a9d4276b412a441ebae8b87e01a3d093cd113446e7ef6a02482",
+    "live4.json": "a4ebf3dac44cb598e6f62a1dd5333e3d5ce7206303dbda62f513830ae7cfd095"
+  },
+  "gameweeks": [
+    {
+      "gameweek": 3,
+      "playersWithStats": 307
+    },
+    {
+      "gameweek": 4,
+      "playersWithStats": 307
+    }
+  ]
+}

@@ -155,7 +155,17 @@ test('fixtureContext returns one entry per fixture in a double gameweek', () => 
   assert.ok(ctx[0].teamXg > ctx[1].teamXg, 'the home leg of the double should be the higher expectation');
 });
 
-test('baselines describe the club against an average opponent at a neutral venue', () => {
-  assert.ok(Math.abs(baselineTeamGoals(STRONG_V_WEAK, 1) - 1.4 * 1.5) < 1e-12);
-  assert.ok(Math.abs(baselineOpponentGoals(STRONG_V_WEAK, 1) - 1.4 * 0.7) < 1e-12);
+test('baselines describe the club against an average opponent over a season of venues', () => {
+  // A player's per-90 rates were earned over roughly half home and half away
+  // matches, so the level they are divided by carries the average venue
+  // factor. Read at a neutral venue it inflated every attacking and save rate
+  // by about 4.8% (2026-09-16).
+  const venue = (1 + STRONG_V_WEAK.homeAdvantage) / 2;
+  assert.ok(Math.abs(baselineTeamGoals(STRONG_V_WEAK, 1) - 1.4 * 1.5 * venue) < 1e-12);
+  assert.ok(Math.abs(baselineOpponentGoals(STRONG_V_WEAK, 1) - 1.4 * 0.7 * venue) < 1e-12);
+  // So a season's home and away fixtures against average opposition scale a
+  // player's rate by exactly one on average.
+  const home = (1.4 * 1.5 * STRONG_V_WEAK.homeAdvantage) / baselineTeamGoals(STRONG_V_WEAK, 1);
+  const away = (1.4 * 1.5) / baselineTeamGoals(STRONG_V_WEAK, 1);
+  assert.ok(Math.abs((home + away) / 2 - 1) < 1e-12);
 });

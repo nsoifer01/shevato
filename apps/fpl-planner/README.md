@@ -192,16 +192,19 @@ apps/fpl-planner/
       normalize.js       bootstrap + fixtures -> Player / Team / Fixture / Event
       lifecycle.js       THE gameweek and fixture phase model (provisional vs final)
       baseline.js        payload completeness, the kept last-good season totals,
-                         and which baseline (kept or shipped) stands in
+                         and which previous season (kept or shipped) is the prior
+      world.js           THE payload resolution: raw payload plus previous season
+                         -> the GameState, shared by app.js and the replay
       readiness.js       what the data licenses: display / lineup / transfers / chips
       live.js            event/{gw}/live -> actual points, reconciled to FPL's total
       transfer-state.js  THE free-transfer state machine (pre-season, rolling, chips)
       squad.js           entry data -> SquadState (prices, bank, FTs, chips,
                          and the Free Hit revert to the squad you keep)
-      strength.js        team attack and defence ratings
+      strength.js        team attack and defence ratings (last season's squad
+                         xG by current club, this season's, goals lightly)
       fixtures.js        Poisson fixture model
-      minutes.js         pAppear / pStart / xMins
-      projections.js     position-specific expected points
+      minutes.js         pStart / pAppear / p60 / xMins, with last season as a prior
+      projections.js     position-specific expected points, carried rates
       ml.js              ridge / poisson / logistic regression, calibration, metrics
       lineup.js          optimal XI and bench order
 
@@ -252,8 +255,15 @@ auto-substitutions nor vice succession; see the note in `gameweekPoints`.
   scripts/               fetch-history, fetch-availability, validate-history,
                          train-model, evaluate-model, backtest, experiment
                          (+ its worker), evidence-probe (health invariants
-                         against the live payload), derive-gw1-fixtures
-                         (sanitized lifecycle fixtures from captured payloads)
+                         against the live payload), derive-gw1-fixtures,
+                         derive-gw4-fixtures and derive-calibration-fixtures
+                         (sanitized fixtures from captured payloads),
+                         calibration-report (projections scored against what
+                         happened, --check for the bands)
+    calibration/         the fits behind the minutes, rates and strength
+                         parameters (outputs in .data/calibration/, gitignored)
+    lib/calibration-guard.mjs  the calibration bands, shared by the report
+                         and tests/xp-calibration-guard.test.mjs
   e2e/                   browser suites (raw CDP): the interactive scenario
                          workflow and the gameweek lifecycle boundaries
   GW1-RUNBOOK.md         the live checks to run around the opening deadline
@@ -372,7 +382,7 @@ clearing that bar is not evidence it would improve anything here.
 
 A missing, unreachable or malformed artifact is not an error either. The model
 and data status panel reports the version that actually produced the plan
-(`planner-1+analytic-1` today) and, on the "Trained model" row, which of three
+(`planner-1+analytic-2` today; `analytic-1` was the model before the 2026-09-16 calibration repair) and, on the "Trained model" row, which of three
 states it is in: loaded and used, loaded and deliberately not used, or not loaded
 with the reason why.
 
@@ -526,10 +536,25 @@ wipe, derived by `scripts/build-opening-baseline.mjs` and committed with its
 provenance (source file, sha256, capture time). `resolveBaseline` picks, in
 order: a kept snapshot that carries its rate numerators, then the shipped
 asset, then a minutes-only kept snapshot, then nothing. The shipped asset is
-only fetched when the season has rolled over and is not yet a season of its
-own, may only be applied to the season it was captured in (`appliesToSeason`
-AND the opening deadline both have to match), and retires with every other
-baseline at three matches per club.
+fetched whenever the payload is this season's rather than last season's
+(`openingBaselineApplies` in `engine/world.js`), and may only be applied to the
+season it was captured in (`appliesToSeason` AND the opening deadline both have
+to match).
+
+**The previous season is a prior for the whole season, not a stand-in**
+(2026-09-16). `buildGameState` attaches it to each player as `player.prior`
+and to the state as `gameState.priorSeason`, and never adds it into this
+season's totals. The minutes model reads this season's starts over this
+season's club matches with last season as the prior mean, worth a number of
+matches that grows as the season does; every rate carries last season in at a
+weight measured per stat and position; team strength starts from last season's
+squad xG aggregated by each player's current club. Until then the baseline was
+overlaid on the totals and retired outright at three matches per club, which
+left every nailed starter projected to start 64% to 76% of the time from
+gameweek 4 (FINDINGS, "Every nailed starter was projected as a rotation risk").
+`engine/world.js` `resolveGameState` is the one function that turns a payload
+and a previous season into the GameState; `app.js` and the historical replay
+both call it.
 
 Completeness is measured **per active player**, not as a league aggregate:
 16.8 starts each over 400 players before the wipe against 1.0 each over 22
@@ -545,40 +570,31 @@ defensive-contribution parts) in the same wipe. One match of attacking output
 over a season of minutes is how the planner came to field five defenders and
 captain one of them on 2026-08-22.
 
-**The blend fades the baseline out of numerators and denominators together.**
-`normalizePlayer` sets the evidence totals to `baseline + this season`, and the
-denominators to match: `evidenceMatches` is the baseline's season plus the
-matches this player's club has played, and every per-90 rate is read over the
-blended minutes. The two therefore grow at the same pace, and
-`baselineIsSuperseded` retires the snapshot outright once every club has played
-three matches.
-
-**Every player is given a denominator, including the ones the baseline has
-never heard of.** A snapshot records only players who actually played, so
-anyone with no Premier League minutes last season - a signing from abroad, a
-promoted club's squad, a youth player - has no row to overlay. Declaring
-`evidenceMatches` for the overlaid players alone left everyone else on the
-pool-wide fallback, which the overlay had just moved to a full season: a
-one-match numerator over a 38-match denominator. Those players are now read
-against the matches their own club has played, which is the same rule applied
-to a different numerator (see FINDINGS, "The players the baseline has never
-heard of").
+**Every player is read over his own club's matches**, including the ones the
+baseline has never heard of. A snapshot records only players who actually
+played, so anyone with no Premier League minutes last season (a signing from
+abroad, a promoted club's squad, a youth player) has no prior and is priced off
+his price percentile within his position until this season's matches overtake
+it. While the baseline was overlaid, those players were once read against a
+full season's denominator (FINDINGS, "The players the baseline has never heard
+of"); with the prior kept separate that cannot recur.
 
 **A version 1 snapshot already in a user's localStorage is read, but not
-divided.** Its minutes still serve the minutes model; `rateMinutes` restricts
-every rate to THIS season's minutes, so a cleared numerator is never divided by
-a restored denominator, the shrinkage layer resolves those rates to the position
-priors, and `readiness` blocks transfers with `baseline_rates_missing` and says
-so. The next complete payload replaces it with a version 2 snapshot.
+divided.** Its minutes still serve the minutes model as a prior; it carries no
+rate numerators, so every rate is read over THIS season's minutes and shrunk to
+the position priors, and `readiness` blocks transfers with
+`baseline_rates_missing` and says so. The next complete payload replaces it
+with a version 2 snapshot.
 
-The baseline is retired by `baselineIsSuperseded()` once every club has played
-three matches, so one bad August payload cannot freeze the app on last season.
-`gameState.baselineSource` says which is in force, and the UI says so too.
+`baselineIsSuperseded()` decides only whether the previous season is STANDING
+IN for an incomplete payload (`gameState.baselineSource === 'baseline'`, until
+every club has played three matches), which caps readiness below chips and is
+said in the UI. It stays attached as the prior after that.
 
-Data species are kept apart in `normalizePlayer`: `starts`/`minutes` are the
-evidence totals a baseline may overlay, while `seasonStarts`/`seasonMinutes`/
-`seasonPoints` are this season's own and are never overlaid. Conflating them is
-what let the player drawer label one match of a new season "Last season".
+Data species are kept apart: `starts`/`minutes` and `seasonStarts`/
+`seasonMinutes`/`seasonPoints` are this season's, and `player.prior` is the
+previous season's. Conflating them is what once let the player drawer label one
+match of a new season "Last season".
 
 ## What the data is good enough to recommend
 
@@ -606,6 +622,15 @@ rates pinned at one, a best eleven that is not a football score, and the best
 forwards and midfielders projecting BELOW the best defender (`projection_inverted`,
 the 2026-08-22 shape, which every aggregate check passed) - and those checks
 apply only to a real-sized pool, because they are claims about a league.
+
+Two more shape checks came from the 2026-09-16 xP audit, whose compressed
+league passed every check above: `minutes_compressed` (the median available
+player who has started every club match is given under 0.8 to start) and
+`appearance_inverted` (a quarter or more of those players are less likely to
+appear than the median bench player). Both cap the ladder at `lineup`, need two
+club matches and 30 players in each group, and read facts `planner.js`
+`projectionRowsFor` attaches to every row (club matches, season starts,
+availability, fixture count).
 
 Two further blocks are about the manager's own records rather than the pool:
 `baseline_rates_missing` (a minutes-only snapshot is standing in, so rates are
@@ -721,6 +746,31 @@ comparison:
 node apps/fpl-planner/scripts/experiment.mjs \
   --config apps/fpl-planner/experiments/configs/availability.mjs
 ```
+
+**The replay runs production's evidence regime.** At each deadline it rebuilds
+the raw bootstrap-static and fixtures payloads FPL would have served (gameweek 1
+is the pre-season payload, still carrying last season's totals), builds the
+previous-season asset production would have shipped (players registered this
+season, keyed by current id with `code`), and resolves them through the same
+`engine/world.js` as the app (`productionGameStateAt` in `engine/backtest.js`).
+Until 2026-09-16 the replay instead seeded half of last season into every rate
+all season, a regime production never ran, and every minutes measurement made
+on it described a different model. `--regime seeded` (backtest) or
+`evidenceRegime: 'seeded'` keeps that regime for reference only; seasons
+without a downloaded predecessor cannot be replayed as production.
+
+**Calibration, not just points.** `scripts/calibration-report.mjs` replays every
+deadline in the production regime, scores each player's projection against what
+that gameweek produced, and prints, per gameweek bucket: ever-present starters
+(start and appearance probability, minutes and points against actual), the top
+and bottom fifths of projections, the likely starters' distribution, the best
+eleven by projection and what it scored, start calibration by bin, log losses,
+rank correlation, and each points component. `--check` holds every season's
+buckets from gameweek 2 on to the bands in `scripts/lib/calibration-guard.mjs`
+and exits 1 if any breaks. Run it after any change to minutes, rates, strength
+or resolution. Planner points still decide model experiments; a change whose
+objective is calibration pre-registers points as a guard instead (registry
+entry 29).
 
 A config names the arms; one of them must be called `control`. An arm may carry
 `env` (applied around its own cells), `opts` (merged into the replay options) or
@@ -876,6 +926,15 @@ sanitized of any real entry identity and regenerated by
 `scripts/derive-gw1-fixtures.mjs`. `tests/season-lifecycle.test.mjs` pins the
 live incident to it.
 
+`tests/fixtures/xp-calibration-2026/` is the whole league as served after
+gameweek 4 of 2026/27 was signed off, plus gameweek 3's and 4's live stats per
+player, derived by `scripts/derive-calibration-fixtures.mjs`.
+`tests/xp-calibration-guard.test.mjs` rebuilds the GW3 and GW4 deadlines from
+it, resolves them exactly as the app does, and holds the projections to the
+calibration bands against what those gameweeks produced; the model that shipped
+before 2026-09-16 breaks them, and the test proves the bands are not vacuous by
+compressing today's projections the same way.
+
 `tests/fixtures/gw4-2026/` is the payload served on 2026-09-13 with MUN v MCI in
 play, plus that gameweek's live stats per player, derived by
 `scripts/derive-gw4-fixtures.mjs`. `tests/live-match-window.test.mjs` rebuilds
@@ -892,16 +951,21 @@ node apps/fpl-planner/scripts/evidence-probe.mjs --record    # save this reading
 node apps/fpl-planner/scripts/evidence-probe.mjs --json
 ```
 
-It reports the lifecycle phase, the evidence classification, the baseline
-assessment and the readiness level, then judges a set of NAMED INVARIANTS and
-exits non-zero if any fails. It used to end in a bare "is the projected total
+It resolves the payload exactly as the app does for a first-time visitor
+(`engine/world.js` with the shipped previous season), reports the lifecycle
+phase, the evidence classification, the prior in force, the baseline assessment
+and the readiness level, then judges a set of NAMED INVARIANTS and exits
+non-zero if any fails. Two of them are the 2026-09-16 audit's: players who have
+started every match are read as starters, and none of them is less likely to
+play than a substitute. It used to end in a bare "is the projected total
 between 30 and 100", which passed a broken pipeline at 31.5 the same day it
 failed the same pipeline at 14.5. Absolute thresholds cannot separate healthy
 from wrong-by-a-factor, so the invariants include change detection: `--record`
 stores a reading, and a later run fails if the best eleven has moved more than
 25% without the classification changing. Once any gameweek has finished, a
 `previous-season` reading is itself a failure, because FPL clears the totals when
-GW1 goes current and the probe applies no baseline.
+GW1 goes current, and a previous season attached as the prior never makes a
+payload read as last season.
 
 The historical replay is NOT covered by that: it runs on a gitignored archive
 that only exists on a machine that has downloaded it. `tests/backtest.test.mjs`

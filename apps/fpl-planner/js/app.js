@@ -20,9 +20,8 @@ import { loadModel } from './data/model.js';
 import { buildGameState } from './engine/normalize.js';
 import { buildSquadState, picksCarryLineup, freeHitPicksInfo } from './engine/squad.js';
 import { gameweekLifecycle, GW_PHASE } from './engine/lifecycle.js';
-import {
-  saveSnapshotIfBetter, resolveBaseline, BASELINE_KEY, assessBaseline, baselineIsSuperseded,
-} from './engine/baseline.js';
+import { saveSnapshotIfBetter, BASELINE_KEY } from './engine/baseline.js';
+import { resolveGameState } from './engine/world.js';
 import { loadOpeningBaseline, openingBaselineApplies } from './data/opening-baseline.js';
 import { buildLiveStats, scoreLiveSquad } from './engine/live.js';
 import { formatFreeTransfers } from './engine/transfer-state.js';
@@ -202,36 +201,28 @@ async function loadWorld({ force = false } = {}) {
     const store = safeLocalStorage();
     const kept = store ? saveSnapshotIfBetter(store, first, { capturedAt: bootstrap.fetchedAt }) : null;
 
-    // The shipped baseline is only fetched in the state it exists for: a
-    // season that has rolled over and is not yet a season of its own. A
-    // browser that kept its own complete payload never needs it; neither does
-    // anyone once three matches per club have been played.
+    // The shipped baseline is the previous season, and since 2026-09-16 the
+    // previous season informs every projection all season as a prior, so it is
+    // fetched whenever the payload's own totals are not already last season's.
+    // It pins the season it belongs to, and a later season refuses it.
     let shipped = null;
-    if (openingBaselineApplies(first, {
-      assessment: assessBaseline(first),
-      superseded: baselineIsSuperseded(first),
-    })) {
+    if (openingBaselineApplies(first)) {
       const loaded = await loadOpeningBaseline();
       shipped = loaded.baseline;
       state.openingBaselineError = loaded.reason;
     }
 
-    // Whichever baseline wins is the one the game state is rebuilt with. The
-    // previous version rebuilt with `kept` regardless, so a resolution that
-    // chose anything else would have been silently discarded.
-    // The resolution is not stored on `state`: the only thing that needs it is
-    // the game state built from it, and `gameState.baselineSource` /
-    // `baselineOrigin` / `baselineCapturedAt` already carry everything the UI
-    // and the status panel read. A second copy on `state` was written in both
-    // branches and read by nothing, which is worse than no copy at all - it
-    // looks like the live baseline without being consulted by anyone.
-    const resolved = resolveBaseline(first, kept, { shipped });
-    state.gameState = resolved.source === 'baseline' && resolved.snapshot
-      ? buildGameState(bootstrap.data, fixtures.data, {
-        fetchedAt: bootstrap.fetchedAt,
-        baseline: resolved.snapshot,
-      })
-      : first;
+    // Whichever baseline wins is the one the game state is rebuilt with, and
+    // the decision is engine/world.js's, not this file's: the historical
+    // replay calls the same function with payloads it rebuilds for each
+    // deadline, so what it measures is what this page does.
+    state.gameState = resolveGameState(first, {
+      bootstrap: bootstrap.data,
+      fixtures: fixtures.data,
+      fetchedAt: bootstrap.fetchedAt,
+      kept,
+      shipped,
+    }).gameState;
   }
 
   state.picksGw = state.gameState.currentEvent;

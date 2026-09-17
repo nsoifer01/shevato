@@ -52,13 +52,35 @@
 // gameweek being decided is never relaxed. Injuries are stubborn, and this
 // number says so, it does not wave them away.
 //
-// NO MINUTES AT ALL. A player with nothing on the board is priced off his price
-// percentile, which is the only pre-season signal there is. That prior expires:
-// it is worth NO_HISTORY_PRIOR_MATCHES matches of evidence and is then read
-// against the matches his club has played without him. See the constant for the
-// measurement behind it. A player who has not appeared in ten gameweeks is not
-// the same bet as a new signing before the season starts, and until this decay
-// existed the model priced them identically.
+// THE START MODEL (2026-09-16, registry entry 29). A player's chance of
+// starting is a Beta-style posterior: his club matches this season (m) and his
+// starts in them (s), against a prior mean (mu) worth K matches:
+//
+//   pStart = (s + K * mu) / (m + K)
+//
+// With a previous season, mu is last season's start rate (shrunk toward that
+// season's position rate by START_PRIOR_SEASON_SHRINK matches) mapped through a
+// calibration measured on opening gameweeks, and K = 0.5 + 0.15 * m. Without
+// one, mu comes from his price percentile within his position and
+// K = 0.75 + 0.05 * m. K GROWS with the season: the per-bucket optimum rose in
+// every archived season (0.5-0.75 over gameweeks 1-3, 1.5 over 4-8, 2-3 over
+// 9-19, 2.5-5 after), because a prior that describes the player keeps earning
+// weight while a few matches of this season are noise.
+//
+// THE MODEL IT REPLACED shrank the observed rate toward the POSITION's league
+// start rate with a fixed six matches, the league rate being measured over
+// every player with a minute to his name, substitutes and cameos included. With
+// three or four matches of evidence that put 60% of every player's probability
+// on a pool that starts 40-60% of the time, so from gameweek 4 of 2026/27 an
+// ever-present was a 0.64 (forward) to 0.76 (defender) start, against 0.88 to
+// 0.93 measured. Held out over three seasons the new model's log loss is 0.3464
+// against 0.3507 (0.3566 against 0.4462 in gameweeks 1-3), and ever-presents
+// read 0.908 / 0.877 / 0.873 / 0.874 (GK/DEF/MID/FWD) against 0.948 / 0.881 /
+// 0.846 / 0.894 actual (scripts/calibration/calibrate-minutes.mjs).
+//
+// NO MINUTES AT ALL. A player with no previous season is priced off his price
+// percentile, which is the only pre-season signal there is, and the same K
+// decides how fast "still on zero after m matches" overtakes it.
 
 import { assessBaseline, baselineIsSuperseded } from './baseline.js';
 import { matchesPlayedByClub, matchesKickedOffByClub } from './lifecycle.js';
@@ -71,12 +93,88 @@ const DOUBTFUL_STATUS = 'd';
 // and the projection is flagged low confidence so the UI can say so.
 const DOUBTFUL_DEFAULT_AVAILABILITY = 0.5;
 
-// Shrinkage. A start rate measured over 3 team matches is nearly worthless and
-// one measured over 38 is nearly exact, so the observed rate is pulled toward
-// the position prior with a weight of matches / (matches + K).
-const START_RATE_SHRINK_MATCHES = 6;
+// The starter- and substitute-minutes estimators shrink toward the position
+// prior by these many starts and appearances.
 const STARTER_MINUTES_SHRINK_STARTS = 5;
 const SUB_MINUTES_SHRINK_APPS = 4;
+
+// --- The start model (see the header), every value fitted leave-one-season-out.
+// Last season's start rate is shrunk toward that season's position rate by
+// this many matches before it becomes a prior.
+const START_PRIOR_SEASON_SHRINK = 2;
+// ...and mapped through logit(mu) = a + b * logit(raw), fitted on gameweek 1
+// rows, where the prior is the whole prediction. b < 1 because last season
+// overstates both ends: 30-38 starts read 0.63 raw against 0.774 started.
+const START_PRIOR_CALIBRATION = Object.freeze({ a: -0.1, b: 0.7 });
+// K = base + perMatch * m, with and without a previous season.
+const START_CARRY = Object.freeze({ base: 0.5, perMatch: 0.15 });
+const NO_HISTORY_CARRY = Object.freeze({ base: 0.75, perMatch: 0.05 });
+
+// --- Appearing from the bench.
+//
+// THE DEFECT THIS REPLACES. The rate a player comes on in the matches he does
+// not start was inferred as inferredSubApps / max(1, m - s). For a player who
+// has started every match m - s is ZERO, so the rate was 0 and pAppear equalled
+// pStart: from gameweek 4 of 2026/27 Saka (four starts in four) could not come
+// off the bench at all while Mac Allister (two starts, two appearances as a
+// substitute) was a certain appearance, pAppear 1.000. No opportunities is no
+// evidence, not evidence of never.
+//
+// NOW. The inferred appearances are shrunk toward a measured prior worth
+// SUB_ON_PRIOR_OPPORTUNITIES opportunities, with last season's inferred
+// appearances counted at SUB_ON_LAST_SEASON_WEIGHT:
+//
+//   subOn = (apps + 0.05 * appsLast + 40 * q) / (n + 0.05 * nLast + 40)
+//
+// q is P(appears | did not start) by position and start probability, measured
+// on the archive and forced non-decreasing in the start probability, which is
+// what makes the inversion structurally impossible: a likelier starter never
+// gets a lower prior. A player with NO minutes this season after at least one
+// club match takes SUB_ON_UNUSED instead, because not being used at all is
+// evidence the bins cannot see. Held out: sub-on log loss 0.7088 to 0.3230,
+// ever-present pAppear 0.811 to 0.951 (0.932 actual), and the cells in which
+// rotation players out-appeared ever-presents by more than two points fell from
+// 18 of 267 to none.
+const SUB_ON_PRIOR_OPPORTUNITIES = 40;
+const SUB_ON_LAST_SEASON_WEIGHT = 0.05;
+// A substitute appearance is 18.18 minutes long on average (fitted).
+const SUB_SPELL_MINUTES = 18.18;
+const SUB_ON_START_BINS = Object.freeze([0, 0.05, 0.15, 0.3, 0.5, 0.7, 0.85]);
+const SUB_ON_PRIOR = Object.freeze({
+  1: [0.0026, 0.0090, 0.0090, 0.0090, 0.0090, 0.0090, 0.0108],
+  2: [0.0322, 0.1178, 0.2174, 0.2174, 0.2337, 0.2337, 0.2337],
+  3: [0.0559, 0.2367, 0.3893, 0.4444, 0.4444, 0.4444, 0.4444],
+  4: [0.0859, 0.2527, 0.4690, 0.5046, 0.5046, 0.5046, 0.5046],
+});
+// By club matches played: 1-2, 3-5, 6-10, 11 or more.
+const SUB_ON_UNUSED_BUCKETS = Object.freeze([[1, 2], [3, 5], [6, 10], [11, Infinity]]);
+const SUB_ON_UNUSED = Object.freeze({
+  1: [0.0031, 0.0020, 0.0025, 0.0026],
+  2: [0.0793, 0.0389, 0.0171, 0.0118],
+  3: [0.1036, 0.0577, 0.0216, 0.0112],
+  4: [0.0731, 0.0480, 0.0226, 0.0159],
+});
+
+// --- Reaching the hour.
+//
+// P(60+ minutes | started) was logistic((meanStarterMinutes - 60) / 12) for
+// every position, about 0.87-0.90 for a regular. Measured on the archive it is
+// 0.991 for a goalkeeper, 0.946 for a defender, 0.910 for a midfielder and
+// 0.919 for a forward, and for the two outfield lines where the starter's
+// usual minutes separate players a steeper curve fits (held-out log loss DEF
+// 0.2346 to 0.2073, MID 0.3079 to 0.2973, GK 0.1337 to 0.0531). A forward's
+// logistic was unstable across folds and no better than the constant.
+const P60_GIVEN_START = Object.freeze({
+  1: { constant: 0.99 },
+  2: { midpoint: 66, scale: 6 },
+  3: { midpoint: 68, scale: 6 },
+  4: { constant: 0.92 },
+});
+// And a substitute almost never reaches it (goalkeepers from 33 appearances).
+const P60_GIVEN_SUB = Object.freeze({ 1: 0.09, 2: 0.024, 3: 0.010, 4: 0.007 });
+// Measured minutes in the branches the projection mixes over.
+const START_UNDER_60_MINUTES = Object.freeze({ 1: 40.5, 2: 44.4, 3: 48.0, 4: 49.0 });
+const SUB_OVER_60_MINUTES = 70;
 
 // Fallback position priors, used only when the payload cannot supply them
 // (which happens only in tests with a handful of players). The real priors are
@@ -84,71 +182,22 @@ const SUB_MINUTES_SHRINK_APPS = 4;
 const FALLBACK_PRIORS = {
   startRate: 0.35,
   starterMinutes: 80,
-  subMinutes: 20,
+  subMinutes: SUB_SPELL_MINUTES,
   subOnRate: 0.25,
 };
 
-// A player with no minutes at all is either a promoted-club regular, a new
-// signing or a youth player. Price is the only signal available: FPL prices a
+// A player with no previous season is either a promoted-club regular, a new
+// signing or a youth player. Price is the signal available: FPL prices a
 // first-choice striker at a promoted club well above a third-choice keeper.
-// The prior interpolates between these two by the player's price percentile
-// within their own position, and always reports low confidence.
+// The prior mean interpolates between these two by the player's price
+// percentile within his position (fitted; a regular/fringe mixture and a
+// position constant were both worse held out).
 const NO_HISTORY_MIN_START = 0.08;
-const NO_HISTORY_MAX_START = 0.78;
-const NO_HISTORY_SUB_ON_RATE = 0.22;
-
-// HOW LONG THE PRICE SIGNAL SURVIVES CONTACT WITH THE SEASON.
-//
-// Price is a PRE-SEASON prior and it is a good one: before a ball is kicked, a
-// player with no minutes starts about as often as his price percentile says he
-// will. The moment his club plays a match he is not in, that stops being true,
-// because "still on zero minutes after m matches" is itself evidence and the
-// price cannot see it.
-//
-// So the price prior is credited with NO_HISTORY_PRIOR_MATCHES matches of
-// evidence and then read against the player's own record of zero starts in the
-// m matches his club has actually played:
-//
-//   baseStart = priceStart * NO_HISTORY_PRIOR_MATCHES / (m + NO_HISTORY_PRIOR_MATCHES)
-//
-// which is the Beta posterior mean for 0 successes in m trials under a prior of
-// that strength, and is the same shrinkage every other estimate in this file
-// uses. At m = 0, which is every pre-season payload and every gameweek 1, the
-// weight is exactly 1 and nothing changes.
-//
-// The strength is ONE MATCH, and it is measured rather than chosen. Fitting it
-// by maximum likelihood over the archive's zero-minute player-gameweeks, one fit
-// per season per outcome so the spread can be read rather than asserted:
-//
-//   starts,      2023-24                 0.67
-//   starts,      2024-25                 0.78
-//   appearances, 2022-23                 0.93
-//   appearances, 2023-24                 0.77
-//   appearances, 2024-25                 0.85
-//
-// Five independent fits between 0.67 and 0.93, and restricting the fit to the
-// first five or twelve matches moves them to 0.35 and 0.65. One match sits at
-// the top of that range, which is the conservative end: a larger strength means
-// LESS decay and a smaller departure from the shipped behaviour. Starts in the
-// 2022-23 archive are only partly populated, which is why that season is fitted
-// on appearances only.
-//
-// What this cannot do: tell a January signing from a youth player. Both arrive
-// with zero minutes at a club that has played twenty matches, and both are
-// pushed to almost no chance of starting. The pooled evidence for that group is
-// a 0.9 per cent start rate, so the pooled answer is right and the individual
-// answer for a marquee mid-season arrival is wrong until he plays.
-const NO_HISTORY_PRIOR_MATCHES = 1;
+const NO_HISTORY_MAX_START = 0.60;
 
 // Rotation in a double gameweek. Two matches in one week measurably lowers the
 // chance of starting any individual one of them.
 const CONGESTION_START_FACTOR = 0.9;
-
-// Minutes at which a start becomes a 60-minute appearance. Modelled with a
-// logistic on the player's mean starter minutes: at a mean of 60 the player is
-// a coin flip to reach the hour, and the scale controls how fast that changes.
-const P60_MIDPOINT = 60;
-const P60_SCALE = 12;
 
 // How much of an availability doubt survives one more gameweek of distance.
 // Measured, not chosen: see the header. It is applied only to gameweeks beyond
@@ -158,25 +207,45 @@ const HORIZON_DOUBT_DECAY = 0.92;
 export const MINUTES_PARAMS = Object.freeze({
   horizonDoubtDecay: HORIZON_DOUBT_DECAY,
   doubtfulDefaultAvailability: DOUBTFUL_DEFAULT_AVAILABILITY,
-  startRateShrinkMatches: START_RATE_SHRINK_MATCHES,
   starterMinutesShrinkStarts: STARTER_MINUTES_SHRINK_STARTS,
   subMinutesShrinkApps: SUB_MINUTES_SHRINK_APPS,
+  startPriorSeasonShrink: START_PRIOR_SEASON_SHRINK,
+  startPriorCalibration: START_PRIOR_CALIBRATION,
+  startCarry: START_CARRY,
+  noHistoryCarry: NO_HISTORY_CARRY,
   noHistoryMinStart: NO_HISTORY_MIN_START,
   noHistoryMaxStart: NO_HISTORY_MAX_START,
-  noHistorySubOnRate: NO_HISTORY_SUB_ON_RATE,
-  noHistoryPriorMatches: NO_HISTORY_PRIOR_MATCHES,
+  subOnPriorOpportunities: SUB_ON_PRIOR_OPPORTUNITIES,
+  subOnLastSeasonWeight: SUB_ON_LAST_SEASON_WEIGHT,
+  subSpellMinutes: SUB_SPELL_MINUTES,
+  subOnPrior: SUB_ON_PRIOR,
+  subOnStartBins: SUB_ON_START_BINS,
+  subOnUnused: SUB_ON_UNUSED,
+  subOnUnusedBuckets: SUB_ON_UNUSED_BUCKETS,
+  p60GivenStart: P60_GIVEN_START,
+  p60GivenSub: P60_GIVEN_SUB,
+  startUnder60Minutes: START_UNDER_60_MINUTES,
+  subOver60Minutes: SUB_OVER_60_MINUTES,
   congestionStartFactor: CONGESTION_START_FACTOR,
-  p60Midpoint: P60_MIDPOINT,
-  p60Scale: P60_SCALE,
 });
 
 const clamp01 = (v) => (v < 0 ? 0 : v > 1 ? 1 : v);
 const logistic = (x) => 1 / (1 + Math.exp(-x));
 
-// P(a player who starts is still on after 60 minutes), from their typical
-// starter minutes.
-export function p60FromMeanMinutes(meanMinutes) {
-  return clamp01(logistic((meanMinutes - P60_MIDPOINT) / P60_SCALE));
+const logit = (p) => Math.log(p / (1 - p));
+
+// P(a player who starts is still on after 60 minutes), by position and from his
+// typical starter minutes (P60_GIVEN_START). A caller with no position gets the
+// midfield curve, the middle of the measured range.
+export function p60GivenStart(position, meanStarterMinutes) {
+  const rule = P60_GIVEN_START[position] || P60_GIVEN_START[3];
+  if (rule.constant !== undefined) return rule.constant;
+  return clamp01(logistic((meanStarterMinutes - rule.midpoint) / rule.scale));
+}
+
+// P(a substitute plays 60 minutes or more), by position.
+export function p60GivenSub(position) {
+  return P60_GIVEN_SUB[position] !== undefined ? P60_GIVEN_SUB[position] : P60_GIVEN_SUB[3];
 }
 
 // ---------------------------------------------------------------------------
@@ -350,9 +419,31 @@ export function seasonEvidence(gameState) {
 
   const totalEvents = gameState.rules.totalEvents;
 
+  // A PREVIOUS SEASON ATTACHED AS A PRIOR (normalize.js, 2026-09-16) makes a
+  // thin current season usable: every player is read as his previous season
+  // updated by whatever this season has shown, so a club that has not played
+  // yet is not an inversion but a prior with nothing added to it, and a player
+  // who has just played has one match of evidence rather than one match of
+  // everything. Totals that outrun the fixtures (a payload that is itself last
+  // season's) never carry a prior, which the resolver guarantees, so that
+  // branch below is unchanged.
+  const priorInForce = !!gameState.priorSeason;
+  const withPrior = (extra) => ({
+    kind: 'current-season',
+    usable: true,
+    teamMatches: maxCovered,
+    matchesByClub: clubMatches,
+    finishedMatches: maxPlayed,
+    impossible,
+    prior: true,
+    message: null,
+    ...extra,
+  });
+
   // Nothing has been played AND nobody carries a minute: there is no evidence in
   // this payload at all, from either season.
   if (maxPlayed === 0 && withMinutes === 0) {
+    if (priorInForce && impossible < IMPOSSIBLE_STARTS_QUORUM) return withPrior();
     return {
       kind: 'none',
       usable: false,
@@ -395,6 +486,7 @@ export function seasonEvidence(gameState) {
     // probe cannot disagree about it.
     const assessment = assessBaseline(gameState);
     if (!assessment.complete) {
+      if (priorInForce) return withPrior({ assessment });
       return {
         kind: 'none',
         usable: false,
@@ -431,6 +523,7 @@ export function seasonEvidence(gameState) {
     for (const team of gameState.teams.keys()) minPlayed = Math.min(minPlayed, played.get(team) || 0);
     const levelClubs = Number.isFinite(minPlayed) && minPlayed === maxPlayed;
     if (!assessment.complete && !baselineIsSuperseded(gameState)) {
+      if (priorInForce) return withPrior({ assessment });
       return {
         kind: 'partial-season',
         usable: false,
@@ -463,6 +556,7 @@ export function seasonEvidence(gameState) {
     matchesByClub: clubMatches,
     finishedMatches: maxPlayed,
     impossible,
+    prior: priorInForce,
     message: null,
   };
 }
@@ -482,6 +576,78 @@ const IMPOSSIBLE_STARTS_QUORUM = 12;
 // reproduces the whole collapse. A club plays one match at a time, so one is
 // the most the lag can be, while a real season boundary is off by tens.
 const TOTALS_LEAD_TOLERANCE_MATCHES = 1;
+
+// ---------------------------------------------------------------------------
+// THE TWO SEASONS A PROJECTION READS, told apart once.
+//
+// Since 2026-09-16 a player carries two kinds of evidence: this season's totals
+// (the payload) and his previous season (`player.prior`, attached by
+// normalize.js from the shipped or kept snapshot). Before a ball is kicked there
+// is no attached prior, because the payload's own totals ARE the previous
+// season. Every model that weighs one season against the other (the start
+// model here, the carried rates in projections.js, the team ratings in
+// strength.js) reads both through this view, so "which numbers are last
+// season's" has one answer:
+//
+//   priorOf(player)    his previous season, or null for a player without one
+//   currentOf(player)  this season's totals, or null before the season starts
+//   matchesOf(player)  the club matches those current totals cover
+//
+// The replay's legacy seeded regime declares `evidenceMatches` on blended
+// totals and attaches no prior; read here it is a pre-season-shaped payload
+// whose single season of evidence covers the declared matches, which is what
+// that regime always meant.
+// ---------------------------------------------------------------------------
+
+const viewCache = new WeakMap();
+
+export function evidenceView(gameState) {
+  const cached = viewCache.get(gameState);
+  if (cached) return cached;
+  const evidence = seasonEvidence(gameState);
+  const preseason = evidence.kind === 'previous-season' && !gameState.priorSeason;
+  const view = {
+    evidence,
+    preseason,
+    priorOf(player) {
+      if (preseason) {
+        if (!(player.minutes > 0) && !(player.starts > 0)) return null;
+        return {
+          starts: player.starts || 0,
+          minutes: player.minutes || 0,
+          matches: evidenceMatchesFor(player, evidence.teamMatches),
+          rates: true,
+          xG: player.xG,
+          xA: player.xA,
+          xGC: player.xGC,
+          bps: player.bps,
+          bonus: player.bonus,
+          saves: player.saves,
+          goalsScored: player.goalsScored,
+          assists: player.assists,
+          yellowCards: player.yellowCards,
+          redCards: player.redCards,
+          penaltiesSaved: player.penaltiesSaved,
+          cbit: player.cbit,
+          recoveries: player.recoveries,
+          tackles: player.tackles,
+          defCon: player.defCon,
+          xMinutes: Number.isFinite(player.xMinutes) ? player.xMinutes : (player.minutes || 0),
+          dcMinutes: Number.isFinite(player.dcMinutes) ? player.dcMinutes : (player.minutes || 0),
+        };
+      }
+      return player.prior || null;
+    },
+    currentOf(player) {
+      return preseason ? null : player;
+    },
+    matchesOf(player) {
+      return preseason ? 0 : evidenceMatchesFor(player, defaultEvidenceMatches(evidence, player.teamId));
+    },
+  };
+  viewCache.set(gameState, view);
+  return view;
+}
 
 // Price percentile within position, used only for players with no minutes.
 function priceBands(gameState) {
@@ -648,34 +814,51 @@ export function projectMinutes(player, { gameState, gw, fixtureCount } = {}) {
   let reason = ceiling.reason;
   if (availability === 0) return { ...zero, confidence: 'high', confidenceScore: 1, reason };
 
-  // Every rate below is read against the matches the totals actually cover,
-  // which on a live payload is his own club's count, a match in play included,
-  // and in a replay includes whatever previous season was seeded into them. It
-  // is also the sample size confidence is scored on, so it is read once for
-  // both.
+  // THE TWO SEASONS (evidenceView): this season's starts over his club's
+  // matches, and his previous season, which is the whole of the evidence
+  // before a ball is kicked.
+  const view = evidenceView(gameState);
+  const lastSeason = view.priorOf(player);
+  const current = view.currentOf(player);
+  const m = view.matchesOf(player);
+  const s = current ? Math.min(Math.max(0, current.starts || 0), m) : 0;
+  const minutesNow = current ? Math.max(0, current.minutes || 0) : 0;
+  const model = startModelFor(gameState);
+  const position = player.position;
+
+  const hasPrior = !!lastSeason && (lastSeason.starts > 0 || lastSeason.minutes > 0);
+  let mu;
+  let K;
+  if (hasPrior) {
+    const priorMatches = Number.isFinite(lastSeason.matches) && lastSeason.matches > 0
+      ? lastSeason.matches
+      : (gameState.rules.totalEvents || 38);
+    const lastRate = model.lastStartRate(position);
+    const raw = clamp01((lastSeason.starts + START_PRIOR_SEASON_SHRINK * lastRate) / (priorMatches + START_PRIOR_SEASON_SHRINK));
+    mu = clamp01(logistic(START_PRIOR_CALIBRATION.a + START_PRIOR_CALIBRATION.b * logit(Math.min(1 - 1e-6, Math.max(1e-6, raw)))));
+    K = START_CARRY.base + START_CARRY.perMatch * m;
+  } else {
+    const pct = pricePercentile(bands, position, player.nowCost);
+    mu = NO_HISTORY_MIN_START + pct * (NO_HISTORY_MAX_START - NO_HISTORY_MIN_START);
+    K = NO_HISTORY_CARRY.base + NO_HISTORY_CARRY.perMatch * m;
+    if (reason === 'historical' && minutesNow <= 0) reason = m > 0 ? 'no-history-unplayed' : 'no-history-prior';
+  }
+  let baseStart = (s + K * mu) / (m + K);
+
+  // Starter and substitute minutes, from the payload's own totals (this
+  // season's, or last season's before it starts): the estimator the hour
+  // curves above were fitted on. Sub appearances are not published, so they
+  // are inferred as the minutes the starts cannot account for.
   const evidence = evidenceMatchesFor(player, defaultEvidenceMatches(season, player.teamId));
-  const hasHistory = player.minutes > 0 && evidence > 0;
-  let baseStart;
-  let meanStarterMinutes;
-  let meanSubMinutes;
-  let subOnRate;
-
-  if (hasHistory) {
-    const observedStartRate = clamp01(player.starts / evidence);
-    const wRate = evidence / (evidence + START_RATE_SHRINK_MATCHES);
-    baseStart = wRate * observedStartRate + (1 - wRate) * prior.startRate;
-
-    // Split total minutes into starter minutes and bench minutes. Sub
-    // appearances are not published, so they are inferred as whatever minutes
-    // the player's starts cannot account for, capped by the matches they did
-    // not start.
+  let meanStarterMinutes = prior.starterMinutes;
+  let meanSubMinutes = prior.subMinutes;
+  if (player.minutes > 0 && evidence > 0) {
     const startMinutes = Math.min(player.minutes, player.starts * prior.starterMinutes);
     const benchMinutes = Math.max(0, player.minutes - startMinutes);
     const inferredSubApps = Math.min(
       Math.max(0, evidence - player.starts),
       benchMinutes / Math.max(1, prior.subMinutes),
     );
-
     const rawStarterMinutes = player.starts > 0
       ? Math.min(90, (player.minutes - inferredSubApps * prior.subMinutes) / player.starts)
       : prior.starterMinutes;
@@ -688,32 +871,37 @@ export function projectMinutes(player, { gameState, gw, fixtureCount } = {}) {
     // because minutes and starts can disagree in a mid-update payload, and the
     // inferred bench split would otherwise hand back more than a full match.
     meanSubMinutes = Math.min(90, Math.max(1, wSub * rawSubMinutes + (1 - wSub) * prior.subMinutes));
-
-    const benchMatches = Math.max(1, evidence - player.starts);
-    subOnRate = clamp01(inferredSubApps / benchMatches);
-  } else {
-    // No Premier League minutes: promoted-club players, new signings, youth.
-    // The price prior is the pre-season answer, and it decays against the
-    // matches his own club has already played without him.
-    const pct = pricePercentile(bands, player.position, player.nowCost);
-    const missed = matchesByTeam.get(player.teamId) || 0;
-    const priceWeight = NO_HISTORY_PRIOR_MATCHES / (missed + NO_HISTORY_PRIOR_MATCHES);
-    baseStart = priceWeight * (NO_HISTORY_MIN_START + pct * (NO_HISTORY_MAX_START - NO_HISTORY_MIN_START));
-    meanStarterMinutes = prior.starterMinutes;
-    meanSubMinutes = prior.subMinutes;
-    subOnRate = priceWeight * NO_HISTORY_SUB_ON_RATE;
-    if (reason === 'historical') reason = missed > 0 ? 'no-history-unplayed' : 'no-history-prior';
   }
 
   // Two fixtures in one gameweek means each individual one is slightly more
   // likely to be a rotation.
   if (nFixtures > 1) baseStart *= CONGESTION_START_FACTOR;
+  const baseStart01 = clamp01(baseStart);
+
+  // The bench (SUB_ON_PRIOR and the note above it).
+  let subOnRate;
+  if (current && minutesNow === 0 && m >= 1) {
+    subOnRate = unusedSubOnRate(position, m);
+  } else {
+    const q = subOnPrior(position, baseStart01);
+    const nowApps = inferredSubAppearances(minutesNow, s, m, model.currentStarterMinutes(position));
+    const lastApps = hasPrior
+      ? inferredSubAppearances(
+        lastSeason.minutes || 0,
+        lastSeason.starts || 0,
+        Number.isFinite(lastSeason.matches) && lastSeason.matches > 0 ? lastSeason.matches : (gameState.rules.totalEvents || 38),
+        model.lastStarterMinutes(position),
+      )
+      : { apps: 0, opportunities: 0 };
+    const num = nowApps.apps + SUB_ON_LAST_SEASON_WEIGHT * lastApps.apps + SUB_ON_PRIOR_OPPORTUNITIES * q;
+    const den = nowApps.opportunities + SUB_ON_LAST_SEASON_WEIGHT * lastApps.opportunities + SUB_ON_PRIOR_OPPORTUNITIES;
+    subOnRate = den > 0 ? clamp01(num / den) : q;
+  }
 
   // pAppear is BUILT from pStart, which is what makes pStart <= pAppear <= 1
   // structurally true rather than a clamp applied afterwards. Availability then
   // scales the whole profile, so it is a genuine ceiling: a player with a 25%
   // chance of playing can never come out above 0.25 to appear.
-  const baseStart01 = clamp01(baseStart);
   const baseAppear = clamp01(baseStart01 + (1 - baseStart01) * clamp01(subOnRate));
   const pStart = availability * baseStart01;
   const pAppear = availability * baseAppear;
@@ -724,16 +912,17 @@ export function projectMinutes(player, { gameState, gw, fixtureCount } = {}) {
   const pBench = Math.max(0, pAppear - pStart);
   const pNone = Math.max(0, 1 - pStart - pBench);
 
-  const p60 = clamp01(
-    pStart * p60FromMeanMinutes(meanStarterMinutes)
-    + pBench * p60FromMeanMinutes(meanSubMinutes),
-  );
+  const p60Start = p60GivenStart(position, meanStarterMinutes);
+  const p60Sub = p60GivenSub(position);
+  const p60 = clamp01(pStart * p60Start + pBench * p60Sub);
   const xMins = pStart * meanStarterMinutes + pBench * meanSubMinutes;
 
-  // Scored on the SHRUNK start rate and the sample behind it, so it describes
-  // the estimate the projection actually uses. A player with no history has no
-  // sample of his own, so he is scored on the prior's worth in matches.
-  const confidenceEvidence = hasHistory ? evidence : 0;
+  // How well the start probability is KNOWN (see minutesConfidence): the
+  // matches behind it, which for a returning player include his previous
+  // season, the evidence the prior mean was measured on.
+  const confidenceEvidence = m + (hasPrior
+    ? (Number.isFinite(lastSeason.matches) && lastSeason.matches > 0 ? lastSeason.matches : (gameState.rules.totalEvents || 38))
+    : 0);
   const { score: confidenceScore, tier: confidence } = minutesConfidence({
     startRate: baseStart01,
     evidenceMatches: confidenceEvidence,
@@ -747,6 +936,13 @@ export function projectMinutes(player, { gameState, gw, fixtureCount } = {}) {
     pNone,
     p60,
     xMins,
+    // The pieces the projection's minute branches are built from, so they are
+    // decided once, here.
+    p60GivenStart: p60Start,
+    p60GivenSub: p60Sub,
+    startUnder60Minutes: START_UNDER_60_MINUTES[position] || START_UNDER_60_MINUTES[3],
+    subOver60Minutes: SUB_OVER_60_MINUTES,
+    subOnRate,
     // Expected minutes CONDITIONAL on each outcome. The unconditional xMins
     // above is the mixture of these two, weighted by the probabilities.
     xMinsIfStart: meanStarterMinutes,
@@ -759,6 +955,77 @@ export function projectMinutes(player, { gameState, gw, fixtureCount } = {}) {
     confidenceScore,
     reason,
   };
+}
+
+// The pooled start rate and starter minutes of each position, last season and
+// this one, which the start and bench priors are read against. Cached per
+// GameState.
+const startModelCache = new WeakMap();
+
+function startModelFor(gameState) {
+  const cached = startModelCache.get(gameState);
+  if (cached) return cached;
+  const view = evidenceView(gameState);
+  const pool = () => ({ starts: 0, matches: 0, minutes: 0 });
+  const last = new Map();
+  const now = new Map();
+  for (const p of gameState.players.values()) {
+    const prior = view.priorOf(p);
+    if (prior && prior.minutes > 0) {
+      if (!last.has(p.position)) last.set(p.position, pool());
+      const row = last.get(p.position);
+      row.starts += prior.starts || 0;
+      row.matches += Number.isFinite(prior.matches) && prior.matches > 0 ? prior.matches : (gameState.rules.totalEvents || 38);
+      row.minutes += prior.minutes;
+    }
+    const current = view.currentOf(p);
+    if (current && current.minutes > 0) {
+      if (!now.has(p.position)) now.set(p.position, pool());
+      const row = now.get(p.position);
+      row.starts += current.starts || 0;
+      row.minutes += current.minutes;
+    }
+  }
+  const starterMinutes = (row) => (row && row.starts > 0 ? Math.min(90, (row.minutes * 0.92) / row.starts) : null);
+  const model = {
+    lastStartRate(position) {
+      const row = last.get(position);
+      return row && row.matches > 0 ? row.starts / row.matches : FALLBACK_PRIORS.startRate;
+    },
+    lastStarterMinutes(position) {
+      return starterMinutes(last.get(position)) || FALLBACK_PRIORS.starterMinutes;
+    },
+    currentStarterMinutes(position) {
+      return starterMinutes(now.get(position)) || starterMinutes(last.get(position)) || FALLBACK_PRIORS.starterMinutes;
+    },
+  };
+  startModelCache.set(gameState, model);
+  return model;
+}
+
+// Substitute appearances inferred from totals: the minutes a player's starts
+// cannot account for, in spells of SUB_SPELL_MINUTES, capped by the matches he
+// did not start (his opportunities).
+function inferredSubAppearances(minutes, starts, matches, starterMinutes) {
+  const opportunities = Math.max(0, matches - starts);
+  if (opportunities <= 0) return { apps: 0, opportunities: 0 };
+  const bench = Math.max(0, minutes - Math.min(minutes, starts * starterMinutes));
+  return { apps: Math.min(opportunities, bench / SUB_SPELL_MINUTES), opportunities };
+}
+
+function subOnPrior(position, startProbability) {
+  const table = SUB_ON_PRIOR[position] || SUB_ON_PRIOR[3];
+  let bin = 0;
+  for (let i = SUB_ON_START_BINS.length - 1; i >= 0; i--) {
+    if (startProbability >= SUB_ON_START_BINS[i]) { bin = i; break; }
+  }
+  return table[bin];
+}
+
+function unusedSubOnRate(position, matches) {
+  const table = SUB_ON_UNUSED[position] || SUB_ON_UNUSED[3];
+  const i = SUB_ON_UNUSED_BUCKETS.findIndex(([lo, hi]) => matches >= lo && matches <= hi);
+  return table[i < 0 ? table.length - 1 : i];
 }
 
 function countFixtures(gameState, teamId, gw) {

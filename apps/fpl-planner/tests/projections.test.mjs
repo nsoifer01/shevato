@@ -357,9 +357,11 @@ test('set-piece and penalty duty measurably raise the projection', () => {
 });
 
 test('recent points luck does not move a projection', () => {
-  // Identical underlying numbers, wildly different realized returns.
-  const lucky = player({ id: 7, xG: 6, xA: 6, goalsScored: 18, assists: 14, totalPoints: 240, bonus: 25 });
-  const unlucky = player({ id: 8, xG: 6, xA: 6, goalsScored: 1, assists: 1, totalPoints: 55, bonus: 1 });
+  // Identical underlying numbers, wildly different goals, assists and points.
+  // Bonus is held equal: it is the one realized outcome the projection reads,
+  // on purpose (see the next test).
+  const lucky = player({ id: 7, xG: 6, xA: 6, goalsScored: 18, assists: 14, totalPoints: 240, bonus: 10 });
+  const unlucky = player({ id: 8, xG: 6, xA: 6, goalsScored: 1, assists: 1, totalPoints: 55, bonus: 10 });
   const gameState = makeGameState([lucky, unlucky]);
   const strength = makeStrength();
   const a = projectPlayerGw(lucky, { gameState, strength, gw: 1 });
@@ -368,6 +370,21 @@ test('recent points luck does not move a projection', () => {
   // no code path reads goals, assists, bonus collected or total points.
   assert.ok(Math.abs(a.xPoints - b.xPoints) < 0.05, `${a.xPoints} vs ${b.xPoints}`);
   assert.ok(Math.abs(a.xPoints - b.xPoints) < 1e-12, 'and in fact identical');
+});
+
+test('a player\'s own bonus rate lifts his bonus projection beyond what his BPS alone says', () => {
+  // Same BPS, very different bonus collected. Held out, the blend of a player's
+  // own carried bonus rate with the BPS curve predicted next bonus 5.4% better
+  // than the curve alone and moved top-decile calibration from 1.53 to 1.02.
+  const collector = player({ id: 7, bps: 600, bonus: 30 });
+  const unlucky = player({ id: 8, bps: 600, bonus: 2 });
+  const gameState = makeGameState([collector, unlucky]);
+  const strength = makeStrength();
+  const a = projectPlayerGw(collector, { gameState, strength, gw: 1 });
+  const b = projectPlayerGw(unlucky, { gameState, strength, gw: 1 });
+  assert.ok(a.pointsBreakdown.bonus > b.pointsBreakdown.bonus * 1.5,
+    `${a.pointsBreakdown.bonus} vs ${b.pointsBreakdown.bonus}`);
+  assert.ok(PROJECTION_PARAMS.bonusOwnRateWeight > 0 && PROJECTION_PARAMS.bonusOwnRateWeight < 1);
 });
 
 test('recency weighting works on underlying stats when per-gameweek history exists', () => {
@@ -449,8 +466,8 @@ test('an unavailable player projects zero regardless of how good they are', () =
 });
 
 test('sd and ceiling come from the composed distribution', () => {
-  const steady = player({ id: 7, position: 2, xG: 1, xA: 1, cbit: 300, recoveries: 300, tackles: 150 });
-  const explosive = player({ id: 8, position: 4, xG: 20, xA: 6, cbit: 5, recoveries: 20, tackles: 5 });
+  const steady = player({ id: 7, position: 2, xG: 0.2, xA: 0.2, bonus: 1, bps: 300, cbit: 300, recoveries: 300, tackles: 150 });
+  const explosive = player({ id: 8, position: 4, xG: 25, xA: 8, bonus: 30, bps: 900, cbit: 5, recoveries: 20, tackles: 5 });
   const gameState = makeGameState([steady, explosive]);
   const strength = makeStrength();
   const a = projectPlayerGw(steady, { gameState, strength, gw: 1 });
@@ -493,7 +510,7 @@ test('buildProjections returns the ProjectionSet contract shape', () => {
   assert.equal(set.gwTo, 3);
   assert.ok(set.byPlayer instanceof Map);
   assert.equal(set.byPlayer.get(7).length, 3);
-  assert.equal(set.modelVersion, 'analytic-1');
+  assert.equal(set.modelVersion, 'analytic-2');
   assert.equal(set.dataFetchedAt, '2026-08-10T00:00:00.000Z');
   assert.ok(!Number.isNaN(Date.parse(set.generatedAt)));
 

@@ -30,10 +30,10 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { buildGameState } from '../js/engine/normalize.js';
-import { seasonEvidence, projectMinutes } from '../js/engine/minutes.js';
+import { seasonEvidence, projectMinutes, evidenceView } from '../js/engine/minutes.js';
 import { buildStrength } from '../js/engine/strength.js';
 import { buildProjections } from '../js/engine/projections.js';
-import { gameweekLifecycle, matchesPlayedByClub } from '../js/engine/lifecycle.js';
+import { gameweekLifecycle, matchesPlayedByClub, matchesKickedOffByClub } from '../js/engine/lifecycle.js';
 import { buildSquadState } from '../js/engine/squad.js';
 import { buildPlan } from '../js/engine/planner.js';
 import {
@@ -44,6 +44,7 @@ import {
 import { assessReadiness, projectionVitals, levelAtLeast, LEVEL } from '../js/engine/readiness.js';
 import { loadOpeningBaseline, openingBaselineApplies, resetOpeningBaselineCache, OPENING_BASELINE_FILE } from '../js/data/opening-baseline.js';
 import { noticeKinds } from '../js/ui/plan-model.js';
+import { resolveGameState } from '../js/engine/world.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const DIR = join(HERE, 'fixtures', 'gw1-2026');
@@ -191,8 +192,12 @@ test('THE FIX: the same visitor, same empty browser, gets a real GW2 plan from t
   assert.equal(gs.baselineOrigin, 'shipped');
 
   const evidence = seasonEvidence(gs);
-  assert.equal(evidence.usable, true, 'the blended payload IS projectable');
-  assert.equal(evidence.kind, 'previous-season');
+  assert.equal(evidence.usable, true, 'the payload with its prior IS projectable');
+  // Since 2026-09-16 the previous season is a prior beside this season's
+  // totals rather than added into them, so the payload reads as the season it
+  // is, one match old, with the prior making it usable.
+  assert.equal(evidence.kind, 'current-season');
+  assert.equal(evidence.prior, true);
 
   const lifecycle = gameweekLifecycle(gs, { now: AS_OF });
   assert.equal(lifecycle.planGw, 2, 'and the gameweek being planned is GW2, not GW1');
@@ -212,7 +217,10 @@ test('THE FIX: the same visitor, same empty browser, gets a real GW2 plan from t
   assert.equal(vitals.attackInverted, false, 'forwards and midfielders are not projecting below defenders');
   const starts = rows.map((r) => r.pStart).sort((a, b) => a - b);
   const median = starts[Math.floor(starts.length / 2)];
-  assert.ok(median > 0.3 && median < 0.95, `start-rate median ${median} is not pinned`);
+  // Over every registered player, fringe and all: eleven starters a club from
+  // squads of about thirty make a real median well below a half, and the two
+  // collapses this guards read 1.000 and 0.026.
+  assert.ok(median > 0.15 && median < 0.95, `start-rate median ${median} is not pinned`);
   assert.equal(starts.filter((v) => v >= 0.9999).length, 0, 'nobody is a certain starter');
 
   // And the app is allowed to act on them.
@@ -412,11 +420,14 @@ test('an unlabelled snapshot is dated against the season it is being applied to'
 
 /* --------------------------------------------------------- and it retires */
 
-test('the shipped baseline retires the moment this season is evidence of its own', () => {
+test('the shipped baseline stops standing in once this season is evidence of its own, and stays on as the prior', () => {
   // `baselineIsSuperseded` opens at three matches per club. Until then the
-  // asset stands in; after it, the payload speaks for itself and the asset is
-  // not consulted at all - which is what stops one committed file becoming a
-  // permanent prior.
+  // asset stands in for a season too young to project from; after it the
+  // payload speaks for itself. Until 2026-09-16 the asset was then dropped
+  // entirely, and every nailed starter became a player with three matches of
+  // evidence shrunk toward the league pool. It is now kept as the previous
+  // season, which the models weigh against this one at measured weights, and
+  // it still pins its own season, so it can never become a later season's prior.
   const gs = state('gw1-complete');
   assert.equal(baselineIsSuperseded(gs), false, 'one match per club is not yet a season');
   assert.equal(resolveBaseline(gs, null, { shipped: SHIPPED }).source, 'baseline');
@@ -424,8 +435,17 @@ test('the shipped baseline retires the moment this season is evidence of its own
   const mature = matureSeason();
   assert.equal(baselineIsSuperseded(mature), true, 'three matches per club');
   const resolved = resolveBaseline(mature, null, { shipped: SHIPPED });
-  assert.equal(resolved.source, 'current', 'this season is now the evidence');
-  assert.equal(resolved.totals, null, 'and the shipped totals are not applied');
+  assert.equal(resolved.source, 'current', 'this season now stands on its own');
+  assert.equal(resolved.origin, 'shipped', 'and the previous season carries on as its prior');
+  assert.equal(resolved.snapshot, SHIPPED);
+  assert.equal(resolved.message, null, 'nothing is standing in, so nothing needs saying');
+
+  const { bootstrap, fixtures } = maturePayload();
+  const { gameState } = resolveGameState(mature, { bootstrap, fixtures, shipped: SHIPPED });
+  assert.equal(gameState.baselineSource, 'current', 'readiness no longer treats the season as standing on a baseline');
+  assert.ok(gameState.priorSeason, 'the prior is attached');
+  const withPrior = [...gameState.players.values()].filter((p) => p.prior);
+  assert.ok(withPrior.length > 200, `${withPrior.length} players carry a previous season`);
 });
 
 test('a mature season is untouched by any of this', () => {
@@ -440,8 +460,13 @@ test('a mature season is untouched by any of this', () => {
     'and the asset is never even fetched');
 });
 
-/** The same fixture with every club three matches in, so the baseline retires. */
+/** The same fixture with every club three matches in, so the baseline stops standing in. */
 function matureSeason() {
+  const { bootstrap, fixtures } = maturePayload();
+  return buildGameState(bootstrap, fixtures);
+}
+
+function maturePayload() {
   const { bootstrap, fixtures } = payloadFor('gw1-complete');
   const perTeam = new Map();
   const played = fixtures.map((f) => {
@@ -451,7 +476,7 @@ function matureSeason() {
     perTeam.set(f.team_a, (perTeam.get(f.team_a) || 0) + 1);
     return { ...f, started: true, finished: true, finished_provisional: true, team_h_score: 1, team_a_score: 0 };
   });
-  return buildGameState(bootstrap, played);
+  return { bootstrap, fixtures: played };
 }
 
 /* ------------------------------------------------------------ the loader */
@@ -483,23 +508,34 @@ test('the loader fetches the asset once, and a missing file degrades to no basel
   resetOpeningBaselineCache();
 });
 
-test('the asset is only fetched in the state it exists for', () => {
+test('the asset is fetched whenever the payload is not already last season', () => {
+  // The previous season informs every projection all season, so the asset is
+  // needed in every state except the one whose own totals ARE last season's.
   const rolled = state('gw1-complete');
   const complete = state('preseason');
-  assert.equal(openingBaselineApplies(rolled, { assessment: assessBaseline(rolled), superseded: false }), true);
-  assert.equal(openingBaselineApplies(rolled, { assessment: assessBaseline(rolled), superseded: true }), false,
-    'not once this season supersedes it');
-  assert.equal(openingBaselineApplies(complete, { assessment: assessBaseline(complete), superseded: false }), false,
-    'not when the payload is a season already');
-  assert.equal(openingBaselineApplies({ ...rolled, sample: true }, { assessment: assessBaseline(rolled), superseded: false }), false,
-    'and never for the demo dataset');
+  assert.equal(openingBaselineApplies(rolled), true, 'a rolled-over payload needs it');
+  assert.equal(openingBaselineApplies(matureSeason()), true, 'and so does a season of its own');
+  assert.equal(openingBaselineApplies(complete), false, 'not when the payload is last season already');
+  assert.equal(openingBaselineApplies({ ...rolled, sample: true }), false, 'and never for the demo dataset');
 });
 
 /* ----------------------------------------------- GW1 updates the prior */
 
+/** The same payload before a ball is kicked, with the prior attached: the prior alone. */
+function priorOnly() {
+  const { bootstrap, fixtures } = payloadFor('gw1-complete');
+  const cleared = {
+    ...bootstrap,
+    elements: bootstrap.elements.map((e) => ({ ...e, minutes: 0, starts: 0, total_points: 0 })),
+  };
+  const unplayed = fixtures.map((f) => ({ ...f, started: false, finished: false, finished_provisional: false, team_h_score: null, team_a_score: null }));
+  return buildGameState(cleared, unplayed, { baseline: SHIPPED });
+}
+
 test('this season\'s one match updates the prior rather than replacing it or being ignored', () => {
   const raw = state('gw1-complete');
   const blended = stateWith('gw1-complete', SHIPPED);
+  const before = priorOnly();
 
   let checkedPlayer = 0;
   let checkedBenched = 0;
@@ -510,27 +546,28 @@ test('this season\'s one match updates the prior rather than replacing it or bei
     if (!row) continue;
     const live = raw.players.get(p.id);
 
-    // Ignored would be `p.starts === row.s`; replaced would be
-    // `p.starts === live.seasonStarts`. It is neither: it is the sum.
-    assert.equal(p.starts, row.s + live.seasonStarts, `${p.webName}: starts are baseline + this season`);
-    assert.equal(p.minutes, row.m + live.seasonMinutes, `${p.webName}: minutes are baseline + this season`);
-
-    // ...over a denominator that grew by exactly the matches his club played,
-    // so the rate moves by one match's worth and not by a season's.
-    assert.equal(p.evidenceMatches, SHIPPED.totalEvents + 1,
-      `${p.webName}: 38 baseline gameweeks plus his club's one match`);
+    // Replaced would be `p.prior` missing; ignored would be this season's
+    // totals missing. It is neither: both are there, as different facts.
+    assert.equal(p.starts, live.seasonStarts, `${p.webName}: this season's starts are this season's`);
+    assert.equal(p.minutes, live.seasonMinutes, `${p.webName}: and so are the minutes`);
+    assert.equal(p.prior.starts, row.s, `${p.webName}: the previous season is the prior`);
+    assert.equal(p.prior.minutes, row.m, `${p.webName}: with its minutes`);
 
     if (live.seasonMinutes > 0) checkedPlayer++; else checkedBenched++;
   }
   assert.ok(checkedPlayer > 50, `${checkedPlayer} players who played GW1 were checked`);
   assert.ok(checkedBenched > 50, `${checkedBenched} players who did not were checked`);
 
-  // The direction is the point: playing raises a start rate, missing lowers it.
-  const rate = (p) => p.starts / p.evidenceMatches;
-  const sample = [...blended.players.values()].filter((p) => {
-    const row = SHIPPED.totals[p.id];
-    return row && row.s > 20;
-  });
+  // The direction is the point: starting raises the start probability above
+  // what the prior alone says, missing a match his club played lowers it, and
+  // coming off the bench lowers the chance of STARTING while it is still an
+  // appearance.
+  const club = matchesKickedOffByClub(blended);
+  const pStart = (gs, p) => projectMinutes(p, { gameState: gs, gw: 2 }).pStart;
+  // Available players only: a flagged player's start probability is his
+  // published chance of playing, whatever his record says.
+  const sample = [...blended.players.values()].filter((p) => p.prior && p.prior.starts > 20 && (club.get(p.teamId) || 0) > 0
+    && p.status === 'a' && p.chanceNext === null);
   const started = sample.filter((p) => raw.players.get(p.id).seasonStarts > 0);
   const missed = sample.filter((p) => raw.players.get(p.id).seasonMinutes === 0);
   const cameOn = sample.filter((p) => {
@@ -540,24 +577,16 @@ test('this season\'s one match updates the prior rather than replacing it or bei
   assert.ok(started.length && missed.length, 'both groups are populated');
 
   for (const p of started) {
-    const before = SHIPPED.totals[p.id].s / SHIPPED.totalEvents;
-    // An ever-present (38 of 38) is already at the ceiling and starting again
-    // keeps him there; everyone else moves up. Both are the prior being
-    // updated rather than discarded.
-    if (before >= 1) assert.equal(rate(p), 1, `${p.webName} was ever-present and started again`);
-    else assert.ok(rate(p) > before, `${p.webName} started GW1, so his start rate rose`);
+    assert.ok(pStart(blended, p) > pStart(before, before.players.get(p.id)),
+      `${p.webName} started GW1, so his start probability rose`);
   }
   for (const p of missed) {
-    assert.ok(rate(p) < SHIPPED.totals[p.id].s / SHIPPED.totalEvents,
-      `${p.webName} missed GW1, so his start rate fell`);
+    assert.ok(pStart(blended, p) < pStart(before, before.players.get(p.id)),
+      `${p.webName} missed GW1, so his start probability fell`);
   }
-  // A substitute gained minutes without a start, so his START rate falls while
-  // his minutes rise. That is the model working, not a bug: the denominator
-  // grew and the start numerator did not.
   for (const p of cameOn) {
-    assert.ok(rate(p) < SHIPPED.totals[p.id].s / SHIPPED.totalEvents,
-      `${p.webName} came off the bench, so his start rate fell`);
-    assert.ok(p.minutes > SHIPPED.totals[p.id].m, `${p.webName} still gained the minutes he played`);
+    assert.ok(pStart(blended, p) < pStart(before, before.players.get(p.id)),
+      `${p.webName} came off the bench, so his start probability fell`);
   }
 });
 
@@ -584,36 +613,31 @@ test('this season\'s one match updates the prior rather than replacing it or bei
 // at pStart ~0.09. Villa's Suzuki had just played 90 minutes and projected 0.3
 // points for GW3, less than half what the same model gave him when he was given
 // zero minutes instead.
-test('every player in a blended payload is given a denominator, not just the overlaid ones', () => {
+test('every player reads this season over his own club\'s matches, with or without a previous season', () => {
+  // The overlay this guarded moved the POOL denominator to a full season and
+  // left the players it had no row for dividing one match by 38. There is no
+  // overlay now: every player's current evidence is read over the matches his
+  // own club has kicked off, and the previous season is attached as a prior to
+  // the players it knows and to nobody else.
   const blended = stateWith('gw1-complete', SHIPPED);
-  const played = matchesPlayedByClub(blended);
-  const teamMatches = seasonEvidence(blended).teamMatches;
+  const kicked = matchesKickedOffByClub(blended);
+  const view = evidenceView(blended);
 
-  // The overlay is only dangerous because it moves the POOL denominator to a
-  // full season. If it ever stops doing that, this test is guarding nothing and
-  // should be re-derived rather than deleted.
-  assert.equal(teamMatches, SHIPPED.totalEvents,
-    'the blended payload is read as a previous season, which is what makes an undeclared denominator wrong');
-
-  let overlaid = 0;
+  let known = 0;
   let unknown = 0;
   for (const p of blended.players.values()) {
     const row = SHIPPED.totals[p.id] || Object.values(SHIPPED.totals).find((r) => r.c === p.code);
-    const clubMatches = played.get(p.teamId) || 0;
+    assert.equal(view.matchesOf(p), kicked.get(p.teamId) || 0,
+      `${p.webName}: his ${p.seasonStarts} start(s) are read over his club's matches`);
     if (row) {
-      assert.equal(p.evidenceMatches, SHIPPED.totalEvents + clubMatches,
-        `${p.webName}: baseline season plus his club's matches`);
-      overlaid++;
+      assert.ok(p.prior, `${p.webName}: the previous season is attached`);
+      known++;
     } else {
-      // His totals cover this season and nothing else, so that is what they are
-      // read against. Never the pool's.
-      assert.equal(p.evidenceMatches, clubMatches || null,
-        `${p.webName} is not in the baseline, so his ${p.seasonStarts} start(s) cover his club's `
-        + `${clubMatches} match(es), not ${teamMatches}`);
+      assert.equal(p.prior, null, `${p.webName}: no previous season is invented`);
       unknown++;
     }
   }
-  assert.ok(overlaid > 100, `${overlaid} overlaid players were checked`);
+  assert.ok(known > 100, `${known} players with a previous season were checked`);
   assert.ok(unknown > 20, `${unknown} players the baseline has never seen were checked`);
 });
 
@@ -639,12 +663,15 @@ test('starting every match reads the same whether or not the baseline knows the 
 
   const known = med(everPresent.known);
   const unknown = med(everPresent.unknown);
-  // A player with one match of evidence is shrunk harder toward the position
-  // prior than one with a season of it, so the two are not equal and should not
-  // be asserted equal. They must be the same KIND of number.
-  assert.ok(unknown > 0.35,
+  // A player with one match of evidence and no Premier League record is a
+  // weaker bet than a returning regular who started it too: held out, the start
+  // prior for a newcomer is his price percentile worth under a match, and a
+  // season of starts is worth more. So the two are not equal and should not be
+  // asserted equal. They must be the same KIND of number, which the bug (0.08
+  // against 0.66) was not.
+  assert.ok(unknown > 0.5,
     `an ever-present the baseline has never seen projects a start probability of ${unknown.toFixed(3)}`);
-  assert.ok(Math.abs(known - unknown) < 0.2,
+  assert.ok(Math.abs(known - unknown) < 0.3,
     `ever-presents split into ${known.toFixed(3)} (in the baseline) and ${unknown.toFixed(3)} (not in it) `
     + 'purely by whether last season knew them');
 });

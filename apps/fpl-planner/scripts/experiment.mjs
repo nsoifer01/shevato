@@ -57,6 +57,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { INSTRUMENTS, buildCells, pairArms, formatReport, CONTROL_ARM } from '../js/engine/experiment.js';
 import { DATA_DIR, seasonPath } from './fetch-history.mjs';
 import { previousSeason, KNOWN_SEASONS } from './backtest.mjs';
+import { EVIDENCE_REGIMES } from '../js/engine/backtest.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const APP_DIR = path.join(HERE, '..');
@@ -133,13 +134,25 @@ export function resolveConfig(raw, overrides = {}) {
     throw new Error(`Unknown instrument "${instrumentKey}". Known: ${Object.keys(INSTRUMENTS).join(', ')}`);
   }
 
+  // THE EVIDENCE REGIME DEFAULTS TO PRODUCTION (2026-09-16). Until then every
+  // experiment replayed under the replay's own seeding rule, which production
+  // has never run; see EVIDENCE_REGIMES in js/engine/backtest.js. Production
+  // always has a previous season to stand in (the shipped opening baseline), so
+  // a season with no downloaded predecessor cannot be replayed as production and
+  // is left out unless a config names it.
+  const evidenceRegime = raw.evidenceRegime || EVIDENCE_REGIMES.PRODUCTION;
+  const defaultSeasons = evidenceRegime === EVIDENCE_REGIMES.PRODUCTION
+    ? KNOWN_SEASONS.filter(s => KNOWN_SEASONS.includes(previousSeason(s)))
+    : KNOWN_SEASONS;
+
   const config = {
     name: raw.name || 'unnamed',
     question: raw.question || null,
     instrument: instrument.key,
     instrumentLabel: instrument.label,
     instrumentRank: instrument.rank,
-    seasons: overrides.seasons || raw.seasons || KNOWN_SEASONS,
+    seasons: overrides.seasons || raw.seasons || defaultSeasons,
+    evidenceRegime,
     windows: raw.windows || instrument.windows,
     seeds: overrides.seeds || raw.seeds || instrument.seeds,
     chips: raw.chips === undefined ? instrument.chips : raw.chips,

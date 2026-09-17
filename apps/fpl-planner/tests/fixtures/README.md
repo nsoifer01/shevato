@@ -133,3 +133,27 @@ the test rebuilds all five GW4 kickoff windows (and each one with a fixture list
 that has not caught up) from a single capture. The per-90 fields have no
 per-match equivalent and stay as captured.
 
+
+## The xp-calibration-2026 league capture
+
+`xp-calibration-2026/` is the whole 2026/27 league as the public API served it on
+2026-09-16 at 21:39 UTC, after gameweek 4 was signed off: the day the xP audit
+found every nailed starter projected to start 64% to 76% of the time. It exists
+so a league of projections can be compared with what the gameweeks then
+produced, hermetically. Read at runtime by `helpers/xp-calibration-fixture.mjs`
+for `xp-calibration-guard.test.mjs`. Derived by
+`scripts/derive-calibration-fixtures.mjs`; the payloads are public and carry no
+entry.
+
+| File | What it is |
+| --- | --- |
+| `base.json` | Rules, game config, clubs, events, the element metadata for all 659 players (nothing trimmed: calibration is a claim about a league) and the full fixture list with scores. |
+| `totals-after-gw4.json` | Every player's season totals after gameweek 4, as a column table. |
+| `live-gw3.json`, `live-gw4.json` | `event/3/live` and `event/4/live` stats for every player who played or scored, as column tables. |
+| `manifest.json` | Pool size, rows per gameweek and the sha256 of every raw file. |
+
+Subtracting gameweeks 3..4 or 4 from the totals rebuilds the GW3 or GW4 deadline
+payload, with those gameweeks' fixtures unplayed and the event flags of the week
+before. Injury flags cannot be rebuilt (the capture carries GW5's), so every
+player is read as available at both deadlines. The per-90 fields are not kept:
+the engine does not read them.
