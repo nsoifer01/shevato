@@ -104,4 +104,34 @@ apps/*/.reports/
 
 # Local headless-Chrome profiles used by manual verification runs.
 .chrome-profiles/
+
+# The publish directory. scripts/build-publish-dir.mjs rmSync()s and rebuilds it
+# from scratch on every `npm run build:site`, so a copy on disk is never the
+# source of anything - and a stale one is a live hazard, because
+# `netlify deploy --prod --no-build` publishes whatever bytes it finds.
 dist/
+
+# Audit evidence: the probe scripts, logs and per-phase findings files an audit
+# round writes beside its summary (apps/trip-planner/AUDIT-2026-08-22.md names
+# this path and already described it as ignored). The summary that survives the
+# round is committed; the evidence is not.
+.audit/
+
+# node:test reporter output. The unit job in ci.yml runs with
+# `--test-reporter=junit --test-reporter-destination=unit-tests.junit.xml` and
+# `--test-reporter=./scripts/test-file-times.mjs --test-reporter-destination=unit-file-times.md`,
+# so reproducing a CI run locally drops both at the repo root.
+*.junit.xml
+*file-times.md
+
+# ESLint's optional on-disk cache (`eslint --cache`).
+.eslintcache
+
+# Debugging dumps: V8 profiles and heap snapshots from a performance
+# investigation. Read them, then delete them - they are never a repo artifact.
+*.cpuprofile
+*.heapsnapshot
+
+# Merge and patch leftovers.
+*.orig
+*.rej

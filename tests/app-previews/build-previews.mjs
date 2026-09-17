@@ -14,7 +14,7 @@
 // Where the sample state comes from, per app:
 //   fpl-planner    ?demo=1 loads the bundled sample squad
 //   trip-planner   the Timeline empty state offers "Load an example trip"
-//   the rest       seeded localStorage (assets/app-previews/seeds.mjs), whose
+//   the rest       seeded localStorage (tests/app-previews/seeds.mjs), whose
 //                  shapes are lifted from each app's own unit-test fixtures
 //
 // Arena is the one app not built here, and not for want of trying. It has a

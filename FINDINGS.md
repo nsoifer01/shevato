@@ -1,12 +1,62 @@
 # Shevato site - engineering findings
 
 Site-level knowledge that belongs to no single app: the marketing pages
-(`*.html` at the root and `moadon-alef/`), the injected `partials/`, shared
-`assets/` (CSS, JS, the auth modal, the sync banner), `sync-system/`,
+(`*.html` at the root, `moadon-alef.html` among them), the injected `partials/`,
+shared `assets/` (CSS, JS, the auth modal, the sync banner), `sync-system/`,
 `firestore.rules`, `privacy.html`, `netlify.toml` and the repo tooling
 (`.gitignore`, `package.json`, the workflows). Per-app knowledge
 lives in `apps/<app>/FINDINGS.md`; this file follows the same living-document
 rule (rewrite, merge, delete; never an append-only diary).
+
+## What accretes here is untracked, and the tracked tree is already clean (2026-09-17)
+
+A full stale-artifact sweep of the repository found **nothing removable under
+git**. 997 tracked files, zero unreferenced images, zero dead fixtures, zero
+superseded docs. Every candidate that looked stale by name turned out to be
+load-bearing, and the reasons are worth keeping because the next sweep will
+find the same candidates:
+
+- `apps/trip-planner/AUDIT-2026-08-22.md` is cited by four live test files
+  (`apps/trip-planner/tests/audit-2026-08-22.test.js`, `audit-data.test.js`,
+  `audit-assistant.test.js`, `apps/trip-planner/e2e/audit-fixes.mjs`) and by
+  `apps/trip-planner/FINDINGS.md`, which says it is kept beside it. A dated
+  audit summary is not disposable once tests carry its finding IDs.
+- `apps/fpl-planner/GW1-RUNBOOK.md` reads as a finished checklist (every box
+  ticked, all four facts answered) but it is the operational record FINDINGS
+  points at twice, and the procedure recurs at every season's GW1.
+- `images/fpl-planner-logo.png` is unreferenced on purpose: it was the apps-hub
+  card mark until 2026-09-07 and the source art it was cropped from is deleted,
+  which `apps/fpl-planner/FINDINGS.md` states.
+- `apps/fpl-planner/tests/fixtures/gw1-2026/*` is read through a computed path,
+  so a reference search reports it as unused.
+  `apps/fpl-planner/tests/fixtures/README.md` warns about exactly this. Most of
+  the rest of a naive orphan scan is test files, which are reached by glob and
+  so are "unreferenced" by construction.
+- `scripts/indexnow-submit.mjs` and the `<32-hex>.txt` key beside it are
+  deliberately hand-run and wired into no script.
+- `apps/rising-shows/data/season-overviews.json` (4.5 MB) is a tracked one-off
+  snapshot that `build-data.js` still consumes for seasons the daily TMDB cache
+  leaves empty.
+
+The accretion is entirely in the gitignored working tree, and it is fast.
+**78,881 screenshots over 3.0 GB in 52 round directories** going back to
+2026-09-02, every round merged and closed; a 70,473-entry `dist/` (`du` calls
+that 1.5 GB, but `build-publish-dir.mjs` hard-links rather than copies, so most
+of those bytes are the generated Rising Shows and Gym Tracker trees counted
+twice); `.coverage/`; and two Firebase emulator `*-debug.log` files. Most of
+those rounds' own session reports under `.reports/` already point at screenshot
+directories that no longer exist, which is the normal lifecycle working: the
+report is the durable record, the pixels are not. The dangerous one was not the
+size, it was `dist/`, four days stale, because
+`netlify deploy --prod --no-build` publishes whatever bytes it finds there and
+the build-minute freeze makes that the standing publish path.
+
+`.gitignore` gained the disposable classes that were not yet named: `.audit/`
+(which `AUDIT-2026-08-22.md` already described as ignored), the node:test
+reporter output a local reproduction of the CI unit job drops at the root
+(`*.junit.xml`, `*file-times.md`), `.eslintcache`, `*.cpuprofile`,
+`*.heapsnapshot`, `*.orig` and `*.rej`. The standing rule is in `CLAUDE.md`,
+"Close the round on the artifacts too".
 
 ## A stale deploy log reads exactly like a missed deploy (2026-09-16)
 
