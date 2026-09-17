@@ -37,6 +37,11 @@
 //     plays, so more boosts without more points a boost is not the mechanism.
 //     Otherwise REJECT and remove it.
 //
+// RESULT (registry entries 33 and 34): the guard passed; outfield-gate and
+// bench-upgrade failed their registrations and their switches were removed.
+// To re-run those arms, restore `benchGate` and `benchUpgrade` from commit
+// a043aa68 (the first commit of the pull request that added entry 34).
+//
 //   node apps/fpl-planner/scripts/experiment.mjs --config apps/fpl-planner/experiments/configs/chip-rules-known.mjs [--instrument seasons --seeds 1,2,3]
 export default {
   name: 'chip rules known calendar',

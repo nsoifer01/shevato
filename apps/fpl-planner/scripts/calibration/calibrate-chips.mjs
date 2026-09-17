@@ -244,12 +244,8 @@ const median = (a) => {
 const fmt = (v, d = 2) => (Number.isFinite(v) ? v.toFixed(d) : '-');
 const patience = (g, from) => Math.pow(CHIP_PARAMS.chipPatiencePerGw, Math.max(0, g - from));
 const usable = d => d.bb.bench.every(b => b.pAppear >= CHIP_PARAMS.benchUsablePAppear);
-// The engine's own condition: every bench player, or the three outfield ones
-// (the recorded bench is keeper first), as chips.js BENCH_BOOST_GATE says.
-const engineReady = d => (CHIP_PARAMS.benchBoostGate === 'outfield' ? d.bb.bench.slice(1) : d.bb.bench)
-  .every(b => b.pAppear >= CHIP_PARAMS.benchUsablePAppear);
 // The engine's decision rebuilt from a recording, edges included.
-const engineBenchBoost = (d, to) => d.gw === to || (engineReady(d) && d.bb.valueNow > CHIP_PARAMS.benchBoostBar
+const engineBenchBoost = (d, to) => d.gw === to || (usable(d) && d.bb.valueNow > CHIP_PARAMS.benchBoostBar
   && !d.bb.perGw.some(r => r.gw > d.gw && r.gw <= to && r.gw - d.gw < NEAR_WEEKS && r.value - d.bb.valueNow >= CHIP_PARAMS.benchBoostHoldMargin));
 const inWindow = (d, r, to) => r.gw > d.gw && r.gw <= to;
 
@@ -472,7 +468,7 @@ function analyze() {
     const rules = {
       'pre-change rule': preChangeBenchBoost,
       'first legal week': () => true,
-      [`ENGINE: bar ${bar}, gate ${CHIP_PARAMS.benchBoostGate}, hold at ${CHIP_PARAMS.benchBoostHoldMargin}, last week`]: (d, c) => engineBenchBoost(d, c.to),
+      [`ENGINE: bar ${bar}, all four likely to play, hold at ${CHIP_PARAMS.benchBoostHoldMargin}, last week`]: (d, c) => engineBenchBoost(d, c.to),
       'engine rule, bias + SD fitted on the other seasons': engine(bar, rev.nearBias + rev.nearSd),
       '  without the availability gate': engine(bar, rev.nearBias + rev.nearSd, 0),
       '  without the hold': engine(bar, 0, CHIP_PARAMS.benchUsablePAppear, false),

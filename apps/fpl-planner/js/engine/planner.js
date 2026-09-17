@@ -208,15 +208,6 @@ function resolveOptions(options, rules, gw) {
     // scored with. Nothing in the app sets them; the replay passes them so an
     // experiment can move them (experiments/configs/lineup-risk.mjs).
     lineupOptions: options.lineupOptions || {},
-    // Search the sales of ANY bench player for a Bench Boost, not only of a
-    // player unlikely to play (THE BENCH REPAIR). Off unless an experiment or
-    // a later decision turns it on (experiments/configs/bench-upgrade.mjs).
-    benchUpgrade: options.benchUpgrade === true,
-    // Hold a Bench Boost for a double gameweek (chips.js DOUBLES_FROM_GW).
-    benchDoubleHold: options.benchDoubleHold === true,
-    // Which bench players a Bench Boost needs likely to play ('all' or
-    // 'outfield'); unset means chips.js BENCH_BOOST_GATE.
-    benchGate: options.benchGate || null,
   };
 }
 
@@ -677,11 +668,7 @@ export async function buildPlan({ gameState, squadState, options = {}, onProgres
       ? evaluateChips({
         squadState: workingSquad, projections, gameState, rules,
         horizon: cfg.horizon, discount: cfg.discount,
-        opts: {
-          seed: cfg.seed, ...cfg.lineupOptions,
-          ...(cfg.benchGate ? { benchGate: cfg.benchGate } : {}),
-          ...(cfg.benchDoubleHold ? { benchDoubleHold: true } : {}),
-        },
+        opts: { seed: cfg.seed, ...cfg.lineupOptions },
       })
       : null;
 
@@ -857,14 +844,11 @@ function scoreWithTimingChip(base, chip, decision, { squadState, rules, cfg }) {
 
 function benchRepairCandidates({ chipEvaluation, scoredList, squadState, projections, gameState, rules, cfg, gw }) {
   const entry = chipEvaluation && chipEvaluation.perChip && chipEvaluation.perChip.bboost;
-  if (!entry || !entry.available || entry.status === 'opening') return [];
-  // The repair sells exactly the players unlikely to play. The upgrade, when
-  // switched on, may sell any bench player, which is how a bench is rebuilt
-  // for a Bench Boost in a double gameweek.
-  const outIds = cfg.benchUpgrade
-    ? entry.detail.bench
-    : entry.status === 'unusable' ? entry.detail.unusable : null;
-  if (!outIds || !outIds.length) return [];
+  if (!entry || !entry.available || entry.status !== 'unusable') return [];
+  // Exactly the players unlikely to play. Widening this to the sales of any
+  // bench player, to build a bench for a double gameweek, was measured and
+  // rejected (registry entry 34).
+  const outIds = entry.detail.unusable;
   const raw = searchTransfers({
     squadState, projections, gameState, rules,
     horizon: cfg.horizon,
@@ -932,8 +916,6 @@ function chipCandidates({ chipEvaluation, scoredList, repairBases = [], squadSta
         ? benchBoostDecision({
           benchIds: [first.bench.gk, ...first.bench.order],
           projections, gameState, rules, gw, horizon: cfg.horizon, chipsUsed, openingSquad,
-          ...(cfg.benchGate ? { gate: cfg.benchGate } : {}),
-          ...(cfg.benchDoubleHold ? { holdForDoubles: true } : {}),
         })
         : tripleCaptainDecision({
           squadIds: base.candidate.squad, captainId: first.captain, captainXp: first.captainExtra,

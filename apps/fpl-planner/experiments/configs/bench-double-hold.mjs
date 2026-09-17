@@ -21,6 +21,10 @@
 //     no season below -15, AND its Bench Boosts carry at least one bench player
 //     with a second fixture a play on average. Otherwise REJECT both.
 //
+// RESULT (registry entry 34): both arms REJECTED and the switch removed. To
+// re-run, restore `benchDoubleHold` and `benchUpgrade` from commit a043aa68
+// (the first commit of the pull request that added entry 34).
+//
 //   node apps/fpl-planner/scripts/experiment.mjs --config apps/fpl-planner/experiments/configs/bench-double-hold.mjs [--instrument seasons --seeds 1,2,3]
 export default {
   name: 'bench double hold',

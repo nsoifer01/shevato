@@ -1114,32 +1114,6 @@ test('before the first deadline a squad still being chosen is not told to play a
   assert.deepEqual(bundle.validation, { ok: true, violations: [] });
 });
 
-test('the bench upgrade, when switched on, rebuilds an ordinary bench into doubling players for a Bench Boost', async () => {
-  const GW = 10;
-  // Clubs 8 and 9 play twice; nobody in the squad plays for them. The bench
-  // projects 1.5 a player, short of the bar, and nobody on it is doubtful, so
-  // the repair has nothing to repair.
-  const fixtures = makeFixtures({ gwTo: RULES.totalEvents, doubles: { [GW]: [8, 9] } });
-  const gameState = makeGameState(fixtures, GW);
-  const projections = makeProjections(gameState, GW, GW + 8, ordinaryWeek);
-  const squadState = makeSquadState({ gw: GW, freeTransfers: 2 });
-  const held = evaluateChips({ squadState, projections, gameState, rules: RULES, horizon: 5, discount: 0.85 });
-  assert.equal(held.perChip.bboost.status, 'below_bar');
-
-  const off = await buildPlan({ gameState, squadState, options: { horizon: 5, seed: 3, projections, strength: {} } });
-  assert.notEqual(off.current.chip, 'bboost', 'without the upgrade no bench is built for the boost');
-
-  const on = await buildPlan({ gameState, squadState, options: { horizon: 5, seed: 3, projections, strength: {}, benchUpgrade: true } });
-  const plan = on.current;
-  assert.equal(plan.chip, 'bboost');
-  assert.ok(plan.transfersOut.length > 0);
-  assert.ok(plan.transfersOut.every(id => BENCH_FOUR.includes(id)), 'only bench players are sold');
-  const clubOfId = id => ROSTER.find(p => p.id === id).teamId;
-  assert.ok(plan.transfersIn.every(id => [8, 9].includes(clubOfId(id))), 'and doubling players bought');
-  assert.ok(on.chipEvaluation.perChip.bboost.valueNow >= CHIP_PARAMS.benchBoostBar);
-  assert.deepEqual(on.validation, { ok: true, violations: [] });
-});
-
 test('the lineup risk weights an experiment sets reach the lineup the plan is scored with', async () => {
   const GW = 10;
   const fixtures = makeFixtures({ gwTo: RULES.totalEvents });

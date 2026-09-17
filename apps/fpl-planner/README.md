@@ -653,8 +653,9 @@ a sound projection is; this one says the inputs failed, and reads
 
 `js/engine/chips.js` decides each chip for one squad, and `planner.js` asks it of
 every squad a candidate plan leads to. The rules were re-measured on analytic-2
-projections on 2026-09-17 (registry entry 30); every number below has its
-evidence in a comment beside the constant.
+projections on 2026-09-17 (registry entry 30) and recalibrated the same day on
+the calendar as it was known at each deadline (entries 31 and 33); every number
+below has its evidence in a comment beside the constant.
 
 - **One window at a time.** From 2025-26 each chip exists twice, once per half.
   A chip is only compared with later weeks of its OWN window. A Bench Boost or
@@ -662,19 +663,21 @@ evidence in a comment beside the constant.
   both are unspent near the end each is due as soon as the weeks left no longer
   cover both (`dueChipsAt`), because only one chip can be played a week.
 - **Bench Boost** is played when all four bench players are likely to play
-  (appearance probability 0.5 or more), the bench projects at least 8 points,
-  and no week INSIDE the projection horizon beats it by more than 4.7 points,
+  (appearance probability 0.5 or more), the bench projects more than 8 points,
+  and no week INSIDE the projection horizon beats it by 5.0 points or more,
   which is how far a near-week bench estimate is high on average (1.7) plus how
-  much it moves before its week (3.0). A tie is played. Weeks past the horizon
+  much it moves before its week (3.2). A tie is played. Weeks past the horizon
   are never compared: their estimates run high and the best of thirty of them
   used to slide the chip to gameweek 38. A bench with a player who will not play
   is "not ready", and the planner searches separately for the sales that repair
   it (`searchTransfers` with `outIds`), so "sell him, then boost" is a plan it
-  can find.
+  can find. Requiring availability of the three outfield players only, selling
+  any bench player to build a bench for a double gameweek, and holding the chip
+  for a double were each measured and rejected (entries 33 and 34).
 - **Triple Captain** is played when this week's extra armband copy beats the
-  best later week of its window by 1.0 point, the SD of a captain estimate five
-  to eight weeks out; inside that margin the two weeks are a tie and it is
-  saved.
+  best later week of its window by 2.0 points, between the SD of a captain
+  estimate five to eight weeks out (1.6) and further out (1.9); inside that
+  margin the two weeks are a tie and it is saved.
 - **Not before the first deadline.** While transfers are unlimited the fifteen
   is still being chosen, so neither timing chip is recommended: a chip plan
   would reshape the opening squad around one week's bench or armband, and the
@@ -685,7 +688,7 @@ evidence in a comment beside the constant.
 - **What a chip plan is credited with.** Not the chip's raw points, which no
   transfer could ever beat, but what the chip adds now less what keeping it is
   worth: for a Triple Captain its lead over the best later week, for a Bench
-  Boost the bench less the larger of the bar and the best near week less 4.7.
+  Boost the bench less the larger of the bar and the best near week less 5.0.
   Both are above zero exactly when the chip's rule says play. The chip card is
   rewritten to describe the chip the plan actually plays, and an alternative
   that differs in its chip shows the gap "counting what the chip is worth later".
@@ -694,7 +697,8 @@ evidence in a comment beside the constant.
 planner with chips off in the production regime and records, at every deadline,
 what each chip evaluator saw and what the week produced; `analyze --tree <label>`
 scores every timing rule on 108 chip windows per chip with every fitted quantity
-held out by season. The chips-on experiment instruments cannot calibrate a chip
+held out by season, and labels which calendar a recording was made on
+(`record --fixture-lead final` reproduces the final fixture list). The chips-on experiment instruments cannot calibrate a chip
 on their own: each chip is played once or twice a season.
 
 ## Live points during a gameweek
@@ -798,6 +802,17 @@ node apps/fpl-planner/scripts/experiment.mjs \
   --config apps/fpl-planner/experiments/configs/availability.mjs
 ```
 
+**The replay shows each deadline the fixture list as it was known then**
+(registry entry 31). The archive only has the final list, where a postponed
+match sits in its rescheduled double from the first deadline. Fixture ids number
+the original calendar (id n was scheduled in round ceil(n / 10)), so each
+payload shows a moved match in its original round, undated while postponed, and
+dated `FIXTURE_ANNOUNCE_LEAD` (3) gameweeks before the week it moved into
+(`knownFixtureEvent` in `js/engine/backtest.js`). The week being decided always
+reads as the final list does. `opts.fixtureLead` moves the lead; `null` replays
+the final list. It was worth 10 to 17 points a window to chips-on replays and
+nothing measurable chips off.
+
 **The replay runs production's evidence regime.** At each deadline it rebuilds
 the raw bootstrap-static and fixtures payloads FPL would have served (gameweek 1
 is the pre-season payload, still carrying last season's totals), builds the
@@ -825,8 +840,9 @@ entry 29).
 
 A config names the arms; one of them must be called `control`. An arm may carry
 `env` (applied around its own cells), `opts` (merged into the replay options;
-`opts.planOptions` reaches `buildPlan`'s options, and its `transferOptions` the
-transfer search's margins, which is how `configs/hit-thresholds.mjs` moves a
+`opts.planOptions` reaches `buildPlan`'s options, its `transferOptions` the
+transfer search's margins and its `lineupOptions` the lineup's risk weights,
+which is how `configs/hit-thresholds.mjs` and `configs/lineup-risk.mjs` move a
 planner constant) or `strategy` (so "planner against greedy on the same
 trajectories" is the same kind of measurement as everything else). The deciding
 instruments run chips OFF; a chip experiment sets `chips: true` in its config. The runner:
