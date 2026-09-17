@@ -1405,6 +1405,78 @@ export function priorSeasonAsset(dataset, priorDataset, { firstDeadline = null }
 }
 
 /** The deadline of every gameweek: its earliest kickoff, as the replay uses. */
+// ---------------------------------------------------------------------------
+// THE CALENDAR AS IT WAS KNOWN AT EACH DEADLINE (registry entry 31)
+//
+// The archive holds one fixture list, the final one: a match postponed out of
+// gameweek 29 and played in a gameweek 34 double sits in gameweek 34 from the
+// first deadline of the season. Production never knew that. FPL leaves a
+// postponed match undated (`event: null`) until the league announces its new
+// date, so a double or a blank is visible only from then, typically three to
+// six weeks ahead. Replaying the final list let every decision that looks past
+// the week being decided (a triple captain compared with later weeks, a chip
+// held for a double, a transfer made for one) see doubles and blanks months
+// early.
+//
+// The original calendar is recoverable exactly. FPL numbers fixtures in the
+// order of the original schedule, one round of (clubs / 2) at a time, so
+// fixture `id` n was scheduled in round ceil(n / 10). In 2023-24, 2024-25 and
+// 2025-26, 366, 375 and 375 of the 380 fixtures were played in that round, and
+// every exception is a known reschedule. WHEN a move was announced is in no
+// archive, so it is modelled with one lead, FIXTURE_ANNOUNCE_LEAD gameweeks
+// before the week the match moved INTO:
+//
+//   moved later   (round r, played in w > r): in round r at deadlines before r;
+//                 undated from r until w - lead; dated w from then
+//   moved earlier (round r, played in w < r): in round r until w - lead; dated
+//                 w from then
+//
+// The week being decided always reads true: a match moved into it is dated by
+// its deadline and a match moved out of it is not in it, so the projections for
+// that week are the ones the final list gives. Only later weeks lose the
+// hindsight. `fixtureLead: null` replays the final list, for comparison.
+export const FIXTURE_ANNOUNCE_LEAD = 3;
+
+export function knownFixtureEvent(fixture, gw, { lead = FIXTURE_ANNOUNCE_LEAD, perRound = 10 } = {}) {
+  if (lead === null || lead === undefined) return fixture.event;
+  const round = Math.ceil(fixture.id / perRound);
+  const played = fixture.event;
+  if (round === played) return played;
+  if (gw >= played - lead) return played;
+  if (played > round && gw >= round) return null;
+  return round;
+}
+
+// The original calendar's shape for a dataset: fixtures per round, and a
+// representative kickoff for every round from its unmoved matches, so a match
+// shown in its original round carries a date in that round. Null when the
+// fixture ids do not number a whole calendar (the final list is then replayed).
+const scheduleCache = new WeakMap();
+export function originalSchedule(dataset) {
+  if (scheduleCache.has(dataset)) return scheduleCache.get(dataset);
+  const perRound = dataset.teams && dataset.teams.size ? dataset.teams.size / 2 : 0;
+  const ids = dataset.fixtures.map(f => f.id).sort((a, b) => a - b);
+  const whole = perRound > 0
+    && Number.isInteger(perRound)
+    && ids.length === dataset.maxGw * perRound
+    && ids.every((id, i) => id === i + 1);
+  let out = null;
+  if (whole) {
+    const kickoffs = new Map();
+    for (const f of dataset.fixtures) {
+      const round = Math.ceil(f.id / perRound);
+      if (round !== f.event || !f.kickoff) continue;
+      if (!kickoffs.has(round)) kickoffs.set(round, []);
+      kickoffs.get(round).push(f.kickoff);
+    }
+    const roundKickoff = new Map();
+    for (const [round, list] of kickoffs) roundKickoff.set(round, list.sort()[Math.floor((list.length - 1) / 2)]);
+    out = { perRound, roundKickoff };
+  }
+  scheduleCache.set(dataset, out);
+  return out;
+}
+
 export function eventDeadlines(dataset) {
   const out = new Map();
   for (let id = 1; id <= dataset.maxGw; id++) {
@@ -1426,7 +1498,9 @@ export function eventDeadlines(dataset) {
  * totals are this season's. `preseasonTotals` is the previous season's end
  * totals keyed by current element id, used for the gameweek 1 payload.
  */
-export function deadlinePayload(dataset, gw, { rules, accumulator, preseasonTotals = null, availability = null }) {
+export function deadlinePayload(dataset, gw, {
+  rules, accumulator, preseasonTotals = null, availability = null, fixtureLead = FIXTURE_ANNOUNCE_LEAD,
+}) {
   if (accumulator.absorbedUpTo >= gw) {
     throw new Error(
       `backtest: accumulator has absorbed gameweek ${accumulator.absorbedUpTo} but a payload for gameweek ${gw} was requested. `
@@ -1487,13 +1561,17 @@ export function deadlinePayload(dataset, gw, { rules, accumulator, preseasonTota
     });
   }
 
+  // The calendar as it stood at this deadline (THE CALENDAR AS IT WAS KNOWN).
+  // Whether a match has been played is a fact about the final list.
+  const schedule = fixtureLead === null ? null : originalSchedule(dataset);
   const fixtures = dataset.fixtures.map(f => {
     const played = f.event < gw;
+    const event = schedule ? knownFixtureEvent(f, gw, { lead: fixtureLead, perRound: schedule.perRound }) : f.event;
     return {
       id: f.id,
       code: f.code,
-      event: f.event,
-      kickoff_time: f.kickoff,
+      event,
+      kickoff_time: event === f.event ? f.kickoff : event === null ? null : (schedule.roundKickoff.get(event) || null),
       team_h: f.teamH,
       team_a: f.teamA,
       team_h_difficulty: f.teamHDifficulty,
@@ -1557,8 +1635,9 @@ export function deadlinePayload(dataset, gw, { rules, accumulator, preseasonTota
  */
 export function productionGameStateAt(dataset, gw, {
   rules, accumulator, preseasonTotals = null, asset = null, availability = null, featureHook = null,
+  fixtureLead = FIXTURE_ANNOUNCE_LEAD,
 }) {
-  const { bootstrap, fixtures } = deadlinePayload(dataset, gw, { rules, accumulator, preseasonTotals, availability });
+  const { bootstrap, fixtures } = deadlinePayload(dataset, gw, { rules, accumulator, preseasonTotals, availability, fixtureLead });
   const fetchedAt = new Date(0).toISOString();
   const first = buildGameState(bootstrap, fixtures, { fetchedAt });
   const shipped = asset && openingBaselineApplies(first) ? asset : null;
@@ -2069,6 +2148,7 @@ export async function replaySeason({ dataset, season, strategy, rules, opts = {}
     const gameState = production
       ? productionGameStateAt(dataset, gw, {
         rules, accumulator, preseasonTotals, asset, availability, featureHook: opts.featureHook || null,
+        fixtureLead: opts.fixtureLead === undefined ? FIXTURE_ANNOUNCE_LEAD : opts.fixtureLead,
       }).gameState
       : gameStateAt(dataset, gw, {
         rules, accumulator, featureHook: opts.featureHook || null, availability,
@@ -2142,6 +2222,12 @@ export async function replaySeason({ dataset, season, strategy, rules, opts = {}
       poolSize: opts.poolSize || DEFAULT_POOL_SIZE,
       priorSeason: opts.priorDataset ? opts.priorDataset.season : null,
       evidenceRegime: regime,
+      // Which calendar the production regime replayed: the lead in gameweeks
+      // a reschedule was known ahead (THE CALENDAR AS IT WAS KNOWN), or null
+      // for the final list.
+      fixtureLead: regime === EVIDENCE_REGIMES.PRODUCTION
+        ? (opts.fixtureLead === undefined ? FIXTURE_ANNOUNCE_LEAD : opts.fixtureLead)
+        : null,
       priorSeasonWeight: production ? null : priorWeight,
       // Gameweeks whose starts column was absent from the archive and had to be
       // reconstructed. Non-null means the season is 2022-23, where FPL added
@@ -2196,6 +2282,7 @@ function summarize({ gws, dataset, transferLedger, chipEvents, rules }) {
     chip: entry.chip,
     gw: entry.gw,
     value: chipValue(entry, dataset, gws, rules),
+    ...(entry.chip === 'bboost' ? { benchDoubles: benchDoubles(entry, dataset) } : {}),
   }));
 
   return {
@@ -2242,6 +2329,23 @@ function summarize({ gws, dataset, transferLedger, chipEvents, rules }) {
 // directly. Wildcard and free hit need a counterfactual, and it is stated as
 // one: the squad held before the chip, fielding its own best eleven, with no
 // further transfers.
+// How many of a boosted bench's four players had two matches that week, which
+// is what separates a bench built for a double gameweek from an ordinary one
+// (registry entry 33).
+function benchDoubles(entry, dataset) {
+  const bench = entry.plan && entry.plan.bench ? [entry.plan.bench.gk, ...entry.plan.bench.order] : [];
+  let doubles = 0;
+  for (const id of bench) {
+    const player = dataset.players.get(id);
+    if (!player) continue;
+    // The archive has one row per player per club match, so this is right for
+    // a player who changed clubs mid-season, where his end-of-season club is not.
+    const matches = player.rows.filter(r => r.gw === entry.gw).length;
+    if (matches >= 2) doubles++;
+  }
+  return doubles;
+}
+
 function chipValue(entry, dataset, gws, rules) {
   const row = gws.find(g => g.gw === entry.gw);
   if (!row) return 0;

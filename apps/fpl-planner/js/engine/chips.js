@@ -93,55 +93,52 @@ const WILDCARD_HORIZON_THRESHOLD = 12;
 const FREE_HIT_THRESHOLD = 12;
 
 // THE BENCH BOOST, measured (scripts/calibration/calibrate-chips.mjs, registry
-// entry 30). Every deadline of nine chips-off planner replays (three seasons,
-// three seeds, production regime) was recorded with what a boost would have
-// added over auto-substitutions, and timing rules were scored on 108 chip
-// windows with every fitted quantity held out by season.
+// entries 30 and 33). Every deadline of nine chips-off planner replays (three
+// seasons, three seeds, production regime, on the calendar as it was known at
+// each deadline, entry 31) was recorded with what a boost would have added over
+// auto-substitutions, and timing rules were scored on 108 chip windows with
+// every fitted quantity held out by season, under analytic-2 and again under
+// analytic-1.
 //
 //   BAR 8. What a bench projects predicts what a boost adds (r = 0.48), and
-//   the bench is the one place the projection scale barely moved: a bench
-//   holds the players the model thinks least likely to play, and the median
-//   projected bench is 8.9 points under analytic-1 and 9.1 under analytic-2,
-//   where the mean captain projection rose 16%. Under analytic-2 the lowest
-//   bench with all four players likely to play projected 8.1, so the bar
-//   almost never binds and bars from 6 to 10 realize the same 5.8 points a
-//   window: the availability condition below does the work. Bars of 11 and 12 read higher
-//   (6.8 and 7.5) on two favourable decisions (a 22-point bench in 2023-24,
-//   found identically by all three seeds, and a 15-point one in 2024-25),
-//   collapse at 13 (4.8), and lose 1.4 points under analytic-1, so a higher bar
-//   was not adopted on two events.
+//   the bench is the one place the projection scale barely moved: the median
+//   projected bench is 8.8 points under analytic-1 and 9.7 under analytic-2,
+//   where the mean captain projection rose 16%. Bars from 6 to 11 decide
+//   almost alike (5.9 to 6.1 points a window under analytic-2); 12 reads 6.8
+//   there and 4.5 under analytic-1, and 13 collapses in both, so the bar was
+//   not moved.
 //
-//   NO COMPARISON WITH WEEKS THE PROJECTIONS DO NOT COVER. The shipped rule
+//   NO COMPARISON WITH WEEKS THE PROJECTIONS DO NOT COVER. The pre-entry-30 rule
 //   played only when this week beat the best estimated week left in the
-//   season. Estimates beyond the horizon run high under analytic-2 (the bench
-//   is assumed to stay the bench), and the best of up to 30 of them almost
-//   always beats a real week, so the chip slid to gameweek 38, where
-//   auto-substitutions already recover most of a bench: 52 of 108 windows
-//   played in their last week, 18 expired, and the rule realized 1.67 points a
-//   window, against 6.1 for playing the first legal week.
+//   season; estimates that far out run high, the best of up to 30 of them
+//   almost always beats a real week, and the chip slid to gameweek 38, where
+//   auto-substitutions already recover most of a bench (3.3 points a window
+//   under analytic-2, against 6.2 for playing the first legal week).
 //
 //   A LATER WEEK HAS TO BE CLEARLY BETTER. Inside the horizon a later week's
-//   estimate is 1.7 points high on average and moves by 3.0 before the week
+//   estimate is 1.7 points high on average and moves by 3.2 before the week
 //   arrives (1,248 revisions), so waiting is chosen only for a week that beats
-//   this one by more than both, 4.7 points: a double gameweek does, an
-//   ordinary week does not. The 1.7 and the 3.0 are not used apart. Requiring THIS week to beat later ones by a margin
-//   instead ("save on a tie") drove the chip to the season's end in both
-//   models and lost value, so a tie is played.
+//   this one by more than both, 5.0 points: a double gameweek does, an
+//   ordinary week does not. On the final fixture list, which knew every double
+//   from the first deadline, the same measurement read 1.7 and 3.0 (4.7).
+//   Requiring THIS week to beat later ones by a margin instead ("save on a tie")
+//   drove the chip to the season's end in both models, so a tie is played.
 const BENCH_BOOST_BAR = 8;
-const BENCH_BOOST_HOLD_MARGIN = 4.7;
+const BENCH_BOOST_HOLD_MARGIN = 5.0;
 
 // THE TRIPLE CAPTAIN MARGIN, measured the same way. A captain's estimate for a
-// week five to eight gameweeks away moves by 1.0 point (standard deviation,
-// 1,056 revisions) before that week arrives, so this week has to beat the best
-// week left in the window by that much to be measurably better, and within it
-// the two weeks are a tie and the chip is saved. Compared only within its
-// window and played in its last week, it realizes 10.8 extra armband points a
-// window against 9.4 for the shipped rule (2.5 across the whole season), and no
-// chip expires where 18 of 108 did. Swept: 0 to 1.25 realize 10.6 to 11.2 and
-// 1.5 drops to 8.8 under analytic-2; under analytic-1, 1.0 to 1.5 are best
-// (13.7) and 0.5 or less loses 1.6 or more. 1.0 is the value near the best in
-// both, and the one the revision noise gives.
-const TRIPLE_CAPTAIN_MARGIN = 1.0;
+// week five to eight gameweeks away moves by 1.6 points (standard deviation,
+// 1,056 revisions) before that week arrives, and by 1.9 for a week further out,
+// the distance most of a window's weeks are at. This week has to beat the best
+// week left in the window by 2.0 to be measurably better; inside that the two
+// weeks are a tie and the chip is saved. Swept on the calendar as it was known:
+// 1.5 and 2.0 realize 11.0 and 11.1 extra armband points a window under
+// analytic-2 and 12.2 and 12.9 under analytic-1, where 1.0 realizes 9.6 and
+// 10.3, and the margin chosen on the other seasons is 1.5, 2 and 2 under
+// analytic-2 and 2, 2.5 and 2.5 under analytic-1. Entry 30 set 1.0 on the final
+// fixture list, where later-week estimates moved by only 1.0: a list that knows
+// every reschedule in advance never revises a captain's week for one.
+const TRIPLE_CAPTAIN_MARGIN = 2.0;
 
 // Patience discount per gameweek when comparing a chip played now against the
 // same chip played later. Waiting is not free: injuries, price changes and
@@ -170,6 +167,11 @@ const FDR_SENSITIVITY = 0.12;
 // none; the chips-on replays of entry 30 are its measurement.
 const BENCH_USABLE_P_APPEAR = 0.5;
 
+// WHICH bench players the availability condition applies to: 'all' four, or
+// the three 'outfield' players, leaving a keeper who will not play to cost what
+// he projects (nothing) rather than hold the chip. Set by registry entry 33.
+const BENCH_BOOST_GATE = 'all';
+
 export const CHIP_PARAMS = Object.freeze({
   wildcardHorizonThreshold: WILDCARD_HORIZON_THRESHOLD,
   freeHitThreshold: FREE_HIT_THRESHOLD,
@@ -179,6 +181,7 @@ export const CHIP_PARAMS = Object.freeze({
   chipPatiencePerGw: CHIP_PATIENCE_PER_GW,
   fdrSensitivity: FDR_SENSITIVITY,
   benchUsablePAppear: BENCH_USABLE_P_APPEAR,
+  benchBoostGate: BENCH_BOOST_GATE,
 });
 
 // ---------------------------------------------------------------------------
@@ -403,6 +406,23 @@ function mustPlayNow(rules, chipName, window, gw, chipsUsed) {
   return laterWeeksInWindow(window, gw).length === 0 || dueChipsAt(rules, gw, chipsUsed).has(chipName);
 }
 
+// A Bench Boost held for a double gameweek (planner option `benchDoubleHold`,
+// registry entry 34): in a window reaching this late in the season, where the
+// cup clashes that make doubles fall, it waits for a week at least two clubs
+// play twice. A seasonal pattern, not knowledge of any season's calendar.
+const DOUBLES_FROM_GW = 30;
+
+function doubledClubs(gameState, gw) {
+  const matches = new Map();
+  for (const f of (gameState && gameState.fixtures) || []) {
+    if (f.event !== gw) continue;
+    for (const club of [f.teamH, f.teamA]) matches.set(club, (matches.get(club) || 0) + 1);
+  }
+  let doubled = 0;
+  for (const n of matches.values()) if (n >= 2) doubled++;
+  return doubled;
+}
+
 // The later weeks the SAME chip instance can still be played in.
 function laterWeeksInWindow(window, gw) {
   const out = [];
@@ -430,6 +450,16 @@ function patience(gw, gwFrom) {
 }
 
 // ---------------------------------------------------------------------------
+
+// The lineup risk weights an evaluation was asked to score with, and nothing
+// else, so a rebuilt or rented squad is played by the same rules as the squad
+// it is compared with. Empty (the lineup defaults) unless a caller set them.
+function lineupWeights(opts = {}) {
+  const out = {};
+  if (opts.riskAversion !== undefined) out.riskAversion = opts.riskAversion;
+  if (opts.minutesRiskWeight !== undefined) out.minutesRiskWeight = opts.minutesRiskWeight;
+  return out;
+}
 
 function spendableTenths(squadState) {
   return squadState.picks.reduce((s, p) => s + p.sellingTenths, 0) + squadState.bankTenths;
@@ -459,11 +489,11 @@ function evaluateWildcard(ctx) {
   const built = buildSquad({
     projections, gameState, rules, gw, horizon,
     budgetTenths: budget,
-    opts: { discount },
+    opts: { discount, ...lineupWeights(ctx.opts) },
   });
   const rebuilt = squadTrajectory({
     squadIds: built.squad, projections, gameState, rules,
-    gwFrom: gw, horizon, discount,
+    gwFrom: gw, horizon, discount, opts: lineupWeights(ctx.opts),
   });
   const gain = rebuilt.total - baseline.total;
   const changes = built.squad.filter(id => !squadState.picks.some(p => p.playerId === id)).length;
@@ -567,10 +597,10 @@ function evaluateFreeHit(ctx) {
     projections, gameState, rules, gw,
     horizon: 1,
     budgetTenths: budget,
-    opts: { singleGw: true, discount: 1 },
+    opts: { singleGw: true, discount: 1, ...lineupWeights(ctx.opts) },
   });
   const rented = squadTrajectory({
-    squadIds: built.squad, projections, gameState, rules, gwFrom: gw, horizon: 1, discount: 1,
+    squadIds: built.squad, projections, gameState, rules, gwFrom: gw, horizon: 1, discount: 1, opts: lineupWeights(ctx.opts),
   });
   const gain = rented.total - baseline.gws[0].xPoints;
 
@@ -675,11 +705,18 @@ function freeHitScan(ctx, legalGws) {
 //                   whole bench in the last week), so the planner cannot play
 //                   a boost its own rule holds, or hold one it plays by a tie
 //                   of objectives; zero when not recommended
-export function benchBoostDecision({ benchIds, projections, gameState, rules, gw, horizon, chipsUsed = [], openingSquad = false }) {
+export function benchBoostDecision({
+  benchIds, projections, gameState, rules, gw, horizon, chipsUsed = [], openingSquad = false, gate = BENCH_BOOST_GATE,
+  holdForDoubles = false,
+}) {
   const window = chipWindowAt(rules, 'bboost', gw, chipsUsed);
   if (!window) return null;
   const valueNow = benchIds.reduce((s, id) => s + xpOf(projections, id, gw), 0);
   const unusable = benchIds.filter((id) => {
+    if (gate === 'outfield') {
+      const player = gameState && gameState.players ? gameState.players.get(id) : null;
+      if (player && player.position === 1) return false;
+    }
     const row = projOf(projections, id, gw);
     return !row || !(row.pAppear >= BENCH_USABLE_P_APPEAR);
   });
@@ -703,16 +740,20 @@ export function benchBoostDecision({ benchIds, projections, gameState, rules, gw
   let status;
   if (openingSquad) status = 'opening';
   else if (lastWeek) status = valueNow > 0 ? 'last_week' : 'empty';
+  else if (holdForDoubles && window.to >= DOUBLES_FROM_GW && doubledClubs(gameState, gw) < 2) status = 'awaiting_double';
   else if (unusable.length) status = 'unusable';
-  else if (valueNow < BENCH_BOOST_BAR) status = 'below_bar';
-  else if (bestValue !== null && bestValue - valueNow > BENCH_BOOST_HOLD_MARGIN) status = 'later';
+  // Both edges are drawn so that `play` is exactly the case where the net value
+  // below is above zero: at the bar, or a later week exactly the margin better,
+  // the chip is held rather than credited with nothing.
+  else if (valueNow <= BENCH_BOOST_BAR) status = 'below_bar';
+  else if (bestValue !== null && bestValue - valueNow >= BENCH_BOOST_HOLD_MARGIN) status = 'later';
   else status = 'play';
   const recommended = status === 'play' || status === 'last_week';
   const keepValue = lastWeek ? 0 : Math.max(BENCH_BOOST_BAR, bestValue === null ? 0 : bestValue - BENCH_BOOST_HOLD_MARGIN);
   const advantage = valueNow - keepValue;
 
   return {
-    gw, window, bench: benchIds.slice(), valueNow, unusable, perGw, bestGw, bestValue,
+    gw, window, gate, bench: benchIds.slice(), valueNow, unusable, perGw, bestGw, bestValue,
     lastWeek, keepValue, advantage, bar: BENCH_BOOST_BAR, margin: BENCH_BOOST_HOLD_MARGIN,
     status, recommended,
     netValue: recommended ? Math.max(0, advantage) : 0,
@@ -727,7 +768,7 @@ export function benchBoostReasons(d, gameState) {
   }
   reasons.push(makeReason(
     'bboost_threshold',
-    'A Bench Boost is played once the bench projects {v} points with all four players likely to play.',
+    `A Bench Boost is played once the bench projects more than {v} points with ${d.gate === 'outfield' ? 'its three outfield players' : 'all four players'} likely to play.`,
     d.bar,
   ));
   if (d.status === 'unusable') {
@@ -747,13 +788,13 @@ export function benchBoostReasons(d, gameState) {
     if (d.status === 'play') {
       reasons.push(makeReason(
         'bboost_margin',
-        `A later week has to beat this one by more than {v} points before waiting pays, because a bench estimate moves that much before its week arrives, so this week is played.`,
+        `A later week has to beat this one by {v} points or more before waiting pays, because a bench estimate moves that much before its week arrives, so this week is played.`,
         d.margin,
       ));
     } else if (d.status === 'later') {
       reasons.push(makeReason(
         'bboost_later',
-        `Gameweek ${d.bestGw} beats this week by more than the {v} points a bench estimate moves, so the chip waits for it.`,
+        `Gameweek ${d.bestGw} beats this week by at least the {v} points a bench estimate moves, so the chip waits for it.`,
         d.margin,
       ));
     }
@@ -763,13 +804,16 @@ export function benchBoostReasons(d, gameState) {
 
 function benchBoostHoldReason(d) {
   if (d.status === 'opening') return openingHoldReason('hold_bboost', 'Bench Boost', d.gw);
+  if (d.status === 'awaiting_double') {
+    return makeReason('hold_bboost', 'No double gameweek is on the calendar this week, so the Bench Boost is kept for one before gameweek {v}.', d.window.to, 'gw');
+  }
   if (d.status === 'unusable') {
     return makeReason('hold_bboost', 'Your bench has {v} player unlikely to play, so a Bench Boost waits until the bench is repaired.', d.unusable.length, 'count');
   }
   if (d.status === 'below_bar') {
     return makeReason(
       'hold_bboost',
-      `Your bench projects {v} points this gameweek, short of the ${fmtValue(d.bar, 'points')} a Bench Boost needs.`,
+      `Your bench projects {v} points this gameweek, not above the ${fmtValue(d.bar, 'points')} a Bench Boost needs.`,
       d.valueNow,
     );
   }
@@ -788,7 +832,11 @@ function evaluateBenchBoost(ctx) {
   }
   const now = baseline.gws[0];
   const benchIds = [now.bench.gk, ...now.bench.order];
-  const d = benchBoostDecision({ benchIds, projections, gameState, rules, gw, horizon, chipsUsed, openingSquad: ctx.openingSquad });
+  const d = benchBoostDecision({
+    benchIds, projections, gameState, rules, gw, horizon, chipsUsed, openingSquad: ctx.openingSquad,
+    ...(ctx.opts && ctx.opts.benchGate ? { gate: ctx.opts.benchGate } : {}),
+    ...(ctx.opts && ctx.opts.benchDoubleHold ? { holdForDoubles: true } : {}),
+  });
   return chipEntry('bboost', d, legalGws, benchBoostReasons(d, gameState), benchBoostHoldReason(d), {
     bench: benchIds, unusable: d.unusable, perGw: d.perGw,
   });

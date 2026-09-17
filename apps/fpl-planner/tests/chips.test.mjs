@@ -1114,6 +1114,55 @@ test('before the first deadline a squad still being chosen is not told to play a
   assert.deepEqual(bundle.validation, { ok: true, violations: [] });
 });
 
+test('the bench upgrade, when switched on, rebuilds an ordinary bench into doubling players for a Bench Boost', async () => {
+  const GW = 10;
+  // Clubs 8 and 9 play twice; nobody in the squad plays for them. The bench
+  // projects 1.5 a player, short of the bar, and nobody on it is doubtful, so
+  // the repair has nothing to repair.
+  const fixtures = makeFixtures({ gwTo: RULES.totalEvents, doubles: { [GW]: [8, 9] } });
+  const gameState = makeGameState(fixtures, GW);
+  const projections = makeProjections(gameState, GW, GW + 8, ordinaryWeek);
+  const squadState = makeSquadState({ gw: GW, freeTransfers: 2 });
+  const held = evaluateChips({ squadState, projections, gameState, rules: RULES, horizon: 5, discount: 0.85 });
+  assert.equal(held.perChip.bboost.status, 'below_bar');
+
+  const off = await buildPlan({ gameState, squadState, options: { horizon: 5, seed: 3, projections, strength: {} } });
+  assert.notEqual(off.current.chip, 'bboost', 'without the upgrade no bench is built for the boost');
+
+  const on = await buildPlan({ gameState, squadState, options: { horizon: 5, seed: 3, projections, strength: {}, benchUpgrade: true } });
+  const plan = on.current;
+  assert.equal(plan.chip, 'bboost');
+  assert.ok(plan.transfersOut.length > 0);
+  assert.ok(plan.transfersOut.every(id => BENCH_FOUR.includes(id)), 'only bench players are sold');
+  const clubOfId = id => ROSTER.find(p => p.id === id).teamId;
+  assert.ok(plan.transfersIn.every(id => [8, 9].includes(clubOfId(id))), 'and doubling players bought');
+  assert.ok(on.chipEvaluation.perChip.bboost.valueNow >= CHIP_PARAMS.benchBoostBar);
+  assert.deepEqual(on.validation, { ok: true, violations: [] });
+});
+
+test('the lineup risk weights an experiment sets reach the lineup the plan is scored with', async () => {
+  const GW = 10;
+  const fixtures = makeFixtures({ gwTo: RULES.totalEvents });
+  const gameState = makeGameState(fixtures, GW);
+  const doubtful = STRONG_XI[5];
+  const xp = id => (id === doubtful ? 7 : STRONG_XI.includes(id) ? 6 : BENCH_FOUR.includes(id) ? 4 : 3);
+  // 7 x 0.6 = 4.2 projected, 0.2 above the bench's 4, and a 40% chance of not
+  // playing at all.
+  const projections = makeProjections(gameState, GW, GW + 8, xp, id => (id === doubtful ? 0.6 : 1));
+  const squadState = makeSquadState({ gw: GW });
+  const options = { horizon: 5, seed: 3, projections, strength: {}, maxHits: 0 };
+
+  const shipped = await buildPlan({ gameState, squadState, options });
+  const held = shipped.current.transferCount === 0 ? shipped.current : null;
+  const heavy = await buildPlan({ gameState, squadState, options: { ...options, lineupOptions: { minutesRiskWeight: 50 } } });
+  if (held && heavy.current.transferCount === 0) {
+    assert.ok(held.startingXI.includes(doubtful), 'at the shipped weight the doubtful player starts on 0.2 points');
+    assert.ok(!heavy.current.startingXI.includes(doubtful), 'at a heavy weight he is benched');
+  } else {
+    assert.fail('both plans should keep the squad in this world');
+  }
+});
+
 test('a chip already played is never planned again', async () => {
   const GW = 10;
   const fixtures = makeFixtures({ gwTo: RULES.totalEvents, doubles: { [GW]: SQUAD_CLUBS } });
