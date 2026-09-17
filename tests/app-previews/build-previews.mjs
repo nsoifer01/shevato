@@ -338,6 +338,8 @@ async function main() {
   const chrome = spawn(process.env.CHROME_BIN || 'chromium', [
     '--headless=new', '--disable-gpu', '--no-sandbox', '--no-first-run',
     `--remote-debugging-port=${CDP_PORT}`, `--user-data-dir=${profileDir}`,
+    // Headless Chrome still plays sound, and on WSLg it reaches the speakers.
+    '--mute-audio',
     '--host-resolver-rules=MAP www.googletagmanager.com 127.0.0.1:1, MAP *.google-analytics.com 127.0.0.1:1',
     'about:blank',
   ], { stdio: 'ignore' });

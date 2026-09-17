@@ -1453,3 +1453,30 @@ it still removes chat sooner when someone revisits. Pinned by
 `tests/chat-expiry.test.mjs` (both send paths) and the rules suite ("every
 message carries a bounded expiresAt").
 
+
+## The test browsers were audible (2026-09-16)
+
+`--headless=new` Chrome still opens a PulseAudio output stream, and WSLg
+forwards `PULSE_SERVER=unix:/mnt/wslg/PulseServer` to the Windows speakers.
+CDP-dispatched clicks count as user activation, so `feedback.js` is allowed to
+start its `AudioContext`, and every local `test:arena:emulator` run played the
+game-start, pin, reveal, timer and chat cues out loud. The browser estate
+(`tests/browser/run.mjs`, where Gym Tracker's `playSound` is the other source)
+and `tests/app-previews/build-previews.mjs` launched Chrome the same way.
+GitHub runners have no sound device, so only local runs were ever audible.
+
+All three launchers pass `--mute-audio` now. It mutes the output, not the
+graph: the page's `AudioContext` still reports `running` and `currentTime`
+still advances, so nothing a page or a check can observe changes.
+
+How it was measured, reusable for any "is this audible?" question on this
+machine: there is no `pactl`, and the snap-bundled libpulse needs a newer glibc
+than the host, but Chrome itself can record the speakers. Start a second
+headless Chrome with `PULSE_SOURCE=RDPSink.monitor` in its environment and
+`--use-fake-ui-for-media-stream`; its `getUserMedia` "Default" input is then
+the sink monitor (Chrome filters monitor sources out of `enumerateDevices`, so
+asking for one by label finds nothing). Read the peak through an
+`AnalyserNode`. A player Chrome with the harness flags playing a 440 Hz tone at
+gain 0.01 measured peak 0.01001 without `--mute-audio`, 0.00000 with it (its
+context running and its clock advancing), and 0.01001 again without it; the
+recorder read 0.00000 with no player at all.

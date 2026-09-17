@@ -229,7 +229,6 @@ main { max-width: 1080px; margin: 0 auto; padding: 24px; }
   line-height: 1.5;
 }
 .show-trajectory strong { color: var(--accent, #f5c518); }
-.trajectory-link { white-space: nowrap; }
 
 .hero-actions { display: flex; gap: 12px; flex-wrap: wrap; }
 .primary-btn, .secondary-btn, .app-btn {

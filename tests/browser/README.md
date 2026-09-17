@@ -81,6 +81,12 @@ Six runner-level guarantees:
   open. Kill by port before relaunching (e.g. `pkill -f
   'remote-debugging-port=922[2]'`; the bracket stops the pattern matching the
   shell running it).
+- Headless Chrome is not silent. WSLg forwards its PulseAudio output to the
+  Windows speakers, so Arena's and Gym Tracker's WebAudio cues were audible
+  during local runs until the runner started passing `--mute-audio`
+  (2026-09-16). Pages cannot observe the flag: the `AudioContext` still reports
+  `running` and its clock advances. How it was measured is in
+  `apps/arena/FINDINGS.md`, "The test browsers were audible".
 - Run this estate with nothing else heavy on the machine. Chromium and the
   Firebase emulators both die under load, and a dead browser reports as a wall
   of `ECONNREFUSED` or `timeout: Runtime.evaluate` failures that look like

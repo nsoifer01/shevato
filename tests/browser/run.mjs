@@ -416,6 +416,9 @@ async function startBrowser() {
     '--disable-gpu', '--no-sandbox', '--no-first-run',
     `--remote-debugging-port=${CDP_PORT}`,
     `--user-data-dir=${profileDir}`,
+    // Headless Chrome still plays sound: Arena and Gym Tracker synthesise
+    // WebAudio cues, and on WSLg they reach the owner's speakers.
+    '--mute-audio',
     // Blackhole analytics so a blocked beacon never looks like an app error.
     '--host-resolver-rules=MAP www.googletagmanager.com 127.0.0.1:1, MAP *.google-analytics.com 127.0.0.1:1',
     'about:blank',
