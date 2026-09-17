@@ -836,6 +836,9 @@ instruments run chips OFF; a chip experiment sets `chips: true` in its config. T
   invalidated by a baseline that moved;
 - fingerprints `js/engine`, `scripts/` and the season data before the run and
   again after it, and refuses to report a run whose tree changed underneath it;
+- fails the run, rather than waiting forever, when a worker dies while it holds
+  a cell, including a worker killed by a signal (the kernel's OOM killer, when
+  several runs share the machine);
 - averages the seeds inside a window before counting, because three seeds
   through one window are the same thirteen gameweeks with a different search RNG
   and counting them separately triple-counts any effect that lands in one

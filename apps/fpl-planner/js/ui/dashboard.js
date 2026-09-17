@@ -159,7 +159,7 @@ export function chipInventory(bundle, gameState) {
 }
 
 function chipNote(bundle, chip, gameState) {
-  if (chip.playing) return 'This gameweek is the best window for it';
+  if (chip.playing) return playingChipNote(bundle.current);
   // When the data cannot carry a chip decision the card must say that, rather
   // than reporting an inventory as though a decision had been considered and
   // declined. "Hold your chips" with a cheerful list of what is available reads
@@ -176,6 +176,22 @@ function chipNote(bundle, chip, gameState) {
     return `None usable this gameweek. ${inv.ownedCount} left this season`;
   }
   return `Usable this gameweek: ${inv.usableNow.join(', ')}. ${inv.ownedCount} left this season`;
+}
+
+// What the engine concluded about the chip it plays, and no more. This read
+// "This gameweek is the best window for it" for every chip, which stopped
+// being true on 2026-09-17 (registry entry 30): a Bench Boost is played on a
+// tie with a later week, and a Bench Boost or Triple Captain in the last week
+// of its window is played because it would otherwise be lost. On the reporter's
+// GW5 plan the note sat above a Chips card naming gameweek 8 as 0.03 points
+// better.
+function playingChipNote(plan) {
+  const reason = plan.explanation && plan.explanation.chipReason;
+  const entry = reason && reason.perChip ? reason.perChip[plan.chip] : null;
+  if (entry && entry.lastWeek) return 'Played now rather than lost when its window closes';
+  if (plan.chip === 'bboost') return 'No week in reach is clearly better for it';
+  if (plan.chip === '3xc') return 'Clearly better now than any week left in its window';
+  return 'Clears its bar this gameweek';
 }
 
 /* --------------------------------------------------------------- transfers */
