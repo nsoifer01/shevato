@@ -23,20 +23,30 @@
 // pair, which is how a payload saved during a gameweek is diagnosed afterwards.
 // `--record` writes the reading to .data/probe-baseline.json so the next run
 // can compare against it.
+//
+// The payload is resolved exactly as app.js resolves it for a first-time
+// visitor (engine/world.js with the shipped data/opening-baseline.json), so the
+// projections judged here are the ones the app shows. Until 2026-09-16 the probe
+// projected the bare payload, which stopped describing the app the day the
+// previous season became a prior for the whole season.
 
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { buildGameState } from '../js/engine/normalize.js';
 import { buildSquadState } from '../js/engine/squad.js';
-import { buildPlan } from '../js/engine/planner.js';
+import { buildPlan, projectionRowsFor } from '../js/engine/planner.js';
+import { openingBaselineApplies, resolveGameState } from '../js/engine/world.js';
 import { buildStrength } from '../js/engine/strength.js';
 import { buildProjections } from '../js/engine/projections.js';
 import { seasonEvidence } from '../js/engine/minutes.js';
 import { goalkeeperPositionId } from '../js/engine/validate.js';
 import { gameweekLifecycle } from '../js/engine/lifecycle.js';
 import { assessBaseline } from '../js/engine/baseline.js';
-import { assessReadiness, projectionVitals } from '../js/engine/readiness.js';
+import {
+  assessReadiness, projectionVitals, MIN_EVER_PRESENT_START_MEDIAN, MAX_APPEARANCE_INVERSION_SHARE,
+  MIN_GROUP_FOR_MINUTES_CHECKS,
+} from '../js/engine/readiness.js';
 
 const PROXY = 'https://shevato.com/.netlify/functions/fpl?path=';
 const arg = (name) => {
@@ -65,12 +75,18 @@ const prev = existsSync(BASELINE_FILE)
 
 const bootstrap = await read('bootstrap-static', arg('bootstrap'));
 const fixtures = await read('fixtures', arg('fixtures'));
-const gameState = buildGameState(bootstrap, fixtures, { fetchedAt: new Date().toISOString() });
+const fetchedAt = new Date().toISOString();
+const first = buildGameState(bootstrap, fixtures, { fetchedAt });
+const shipped = openingBaselineApplies(first)
+  ? JSON.parse(readFileSync(join(HERE, '..', 'data', 'opening-baseline.json'), 'utf8'))
+  : null;
+const { gameState, resolution } = resolveGameState(first, { bootstrap, fixtures, fetchedAt, kept: null, shipped });
 const rules = gameState.rules;
 
 const evidence = seasonEvidence(gameState);
 const lifecycle = gameweekLifecycle(gameState);
-const baseline = assessBaseline(gameState);
+// The payload's own completeness, before any prior is attached.
+const baseline = assessBaseline(first);
 const gw = lifecycle.planGw ?? gameState.nextEvent ?? gameState.currentEvent ?? 1;
 
 /* ------------------------------------------------------------ the reading */
@@ -87,6 +103,7 @@ const reading = {
   clubsTotal: lifecycle.clubsTotal,
   evidenceKind: evidence.kind,
   evidenceUsable: evidence.usable,
+  prior: resolution && resolution.snapshot ? `${resolution.origin} (${resolution.source})` : null,
   denominator: evidence.teamMatches,
   activeShare: baseline.activeShare,
   startsPerActive: baseline.startsPerActive,
@@ -102,12 +119,7 @@ let pinnedHigh = null;
 if (evidence.usable) {
   const strength = buildStrength(gameState, { asOfGw: gw });
   const projections = buildProjections({ gameState, strength, gwFrom: gw, gwTo: gw });
-  const rows = [];
-  for (const [, list] of projections.byPlayer) {
-    const row = list.find(r => r.gw === gw);
-    if (row) rows.push(row);
-  }
-  vitals = projectionVitals(rows);
+  vitals = projectionVitals(projectionRowsFor(projections, gw, gameState));
 
   const owned = [...gameState.players.values()]
     .sort((a, b) => b.selectedByPercent - a.selectedByPercent)
@@ -133,12 +145,15 @@ if (evidence.usable) {
 
 reading.best11 = vitals && !vitals.empty ? vitals.best11 : null;
 reading.topMedianGap = vitals && !vitals.empty ? vitals.topMedianGap : null;
+reading.everPresent = vitals && !vitals.empty ? vitals.everPresentCount : null;
+reading.everPresentStartMedian = vitals && !vitals.empty ? vitals.everPresentStartMedian : null;
+reading.appearanceInversionShare = vitals && !vitals.empty ? vitals.appearanceInversionShare : null;
 reading.medianStart = medianStart;
 reading.pinnedHigh = pinnedHigh;
 
 const readiness = assessReadiness({
   evidence, lifecycle, vitals,
-  baseline: { source: gameState.baselineSource },
+  baseline: { source: gameState.baselineSource, rates: gameState.baselineRates },
 });
 reading.readiness = readiness.level;
 
@@ -203,6 +218,20 @@ if (evidence.usable) {
     vitals && vitals.best11 > 30 && vitals.best11 < 100,
     vitals ? vitals.best11.toFixed(1) : 'n/a', 'between 30 and 100');
 
+  // The 2026-09-16 audit's two findings, which no aggregate above could see:
+  // regulars read as rotation risks, and read as less likely to play than
+  // substitutes. They only apply once clubs have played twice and the groups
+  // are big enough to have a median (readiness.js).
+  const minutesJudged = vitals && vitals.everPresentCount >= MIN_GROUP_FOR_MINUTES_CHECKS;
+  check('players who have started every match are read as starters',
+    !minutesJudged || vitals.everPresentStartMedian >= MIN_EVER_PRESENT_START_MEDIAN,
+    minutesJudged ? `median ${vitals.everPresentStartMedian.toFixed(3)} over ${vitals.everPresentCount}` : 'n/a',
+    `median start probability at least ${MIN_EVER_PRESENT_START_MEDIAN}`, { skip: !minutesJudged });
+  check('nobody who starts every match is less likely to play than a substitute',
+    !minutesJudged || !(vitals.appearanceInversionShare >= MAX_APPEARANCE_INVERSION_SHARE),
+    minutesJudged && vitals.appearanceInversionShare !== null ? `${(vitals.appearanceInversionShare * 100).toFixed(0)}% below the bench median` : 'n/a',
+    `under ${MAX_APPEARANCE_INVERSION_SHARE * 100}%`, { skip: !minutesJudged || vitals.appearanceInversionShare === null });
+
   check('the captain is not a goalkeeper',
     captainPosition !== goalkeeperPositionId(rules),
     reading.captain, 'an outfield player');
@@ -232,7 +261,7 @@ if (flag('json')) {
   console.log(`season          ${rules.season}`);
   console.log(`players         ${reading.pool}`);
   console.log(`lifecycle       ${lifecycle.phase}   gw ${lifecycle.gw} -> planning ${gw}   clubs played ${lifecycle.clubsPlayed}/${lifecycle.clubsTotal}`);
-  console.log(`evidence        ${evidence.kind}   usable=${evidence.usable}   denominator ${evidence.teamMatches}`);
+  console.log(`evidence        ${evidence.kind}   usable=${evidence.usable}   denominator ${evidence.teamMatches}   prior ${reading.prior || 'none'}`);
   console.log(`baseline        complete=${baseline.complete}   ${baseline.active}/${baseline.pool} with minutes (${(baseline.activeShare * 100).toFixed(1)}%)   ${baseline.startsPerActive.toFixed(1)} starts each`);
   if (evidence.message) console.log(`note            ${evidence.message}`);
   console.log(`readiness       ${readiness.level}   display=${readiness.allow.display} lineup=${readiness.allow.lineup} transfers=${readiness.allow.transfers} chips=${readiness.allow.chips}`);
@@ -240,6 +269,10 @@ if (flag('json')) {
   if (evidence.usable) {
     console.log(`plan            ${reading.planXp.toFixed(1)} xP for GW${gw}   captain ${reading.captain}   chip ${reading.chip}   transfers ${reading.transfers}`);
     console.log(`pool            best-11 ${reading.best11.toFixed(1)}   top-median gap ${reading.topMedianGap.toFixed(2)}   median start ${medianStart.toFixed(3)}   pinned ${pinnedHigh}`);
+    if (reading.everPresent) {
+      const share = reading.appearanceInversionShare;
+      console.log(`regulars        ${reading.everPresent} started every match   median start ${reading.everPresentStartMedian.toFixed(3)}   below bench appearance ${share === null ? 'n/a' : `${(share * 100).toFixed(0)}%`}`);
+    }
   }
   console.log('');
   for (const c of checks) {

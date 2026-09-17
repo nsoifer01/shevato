@@ -10,15 +10,14 @@
 // seasonStarted; nothing throws.
 
 import { buildRules } from './rules.js';
-import { fixtureHasKickedOff } from './lifecycle.js';
-import { RATE_FIELDS, snapshotCarriesRates, OPENING_BASELINE_KIND } from './baseline.js';
+import { snapshotCarriesRates, OPENING_BASELINE_KIND } from './baseline.js';
 
 const num = (v) => {
   const n = typeof v === 'number' ? v : parseFloat(v);
   return Number.isFinite(n) ? n : 0;
 };
 
-export function buildGameState(bootstrap, fixtures, { fetchedAt, baseline = null } = {}) {
+export function buildGameState(bootstrap, fixtures, { fetchedAt, baseline = null, standIn = true } = {}) {
   const rules = buildRules(bootstrap);
 
   const teams = new Map();
@@ -29,103 +28,71 @@ export function buildGameState(bootstrap, fixtures, { fetchedAt, baseline = null
 
   const normalizedFixtures = (fixtures || []).map(normalizeFixture);
 
-  // A kept baseline stands in for season totals FPL has cleared. Price, status,
-  // news and this season's own cumulative totals stay exactly as the live
-  // payload reported them, because those are current facts and the baseline is
-  // not.
+  // THE PREVIOUS SEASON, attached as a PRIOR rather than added to the totals.
   //
-  // THE BLEND. The evidence totals become baseline + this season, over a
-  // denominator of baseline matches + this season's matches (`evidenceMatches`
-  // for start rates, `minutes` for every per-90 rate). Numerators and
-  // denominators therefore grow together and the baseline fades out of every
-  // rate at the same pace, until `baselineIsSuperseded` retires it outright.
+  // Until 2026-09-16 a baseline snapshot was OVERLAID: every player's totals
+  // became last season + this season, over last season's 38 matches + this
+  // season's, and the whole snapshot was discarded the moment every club had
+  // played three matches. Two things were wrong with that. Last season entered
+  // at full weight (a starter who missed ten matches injured read as a rotation
+  // player all through August), and then it vanished overnight: from gameweek 4
+  // a nailed starter was a player with three matches of evidence, shrunk toward
+  // the average of every player with a minute to his name, and projected to
+  // play 64% to 76% of the time. The xP audit of that date found it.
   //
-  // EVERY player is given a denominator here, not only the ones the baseline
-  // knows. Declaring it for the overlaid players alone silently hands everyone
-  // else the pool-wide fallback, which the overlay itself has just moved to a
-  // full season - see the `!row` branch below for what that cost.
+  // So a snapshot is now evidence of a different KIND, kept apart from this
+  // season's totals for the whole season: `player.prior` carries his previous
+  // season, `player.starts`/`minutes`/... carry this one, and each model
+  // (minutes.js, projections.js, strength.js) decides how much the previous
+  // season is worth against this one, with weights measured on the replay
+  // (experiments/registry.md, entry 29). Nothing here divides anything.
   //
-  // A version 1 snapshot carries minutes only. Its minutes still serve the
-  // minutes model, but every rate is then read over THIS season's minutes
-  // alone (`rateMinutes`), so a cleared numerator is never divided by a
-  // restored denominator; with one match of evidence the shrinkage layer
-  // resolves those rates to the position priors, and readiness says so.
+  // `standIn` says whether the snapshot is also STANDING IN for a season too
+  // young to project from on its own (the opening weeks), which is what
+  // `baselineSource: 'baseline'` has always meant to readiness and the UI.
   //
   // Matched on `code`, FPL's permanent per-player id, because `id` is
   // reassigned between seasons (see FINDINGS, cross-season player identity).
   let baselineSource = 'current';
   let baselineRates = null;
   let baselineOrigin = null;
+  let priorSeason = null;
   if (baseline && baseline.totals) {
     const carriesRates = snapshotCarriesRates(baseline);
     const byCode = new Map();
+    let goals = 0;
+    let squadMinutes = 0;
     for (const [pid, row] of Object.entries(baseline.totals)) {
-      if (row && row.c != null) byCode.set(row.c, row);
+      if (!row) continue;
+      if (row.c != null) byCode.set(row.c, row);
       else byCode.set(Number(pid), row);
+      goals += (row.gs || 0) + (row.og || 0);
+      squadMinutes += row.m || 0;
     }
-    // The matches THIS season's totals cover, which includes a match in play:
-    // FPL credits starts and minutes from kickoff, so counting only played-out
-    // matches would give `seasonStarts` a denominator one match short while it
-    // is being played.
-    const playedByClub = new Map();
-    for (const f of normalizedFixtures) {
-      if (!fixtureHasKickedOff(f)) continue;
-      for (const t of [f.teamH, f.teamA]) playedByClub.set(t, (playedByClub.get(t) || 0) + 1);
-    }
-    const baselineMatches = baseline.totalEvents || null;
-    let overlaid = 0;
+    let attached = 0;
     for (const p of players.values()) {
       const row = byCode.get(p.code) ?? baseline.totals[p.id];
-      const played = playedByClub.get(p.teamId) || 0;
-      if (!row) {
-        // A PLAYER THE BASELINE NEVER SAW, and the reason this is not a bare
-        // `continue`. `snapshotFrom` records only players who actually played,
-        // so everyone with no Premier League minutes last season - a signing
-        // from abroad, a promoted club's squad, a youth player - reaches here
-        // carrying THIS season's totals and nothing else.
-        //
-        // The overlay above lifts the rest of the pool to a full season, which
-        // is what makes `seasonEvidence` read the payload as a previous season
-        // and hand every player without a declared denominator 38 matches. His
-        // numerator is two matches old, so the rate is off by the ratio of the
-        // two seasons. On 2026-09-04 that read Villa's Suzuki as 1 start in 38
-        // rather than 1 in 2: pStart 0.09 against a true 0.5, and a GW3
-        // projection of 0.3 points for a keeper who had just played 90 minutes.
-        // Ninety-nine players were in that state and thirty-eight of them had
-        // started every match. It also inverted - the same player projected
-        // 0.63 when given zero minutes, because that takes the price-prior
-        // branch instead - which is the one thing minutes.js says must never
-        // happen: having played cannot be evidence against a player.
-        //
-        // So he gets the denominator his own totals were accumulated against,
-        // which is the same rule the overlaid players get applied to a
-        // different numerator. Before a ball is kicked `played` is 0, the field
-        // stays null, and a player with no minutes still takes the price prior.
-        p.evidenceMatches = played || null;
-        continue;
-      }
-      p.starts = (row.s || 0) + (p.seasonStarts || 0);
-      p.minutes = (row.m || 0) + (p.seasonMinutes || 0);
-      // The denominator these totals were accumulated against: the baseline's
-      // season plus whatever this club has played of the new one.
-      p.evidenceMatches = baselineMatches ? baselineMatches + played : null;
-      if (carriesRates) {
-        for (const [key, field] of Object.entries(RATE_FIELDS)) {
-          p[field] = (row[key] || 0) + (p[field] || 0);
-        }
-      } else {
-        p.rateMinutes = p.seasonMinutes || 0;
-      }
-      overlaid++;
+      p.prior = row ? priorFromRow(row, { matches: baseline.totalEvents || null, carriesRates }) : null;
+      if (row) attached++;
     }
-    if (overlaid > 0) {
-      baselineSource = 'baseline';
+    if (attached > 0) {
+      baselineSource = standIn ? 'baseline' : 'current';
       baselineRates = carriesRates ? 'carried' : 'missing';
       // 'shipped' for the baseline committed with the app, 'kept' for one this
-      // browser recorded itself. The distinction never changes a projection -
-      // both are the same shape and are read the same way - but the status
-      // panel has to be able to say which set of totals a plan rests on.
+      // browser recorded itself. The two are read identically.
       baselineOrigin = baseline.kind === OPENING_BASELINE_KIND ? 'shipped' : 'kept';
+      priorSeason = {
+        origin: baselineOrigin,
+        rates: baselineRates,
+        capturedAt: baseline.capturedAt || null,
+        seasonLabel: baseline.coversSeason || null,
+        totalEvents: baseline.totalEvents || null,
+        players: attached,
+        // Goals per team match last season, read over the squads' own minutes
+        // (990 player-minutes make one team match) so a snapshot that only
+        // holds the players still registered this season is not biased low.
+        goalsPerTeamMatch: squadMinutes > 0 && carriesRates ? goals / (squadMinutes / 990) : null,
+      };
     }
   }
 
@@ -145,8 +112,10 @@ export function buildGameState(bootstrap, fixtures, { fetchedAt, baseline = null
     // are read over this season's minutes alone; null without a baseline.
     baselineRates,
     baselineOrigin,
-    baselineCapturedAt: baselineSource === 'baseline' ? (baseline.capturedAt || null) : null,
-    baselineSeasonLabel: baselineSource === 'baseline' ? (baseline.seasonLabel || null) : null,
+    baselineCapturedAt: priorSeason ? (baseline.capturedAt || null) : null,
+    baselineSeasonLabel: priorSeason ? (baseline.seasonLabel || null) : null,
+    // The previous-season record in force as a prior (see above), or null.
+    priorSeason,
     // The season this payload itself belongs to, read from the static content
     // path in `rules`. `snapshotFrom` stamps it onto every snapshot it writes,
     // which is what lets a later season refuse an older browser's baseline.
@@ -169,10 +138,47 @@ export function buildGameState(bootstrap, fixtures, { fetchedAt, baseline = null
   };
 }
 
-// The minutes a player's rate numerators cover. Normally his evidence minutes;
-// when a minutes-only baseline is standing in (`rateMinutes`, set above) only
-// this season's minutes cover the cleared numerators. Every per-90 division in
-// the engine reads its denominator through here.
+// One snapshot row as a player's previous season, in GameState field names.
+// A version 1 row carries minutes and starts only, so every rate numerator is
+// null rather than a zero it never measured. `xm` and `dm` are the replay's
+// coverage annotations (minutes the xG/xA and defensive-contribution columns
+// actually cover); a shipped asset never carries them and they default to the
+// minutes.
+function priorFromRow(row, { matches, carriesRates }) {
+  const rate = (key) => (carriesRates ? (row[key] || 0) : null);
+  const minutes = row.m || 0;
+  return {
+    starts: row.s || 0,
+    minutes,
+    matches,
+    rates: !!carriesRates,
+    xG: rate('xg'),
+    xA: rate('xa'),
+    xGC: rate('xgc'),
+    bps: rate('bps'),
+    bonus: rate('bo'),
+    saves: rate('sv'),
+    goalsScored: rate('gs'),
+    assists: rate('as'),
+    cleanSheets: rate('cs'),
+    goalsConceded: rate('gc'),
+    yellowCards: rate('yc'),
+    redCards: rate('rc'),
+    penaltiesSaved: rate('ps'),
+    ownGoals: rate('og'),
+    penaltiesMissed: rate('pm'),
+    cbit: rate('cbit'),
+    recoveries: rate('rec'),
+    tackles: rate('tck'),
+    defCon: rate('dc'),
+    xMinutes: Number.isFinite(row.xm) ? row.xm : minutes,
+    dcMinutes: Number.isFinite(row.dm) ? row.dm : minutes,
+  };
+}
+
+// The minutes a player's rate numerators cover: his minutes, unless a caller
+// (the historical replay) has declared a narrower denominator. Every per-90
+// division in the engine reads its denominator through here.
 export function rateMinutesOf(player) {
   return Number.isFinite(player.rateMinutes) ? player.rateMinutes : (player.minutes || 0);
 }

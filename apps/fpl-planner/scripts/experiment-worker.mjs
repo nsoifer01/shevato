@@ -83,6 +83,7 @@ async function runCell({ cell, config, arm }) {
         risk: config.risk,
         seed: cell.seed,
         priorDataset: prior,
+        evidenceRegime: config.evidenceRegime,
         ...(config.poolSize ? { poolSize: config.poolSize } : {}),
         ...(arm.opts || {}),
       },

@@ -240,6 +240,10 @@ export default [
       'scripts/**/*.{js,mjs,cjs}', 'netlify/**/*.{js,mjs,cjs}', 'tests/**/*.{js,mjs,cjs}',
       'apps/*/tests/**/*.{js,mjs,cjs}', 'apps/*/tests-rules/**/*.{js,mjs,cjs}',
       'apps/*/scripts/**/*.{js,mjs,cjs}', 'apps/*/e2e/**/*.{js,mjs,cjs}',
+      // fpl-planner's pre-registered experiment configs, loaded by
+      // scripts/experiment.mjs. They matched no block and resolved to 0 rules
+      // until 2026-09-16.
+      'apps/*/experiments/**/*.{js,mjs,cjs}',
       'sync-system/tests/**/*.{js,mjs,cjs}', 'assets/**/tests/**/*.{js,mjs,cjs}',
       'assets/og/**/*.mjs', 'eslint.config.mjs',
     ],

@@ -12,13 +12,15 @@
 //      substitute minutes. Those become four mutually exclusive branches
 //      (start and reach the hour, start and do not, come on and reach the hour,
 //      come on and do not) plus the fifth case of not playing at all.
-//   2. RATES. Per-90 underlying rates, recency weighted when per-gameweek
-//      history is attached and taken from season totals otherwise, then shrunk
-//      toward the position's league rate by how much football is behind them.
-//      Attacking rates come from expected goals and expected assists, NEVER
-//      from goals and assists scored, and never from FPL points: two players
-//      with the same underlying numbers and different recent luck must project
-//      the same.
+//   2. RATES. Per-90 underlying rates from this season's totals, with the
+//      previous season carried in where it measurably persists
+//      (PRIOR_SEASON_CARRY), pulled toward the position's rate by how much
+//      football is behind them. Attacking rates come from expected goals and
+//      expected assists, NEVER from goals and assists scored, and never from
+//      FPL points: two players with the same underlying numbers and different
+//      finishing luck must project the same. The one realized outcome read is
+//      BONUS, blended with the BPS curve, because a player's own bonus rate
+//      measurably predicts his next bonus beyond his BPS (BONUS_OWN_RATE_WEIGHT).
 //   3. FIXTURE. The Poisson fixture model scales those rates. A club expected
 //      to score 2.4 in this fixture against a baseline of 1.6 lifts its
 //      attackers by 1.5x; the same club's keeper faces the opponent expectation
@@ -35,7 +37,7 @@
 // a special case in the code.
 
 import { fixtureContext, baselineTeamGoals, baselineOpponentGoals } from './fixtures.js';
-import { projectMinutes, p60FromMeanMinutes } from './minutes.js';
+import { projectMinutes, evidenceView } from './minutes.js';
 import { rateMinutesOf } from './normalize.js';
 import {
   poissonVector,
@@ -69,11 +71,11 @@ const CONCEDED_PER_PENALTY = 2;
 const RECENCY_HALF_LIFE_GWS = 6;
 
 
-// Minutes assigned to the "started but did not reach the hour" branch. The
-// over-60 branch is then solved so that the branch-weighted mean minutes match
-// the minutes model, which keeps the distribution and xMins consistent.
-const START_UNDER_60_MINUTES = 40;
-const SUB_OVER_60_MINUTES = 68;
+// The minutes in each branch (started and reached the hour, started and did
+// not, came on and reached it, came on and did not) and the chance of each are
+// decided by minutes.js from measured values; the over-60 start branch and the
+// under-60 sub branch are solved here so the branch-weighted mean minutes match
+// the minutes model.
 
 // Set-piece and penalty duty premium, applied multiplicatively to the expected
 // goal and expected assist rates by duty order (first, second, third choice).
@@ -165,6 +167,93 @@ const PRIOR_NINETIES = {
 };
 const SHRUNK_RATES = Object.keys(PRIOR_NINETIES);
 
+// --- The previous season, carried into this one (2026-09-16) ----------------
+//
+// PRIOR_NINETIES above is the WITHIN-season shrinkage: how far a player's own
+// per-90 rate is pulled toward his position's. Until 2026-09-16 it was also the
+// only thing between a player and his position average once the season baseline
+// retired at three club matches, so from gameweek 4 Saka's goal rate kept about
+// half of its own signal and Bruno Fernandes's bonus kept a sixth, and the whole
+// league clustered at three to four points.
+//
+// The previous season now enters every rate that measurably persists, as
+// DISCOUNTED EVIDENCE rescaled to this season's level:
+//
+//   rate = (cur + w * last * s + posNow * k) / (cur90 + w * last90 + k)
+//   s    = posNow / posLast
+//
+// for a player with a previous season, and (cur + posNow * kNew) / (cur90 +
+// kNew) for one without. `posNow` is this season's position rate with last
+// season's anchored at two gameweeks of that position's minutes, so a league
+// whose scoring level moved (FPL rewrote BPS for 2024-25) is followed within a
+// few gameweeks. `s` makes a player's previous season RELATIVE to his
+// position's level, so that rewrite does not carry either.
+//
+// Every w, k and kNew below was fitted leave-one-season-out on the archive under
+// the production evidence regime (scripts/calibration/calibrate-rates.mjs,
+// registry entry 29): minutes-weighted Poisson deviance of each player's next
+// five appearances, over 55,557 player-deadlines of 2023-24, 2024-25 and
+// 2025-26. Held-out gains against the shipped rule: xG 1.8% / 5.7% / 1.9%
+// (DEF/MID/FWD), xA 8.1% / 5.1% / 3.3%, BPS 2.9% to 3.0%, own bonus rate 2.6%
+// to 13.3%, yellows 1.9% to 7.3%, larger in gameweeks 2-8.
+//
+// Rates with no row here keep the within-season rule on this season's evidence
+// alone: a goalkeeper's xG and xA (the prior LOST 8% on keeper xA), red cards
+// and penalty saves (no measurable between-player signal), a keeper's yellows.
+// Defensive contribution exists in one archived season only, so its carry could
+// not be measured; it takes the unit weight at the within-season k, which is
+// exactly what the pre-season read of last season's totals has always done.
+export const PRIOR_SEASON_CARRY = Object.freeze({
+  xG: { 2: { w: 1, k: 30, kNew: 12 }, 3: { w: 0.5, k: 3, kNew: 2 }, 4: { w: 0.7, k: 8, kNew: 5 } },
+  xA: { 2: { w: 0.7, k: 5, kNew: 2 }, 3: { w: 0.7, k: 5, kNew: 3 }, 4: { w: 0.7, k: 12, kNew: 5 } },
+  bps: { 1: { w: 0, k: 200, kNew: 19 }, 2: { w: 1, k: 12, kNew: 8 }, 3: { w: 0.5, k: 12, kNew: 12 }, 4: { w: 1, k: 30, kNew: 200 } },
+  bonus: { 1: { w: 0, k: 200, kNew: 80 }, 2: { w: 0.7, k: 50, kNew: 12 }, 3: { w: 0.5, k: 19, kNew: 12 }, 4: { w: 0.7, k: 30, kNew: 400 } },
+  saves: { 1: { w: 0.05, k: 12, kNew: 19 } },
+  yellow: { 2: { w: 1, k: 30, kNew: 30 }, 3: { w: 1, k: 19, kNew: 12 }, 4: { w: 1, k: 8, kNew: 8 } },
+  defCon: { 2: { w: 1, k: 4.6, kNew: 4.6 }, 3: { w: 1, k: 2.7, kNew: 2.7 }, 4: { w: 1, k: 6.9, kNew: 6.9 } },
+});
+
+// Two gameweeks of a position's minutes is what last season's position rate is
+// worth against this season's pool.
+const POOL_ANCHOR_GAMEWEEKS = 2;
+
+// FPL ASSISTS ARE NOT xA. An FPL assist includes rebounds, deflections, a won
+// penalty and a forced own goal, and over the four archived seasons FPL
+// assists ran 1.23x xA for defenders, 1.36x for midfielders and 2.10x for
+// forwards (1.37x overall in 2025/26). A FLAT league multiplier was rejected in
+// registry entry 12 because the excess is not flat: elite creators carry the
+// least of it (1.32x in the top xA quartile) and shot-heavy players the most
+// (1.62x in the top xG quartile), so a flat scale promoted creators over
+// finishers and cost captaincy points. The conversion below is the log-linear
+// fit that carries that gradient (registry entry 29, held-out deviance of next
+// five FPL assists 6.1% better than raw xA in every season, and top-quartile
+// creators and finishers both calibrated within 12%):
+//
+//   assists = xA * exp(b0 + bDEF + bFWD + bXA * ln(xA / posXA) + bXG * ln((xG + 0.01) / (posXG + 0.01)))
+//
+// Outfield only: the fit had nineteen goalkeeper assists to learn from.
+export const ASSIST_CONVERSION = Object.freeze({
+  intercept: 0.3032,
+  defender: -0.0771,
+  forward: 0.4941,
+  xaLevel: -0.1894,
+  xgLevel: 0.207,
+  // The log ratios are clamped so a player with almost no xA or xG cannot turn
+  // a rounding error into a multiplier.
+  logClamp: 3,
+});
+
+// BONUS FROM THE PLAYER'S OWN BONUS RATE AND HIS BPS. The BPS curve alone, fed
+// a BPS rate shrunk to a sixth of its own signal, projected Tavernier's eight
+// bonus points in four matches as 0.36 a match. A held-out blend of the
+// player's own carried bonus rate with the curve on his carried BPS rate is
+// 5.4% better on the next five appearances (6.4% in gameweeks 2-8) and moves
+// top-decile calibration from 1.53 to 1.02; the weight was 0.65 / 0.70 / 0.80
+// across the three held-out seasons. The curve is the one bonusModel fits on
+// this season's players; last season's curve was measured and LOSES in a
+// season FPL rescored BPS.
+export const BONUS_OWN_RATE_WEIGHT = 0.7;
+
 // The ceiling is the 85th percentile of the composed distribution.
 const CEILING_QUANTILE = 0.85;
 
@@ -174,6 +263,10 @@ const CEILING_QUANTILE = 0.85;
 const MAX_COUNT_CAP = 8;
 
 export const PROJECTION_PARAMS = Object.freeze({
+  priorSeasonCarry: PRIOR_SEASON_CARRY,
+  poolAnchorGameweeks: POOL_ANCHOR_GAMEWEEKS,
+  assistConversion: ASSIST_CONVERSION,
+  bonusOwnRateWeight: BONUS_OWN_RATE_WEIGHT,
   savesPerPoint: SAVES_PER_POINT,
   concededPerPenalty: CONCEDED_PER_PENALTY,
   recencyHalfLifeGws: RECENCY_HALF_LIFE_GWS,
@@ -189,7 +282,10 @@ export const PROJECTION_PARAMS = Object.freeze({
 // What a ProjectionSet reports when no trained artifact was passed in. Exported
 // so the fallback has one name, and so a test can tell "the trained model ran"
 // from "it did not" without matching a string in two places.
-export const DEFAULT_MODEL_VERSION = 'analytic-1';
+// analytic-2 since 2026-09-16: the xP calibration repair (registry entry 29)
+// replaced the minutes, rates and strength models, so a plan stored under
+// analytic-1 was produced by a different model and says so.
+export const DEFAULT_MODEL_VERSION = 'analytic-2';
 
 const clamp = (v, lo, hi) => (v < lo ? lo : v > hi ? hi : v);
 
@@ -241,9 +337,10 @@ export function defConComposite(player) {
 // are exponentially recency weighted over gameweeks strictly BEFORE the one
 // being projected. Otherwise they come from season totals.
 //
-// Nothing in here reads total points, form, points per game, event points or
-// expected points. That is the point: recent scoring luck must not move a
-// projection, only recent underlying numbers may.
+// Nothing in here reads total points, form, points per game, event points,
+// goals, assists or expected points. That is the point: finishing luck must not
+// move a projection, only underlying numbers may. (Bonus collected is read, by
+// playerRates below, for the reason given at BONUS_OWN_RATE_WEIGHT.)
 // ---------------------------------------------------------------------------
 
 export function underlyingRates(player, { gw, halfLife = RECENCY_HALF_LIFE_GWS } = {}) {
@@ -427,6 +524,168 @@ export function shrinkRates(rates, { position, priors }) {
   return out;
 }
 
+// ---------------------------------------------------------------------------
+// Rates with the previous season carried in
+// ---------------------------------------------------------------------------
+
+// The fields each rate reads, and the minutes its numerator covers.
+const RATE_SPEC = {
+  xG: { field: 'xG', exposure: 'xMinutes' },
+  xA: { field: 'xA', exposure: 'xMinutes' },
+  bps: { field: 'bps', exposure: 'minutes' },
+  bonus: { field: 'bonus', exposure: 'minutes' },
+  saves: { field: 'saves', exposure: 'minutes' },
+  defCon: { field: 'defCon', exposure: 'dcMinutes' },
+  yellow: { field: 'yellowCards', exposure: 'minutes' },
+};
+
+function totalFor(totals, key, position) {
+  if (!totals) return 0;
+  if (key === 'defCon') return totals.defCon === null ? null : defConComposite({ ...totals, position });
+  const v = totals[RATE_SPEC[key].field];
+  return v === null || v === undefined ? null : v;
+}
+
+function exposureFor(totals, key) {
+  if (!totals) return 0;
+  const spec = RATE_SPEC[key].exposure;
+  const own = totals[spec];
+  if (Number.isFinite(own)) return own;
+  return rateMinutesOf(totals);
+}
+
+const carryCache = new WeakMap();
+
+/**
+ * The position pools the carried rates are anchored to, per GameState.
+ *
+ * `last` pools every player's previous season (the attached prior, or the
+ * payload's own totals before a ball is kicked); `current` pools this season's.
+ * Both are minutes-weighted, like positionRatePriors.
+ */
+export function carriedRateModel(gameState) {
+  const cached = carryCache.get(gameState);
+  if (cached) return cached;
+  const view = evidenceView(gameState);
+  const keys = Object.keys(RATE_SPEC);
+  const blank = () => Object.fromEntries(keys.map(k => [k, { total: 0, exposure: 0 }]));
+  const last = new Map();
+  const current = new Map();
+  for (const p of gameState.players.values()) {
+    const prior = view.priorOf(p);
+    const cur = view.currentOf(p);
+    if (!last.has(p.position)) last.set(p.position, blank());
+    if (!current.has(p.position)) current.set(p.position, blank());
+    for (const key of keys) {
+      if (prior && prior.minutes > 0) {
+        const t = totalFor(prior, key, p.position);
+        if (t !== null) {
+          last.get(p.position)[key].total += t;
+          last.get(p.position)[key].exposure += exposureFor(prior, key);
+        }
+      }
+      if (cur && cur.minutes > 0) {
+        const t = totalFor(cur, key, p.position);
+        if (t !== null) {
+          current.get(p.position)[key].total += t;
+          current.get(p.position)[key].exposure += exposureFor(cur, key);
+        }
+      }
+    }
+  }
+  const seasonGws = (gameState.priorSeason && gameState.priorSeason.totalEvents) || gameState.rules.totalEvents || 38;
+  const levels = new Map();
+  for (const position of new Set([...last.keys(), ...current.keys()])) {
+    const out = {};
+    for (const key of keys) {
+      const l = last.get(position) ? last.get(position)[key] : { total: 0, exposure: 0 };
+      const c = current.get(position) ? current.get(position)[key] : { total: 0, exposure: 0 };
+      const lastN = l.exposure / 90;
+      const curN = c.exposure / 90;
+      const lastRate = lastN > 0 ? l.total / lastN : null;
+      const anchor = (lastN / seasonGws) * POOL_ANCHOR_GAMEWEEKS;
+      const posNow = lastRate === null
+        ? (curN > 0 ? c.total / curN : 0)
+        : (c.total + lastRate * anchor) / (curN + anchor);
+      out[key] = { posNow, posLast: lastRate === null ? posNow : lastRate };
+    }
+    levels.set(position, out);
+  }
+  const model = {
+    view,
+    levelFor(position, key) {
+      const l = levels.get(position);
+      return l ? l[key] : { posNow: 0, posLast: 0 };
+    },
+  };
+  carryCache.set(gameState, model);
+  return model;
+}
+
+/**
+ * One player's per-90 rates, the previous season carried in where it
+ * measurably persists (PRIOR_SEASON_CARRY), the within-season rule elsewhere.
+ * Returns the shape `underlyingRates` returns, so every consumer reads it the
+ * same way, plus `assistConversion`.
+ */
+export function playerRates(player, { gameState, gw, priors = null }) {
+  const model = carriedRateModel(gameState);
+  const { view } = model;
+  const prior = view.priorOf(player);
+  const cur = view.currentOf(player);
+  const position = player.position;
+
+  // The within-season rule on the payload's own totals: this season's, or
+  // before a ball is kicked the previous season's, which is all there is.
+  const within = shrinkRates(underlyingRates(player, { gw }), {
+    position,
+    priors: priors || positionRatePriors(gameState),
+  });
+
+  // A caller that attached per-gameweek history (never the live payload, which
+  // has none) gets the recency-weighted within-season rates it asked for; the
+  // season-total carry below has nothing to add to them.
+  if (within.source === 'history') return { ...within, carried: [], assistConversion: 1 };
+
+  const out = { ...within, carried: [] };
+  for (const key of Object.keys(RATE_SPEC)) {
+    const carry = PRIOR_SEASON_CARRY[key] && PRIOR_SEASON_CARRY[key][position];
+    if (!carry) continue;
+    const { posNow, posLast } = model.levelFor(position, key);
+    const curT = cur ? (totalFor(cur, key, position) || 0) : 0;
+    const curN = cur ? exposureFor(cur, key) / 90 : 0;
+    const lastT = prior ? totalFor(prior, key, position) : null;
+    const lastN = prior && lastT !== null ? exposureFor(prior, key) / 90 : 0;
+    const returner = lastN > 0 && posLast > 0;
+    if (returner) {
+      const scale = posNow / posLast;
+      out[key] = (curT + carry.w * lastT * scale + posNow * carry.k) / (curN + carry.w * lastN + carry.k);
+    } else {
+      out[key] = (curT + posNow * carry.kNew) / (curN + carry.kNew);
+    }
+    out.carried.push(key);
+  }
+
+  // Assists: xA converted to FPL assists (ASSIST_CONVERSION), outfield only.
+  out.assistConversion = 1;
+  if (position !== 1) {
+    const c = ASSIST_CONVERSION;
+    const posXA = model.levelFor(position, 'xA').posNow;
+    const posXG = model.levelFor(position, 'xG').posNow;
+    const clampLog = (v) => clamp(v, -c.logClamp, c.logClamp);
+    const xaTerm = out.xA > 0 && posXA > 0 ? clampLog(Math.log(out.xA / posXA)) : 0;
+    const xgTerm = posXG >= 0 ? clampLog(Math.log((out.xG + 0.01) / (posXG + 0.01))) : 0;
+    out.assistConversion = Math.exp(
+      c.intercept
+      + (position === 2 ? c.defender : 0)
+      + (position === 4 ? c.forward : 0)
+      + c.xaLevel * xaTerm
+      + c.xgLevel * xgTerm,
+    );
+  }
+  return out;
+}
+
 function setPieceMultipliers(player) {
   const sp = player.setPieces || {};
   const boost = (order, table) => {
@@ -560,8 +819,8 @@ function minuteBranches(mins) {
   const pSub = Math.max(0, mins.pAppear - mins.pStart);
 
   if (mins.pStart > 0) {
-    const p60 = p60FromMeanMinutes(mins.meanStarterMinutes);
-    const under = START_UNDER_60_MINUTES;
+    const p60 = mins.p60GivenStart;
+    const under = mins.startUnder60Minutes;
     // Solve the over-60 minutes so the branch mean matches the minutes model.
     const over = clamp(
       p60 > 1e-9 ? (mins.meanStarterMinutes - (1 - p60) * under) / p60 : 90,
@@ -573,8 +832,8 @@ function minuteBranches(mins) {
   }
 
   if (pSub > 0) {
-    const p60 = p60FromMeanMinutes(mins.meanSubMinutes);
-    const over = SUB_OVER_60_MINUTES;
+    const p60 = mins.p60GivenSub;
+    const over = mins.subOver60Minutes;
     const under = clamp(
       p60 < 1 - 1e-9 ? (mins.meanSubMinutes - p60 * over) / (1 - p60) : 1,
       1,
@@ -617,7 +876,15 @@ function projectFixtureForPlayer({ player, rules, rates, mins, fx, strength, bon
   const defenceScale = oppBaseline > 0 ? fx.opponentXg / oppBaseline : 1;
   const bonusScale = 1 + BONUS_FIXTURE_SENSITIVITY * (attackScale - 1);
 
-  const bonusRate90 = Math.min(MAX_BONUS_PER_MATCH, bonus.predict(rates.bps) * bonusScale);
+  // The player's own carried bonus rate, blended with the league's BPS curve
+  // on his carried BPS rate (BONUS_OWN_RATE_WEIGHT). A rate object without an
+  // own bonus rate (an override, a test) reads the curve alone as before.
+  const curveBonus = bonus.predict(rates.bps);
+  const bonusBase = Number.isFinite(rates.bonus)
+    ? BONUS_OWN_RATE_WEIGHT * rates.bonus + (1 - BONUS_OWN_RATE_WEIGHT) * curveBonus
+    : curveBonus;
+  const bonusRate90 = Math.min(MAX_BONUS_PER_MATCH, bonusBase * bonusScale);
+  const assistConversion = Number.isFinite(rates.assistConversion) ? rates.assistConversion : 1;
 
   const branches = minuteBranches(mins);
   const parts = [];
@@ -633,7 +900,7 @@ function projectFixtureForPlayer({ player, rules, rates, mins, fx, strength, bon
   for (const branch of branches) {
     const share = branch.minutes / 90;
     const lamGoals = rates.xG * setPiece.goals * attackScale * share;
-    const lamAssists = rates.xA * setPiece.assists * attackScale * share;
+    const lamAssists = rates.xA * assistConversion * setPiece.assists * attackScale * share;
     const lamConceded = fx.opponentXg * share;
     const lamSaves = rates.saves * defenceScale * share;
     const lamPensSaved = rates.pensSaved * defenceScale * share;
@@ -728,7 +995,7 @@ export function projectPlayerGw(player, { gameState, strength, gw, model = null,
     mins = { ...mins, pStart: calibrated };
   }
 
-  const rates = shrinkRates(underlyingRates(player, { gw }), { position: player.position, priors });
+  const rates = playerRates(player, { gameState, gw, priors });
   const setPiece = setPieceMultipliers(player);
 
   const fixtures = contexts.map(c => ({
@@ -836,7 +1103,7 @@ export function buildProjections({ gameState, strength, gwFrom, gwTo, model = nu
     // numbers, so it holds only while a model object means a model was actually
     // applied. js/data/model.js keeps that true: it hands over null, not a bare
     // { modelVersion }, when the artifact declares nothing to consume, and the
-    // v2 artifact declares nothing today. So these read analytic-1.
+    // v2 artifact declares nothing today. So these read analytic-2.
     modelVersion: (resolved && resolved.modelVersion) || DEFAULT_MODEL_VERSION,
     generatedAt: new Date().toISOString(),
     dataFetchedAt: gameState.fetchedAt || null,

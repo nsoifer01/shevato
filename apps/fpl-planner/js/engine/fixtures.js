@@ -104,16 +104,30 @@ export function fixtureContext(gameState, strength, teamId, gw) {
   });
 }
 
-// The club's own scoring level against an average opponent at a neutral venue.
-// Player attacking rates are historical per-90 numbers accumulated at roughly
-// this level, so dividing by it is what turns "his rate" into "his rate in THIS
-// fixture" without double counting the club's overall quality.
+// The club's own scoring level against an average opponent, AVERAGED OVER THE
+// VENUES a season is played at. Player attacking rates are per-90 numbers
+// earned over roughly half home and half away matches, so they already carry
+// the average venue factor (1 + homeAdvantage) / 2. Dividing a fixture's
+// expectation by this level turns "his rate" into "his rate in THIS fixture"
+// without counting club quality or the venue twice.
+//
+// Until 2026-09-16 the level was read at a NEUTRAL venue (no venue factor), so
+// every attacking and save rate was scaled up by the average venue factor, about
+// 4.8% (1.10 to 1.13 over a season). Projecting the second half of each
+// archived season's player xG from first-half rates read 1.089 / 1.127 / 1.113
+// against what happened with the neutral level, and 0.947 / 1.065 / 0.998 with
+// this one (scripts/calibration/calibrate-strength.mjs).
+function averageVenueFactor(strength) {
+  const ha = Number.isFinite(strength.homeAdvantage) ? strength.homeAdvantage : 1;
+  return (1 + ha) / 2;
+}
+
 export function baselineTeamGoals(strength, teamId) {
   const r = ratingFor(strength, teamId);
-  return strength.leagueMeanGoals * r.attack;
+  return strength.leagueMeanGoals * r.attack * averageVenueFactor(strength);
 }
 
 export function baselineOpponentGoals(strength, teamId) {
   const r = ratingFor(strength, teamId);
-  return strength.leagueMeanGoals * r.defence;
+  return strength.leagueMeanGoals * r.defence * averageVenueFactor(strength);
 }

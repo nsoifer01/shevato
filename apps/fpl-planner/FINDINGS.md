@@ -14,6 +14,221 @@ tables.
 
 ---
 
+## Every nailed starter was projected as a rotation risk (found and FIXED 2026-09-16)
+
+Reported on the GW5 squad of 2026/27: fifteen players between 2.7 and 3.8 xP,
+Saka and Bruno Fernandes level with an average midfielder, Isak below Barry. The
+audit found the whole league compressed, not the squad: at the GW4 deadline the
+median player who had started all three of his club's matches was projected to
+start **73%** of the time (he started 88%), the best player in the league
+projected **3.87**, and the best possible eleven **38.4**, while those eleven
+scored 51. Registry entry 29 has the experiment record; the module headers of
+`minutes.js`, `projections.js` and `strength.js` have the model as it now is.
+
+### Why every health check passed
+
+Every check the app had was a SHAPE check: a spread between the best player and
+the median (it was 1.4), a best eleven between 30 and 100 (38), attackers above
+defenders (they were), no start probability pinned at 1. A league compressed
+toward its mean passes all of them. Compression is a CALIBRATION defect, and the
+only thing that sees it is a projection compared with what then happened, which
+nothing in the estate did. That is the class this app keeps meeting (the table
+in "The verification lesson"): every test checked a number was legal and
+ordered, none that it was right.
+
+### The causes, largest first
+
+1. **Start probability over-shrunk.** `baseStart` was
+   `(starts + 6 * posRate) / (matches + 6)`, with `posRate` the position's start
+   rate over every player with a minute (0.4 to 0.6). The shipped baseline
+   retired at three club matches, so from GW4 a 3-from-3 starter carried three
+   matches of evidence against six of pull: 0.64 for a forward, 0.76 for a
+   defender. **The old argument that "an established starter carries 19 to 38
+   matches of evidence and barely feels the prior" (entry 10) was true of the
+   replay, which seeded half of last season all year, and false of production
+   for the first two months of every season.**
+2. **No bench opportunities read as "never comes on".** A player who started
+   every match had zero non-starts, so `subOnRate` was 0 and `pAppear` equalled
+   `pStart`, while a squad player with two cameos read above him: 57% to 89% of
+   ever-present starters sat below the median bench player's appearance
+   probability at GW3 to GW5.
+3. **The replay did not run production's regime.** It seeded 0.5 of last season
+   into both sides of every rate all season; production stood the baseline in at
+   full weight and then dropped it. Every minutes experiment before 2026-09-16
+   (entries 10, 18, 20, 21, 23, 24, 28) was measured on a regime the app never
+   ran.
+4. **Team strength was goal noise.** Early-season ratings came from a handful
+   of scorelines, and the "measurable" threshold flagged every club as promoted
+   in the opening weeks, so fixture difficulty barely separated anybody.
+5. **Assists read from raw xA.** FPL awards 1.37 assists per xA over the
+   archive, but not uniformly: forwards run higher, defenders lower, the
+   highest-xA creators lower (their chances are the ones everybody counts).
+6. **Bonus came from a BPS curve alone**, which regresses everyone to the
+   middle; a player's own bonus rate carries information the curve does not.
+7. **The hour curve was one logistic on mean minutes.** Keepers who start play
+   90 in 99% of starts and were given 0.83.
+8. **Home advantage inflated every rate by about 4.8%**: team rates were
+   normalised to a home-weighted mean and then scaled by venue again.
+
+### What replaced them
+
+Every parameter was fitted on a prediction target (start, appearance, 60
+minutes, goals, assists, bonus, next-gameweek team goals), held out by season,
+in the production regime (`scripts/calibration/*.mjs`, outputs gitignored under
+`.data/calibration/`). None was fitted on planner points, and none on 2026/27.
+
+- **The replay reproduces production** (`engine/world.js`): the app and the
+  replay resolve a payload through the same `resolveGameState`, the replay
+  rebuilds the raw FPL payload at each deadline (GW1 is the pre-season payload
+  carrying last season's totals), and the previous-season asset holds exactly
+  what production's does: players registered this season, keyed by current id
+  with `code`. `evidenceRegime: 'seeded'` keeps the old regime for reference;
+  `experiment.mjs`, `backtest.mjs` and `calibration-report.mjs` default to
+  production. `tests/replay-production-regime.test.mjs` pins the equivalence.
+- **The previous season is a prior, all season** (`player.prior`,
+  `gameState.priorSeason`), never added into this season's totals and never
+  retired. `baselineSource: 'baseline'` now only means it is standing in for an
+  incomplete payload.
+- **Start**: `pStart = (s + K * mu) / (m + K)`, `K = 0.5 + 0.15m`, `mu` last
+  season's start rate through a calibration fitted on opening gameweeks. The
+  per-bucket optimal K rose in every season (0.5 to 0.75 in GW1-3, 2 to 3 by
+  GW9-19), which agrees with entry 20's measurement that the prior is worth 2 to
+  3 matches. No previous season: `mu` from price percentile, `K = 0.75 + 0.05m`.
+- **Bench**: substitute appearances inferred from residual minutes at 18.18
+  minutes a spell, shrunk toward a position by start-probability table at 40
+  opportunities, with last season at 5% weight. No opportunities is no
+  evidence, so a nailed starter gets the table's rate for a player like him.
+- **60 minutes**: given a start, keepers 0.99, forwards 0.92, defenders and
+  midfielders a logistic in minutes per start; given a substitute appearance,
+  0.7% to 9%.
+- **Rates** carry last season at a measured weight per stat and position
+  (`PRIOR_SEASON_CARRY`), anchored on the position's rate at two gameweeks of
+  minutes.
+- **Assists** convert xA with a fitted multiplier conditioned on position and
+  on the player's xA and xG relative to his position (`ASSIST_CONVERSION`).
+- **Bonus** is 0.7 of the player's own carried bonus rate plus 0.3 of the curve.
+- **Strength** starts from last season's squad xG and xGC aggregated by each
+  player's CURRENT club (it follows transfers), blends this season's squad xG,
+  and lets goals move it only at 160 pseudo-matches. FPL's strength tiers were
+  measured and are not used: the archive cannot validate them.
+- **Venue**: the fixture baseline is `mu * attack * (1 + HA) / 2`.
+
+### Before and after
+
+The archive, three seasons in the production regime (`calibration-report.mjs`):
+
+| | GW2-3 before | after | GW4-8 before | after | GW9-19 before | after |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| ever-present pStart (started) | 0.61 (0.87) | 0.83 (0.87) | 0.75 (0.88) | 0.91 (0.88) | 0.84 (0.90) | 0.94 (0.90) |
+| ever-present xP (scored) | 2.18 (2.98) | 2.94 (2.98) | 2.51 (3.11) | 3.20 (3.11) | 2.90 (3.29) | 3.38 (3.29) |
+| top fifth xP (scored) | 3.17 (3.06) | 3.72 (4.10) | 3.01 (3.60) | 3.85 (3.84) | 3.23 (3.49) | 3.69 (3.56) |
+| bottom fifth xP (scored) | 0.67 (0.45) | 0.59 (0.48) | 0.91 (0.62) | 0.72 (0.81) | 0.72 (0.60) | 0.75 (0.90) |
+| best eleven xP (scored) | 48.0 (47.0) | 51.9 (53.3) | 40.4 (55.3) | 54.4 (57.7) | 46.3 (50.4) | 54.2 (51.7) |
+| start log loss | 0.3627 | 0.2454 | 0.3073 | 0.2920 | 0.3065 | 0.3093 |
+| appearance log loss | 0.6693 | 0.3390 | 0.4457 | 0.3413 | 0.4721 | 0.3493 |
+| rank correlation xP vs points | 0.449 | 0.647 | 0.603 | 0.609 | 0.602 | 0.589 |
+
+GW20-38 moves the same way (ever-present xP 3.11 to 3.44 against 3.50 scored,
+best eleven 53.0 to 56.4 against 58.8), with start log loss 0.3312 to 0.3359
+and rank correlation 0.584 to 0.578.
+
+The 2026/27 deadlines, out of sample (`tests/fixtures/xp-calibration-2026`):
+
+| | GW3 before | after | GW4 before | after |
+| --- | ---: | ---: | ---: | ---: |
+| ever-present pStart (started) | 0.61 (0.89) | 0.86 (0.89) | 0.73 (0.88) | 0.88 (0.88) |
+| ever-present pAppear (appeared) | 0.72 (0.95) | 0.90 (0.95) | 0.73 (0.93) | 0.92 (0.93) |
+| ever-present xP (scored) | 2.37 (3.41) | 3.30 (3.41) | 2.62 (3.60) | 3.33 (3.60) |
+| likely starters p10 / median / p90 / max | 1.64 / 2.52 / 3.91 / 6.42 | 2.10 / 3.07 / 4.31 / 7.81 | 1.95 / 2.50 / 3.11 / 3.87 | 2.17 / 3.03 / 4.30 / 6.18 |
+| best eleven xP (scored) | 53.7 (52) | 59.4 (42) | 38.4 (51) | 56.3 (65) |
+
+**Planner points, the guard rather than the target** (pre-registered in
+`experiments/configs/xp-calibration.mjs`): +13.8 a window, t 1.01, 9 windows
+won to 6, seasons +41.8 / -9.0 / +8.5. Captaincy value 1497 to 1562, projection
+bias -5.42 to -1.07 points a gameweek. Shipped under the registered rule.
+
+### What is still wrong
+
+- **A player whose role changed with his club keeps last season's shape for a
+  while.** Trafford started 4 of 38 matches in 2025-26 as a back-up and all 4
+  of Leeds' this season, and still reads 0.83 to start at GW5 (2.94 xP): the
+  prior says back-up, four matches say starter, and the posterior sits
+  between. Nothing in the payload says a player moved into a starting role.
+- **An injury-hit previous season reads as rotation.** Isak's 8 starts (694
+  minutes) of 2025-26 give him a lower prior mean than a fit season would, so
+  4 from 4 this season reads 0.84.
+- **The archive carries no injury flags**, so the start calibration absorbs
+  injury base rates it cannot condition on: roughly four points of start
+  probability at GW1 for a top returner, and the upper start bins over-predict
+  by 4 to 6 points from GW9 (0.95 predicted, 0.89 started at GW9-19). An
+  injury-conditioned refit improved GW1-3 and worsened GW4-19 on the two
+  seasons that could fit it, so it was not adopted.
+- **Defenders are over-projected mid-season** (GW9-19 3.08 against 2.73 for
+  those who played) **and forwards under late** (4.43 against 4.89).
+- **Keepers remain somewhat under**: appearance 1.61 against 1.99 and saves 0.51
+  against 0.67 for keepers who played, GW4-8.
+- **The defensive-contribution carry is unmeasured** (weight 1 assumed; one
+  season of data).
+- **Several strength parameters sit at the edge of their fitting grid**, and
+  set-piece orders are absent from the replay.
+- **GW1 in the archive is not gated** by the calibration check: with no
+  availability flags the bottom fifth projects about 0.43 above what it
+  scores under both models.
+- **Late-season rank correlation is slightly lower** (0.589 against 0.602 at
+  GW9-19). The ablation traces it to the calibrated bench model; the old bench
+  estimator ranks marginally better and predicts appearances far worse, and was
+  not kept.
+
+### It made the lineup search four times slower, until the bound was fixed
+
+The first CI run of the repair failed five CPU budgets: a live-sized horizon-8
+plan measured 33.4s against 16s, and on the development machine it went from
+2.8s to 11.8s. Projections cost the same; 12.3s of it was `expectedRecoveryAll`
+in `lineup.js`. The exact lineup search prunes an eleven when its separable
+score plus a ceiling on bench recovery cannot beat the incumbent, and that
+ceiling (`autosubCeiling`, squad-wide) was only tight because the old model
+pinned most starters at pAppear 1: no absences, a ceiling near zero, almost
+nothing simulated. With every starter now carrying a real chance of missing,
+the ceiling became several points and 99.6% of the elevens sent to the
+simulation were two or more points behind the incumbent.
+
+`elevenAutosubBound` is the fix: the exact expected recovery with only formation
+legality relaxed (the first `a` bench players to turn up, by conditional points,
+weighted by the Poisson-binomial chance of `a` outfield absences). It never
+undercuts the simulation, so pruning on it is bit-identical: the plans at
+horizons 3, 5 and 8 on the sample world are byte-identical with and without it,
+and `tests/lineup.test.mjs` checks the bound against the simulation for every
+legal eleven of randomized squads, and its equality when legality cannot bind
+(a 0.9x mutant fails that and the exhaustive-search test). A live-sized plan is
+now 0.8s at horizon 5 and 0.84s at horizon 8, faster than before the repair.
+Expect the same from any future change that makes starters' absences real:
+anything whose cost was held down by a pinned probability will surface.
+
+### What now guards it
+
+- **At runtime**, `readiness.js` asks two questions no aggregate could:
+  `minutes_compressed` (available players who have started every club match,
+  median start probability below 0.8) and `appearance_inverted` (a quarter or
+  more of them less likely to appear than the median bench player). Both cap
+  the ladder at `lineup`, need two club matches and 30 players, and read
+  facts `planner.js` `projectionRowsFor` attaches to each row. Replayed over
+  three seasons the repaired model's median never read below 0.87 and its
+  inversion share was 0.00 at every deadline; the shipped model read 0.60 to
+  0.80 and 0.43 to 1.00 through GW1-8, and both blocks fire on it at the real
+  GW3, GW4 and GW5 of 2026/27. `evidence-probe.mjs` reports and checks the
+  same two facts, and now resolves the payload exactly as the app does.
+- **Against outcomes**, `scripts/lib/calibration-guard.mjs` states the bands
+  (ever-present start, appearance and points; start calibration by bucket; top
+  and bottom fifths and the gap between them; spread and top of the league
+  among likely starters; the best eleven, with a tolerance scaled to its
+  17-point per-deadline noise). No band is a value any model produces.
+  `tests/xp-calibration-guard.test.mjs` holds the captured 2026/27 GW3 and GW4
+  deadlines to them hermetically, and proves the bands are not vacuous by
+  compressing the repaired projections the way the shipped model did.
+  `calibration-report.mjs --check` holds every archive season's buckets to the
+  same bands: the repaired model passes all 12 gated buckets, the shipped
+  model breaks 8.
+
 ## The pause was a caption, not a refusal (2026-09-16)
 
 Both live-season incidents are written up in full further down this file. This
@@ -120,6 +335,7 @@ inherit it.
 | 2022-23 replayed as a league with no starters | the column parsed, the season replayed | that a season contains 8,360 starts |
 | The season-statistics rollover collapses every projection | every projection is a finite number | that a gameweek total was ever near 50 rather than 20 |
 | Every GW4 match window projected a 6.4 point best eleven | every probability legal, and the pause fired | that the two match counts the classifier compared described the same matches |
+| Every nailed starter projected to start 64-76% of the time, best eleven 38 | spread, best eleven 30-100, attackers above defenders | that a league of projections matched the gameweek that then happened |
 
 The last two are 2026-08-12 and they are the same joke as the first three: the
 whole suite passed, because a probability of exactly 1 is a legal probability.
@@ -135,6 +351,10 @@ The test classes that catch this, all present and to be maintained:
 5. **Arithmetic of the sport**: a club fields eleven, a player cannot start more
    matches than he was present for (`tests/replay-evidence.test.mjs`). Both are
    facts about football that no amount of internal consistency can supply.
+6. **Calibration against outcomes**: a league of projections compared with the
+   gameweek that happened, in bands (`tests/xp-calibration-guard.test.mjs`,
+   `calibration-report.mjs --check`), because a compressed league is legal,
+   ordered and wrong.
 
 Raw test count is not evidence of correctness. Do not report it as if it were.
 
@@ -1072,60 +1292,42 @@ with chips ON: +0 on all 72 trajectories, both instruments.
   the element totals relative to the first finished fixture. That does not need
   observing, because both orderings are handled and neither needs a code change;
   `GW1-RUNBOOK.md` records which way it actually went.
-- **`pStart` was un-pinned in 2026-08-15; `pAppear` still pins at exactly 1,
-  and that silently zeroes the whole auto-substitution model** (found
-  2026-09-03, NOT fixed). `baseStart` is shrunk toward a position prior with
-  `START_RATE_SHRINK_MATCHES`, but `subOnRate` - the inferred rate at which a
-  player comes off the bench in the matches he did not start - gets no
-  shrinkage at all. So a player whose evidence says "he appeared in every match
-  his club played" gets `baseAppear = baseStart + (1 - baseStart) * 1 = 1`, and
-  `pAppear` is a hard 1.0000. On the shipped opening baseline (a full previous
-  season of minutes) that is most of a decent squad: for team 3855835 in GW3 of
-  2026/27, **eleven of eleven outfield starters** were at `pAppear` 1, so
-  `absenceDistribution` said no starter can ever miss, `autosubValue` was 0 for
-  every eleven and every bench order, `gkValue` was 0, and the
-  `minutesRiskWeight * (1 - pAppear)` term of the selection score was 0 too.
-  Every piece of machinery `lineup.js` documents for weighing minutes risk -
-  including "start the coin-flip keeper and hold the nailed one in reserve" -
-  is inert in that state. It is what exposed the bench-order bug above, and the
-  bench-order fix does not address it: that fix only stops the plateau being
-  resolved arbitrarily.
-
-  **The obvious fix was measured and REJECTED** (registry entry 23, 2026-09-04):
-  shrinking `subOnRate` toward a measured per-position prior fixes the
-  calibration completely - the pinned bin disappears, overall appearance bias
-  halves, Brier improves, every season improves - and wins no points, t 0.93,
-  sign test 0.65, with 2024-25 and 2025-26 both LOSING. The defect is real and
-  is still open; what is closed is that particular fix. See
-  `experiments/subon-rate-shrinkage.md` for what to diagnose before trying
-  another arm, and note the deeper flaw the shrinkage only damps: `benchMinutes`
-  is `minutes - starts x prior.starterMinutes`, a residual against a
-  LEAGUE-AVERAGE constant, so it measures minutes above an average start rather
-  than bench appearances. B.Fernandes plays 87.7 per start against a prior of
-  82.30, and 37 x 5.40 = 199.9 is exactly his "bench minutes" of 200.
+- **`pAppear` pinned at exactly 1 until 2026-09-16, and the replacement also
+  ended the opposite defect.** The old `subOnRate` was the inferred share of
+  non-starts a player came on in, with no shrinkage: an ever-present with a
+  full previous season overlaid read 1.0 (eleven of eleven outfield starters for
+  team 3855835 in GW3), and once the baseline retired the same player had ZERO
+  non-starts, so his rate was 0 and `pAppear` equalled `pStart` while a squad
+  player with cameos read above him. Three fixes aimed at the pin were measured
+  as points changes and rejected (entries 23, 24, 28). The bench model that
+  replaced it (entry 29) was fitted on appearance outcomes as part of the
+  calibration repair: substitute appearances inferred at 18.18 minutes a spell,
+  shrunk at 40 opportunities toward a position by start-probability table.
+  Appearance log loss fell from 0.4457 to 0.3413 at GW4-8, and no probability
+  pins at either end. The residual flaw entry 24 named survives in a weaker
+  form: appearances are still INFERRED from minutes (B.Fernandes plays 87.7 a
+  start against a league 82.3, and the surplus still reads as a little bench
+  time), because production has no appearance count to read.
 - **Whoever builds the numerator owns the denominator.** A start rate is starts
-  over MATCHES, and on a live payload there is only one kind of match, because
-  FPL resets element totals every August. A caller that assembles totals from
-  more than one season must declare `evidenceMatches`; `minutes.js` falls back
-  to counting this season's matches when the field is absent, which is what
-  keeps production behaviour unchanged. The replay did not declare it until
-  2026-08-12, so it seeded half of last season into the numerator and none into
-  the denominator: **pStart 1.000 at the median AND the 90th percentile of the
-  owned pool through gameweek 10, every position prior pinned at 1.000, and 57%
-  of the pool still clamped at gameweek 20**. Corrected, median pStart sits at
-  0.57-0.61 and the 90th percentile at 0.82-0.86 all season. Worth +1253 points
-  over the then-45-trajectory instrument with the starts fix; see
-  `experiments/replay-evidence.md`. On a live payload FPL's numerator includes
-  a match IN PLAY (starts are credited at kickoff), so the count a player falls
-  back to is the matches his own club has KICKED OFF, never the league's most
-  and never only the ones played out; see "One live match read the whole league
-  as last season".
-- `START_RATE_SHRINK_MATCHES = 6` serves BOTH cross-season (pre-season) and
-  within-season evidence. Still an open design question, but it is now a
-  MEASURABLE one: `opts.priorSeasonWeight` on the replay is the weight the
-  previous season carries into both sides of the rate, so a sweep over it is a
-  legitimate experiment rather than a numerator-only distortion. Any
-  multi-season feature work must ride on `code` identity.
+  over MATCHES. The replay broke this until 2026-08-12 by seeding half of last
+  season into the numerator and none into the denominator (**pStart 1.000 at
+  the median AND the 90th percentile of the owned pool through gameweek 10**;
+  see `experiments/replay-evidence.md`), and production broke it in the
+  opposite direction the day the overlay added a season of totals to players
+  the baseline knew and nothing to the ones it did not (see "The players the
+  baseline has never heard of"). Since 2026-09-16 neither can happen by
+  construction: the previous season is a separate prior (`player.prior`), this
+  season's totals are read over this season's club matches, and the two meet
+  only inside the models, at a measured weight. `evidenceMatches` survives only
+  in the replay's legacy `seeded` regime. On a live payload FPL's numerator
+  includes a match IN PLAY (starts are credited at kickoff), so the count a
+  player is read over is the matches his own club has KICKED OFF; see "One
+  live match read the whole league as last season".
+- **The start prior's weight is now measured per stage of the season** (entry
+  29): `K = 0.5 + 0.15m` for a returning player, `0.75 + 0.05m` for one with no
+  previous season. The fixed `START_RATE_SHRINK_MATCHES = 6` it replaced served
+  both cross-season and within-season evidence and pulled toward the wrong
+  population (see the next bullet).
 - **The engine UNDER-projects, by 4 to 15 points a gameweek depending on the
   season** (`projectionBiasExAutosubs` reads -14.6 / -3.9 / -8.2 at the shipped
   horizon; the raw `projectionBias` is 3 to 4 worse because it charges the model
@@ -1187,11 +1389,17 @@ with chips ON: +0 on all 72 trajectories, both instruments.
   wildcard 12), so correcting it should buy more hits. Hits went DOWN, 6 to 2,
   and projection bias closed by 0.8 points of the 8 it was supposed to close.
 
-  **A shrinkage target only matters in proportion to `1 - w`, and `w` is large
-  exactly for the players who make the eleven.** An established starter carries
-  19 to 38 matches of evidence and barely feels the prior; the players a better
-  target moves are the low-evidence ones, who are not in the team. Repricing the
-  squad's fringe does not move the squad's spine.
+  **A shrinkage target only matters in proportion to `1 - w`**, and entry 10
+  argued that `w` is large exactly for the players who make the eleven, because
+  an established starter carries 19 to 38 matches of evidence. **That was true
+  of the replay and false of production** (corrected 2026-09-16): the replay
+  seeded half of last season into every player all year, while production
+  retired the baseline at three club matches, so from GW4 an established
+  starter carried three matches against a six-match pull and felt the prior
+  more than anyone. It is the largest single cause of the compression found on
+  2026-09-16 (the section at the top of this file). The replay now runs
+  production's regime, so a measurement of this kind can no longer describe a
+  model the app does not run.
 
   **So the open question is relocated, not answered.** The top decile of
   projections is 7.6% low on POINTS while its expected minutes are within 1%
@@ -1207,7 +1415,10 @@ with chips ON: +0 on all 72 trajectories, both instruments.
   between/within variance, never tuned on seasons) plus
   `NO_HISTORY_PRIOR_MATCHES`. Zero-minutes calibration went from a 2.49x
   overshoot to 0.84x. GW1 is untouched by construction (decay weight is
-  exactly 1 with no match played).
+  exactly 1 with no match played). Since 2026-09-16 (entry 29) the no-history
+  start prior is `mu = 0.08 + 0.52 * price percentile` capped at 0.60, worth
+  `K = 0.75 + 0.05m` matches, so a signing who starts every match overtakes it
+  within a few gameweeks (4 from 4 reads above 0.8).
 - **The 2022-23 archive has NO `starts` column for gameweeks 1 to 15**, and a
   correct one from 16. Not "partly populated": exactly zero, because FPL added
   the field mid-season. Summed per season, `starts` is 8,360 in 2023-24,
@@ -1539,8 +1750,8 @@ loaded; grep the script list.
   static browser bundle; planning runs in a Web Worker; live reads go through
   the Netlify function proxy with Blob caching. The trained artifact is loaded
   and deliberately not consumed (`engineConsumes: []`), the status panel says
-  so (`dashboard.js`), and the analytic engine (`planner-1+analytic-1`) is
-  what produces every plan.
+  so (`dashboard.js`), and the analytic engine (`planner-1+analytic-2` since the 2026-09-16
+  calibration repair) is what produces every plan.
 - **Season-start transition is data-driven, no manual switch:**
   `seasonStarted = events.some(isCurrent || isPrevious || finished)` off the
   live bootstrap; pre-season routes to the draft builder with the full budget,
@@ -2848,6 +3059,12 @@ it does reach the armband is the captain's fallback term,
 
 ## The subOnRate pin is closed as a points question (2026-09-09)
 
+**Superseded 2026-09-16.** The bench model was replaced as part of the xP
+calibration repair (registry entry 29, the section at the top of this file),
+which was run with calibration as the objective and points as a registered
+guard, at the owner's request. What follows is kept because it is still the
+evidence that bench-model accuracy on its own does not move planner points.
+
 Three fixes for it have now been measured on the deciding instrument and all
 three are worth nothing:
 
@@ -2937,6 +3154,13 @@ Ranked 2026-08-12, evening, after 2025-26 qualified (entry 15), bonus closed
 (entry 16), the defcon denominator landed (entry 17) and the prior-weight sweep
 read out (entry 18).
 
+0. **The xP calibration repair shipped 2026-09-16** (entry 29) and moved
+   several items below: production now carries a previous-season prior all
+   season (item 1's production-path question is answered by construction), the
+   bench model was replaced (item 5), and the replay runs production's regime,
+   so every earlier minutes and prior-weight measurement describes a regime the
+   app no longer runs. Its remaining weaknesses are listed at the end of that
+   section; the largest is that the archive has no injury flags.
 1. **The prior-weight family is PARKED** (entries 18, 20, 21; two
    pre-registered inconclusives). The decay hypothesis was disconfirmed by
    diagnosis: implied K is 1-5 equivalent matches at every m in every season
@@ -3015,24 +3239,17 @@ Known and deliberately unfixed:
 - The counterfactual minutes sentence compares only the DIRECT pair; knock-ons
   can bring in near-zero-minutes players while the sentence says "level".
   (Behaviour change, do it on purpose.)
-- `projectMinutes` divides by the LEAGUE's match count, not the player's own
-  club's, so a club with a game in hand has its players' start rates slightly
-  understated. Real but small, and the replay cannot measure it now that it
-  declares `evidenceMatches` on every player.
+- `projectMinutes` reads each player over his own club's kicked-off matches
+  (`evidence.matchesByClub`), so a game in hand no longer understates a club's
+  start rates.
 - `buildTeamHistory` in `scripts/train-model.mjs` keys clubs by NAME and is
   queried with a season-scoped club INDEX, so two of twenty-four declared
   features are identically zero. Reaches no user (`engineConsumes: []`).
-- **The weeks after the baseline retires are a low-evidence regime** (2026-09-12
-  audit, F2). `baselineIsSuperseded` drops the baseline at three matches per
-  club, which fired on 2026-09-06 and cannot recur before 2027/28. Until players
-  pass 450 minutes of the new season the bonus curve runs on its fallback
-  constants, and the per-90 shrinkage compresses rates unevenly: an elite
-  forward's raw xG/90 of 0.90 reads about 0.53 on four matches (0.80 under the
-  blend) against a 0.35 prior, which can reorder premium and mid-price
-  attackers. It belongs to the prior-weight family the registry parked
-  (entries 18-21). A tapered retirement (fading the baseline over, say, 3 to 10
-  matches) is the candidate, and it needs a registered experiment before
-  2027/28, not a mid-season change.
+- **The weeks after the baseline retired were a low-evidence regime** (2026-09-12
+  audit, F2), and the tapered retirement that audit proposed is what shipped on
+  2026-09-16 in a stronger form: the baseline no longer retires at all, it is a
+  prior whose weight falls as matches accumulate, per stat and position
+  (entry 29).
 
 ## A Free Hit squad is RENTED, and the planner has to hand it back
 

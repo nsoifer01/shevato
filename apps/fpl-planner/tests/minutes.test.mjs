@@ -5,7 +5,8 @@ import {
   projectMinutes,
   positionPriors,
   calibration,
-  p60FromMeanMinutes,
+  p60GivenStart,
+  p60GivenSub,
   availabilityCeiling,
   horizonSteps,
   MINUTES_PARAMS,
@@ -145,16 +146,12 @@ test('a player with no history gets a price-informed prior and low confidence', 
   assert.ok(a.pStart >= MINUTES_PARAMS.noHistoryMinStart - 1e-12);
 });
 
-// A season already under way: `played` finished matches for both clubs, then
-// the gameweek being decided. A player with no minutes in this world has not
-// merely failed to prove anything, he has been left out `played` times.
+// A season already under way: `played` matches for both clubs, this season's
+// totals on the payload and the previous season attached as a prior, then the
+// gameweek being decided. A player with no minutes in this world has not merely
+// failed to prove anything, he has been left out `played` times.
 function seasonInProgress(played) {
-  const fixtures = [];
-  for (let i = 1; i <= played; i++) {
-    fixtures.push({ id: i, event: i, teamH: 1, teamA: 2, finished: true });
-  }
-  fixtures.push({ id: played + 1, event: played + 1, teamH: 1, teamA: 2, finished: false });
-  return { fixtures, gw: played + 1 };
+  return { gameState: inSeasonState(thinLeague(played), { matches: played }), gw: played + 1 };
 }
 
 test('the no-history price prior is untouched before a ball is kicked', () => {
@@ -164,22 +161,28 @@ test('the no-history price prior is untouched before a ball is kicked', () => {
   const pricey = makePlayer({ minutes: 0, nowCost: 90 });
   const m = projectMinutes(pricey, { gameState: gs, gw: 1 });
   assert.equal(m.reason, 'no-history-prior');
-  assert.ok(m.pStart > 0.6, `a marquee signing should still be a likely starter, got ${m.pStart}`);
+  // The top of the price range is a likely starter, not a certain one: held
+  // out, a player with no previous season started 60% of the time at the top
+  // price percentile (MINUTES_PARAMS.noHistoryMaxStart).
+  assert.ok(m.pStart > 0.5, `a marquee signing should still be a likely starter, got ${m.pStart}`);
+  assert.ok(m.pStart <= MINUTES_PARAMS.noHistoryMaxStart + 1e-12);
 });
 
 test('the price prior decays by the matches his club played without him', () => {
   // Price is a pre-season signal. Once his club has played, "still on zero
-  // minutes" is evidence the price cannot see, and the posterior is the Beta
-  // mean for zero starts in m matches.
+  // minutes" is evidence the price cannot see: the posterior is zero starts in
+  // m matches against the price prior worth K = base + perMatch * m matches.
   const pricey = makePlayer({ minutes: 0, nowCost: 90 });
-  const preSeason = projectMinutes(pricey, { gameState: makeGameState(LEAGUE), gw: 1 });
-  const k = MINUTES_PARAMS.noHistoryPriorMatches;
+  const { base, perMatch } = MINUTES_PARAMS.noHistoryCarry;
 
   for (const played of [1, 3, 10, 25]) {
-    const { fixtures, gw } = seasonInProgress(played);
-    const m = projectMinutes(pricey, { gameState: makeGameState(LEAGUE, { fixtures }), gw });
+    const { gameState, gw } = seasonInProgress(played);
+    const m = projectMinutes(pricey, { gameState, gw });
     assert.equal(m.reason, 'no-history-unplayed');
-    const expected = preSeason.pStart * (k / (played + k));
+    const k = base + perMatch * played;
+    // The price prior itself, read against this league's price bands.
+    const mu = projectMinutes(pricey, { gameState: inSeasonState(thinLeague(0), { matches: 0 }), gw: 1 }).pStart;
+    const expected = mu * (k / (played + k));
     assert.ok(
       Math.abs(m.pStart - expected) < 1e-12,
       `after ${played} matches pStart ${m.pStart} should be ${expected}`,
@@ -192,8 +195,8 @@ test('a player unplayed for ten gameweeks is a worse bet than the same player in
   // the two identically, off the same price percentile.
   const pricey = makePlayer({ minutes: 0, nowCost: 90 });
   const august = projectMinutes(pricey, { gameState: makeGameState(LEAGUE), gw: 1 });
-  const { fixtures, gw } = seasonInProgress(10);
-  const october = projectMinutes(pricey, { gameState: makeGameState(LEAGUE, { fixtures }), gw });
+  const { gameState, gw } = seasonInProgress(10);
+  const october = projectMinutes(pricey, { gameState, gw });
 
   assert.ok(october.pStart < august.pStart / 5, `${october.pStart} vs ${august.pStart}`);
   assert.ok(october.pAppear < august.pAppear / 5);
@@ -202,36 +205,38 @@ test('a player unplayed for ten gameweeks is a worse bet than the same player in
 });
 
 test('the decay applies to coming off the bench, not only to starting', () => {
-  // "Zero minutes after m matches" bears on appearing at all, so shrinking only
-  // pStart would leave a player who never gets on the pitch with a bench
-  // appearance rate of 0.22 forever.
+  // "Zero minutes after m matches" bears on appearing at all. A player with no
+  // minutes this season after his club has played takes the measured rate at
+  // which such players come off the bench (MINUTES_PARAMS.subOnUnused), which
+  // falls as the matches he has sat out mount up.
   const pricey = makePlayer({ minutes: 0, nowCost: 90 });
-  const preSeason = projectMinutes(pricey, { gameState: makeGameState(LEAGUE), gw: 1 });
-  const k = MINUTES_PARAMS.noHistoryPriorMatches;
-  const played = 6;
-  const { fixtures, gw } = seasonInProgress(played);
-  const m = projectMinutes(pricey, { gameState: makeGameState(LEAGUE, { fixtures }), gw });
-
-  const w = k / (played + k);
-  const expectedAppear = m.pStart + (1 - m.pStart) * (w * MINUTES_PARAMS.noHistorySubOnRate);
-  assert.ok(Math.abs(m.pAppear - expectedAppear) < 1e-12, `${m.pAppear} vs ${expectedAppear}`);
-
-  // The chance of getting on GIVEN he did not start, which is the quantity the
-  // sub-on rate actually is, has decayed by the same weight.
   const subOn = (p) => (p.pAppear - p.pStart) / (1 - p.pStart);
-  assert.ok(Math.abs(subOn(preSeason) - MINUTES_PARAMS.noHistorySubOnRate) < 1e-12);
-  assert.ok(Math.abs(subOn(m) - w * MINUTES_PARAMS.noHistorySubOnRate) < 1e-12);
-  assert.ok(m.pStart <= m.pAppear + 1e-12 && m.pAppear <= 1);
+  const buckets = MINUTES_PARAMS.subOnUnusedBuckets;
+  let previous = Infinity;
+  for (const played of [1, 4, 8, 15]) {
+    const { gameState, gw } = seasonInProgress(played);
+    const m = projectMinutes(pricey, { gameState, gw });
+    const bucket = buckets.findIndex(([lo, hi]) => played >= lo && played <= hi);
+    const expected = MINUTES_PARAMS.subOnUnused[3][bucket];
+    assert.ok(Math.abs(subOn(m) - expected) < 1e-12, `after ${played}: ${subOn(m)} vs ${expected}`);
+    assert.ok(expected <= previous, 'sitting out more matches never makes an appearance likelier');
+    previous = expected;
+    assert.ok(m.pStart <= m.pAppear + 1e-12 && m.pAppear <= 1);
+  }
 });
 
 test('the decay reads the players own club, not the league', () => {
   // Club 1 has played five matches and club 2 has played none, which is what a
   // run of postponements looks like. The player at the idle club has had no
   // chance to be left out, so nothing about him has been learned yet.
-  const fixtures = [];
-  for (let i = 1; i <= 5; i++) fixtures.push({ id: i, event: i, teamH: 1, teamA: 3, finished: true });
-  fixtures.push({ id: 90, event: 6, teamH: 1, teamA: 2, finished: false });
-  const gs = makeGameState(LEAGUE, { fixtures });
+  const gs = inSeasonState(thinLeague(5), { matches: 5 });
+  gs.teams.set(3, { id: 3 });
+  gs.fixtures = [];
+  for (let i = 1; i <= 5; i++) {
+    gs.fixtures.push({ id: i, event: i, teamH: 1, teamA: 3, started: true, finished: true, finishedProvisional: true, teamHScore: 1, teamAScore: 0 });
+  }
+  gs.fixtures.push({ id: 90, event: 6, teamH: 1, teamA: 2, started: false, finished: false, teamHScore: null, teamAScore: null });
+  for (const p of gs.players.values()) if (p.teamId === 2) { p.starts = 0; p.minutes = 0; }
 
   const atBusyClub = projectMinutes(makePlayer({ teamId: 1, minutes: 0, nowCost: 90 }), { gameState: gs, gw: 6 });
   const atIdleClub = projectMinutes(makePlayer({ teamId: 2, minutes: 0, nowCost: 90 }), { gameState: gs, gw: 6 });
@@ -281,16 +286,27 @@ test('the tier is derived from the score and the two can never disagree', () => 
   }
 });
 
-test('p60 rises with typical starter minutes and is a probability', () => {
-  assert.ok(Math.abs(p60FromMeanMinutes(60) - 0.5) < 1e-12);
-  assert.ok(p60FromMeanMinutes(88) > 0.9);
-  assert.ok(p60FromMeanMinutes(20) < 0.05);
-  let prev = -1;
-  for (let m = 0; m <= 90; m += 5) {
-    const v = p60FromMeanMinutes(m);
-    assert.ok(v >= prev, 'p60 must be non-decreasing in minutes');
-    assert.ok(v >= 0 && v <= 1);
-    prev = v;
+test('p60 given a start is measured by position, and rises with typical starter minutes', () => {
+  // A starting goalkeeper reaches the hour 99.1% of the time in the archive; a
+  // flat logistic on his starter minutes read 0.87-0.90 and cost him an
+  // appearance point and a clean sheet in one start in ten.
+  for (const minutes of [60, 75, 85, 90]) {
+    assert.ok(p60GivenStart(1, minutes) >= 0.98, `keeper at ${minutes}: ${p60GivenStart(1, minutes)}`);
+  }
+  for (const position of [2, 3]) {
+    let prev = -1;
+    for (let m = 40; m <= 90; m += 5) {
+      const v = p60GivenStart(position, m);
+      assert.ok(v >= prev, 'p60 must be non-decreasing in starter minutes');
+      assert.ok(v >= 0 && v <= 1);
+      prev = v;
+    }
+    assert.ok(p60GivenStart(position, 88) > 0.95, 'a ninety-minute regular reaches the hour');
+    assert.ok(p60GivenStart(position, 50) < 0.2, 'a regular early substitution does not');
+  }
+  assert.ok(p60GivenStart(4, 85) > 0.9 && p60GivenStart(4, 85) < 0.95);
+  for (const position of [1, 2, 3, 4]) {
+    assert.ok(p60GivenSub(position) >= 0 && p60GivenSub(position) < 0.1, 'a substitute rarely reaches the hour');
   }
 });
 
@@ -555,4 +571,135 @@ test('the same minutes read differently at different points in the season', () =
   const late = minutesConfidence({ startRate: 195 / 1350, evidenceMatches: 15 });
   assert.ok(late.score > early.score, 'fifteen matches is a bigger sample than three');
   assert.notEqual(early.tier, 'high', 'three matches cannot be conclusive');
+});
+
+// --- the thin-evidence regime (the 2026-09-16 audit) ------------------------
+//
+// A season a few matches old, the previous season attached to every returning
+// player as a prior (normalize.js). Until 2026-09-16 a player who had started
+// every match was pulled 60% of the way to the start rate of every player with
+// a minute to his name, and one who had never come off the bench could not come
+// off it: an ever-present projected 0.64 (forward) to 0.76 (defender) to
+// start and exactly that to appear, while a rotation player with two appearances
+// as a substitute was a certain appearance.
+
+function inSeasonState(players, { matches = 4 } = {}) {
+  const fixtures = [];
+  for (let i = 1; i <= matches; i++) {
+    fixtures.push({
+      id: i, event: i, teamH: 1, teamA: 2, started: true, finished: true, finishedProvisional: true,
+      teamHScore: 1, teamAScore: 0,
+    });
+  }
+  fixtures.push({ id: 100, event: matches + 1, teamH: 1, teamA: 2, started: false, finished: false, teamHScore: null, teamAScore: null });
+  const map = new Map();
+  let id = 1;
+  for (const p of players) map.set(id, { ...p, id: id++ });
+  return {
+    rules: { starters: 11, totalEvents: 38 },
+    teams: new Map([[1, { id: 1 }], [2, { id: 2 }]]),
+    players: map,
+    fixtures,
+    nextEvent: matches + 1,
+    priorSeason: { totalEvents: 38, rates: 'carried' },
+  };
+}
+
+const priorOf = (starts, minutes) => ({ starts, minutes, matches: 38, rates: true });
+
+// A league of regulars, rotation players and substitutes, each with a previous
+// season, so the position pools are not degenerate.
+function thinLeague(matches) {
+  const out = [];
+  for (let t = 1; t <= 2; t++) {
+    for (let pos = 1; pos <= 4; pos++) {
+      out.push(makePlayer({ teamId: t, position: pos, starts: matches, minutes: 90 * matches, prior: priorOf(35, 3100) }));
+      out.push(makePlayer({ teamId: t, position: pos, starts: Math.floor(matches / 2), minutes: 80 * Math.floor(matches / 2) + 20 * Math.ceil(matches / 2), prior: priorOf(18, 1800) }));
+      out.push(makePlayer({ teamId: t, position: pos, starts: 0, minutes: 20 * matches, prior: priorOf(4, 700) }));
+      out.push(makePlayer({ teamId: t, position: pos, starts: 0, minutes: 0, prior: null, nowCost: 40 }));
+    }
+  }
+  return out;
+}
+
+test('a player who has started every match projects as a likely starter at every position', () => {
+  for (const matches of [2, 4, 8]) {
+    const gs = inSeasonState(thinLeague(matches), { matches });
+    for (const position of [1, 2, 3, 4]) {
+      const nailed = makePlayer({ position, starts: matches, minutes: 90 * matches, prior: priorOf(34, 3000) });
+      const m = projectMinutes(nailed, { gameState: gs, gw: matches + 1 });
+      assert.ok(m.pStart >= 0.88, `position ${position} after ${matches}: pStart ${m.pStart.toFixed(3)}`);
+      assert.ok(m.xMins >= 75, `position ${position} after ${matches}: xMins ${m.xMins.toFixed(1)}`);
+    }
+  }
+});
+
+test('starting every match counts for a newcomer too, without a previous season', () => {
+  const gs = inSeasonState(thinLeague(4), { matches: 4 });
+  const newcomer = makePlayer({ position: 2, starts: 4, minutes: 360, prior: null, nowCost: 55 });
+  const m = projectMinutes(newcomer, { gameState: gs, gw: 5 });
+  assert.ok(m.pStart >= 0.8, `pStart ${m.pStart}`);
+  const { base, perMatch } = MINUTES_PARAMS.noHistoryCarry;
+  assert.ok(m.pStart > (4 + (base + perMatch * 4) * MINUTES_PARAMS.noHistoryMinStart) / (4 + base + perMatch * 4) - 1e-12,
+    'four starts in four outweigh even the lowest price prior');
+});
+
+test('the start probability is the documented posterior, exactly', () => {
+  const gs = inSeasonState(thinLeague(4), { matches: 4 });
+  const player = makePlayer({ position: 3, starts: 3, minutes: 270, prior: priorOf(20, 1900) });
+  const m = projectMinutes(player, { gameState: gs, gw: 5 });
+  // Last season's pooled midfield start rate over every returning player.
+  let starts = 0;
+  let matches = 0;
+  for (const p of gs.players.values()) {
+    if (p.position !== 3 || !p.prior || !(p.prior.minutes > 0)) continue;
+    starts += p.prior.starts;
+    matches += 38;
+  }
+  const lastRate = starts / matches;
+  const k0 = MINUTES_PARAMS.startPriorSeasonShrink;
+  const raw = (20 + k0 * lastRate) / (38 + k0);
+  const { a, b } = MINUTES_PARAMS.startPriorCalibration;
+  const mu = 1 / (1 + Math.exp(-(a + b * Math.log(raw / (1 - raw)))));
+  const K = MINUTES_PARAMS.startCarry.base + MINUTES_PARAMS.startCarry.perMatch * 4;
+  assert.ok(Math.abs(m.pStart - (3 + K * mu) / (4 + K)) < 1e-12, `${m.pStart} vs ${(3 + K * mu) / (4 + K)}`);
+});
+
+test('no bench opportunities is not evidence that a player never comes off the bench', () => {
+  const gs = inSeasonState(thinLeague(4), { matches: 4 });
+  for (const position of [2, 3, 4]) {
+    const nailed = makePlayer({ position, starts: 4, minutes: 360, prior: priorOf(34, 3000) });
+    const m = projectMinutes(nailed, { gameState: gs, gw: 5 });
+    assert.ok(m.subOnRate > 0.1, `position ${position}: sub-on ${m.subOnRate}`);
+    assert.ok(m.pAppear > m.pStart, 'he can still appear when he does not start');
+  }
+});
+
+test('a nailed starter is never systematically less likely to appear than a rotation player', () => {
+  // The inversion the audit found: Saka 0.697 to appear, Mac Allister 1.000.
+  // Swept over positions, season lengths and previous seasons, the player who
+  // has started every match must appear at least as often as one who has
+  // started half and come off the bench in the rest.
+  for (const matches of [1, 2, 3, 4, 6, 10, 20]) {
+    const gs = inSeasonState(thinLeague(matches), { matches });
+    for (const position of [1, 2, 3, 4]) {
+      for (const [lastStarts, lastMinutes] of [[35, 3100], [20, 2000], [8, 900], [null, null]]) {
+        const prior = lastStarts === null ? null : priorOf(lastStarts, lastMinutes);
+        const nailed = projectMinutes(makePlayer({ position, starts: matches, minutes: 90 * matches, prior }), { gameState: gs, gw: matches + 1 });
+        const half = Math.floor(matches / 2);
+        const rotation = projectMinutes(makePlayer({ position, starts: half, minutes: 85 * half + 25 * (matches - half), prior }), { gameState: gs, gw: matches + 1 });
+        assert.ok(nailed.pAppear >= rotation.pAppear - 0.02,
+          `position ${position}, ${matches} matches, prior ${lastStarts}: nailed ${nailed.pAppear.toFixed(3)} < rotation ${rotation.pAppear.toFixed(3)}`);
+        assert.ok(nailed.pStart > rotation.pStart);
+      }
+    }
+  }
+});
+
+test('a starting goalkeeper almost always reaches the hour', () => {
+  const gs = inSeasonState(thinLeague(4), { matches: 4 });
+  const keeper = makePlayer({ position: 1, starts: 4, minutes: 360, prior: priorOf(37, 3330) });
+  const m = projectMinutes(keeper, { gameState: gs, gw: 5 });
+  assert.ok(m.p60GivenStart >= 0.98);
+  assert.ok(m.p60 / m.pStart >= 0.98 - 1e-9);
 });

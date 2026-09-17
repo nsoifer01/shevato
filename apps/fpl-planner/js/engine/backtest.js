@@ -44,6 +44,9 @@ import { chooseCaptain } from './captain.js';
 import { buildPlan, PLANNER_PARAMS } from './planner.js';
 import { fixturesForTeam } from './fixtures.js';
 import { normalizeName, resolveSeasonPair } from './player-identity.js';
+import { buildGameState } from './normalize.js';
+import { OPENING_BASELINE_KIND, SNAPSHOT_VERSION } from './baseline.js';
+import { openingBaselineApplies, resolveGameState } from './world.js';
 
 // Re-exported because the availability join below is built on it and
 // tests/availability.test.mjs pins its behaviour. There is one implementation,
@@ -1248,6 +1251,342 @@ export function gameStateAt(dataset, gw, { rules, accumulator, featureHook = nul
 }
 
 // ---------------------------------------------------------------------------
+// THE PRODUCTION EVIDENCE REGIME
+//
+// `gameStateAt` above assembles a GameState directly, under the replay's own
+// evidence rule: half of the previous season seeded into every total, for the
+// whole season. Production has never run that rule. At each deadline the app
+// reads `bootstrap-static` and `fixtures`, builds a GameState, and lets
+// `engine/world.js` decide which previous-season record (the shipped opening
+// baseline, or a snapshot the browser kept) stands in. Every experiment in
+// experiments/registry.md before 2026-09-16 was measured in the replay's
+// regime, and the xP audit of that day found production in a state no replay
+// had produced: previous-season evidence gone after three club matches, a
+// nailed starter projected to play 64% to 76% of the time.
+//
+// So this regime rebuilds the two PAYLOADS production would have fetched at
+// the deadline, in FPL's own field names, and hands them to the same
+// `buildGameState` and `resolveGameState` the page calls. The previous season
+// reaches it exactly as it reaches production: as an opening-baseline asset,
+// captured before this season's first deadline, keyed by `code`.
+//
+//   gameweek 1   the pre-season payload: every registered player carrying LAST
+//                season's totals, nothing played. FPL clears the totals only
+//                after the GW1 deadline, so a GW1 plan is always built on it.
+//   gameweek 2+  this season's totals over the matches before the deadline,
+//                with the previous-season asset offered to the resolver.
+//
+// What the archive cannot supply, stated rather than faked: injury status and
+// chance of playing (every player is `a` unless an availability index is
+// passed), set-piece orders (null), FPL's team strength tiers (a neutral 3),
+// and price-change predictions. Everything the projections read from a
+// player's season totals is reproduced field for field.
+// ---------------------------------------------------------------------------
+
+export const EVIDENCE_REGIMES = Object.freeze({
+  // What the app does. The default for every instrument that decides.
+  PRODUCTION: 'production',
+  // The replay's historical rule, kept because older registry entries were
+  // measured under it and a re-measurement has to be able to name it.
+  SEEDED: 'seeded',
+});
+
+// '2024-25' -> '2024_25', the directory FPL's static content path ends in and
+// the only place a live payload names its season (rules.parseSeasonLabel).
+function staticSeasonPath(season) {
+  const m = /^(\d{4})-(\d{2})$/.exec(String(season || ''));
+  return m ? `${m[1]}_${m[2]}` : null;
+}
+
+const round2 = (v) => Math.round(v * 100) / 100;
+
+// Totals in FPL's element field names. Numbers where FPL sends numbers, and the
+// expected_* totals as the strings FPL sends, so normalize.js parses them on
+// the same path it parses the live payload on.
+function elementTotals(t) {
+  return {
+    minutes: t.minutes,
+    starts: t.starts,
+    total_points: t.totalPoints,
+    bonus: t.bonus,
+    bps: t.bps,
+    saves: t.saves,
+    goals_scored: t.goalsScored,
+    assists: t.assists,
+    clean_sheets: t.cleanSheets,
+    goals_conceded: t.goalsConceded,
+    yellow_cards: t.yellowCards,
+    red_cards: t.redCards,
+    own_goals: t.ownGoals,
+    penalties_saved: t.penaltiesSaved,
+    penalties_missed: t.penaltiesMissed,
+    clearances_blocks_interceptions: t.cbit,
+    recoveries: t.recoveries,
+    tackles: t.tackles,
+    expected_goals: round2(t.xG).toFixed(2),
+    expected_assists: round2(t.xA).toFixed(2),
+    expected_goal_involvements: round2(t.xG + t.xA).toFixed(2),
+    expected_goals_conceded: round2(t.xGC).toFixed(2),
+  };
+}
+
+/**
+ * The previous season's end totals keyed by the CURRENT season's element id,
+ * which is what the gameweek 1 (pre-season) payload carries. Joined on `code`
+ * through the same resolver the seeded regime uses.
+ */
+export function preseasonTotalsFor(dataset, priorDataset) {
+  const { totals } = priorTotalsByPlayer(dataset, priorDataset, 1);
+  return totals;
+}
+
+/**
+ * The previous season as production receives it: an opening-baseline asset.
+ *
+ * Same shape `snapshotFrom` writes and `scripts/build-opening-baseline.mjs`
+ * ships, pinned to the replayed season (`appliesToSeason`, `firstDeadline`) so
+ * `validateOpeningBaseline` accepts it for exactly that season.
+ *
+ * WHO IS IN IT. Production builds the asset from the NEW season's pre-season
+ * payload, which lists the players registered for the new season carrying last
+ * season's totals. A player who left the league is not in that payload and so
+ * not in the asset, and the aggregate the validator checks counts the same
+ * pool. The replay does the same: one row per player of the replayed season
+ * with previous-season minutes (joined on `code`), keyed by his current element
+ * id, and the aggregate over the replayed season's players.
+ *
+ * `xm` and `dm` are REPLAY-ONLY coverage annotations: the minutes the xG/xA and
+ * defensive-contribution numerators actually cover, emitted only where the
+ * archive's columns arrived part way through a season (2022-23's expected_*
+ * from gameweek 16; defensive contribution before 2025-26). A live payload's
+ * totals always cover their own minutes, so a shipped asset never carries them.
+ */
+export function priorSeasonAsset(dataset, priorDataset, { firstDeadline = null } = {}) {
+  if (!priorDataset) return null;
+  const label = staticSeasonPath(dataset.season);
+  const appliesToSeason = label ? label.replace('_', '/') : null;
+  const priorByCurrentId = preseasonTotalsFor(dataset, priorDataset);
+
+  const totals = {};
+  let active = 0;
+  let starts = 0;
+  let minutes = 0;
+  for (const p of dataset.players.values()) {
+    const t = priorByCurrentId.get(p.id);
+    if (!t || (!t.minutes && !t.starts)) continue;
+    active++;
+    starts += t.starts;
+    minutes += t.minutes;
+    const row = { s: t.starts, m: t.minutes, c: p.code ?? null };
+    const fields = {
+      xg: t.xG, xa: t.xA, xgc: t.xGC, bps: t.bps, bo: t.bonus, sv: t.saves,
+      gs: t.goalsScored, as: t.assists, cs: t.cleanSheets, gc: t.goalsConceded,
+      yc: t.yellowCards, rc: t.redCards, ps: t.penaltiesSaved, og: t.ownGoals,
+      pm: t.penaltiesMissed, cbit: t.cbit, rec: t.recoveries, tck: t.tackles,
+    };
+    for (const [key, v] of Object.entries(fields)) if (Number.isFinite(v) && v !== 0) row[key] = round2(v);
+    if (Math.abs(t.xMinutes - t.minutes) > 1e-9) row.xm = t.xMinutes;
+    if (Math.abs(t.dcMinutes - t.minutes) > 1e-9) row.dm = t.dcMinutes;
+    totals[p.id] = row;
+  }
+
+  return {
+    kind: OPENING_BASELINE_KIND,
+    version: SNAPSHOT_VERSION,
+    appliesToSeason,
+    coversSeason: priorDataset.season ? priorDataset.season.replace('-', '/') : null,
+    firstDeadline,
+    capturedAt: firstDeadline,
+    totalEvents: priorDataset.maxGw,
+    seasonLabel: appliesToSeason,
+    aggregate: { pool: dataset.players.size, active, starts, minutes },
+    totals,
+  };
+}
+
+/** The deadline of every gameweek: its earliest kickoff, as the replay uses. */
+export function eventDeadlines(dataset) {
+  const out = new Map();
+  for (let id = 1; id <= dataset.maxGw; id++) {
+    let first = null;
+    for (const f of dataset.fixtures) {
+      if (f.event !== id || !f.kickoff) continue;
+      if (first === null || Date.parse(f.kickoff) < Date.parse(first)) first = f.kickoff;
+    }
+    out.set(id, first);
+  }
+  return out;
+}
+
+/**
+ * The `bootstrap-static` and `fixtures` payloads production would have read at
+ * the deadline of `gw`, rebuilt from the archive.
+ *
+ * `accumulator` must carry THIS season only (no prior seeding): production's
+ * totals are this season's. `preseasonTotals` is the previous season's end
+ * totals keyed by current element id, used for the gameweek 1 payload.
+ */
+export function deadlinePayload(dataset, gw, { rules, accumulator, preseasonTotals = null, availability = null }) {
+  if (accumulator.absorbedUpTo >= gw) {
+    throw new Error(
+      `backtest: accumulator has absorbed gameweek ${accumulator.absorbedUpTo} but a payload for gameweek ${gw} was requested. `
+      + 'That would feed post deadline outcomes into the plan.',
+    );
+  }
+  const preseason = gw <= 1;
+  const deadlines = eventDeadlines(dataset);
+
+  const elements = [];
+  for (const p of dataset.players.values()) {
+    const nowCost = priceAt(p, gw);
+    if (!nowCost) continue;
+    const t = preseason
+      ? (preseasonTotals && preseasonTotals.get(p.id)) || EMPTY_TOTALS()
+      : accumulator.totalsFor(p.id) || EMPTY_TOTALS();
+    const flag = availability ? availability.stateFor(p.id, gw) : null;
+    elements.push({
+      id: p.id,
+      code: p.code,
+      web_name: p.name,
+      first_name: '',
+      second_name: p.name,
+      team: p.teamId,
+      element_type: p.position,
+      now_cost: nowCost,
+      cost_change_start: 0,
+      cost_change_event: 0,
+      status: flag ? flag.status : 'a',
+      chance_of_playing_next_round: flag && flag.chanceNext !== null && flag.chanceNext !== undefined
+        ? Math.round(flag.chanceNext * 100)
+        : null,
+      news: flag ? flag.news : '',
+      news_added: flag ? flag.newsAdded : null,
+      selected_by_percent: String(ownershipAt(p, gw) / 100000),
+      penalties_order: null,
+      direct_freekicks_order: null,
+      corners_and_indirect_freekicks_order: null,
+      ...elementTotals(t),
+    });
+  }
+
+  const events = [];
+  for (let id = 1; id <= dataset.maxGw; id++) {
+    const deadline = deadlines.get(id);
+    events.push({
+      id,
+      name: `Gameweek ${id}`,
+      deadline_time: deadline,
+      deadline_time_epoch: deadline ? Math.floor(Date.parse(deadline) / 1000) : null,
+      finished: id < gw,
+      data_checked: id < gw,
+      is_current: id === gw - 1,
+      is_next: id === gw,
+      is_previous: id === gw - 2,
+      average_entry_score: null,
+      highest_score: null,
+    });
+  }
+
+  const fixtures = dataset.fixtures.map(f => {
+    const played = f.event < gw;
+    return {
+      id: f.id,
+      code: f.code,
+      event: f.event,
+      kickoff_time: f.kickoff,
+      team_h: f.teamH,
+      team_a: f.teamA,
+      team_h_difficulty: f.teamHDifficulty,
+      team_a_difficulty: f.teamADifficulty,
+      finished: played,
+      finished_provisional: played,
+      started: played,
+      team_h_score: played ? f.teamHScore : null,
+      team_a_score: played ? f.teamAScore : null,
+    };
+  });
+
+  const seasonPath = staticSeasonPath(dataset.season);
+  const positions = Object.values(rules.positions || {});
+  const bootstrap = {
+    events,
+    teams: [...dataset.teams.values()].map(t => ({
+      id: t.id,
+      code: t.code,
+      name: t.name,
+      short_name: t.shortName,
+      strength_overall_home: t.strengthOverallHome,
+      strength_overall_away: t.strengthOverallAway,
+    })),
+    element_types: positions.map(pos => ({
+      id: pos.id,
+      singular_name: pos.name,
+      singular_name_short: pos.short,
+      squad_select: pos.squadSelect,
+      squad_min_play: pos.minPlay,
+      squad_max_play: pos.maxPlay,
+    })),
+    game_settings: {
+      squad_squadsize: rules.squadSize,
+      squad_squadplay: rules.starters,
+      squad_total_spend: rules.budgetTenths,
+      squad_team_limit: rules.clubLimit,
+      transfers_sell_on_fee: rules.sellFeeRate,
+      max_extra_free_transfers: rules.maxFreeTransfers - 1,
+      transfers_cap: rules.transfersCap,
+    },
+    game_config: {
+      settings: seasonPath
+        ? { static_content_url: `https://fantasy.premierleague.com/gcs/plfpl-prod-static-content/plfpl-production/${seasonPath}/` }
+        : {},
+      scoring: rules.scoring,
+    },
+    chips: [],
+    elements,
+  };
+  return { bootstrap, fixtures };
+}
+
+/**
+ * A GameState exactly as production would have resolved it at this deadline.
+ *
+ * `asset` is the previous season's opening-baseline asset (or null when the
+ * season has no downloaded predecessor). It is offered to the resolver only
+ * when production would have fetched it (`openingBaselineApplies`), and the
+ * resolver alone decides whether it stands in.
+ */
+export function productionGameStateAt(dataset, gw, {
+  rules, accumulator, preseasonTotals = null, asset = null, availability = null, featureHook = null,
+}) {
+  const { bootstrap, fixtures } = deadlinePayload(dataset, gw, { rules, accumulator, preseasonTotals, availability });
+  const fetchedAt = new Date(0).toISOString();
+  const first = buildGameState(bootstrap, fixtures, { fetchedAt });
+  const shipped = asset && openingBaselineApplies(first) ? asset : null;
+  const { gameState, resolution } = resolveGameState(first, { bootstrap, fixtures, fetchedAt, kept: null, shipped });
+  // The historical rules object (chip catalogue, transfer bank, era flags) is
+  // what the season was played under; the rebuilt payload only had to carry
+  // enough of it for the resolver's season and calendar checks.
+  gameState.rules = { ...rules, season: gameState.rules.season, totalEvents: gameState.rules.totalEvents };
+  // Archive coverage corrections (2022-23 expected_* from gameweek 16,
+  // defensive contribution from 2025-26) are properties of the archive, not of
+  // the regime, so they ride along exactly as `gameStateAt` carries them.
+  if (gw > 1) {
+    for (const player of gameState.players.values()) {
+      const t = accumulator.totalsFor(player.id);
+      if (!t) continue;
+      if (Math.abs(t.xMinutes - t.minutes) > 1e-9) player.xMinutes = t.xMinutes;
+      if (Math.abs(t.dcMinutes - t.minutes) > 1e-9) player.dcMinutes = t.dcMinutes;
+    }
+  }
+  if (featureHook) {
+    for (const [id, player] of gameState.players) {
+      gameState.players.set(id, featureHook(player, { gw, dataset }) || player);
+    }
+  }
+  return { gameState, resolution, bootstrap, fixtures };
+}
+
+// ---------------------------------------------------------------------------
 // Squad bookkeeping
 // ---------------------------------------------------------------------------
 
@@ -1660,9 +1999,37 @@ export async function replaySeason({ dataset, season, strategy, rules, opts = {}
 
   const gwFrom = opts.gwFrom || 1;
   const gwTo = Math.min(opts.gwTo || dataset.maxGw, dataset.maxGw);
-  const priorWeight = opts.priorSeasonWeight === undefined ? PRIOR_SEASON_WEIGHT : opts.priorSeasonWeight;
-  const accumulator = createAccumulator(dataset, { priorDataset: opts.priorDataset || null, priorWeight });
+  // WHICH EVIDENCE REGIME. `production` rebuilds the payloads the app reads at
+  // each deadline and resolves them through engine/world.js, so the previous
+  // season reaches the projections exactly as it reaches the page. `seeded` is
+  // the replay's historical rule (half of the previous season in every total,
+  // never retired), kept so entries measured under it can be re-measured. The
+  // scripts that decide (experiment.mjs, backtest.mjs) default to production.
+  const regime = opts.evidenceRegime || EVIDENCE_REGIMES.SEEDED;
+  if (!Object.values(EVIDENCE_REGIMES).includes(regime)) {
+    throw new Error(`backtest: unknown evidence regime "${regime}"`);
+  }
+  const production = regime === EVIDENCE_REGIMES.PRODUCTION;
+  // A seeding weight has no meaning when nothing is seeded. Ignoring it would
+  // turn every arm of a weight sweep into the same replay and report a clean
+  // null, so it is refused instead.
+  if (production && opts.priorSeasonWeight !== undefined) {
+    throw new Error('backtest: priorSeasonWeight only exists in the seeded evidence regime; '
+      + 'set evidenceRegime: "seeded" to measure it');
+  }
+  const priorWeight = production
+    ? 0
+    : (opts.priorSeasonWeight === undefined ? PRIOR_SEASON_WEIGHT : opts.priorSeasonWeight);
+  const accumulator = createAccumulator(dataset, {
+    priorDataset: production ? null : (opts.priorDataset || null),
+    priorWeight,
+  });
   for (let gw = 1; gw < gwFrom; gw++) accumulator.absorb(gw);
+  const priorDataset = opts.priorDataset || null;
+  const preseasonTotals = production && priorDataset ? preseasonTotalsFor(dataset, priorDataset) : null;
+  const asset = production && priorDataset
+    ? priorSeasonAsset(dataset, priorDataset, { firstDeadline: eventDeadlines(dataset).get(1) })
+    : null;
 
   // Availability, in order of preference: an index the caller built, records
   // the caller supplied, or the downloaded season file when the environment
@@ -1690,9 +2057,13 @@ export async function replaySeason({ dataset, season, strategy, rules, opts = {}
   let modelVersion = null;
 
   for (let gw = gwFrom; gw <= gwTo; gw++) {
-    const gameState = gameStateAt(dataset, gw, {
-      rules, accumulator, featureHook: opts.featureHook || null, availability,
-    });
+    const gameState = production
+      ? productionGameStateAt(dataset, gw, {
+        rules, accumulator, preseasonTotals, asset, availability, featureHook: opts.featureHook || null,
+      }).gameState
+      : gameStateAt(dataset, gw, {
+        rules, accumulator, featureHook: opts.featureHook || null, availability,
+      });
     const squadState = toSquadState(squad, { gw, gameState, rules, label: strat.label });
 
     let plan;
@@ -1761,7 +2132,8 @@ export async function replaySeason({ dataset, season, strategy, rules, opts = {}
       risk: opts.risk || 'balanced',
       poolSize: opts.poolSize || DEFAULT_POOL_SIZE,
       priorSeason: opts.priorDataset ? opts.priorDataset.season : null,
-      priorSeasonWeight: priorWeight,
+      evidenceRegime: regime,
+      priorSeasonWeight: production ? null : priorWeight,
       // Gameweeks whose starts column was absent from the archive and had to be
       // reconstructed. Non-null means the season is 2022-23, where FPL added
       // the column at gameweek 16.

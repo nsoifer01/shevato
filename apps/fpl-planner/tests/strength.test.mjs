@@ -48,7 +48,9 @@ function makeGameState({ fixtures = [], nextEvent = 1, shapes = TEAM_SHAPES } = 
     });
     const minutes = s.minutes === undefined ? FULL_SEASON_MINUTES : s.minutes;
     // Spread the club total over 20 players so the aggregation has something
-    // realistic to sum, and give each the club's per-90 conceding rate.
+    // realistic to sum, and give each the club's per-90 conceding rate. Starts
+    // follow the minutes, so the payload reads as the complete previous season
+    // a pre-season bootstrap is.
     const share = minutes / 20;
     const matches = minutes / (11 * 90);
     for (let i = 0; i < 20; i++) {
@@ -57,6 +59,7 @@ function makeGameState({ fixtures = [], nextEvent = 1, shapes = TEAM_SHAPES } = 
         teamId: s.id,
         position: (i % 4) + 1,
         minutes: share,
+        starts: Math.round(share / 95),
         xG: (s.xg * matches) / 20,
         xGC: (s.xgc * share) / 90,
       });
@@ -106,17 +109,19 @@ test('pre-season ratings are centred on 1 and ordered by underlying quality', ()
   assert.equal(s.source, 'prior');
   assert.equal(s.matchesUsed, 0);
 
+  // Centred on an ARITHMETIC mean of one, the scale the construction was fitted
+  // on (scripts/calibration/calibrate-strength.mjs).
   const attacks = [...s.teams.values()].map(t => t.attack);
   const defences = [...s.teams.values()].map(t => t.defence);
-  const geo = (v) => Math.exp(v.reduce((a, b) => a + Math.log(b), 0) / v.length);
-  assert.ok(Math.abs(geo(attacks) - 1) < 1e-9, `attack geomean ${geo(attacks)}`);
-  assert.ok(Math.abs(geo(defences) - 1) < 1e-9, `defence geomean ${geo(defences)}`);
+  const mean = (v) => v.reduce((a, b) => a + b, 0) / v.length;
+  assert.ok(Math.abs(mean(attacks) - 1) < 1e-9, `attack mean ${mean(attacks)}`);
+  assert.ok(Math.abs(mean(defences) - 1) < 1e-9, `defence mean ${mean(defences)}`);
 
   assert.ok(s.teams.get(1).attack > s.teams.get(17).attack);
   assert.ok(s.teams.get(1).defence < s.teams.get(17).defence);
 });
 
-test('promoted clubs are shrunk toward the promoted prior, not treated as average or as zero', () => {
+test('squads without Premier League minutes fall to the no-history default, not to average or zero', () => {
   const s = buildStrength(makeGameState(), { asOfGw: 1 });
   for (const id of [18, 19, 20]) {
     const t = s.teams.get(id);
@@ -221,4 +226,39 @@ test('league mean goals stays in a sane range in both regimes', () => {
   }
   const fitted = buildStrength(makeGameState({ fixtures: played, nextEvent: 5 }), { asOfGw: 5 });
   assert.ok(fitted.leagueMeanGoals > 1.0 && fitted.leagueMeanGoals < 2.2, `${fitted.leagueMeanGoals}`);
+});
+
+// --- the construction of 2026-09-16 ---------------------------------------
+
+test('four matches of finishing luck do not overturn a season of expected goals', () => {
+  // The audit's shape: a club whose squad created little last season scores
+  // freely in four matches. Goals alone would make it the best attack in the
+  // league; the fitted construction lets goals carry about 2% of the rating
+  // at this point, so it stays where its expected goals put it.
+  const played = [];
+  let id = 1;
+  for (let gw = 1; gw <= 4; gw++) {
+    played.push(fixture(id++, gw, 17, 20 - gw, 4, 0));
+    for (let t = 1; t <= 16; t += 2) played.push(fixture(id++, gw, t, t + 1, 1, 1));
+  }
+  const s = buildStrength(makeGameState({ fixtures: played, nextEvent: 5 }), { asOfGw: 5 });
+  const attacks = [...s.teams.values()].map(t => t.attack).sort((a, b) => b - a);
+  assert.ok(s.teams.get(17).attack < attacks[4],
+    `club 17 attack ${s.teams.get(17).attack.toFixed(3)} rose into the top five on four blowouts`);
+  assert.ok(s.teams.get(1).attack > s.teams.get(17).attack, 'the best squad by xG is still the better attack');
+});
+
+test('last season\'s squad follows the players to their current clubs', () => {
+  // The prior is built from the players a club has NOW. Moving the best
+  // attacking squad's players to a mid-table club moves the attack with them.
+  const base = makeGameState();
+  const moved = makeGameState();
+  for (const p of moved.players.values()) {
+    if (p.teamId === 1) p.teamId = 10;
+    else if (p.teamId === 10) p.teamId = 1;
+  }
+  const before = buildStrength(base, { asOfGw: 1 });
+  const after = buildStrength(moved, { asOfGw: 1 });
+  assert.ok(after.teams.get(10).attack > before.teams.get(10).attack);
+  assert.ok(after.teams.get(1).attack < before.teams.get(1).attack);
 });

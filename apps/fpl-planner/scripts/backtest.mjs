@@ -35,7 +35,9 @@ import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import { buildRules } from '../js/engine/rules.js';
-import { buildDataset, replaySeason, compareStrategies, STRATEGIES, BACKTEST_VERSION } from '../js/engine/backtest.js';
+import {
+  buildDataset, replaySeason, compareStrategies, STRATEGIES, BACKTEST_VERSION, EVIDENCE_REGIMES,
+} from '../js/engine/backtest.js';
 import { PLANNER_PARAMS } from '../js/engine/planner.js';
 import { DATA_DIR, seasonPath, identityPath } from './fetch-history.mjs';
 import { buildIdentityIndex } from '../js/engine/player-identity.js';
@@ -195,6 +197,7 @@ export async function runBacktest({
   rules = null,
   onProgress = null,
   modelPath = null,
+  evidenceRegime = EVIDENCE_REGIMES.PRODUCTION,
 } = {}) {
   const R = rules || loadRules(season);
   const dataset = loadSeason(season);
@@ -236,6 +239,7 @@ export async function runBacktest({
     seed,
     priorDataset,
     model,
+    evidenceRegime,
     ...(poolSize ? { poolSize } : {}),
   };
 
@@ -345,6 +349,7 @@ function parseArgs(argv) {
     poolSize: undefined,
     strategies: DEFAULT_STRATEGIES,
     usePrior: true,
+    evidenceRegime: EVIDENCE_REGIMES.PRODUCTION,
     outDir: DEFAULT_REPORT_DIR,
   };
   for (let i = 0; i < argv.length; i++) {
@@ -358,6 +363,7 @@ function parseArgs(argv) {
     else if (arg === '--pool-size') out.poolSize = Number(argv[++i]);
     else if (arg === '--strategies') out.strategies = argv[++i].split(',').map(s => s.trim()).filter(Boolean);
     else if (arg === '--no-prior') out.usePrior = false;
+    else if (arg === '--regime') out.evidenceRegime = argv[++i];
     else if (arg === '--out') out.outDir = path.resolve(argv[++i]);
     else if (arg === '--model') out.modelPath = path.resolve(argv[++i]);
     else throw new Error(`Unknown argument "${arg}". Known seasons: ${KNOWN_SEASONS.join(', ')}`);
@@ -373,7 +379,7 @@ async function main(argv) {
 
   console.log(`Season:     ${args.season}   (from ${DATA_DIR})`);
   console.log(`Window:     gameweeks ${args.gwFrom} to ${args.gwTo || 'the end of the season'}`);
-  console.log(`Settings:   horizon ${args.horizon}, risk ${args.risk}, seed ${args.seed}`);
+  console.log(`Settings:   horizon ${args.horizon}, risk ${args.risk}, seed ${args.seed}, evidence regime ${args.evidenceRegime}`);
   console.log(`Strategies: ${args.strategies.join(', ')}`);
   console.log(`Model:      ${args.modelPath ? path.basename(args.modelPath) : 'none (analytic projections, the leakage-free default)'}`);
   console.log('');

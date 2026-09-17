@@ -28,6 +28,10 @@
 //
 //   node apps/fpl-planner/scripts/experiment.mjs --config apps/fpl-planner/experiments/configs/prior-weight.mjs
 export default {
+  // Measured in the seeded regime (entries 18 and 21), which is the only one
+  // that has a seeding weight. Production carries the previous season as a
+  // prior instead (entry 29), and the replay refuses a weight there.
+  evidenceRegime: 'seeded',
   name: 'prior season weight',
   // 2022-23 has no downloadable predecessor: the treatment cannot operate
   // there, its five windows are deterministic zeros, and they enter the run as

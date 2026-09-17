@@ -18,16 +18,25 @@
 //
 //   1. every payload is SCORED for completeness before it is believed;
 //   2. the last payload that scored well is KEPT as a baseline;
-//   3. a payload that scores badly does not replace the baseline, and the
-//      baseline is used for the season totals until this season has enough
-//      matches of its own to stand on.
+//   3. a payload that scores badly does not replace the baseline.
 //
-// A legitimate rollover still works: once clubs have actually played, the
-// current season's totals are read against the matches they cover and the
-// stale baseline is retired by `baselineIsSuperseded`. Nothing is frozen
-// forever because one bad payload arrived.
+// WHAT THE BASELINE IS FOR, since 2026-09-16. It is the previous season, and it
+// is attached to every player as his prior (`player.prior`, normalize.js) for
+// the WHOLE season, never added into this season's totals. The minutes and
+// rate models read this season's evidence with last season carried in at a
+// measured weight that fades as matches accumulate (minutes.js,
+// projections.js). Until then the baseline stood in for the totals and was
+// retired outright at three matches per club, which is what left every nailed
+// starter projected to start 64% to 76% of the time from gameweek 4: three
+// matches of evidence against a six-match pull toward the position average.
+//
+// `baselineIsSuperseded` still exists and now decides one thing only: whether
+// the baseline is reported as STANDING IN (`baselineSource: 'baseline'`, an
+// incomplete payload whose clubs have not yet played three matches), which
+// caps readiness below chips. Nothing is frozen forever because one bad payload
+// arrived, and nothing is thrown away when a good one does.
 
-import { matchesPlayedByClub } from './lifecycle.js';
+import { matchesPlayedByClub, matchesKickedOffByClub } from './lifecycle.js';
 
 /** localStorage key. Versioned so a shape change cannot be misread. */
 export const BASELINE_KEY = 'fplPlannerSeasonBaseline.v1';
@@ -183,12 +192,12 @@ export function snapshotFrom(gameState, { capturedAt = new Date().toISOString(),
 }
 
 /**
- * Has this season overtaken the baseline?
+ * Has this season overtaken the baseline as the thing projections stand on?
  *
  * The baseline describes a COMPLETED season. Once every club has played enough
- * of the new one, the new totals are the better evidence and the baseline must
- * step aside - otherwise one bad August payload would pin the app to last
- * season for good.
+ * of the new one it stops standing in for this season's totals (readiness no
+ * longer reports `baseline_substituted`), and stays attached as every player's
+ * prior, which the models weigh against this season's matches.
  */
 export function baselineIsSuperseded(gameState, { minMatches = 3 } = {}) {
   const played = matchesPlayedByClub(gameState);
@@ -199,38 +208,41 @@ export function baselineIsSuperseded(gameState, { minMatches = 3 } = {}) {
 }
 
 /**
- * Decide which totals the minutes model should read, and say so out loud.
+ * Decide which previous-season record the projections read, and whether it is
+ * also standing in for a season too young to stand on its own.
  *
- * Returns `{ source, origin, totals, message, assessment, rejected }` where
- * `source` is one of:
- *   'current'   - this payload is a credible season in its own right
- *   'baseline'  - this payload is not, and a baseline is standing in
+ * Returns `{ source, origin, totals, snapshot, rates, assessment, rejected,
+ * message }` where `source` is one of:
+ *   'current'   - this payload is a season in its own right; `snapshot` is the
+ *                 previous-season record attached as a PRIOR (or null)
+ *   'baseline'  - this payload is not yet a season of its own and `snapshot`
+ *                 stands in for it, as well as serving as the prior
  *   'none'      - neither is usable; nothing may be projected
  *
- * and `origin` says WHICH baseline is standing in: 'kept' for this browser's
- * own snapshot, 'shipped' for the one committed with the app. Downstream code
- * reads `source`, so a shipped baseline travels through readiness, the status
- * panel and the player drawer exactly as a kept one does.
+ * WHAT CHANGED ON 2026-09-16. A snapshot used to be applied only while it stood
+ * in, and dropped the moment every club had played three matches. It is now
+ * the previous season's evidence for the WHOLE season, attached as a prior the
+ * models weigh against this season's matches (normalize.js explains why), so a
+ * valid record is returned in every state except one: a payload whose own
+ * totals ARE the previous season (pre-season, or a rollover FPL has not applied
+ * yet), where adding a snapshot would count last season twice.
+ *
+ * `origin` says WHICH record: 'kept' for this browser's own snapshot, 'shipped'
+ * for the one committed with the app.
  */
-export function resolveBaseline(gameState, snapshot, { now = Date.now(), shipped = null } = {}) {
+export function resolveBaseline(gameState, snapshot, {
+  now = Date.now(), shipped = null, payloadIsPreviousSeason = null,
+} = {}) {
   const assessment = assessBaseline(gameState);
+  const previousSeason = payloadIsPreviousSeason === null
+    ? assessment.complete && !anyClubHasPlayed(gameState)
+    : payloadIsPreviousSeason;
 
-  if (assessment.complete) {
+  if (previousSeason) {
     return {
       source: 'current',
-      totals: null,                 // read the payload directly
-      assessment,
-      message: null,
-    };
-  }
-
-  // This season has genuinely started and accumulated real matches: the thin
-  // totals are correct, they are simply early, and the caller measures them
-  // against matches played rather than a full season.
-  if (baselineIsSuperseded(gameState)) {
-    return {
-      source: 'current',
-      totals: null,
+      totals: null,                 // read the payload directly: it IS last season
+      snapshot: null,
       assessment,
       message: null,
     };
@@ -240,10 +252,10 @@ export function resolveBaseline(gameState, snapshot, { now = Date.now(), shipped
   // evidence available: it is this browser's own record of the last complete
   // payload. The shipped baseline comes next, because it is the same kind of
   // record captured once, centrally, from a payload we can name. A version 1
-  // kept snapshot comes LAST despite being the user's own, because it restores
+  // kept snapshot comes LAST despite being the user's own, because it carries
   // every rate's denominator without its numerator and the engine then has to
   // fall back to position averages - strictly less than the shipped asset can
-  // say. Below all three, nothing may be projected.
+  // say. Below all three, there is no prior.
   const kept = validateKeptSnapshot(snapshot, gameState, { now });
   const canned = validateOpeningBaseline(shipped, gameState);
 
@@ -252,25 +264,42 @@ export function resolveBaseline(gameState, snapshot, { now = Date.now(), shipped
     || (kept.ok && { snapshot, origin: 'kept' })
     || null;
 
+  // Standing in: the season is not yet evidence of its own. Once every club has
+  // played three matches (or the payload is complete) it is, and the record
+  // carries on as a prior only.
+  const standsIn = !assessment.complete && !baselineIsSuperseded(gameState);
+
   if (chosen) {
     const rates = snapshotCarriesRates(chosen.snapshot) ? 'carried' : 'missing';
     return {
-      source: 'baseline',
+      source: standsIn ? 'baseline' : 'current',
       origin: chosen.origin,
       totals: chosen.snapshot.totals,
       snapshot: chosen.snapshot,
       rates,
       assessment,
       rejected: [...kept.reasons, ...canned.reasons],
-      message: rates === 'carried'
-        ? (chosen.origin === 'shipped'
-          ? 'Fantasy Premier League has cleared last season\'s player totals for the new season. Projections are '
-            + 'using the complete set this app ships until this season has enough matches of its own.'
-          : 'Fantasy Premier League has cleared last season\'s player totals for the new season. '
-            + 'Projections are using the last complete set we recorded until this season has enough matches of its own.')
-        : 'Fantasy Premier League has cleared last season\'s player totals for the new season. The set we recorded '
-          + 'earlier covers minutes only, so scoring rates fall back to position averages until this season has '
-          + 'enough matches of its own.',
+      message: !standsIn
+        ? null
+        : rates === 'carried'
+          ? (chosen.origin === 'shipped'
+            ? 'This season is only a few matches old, so projections lean on last season\'s complete record, '
+              + 'shipped with the app, and weigh this season\'s matches in as they are played.'
+            : 'This season is only a few matches old, so projections lean on the last complete season we '
+              + 'recorded, and weigh this season\'s matches in as they are played.')
+          : 'This season is only a few matches old. The last season we recorded covers minutes only, so scoring '
+            + 'rates fall back to position averages until this season has enough matches of its own.',
+    };
+  }
+
+  if (!standsIn) {
+    return {
+      source: 'current',
+      totals: null,
+      snapshot: null,
+      assessment,
+      rejected: [...kept.reasons, ...canned.reasons],
+      message: null,
     };
   }
 
@@ -282,6 +311,7 @@ export function resolveBaseline(gameState, snapshot, { now = Date.now(), shipped
   return {
     source: 'none',
     totals: null,
+    snapshot: null,
     assessment,
     rejected: [...kept.reasons, ...canned.reasons],
     message: started
@@ -290,6 +320,11 @@ export function resolveBaseline(gameState, snapshot, { now = Date.now(), shipped
       : 'Fantasy Premier League has cleared last season\'s player totals and this season has not been played yet, '
         + 'so there is nothing to project from.',
   };
+}
+
+function anyClubHasPlayed(gameState) {
+  for (const n of matchesKickedOffByClub(gameState).values()) if (n > 0) return true;
+  return false;
 }
 
 /**
@@ -327,6 +362,14 @@ export function validateKeptSnapshot(snapshot, gameState, { now = Date.now() } =
     if (behind === null) reasons.push('kept_snapshot_unreadable_season');
     else if (behind < 0) reasons.push('kept_snapshot_from_the_future');
     else if (behind > 1) reasons.push('kept_snapshot_wrong_season');
+    // A snapshot labelled with THIS season and captured after its first
+    // deadline describes this season's own matches, not the previous season's.
+    // Used as a prior it would count every match twice. (A pre-season payload
+    // is labelled with the season it opens, which is why the label alone
+    // cannot decide.)
+    if (behind === 0 && snapshotCapturedAfterSeasonOpened(snapshot, gameState)) {
+      reasons.push('kept_snapshot_describes_this_season');
+    }
   } else if (!snapshot.seasonLabel) {
     // Unlabelled: every snapshot written before 2026-08-25. Date it against
     // this season's opening deadline instead of trusting it forever.
@@ -398,6 +441,18 @@ export function validateOpeningBaseline(asset, gameState) {
   return { ok: reasons.length === 0, reasons };
 }
 
+// How long after a season's first deadline a snapshot can still describe the
+// season before it. FPL clears the totals within the hour (34 minutes in 2026)
+// and a payload is not complete again until about the eighth gameweek, so a
+// week is generous without ever reaching a genuine in-season snapshot.
+export const PRIOR_CAPTURE_SLACK_MS = 7 * 24 * 60 * 60 * 1000;
+
+function snapshotCapturedAfterSeasonOpened(snapshot, gameState) {
+  const anchor = firstDeadlineEpoch(gameState);
+  const captured = Date.parse(snapshot.capturedAt || '');
+  return Number.isFinite(anchor) && Number.isFinite(captured) && captured > anchor + PRIOR_CAPTURE_SLACK_MS;
+}
+
 /**
  * How many seasons before `current` the label `label` is. 0 for the same
  * season, 1 for the one before, negative for a label from the future, null
@@ -449,6 +504,13 @@ export function loadSnapshot(storage) {
  */
 export function saveSnapshotIfBetter(storage, gameState, { capturedAt, seasonLabel } = {}) {
   const existing = loadSnapshot(storage);
+  // ONLY A FINISHED SEASON IS KEPT (2026-09-16). The kept snapshot is next
+  // season's prior, so it must describe a whole season: the pre-season payload
+  // (last season's totals, nothing played) or one whose every gameweek has
+  // finished. A mid-season payload becomes "complete" by share of minutes around
+  // the eighth gameweek, and keeping it would overwrite the previous season with
+  // a third of this one.
+  if (!payloadDescribesAFinishedSeason(gameState)) return existing;
   const candidate = snapshotFrom(gameState, { capturedAt, seasonLabel });
   if (!candidate) return existing;
   // A newer complete payload of the same or a later season replaces the old
@@ -464,4 +526,18 @@ export function saveSnapshotIfBetter(storage, gameState, { capturedAt, seasonLab
     return existing;                 // quota or private mode: not fatal
   }
   return candidate;
+}
+
+/**
+ * Does this payload's element totals describe a whole, finished season?
+ * Before a ball is kicked they are last season's; once every gameweek has
+ * finished they are this one's, complete. Anything in between is part of a
+ * season.
+ */
+export function payloadDescribesAFinishedSeason(gameState) {
+  if (!gameState) return false;
+  const events = gameState.events || [];
+  if (!events.length) return !gameState.seasonStarted;
+  if (!gameState.seasonStarted) return true;
+  return events.every(e => e.finished);
 }

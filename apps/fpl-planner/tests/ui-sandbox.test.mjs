@@ -422,14 +422,29 @@ test('an armband edit is judged on the captaincy score, not on expected points',
 });
 
 test('an armband edit the objective agrees with reads as a gain', () => {
-  const { scenario } = makeView(inSeasonPlan, inSeasonSquad);
-  const base = scenario.captain;
-  const better = scenario.xi.find(id => id !== base
+  // The armband on file in the sample squad can already be the best one the
+  // objective sees, so the file captain is moved to the eleven's weakest
+  // eligible player first: a manager who captained him and then moves the
+  // armband to someone better has to be told it is a gain.
+  const { scenario: onFile } = makeView(inSeasonPlan, inSeasonSquad);
+  const eligible = onFile.xi.filter(id => scoreOf(onFile.xi, id).eligible);
+  const weakest = eligible.reduce((a, b) => (scoreOf(onFile.xi, b).score < scoreOf(onFile.xi, a).score ? b : a));
+  const weakSquad = {
+    ...inSeasonSquad,
+    picks: inSeasonSquad.picks.map(p => ({ ...p, isCaptain: p.playerId === weakest, isViceCaptain: false })),
+  };
+  const { view, base: props, ctx, scenario } = makeView(inSeasonPlan, weakSquad);
+  assert.equal(scenario.captain, weakest);
+  const better = scenario.xi.find(id => id !== weakest
     && scoreOf(scenario.xi, id).eligible
-    && scoreOf(scenario.xi, id).score > scoreOf(scenario.xi, base).score + 0.05);
-  assert.ok(better, 'the fixture must offer a better armband than the one on file');
+    && scoreOf(scenario.xi, id).score > scoreOf(scenario.xi, weakest).score + 0.05);
+  assert.ok(better, 'the eleven must offer a better armband than its weakest eligible player');
 
-  const { text, cls } = verdictAfterCaptain(better);
+  const moved = setCaptain(scenario, ctx, better).scenario;
+  view.update({ ...props, scenario: moved });
+  const node = query(view.node, 'fpl-verdict');
+  const text = node ? textOf(node).trim() : '';
+  const cls = node ? (node.className || '') : '';
   assert.match(text, /Your armband gains [\d.]+ on the captaincy score\./);
   assert.match(cls, /is-up/);
   assert.doesNotMatch(text, /gains 0\.0 on/);

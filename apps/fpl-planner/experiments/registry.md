@@ -11,8 +11,11 @@ Rules for this file:
 
 - Season points come from `node apps/fpl-planner/scripts/backtest.mjs --season
   <season>` at the shipped default horizon, all 38 gameweeks, seed 1, balanced
-  risk, analytic projections, previous season seeded where one exists. Anything
-  else is stated in the entry.
+  risk, analytic projections, in the production evidence regime (entry 29: the
+  payloads and previous-season asset production would have read, resolved
+  through `engine/world.js`). Entries before 29 were measured with the previous
+  season seeded at weight 0.5, a regime production never ran; `--regime seeded`
+  reproduces it. Anything else is stated in the entry.
 - All three comparable seasons are reported (2022-23, 2023-24, 2024-25), never a
   single season and never an aggregate on its own. Consistency is part of the
   result.
@@ -476,6 +479,12 @@ the mechanism that justified it is untouched. See the box at the top of
   cell out of a non-monotone sweep, that is fitting the noise.
 - Prediction metrics do not decide anything. Two experiments improved log loss,
   Brier, calibration and MAE, and both cost points or washed out. Points decide.
+- **Before tuning anything, check that the replay runs the regime production
+  runs.** Every minutes and prior-weight entry before 29 was measured on a
+  replay that seeded half of last season all year, while production overlaid
+  it at full weight and then dropped it at three matches. The model tuned on
+  one shipped into the other and compressed every projection in the league
+  (entry 29).
 - **Before measuring a change to a model, check that the instrument can
   represent what the model does.** An availability signal was measured three
   times against a replay whose start probability was pinned at 1.000, and a
@@ -1026,12 +1035,19 @@ timid at its ABSOLUTE thresholds, so a correction should buy more hits. Hits wen
 DOWN, and the projection bias closed by 0.8 points of the eight it was supposed
 to close.
 
-The reason is that a shrinkage target only matters in proportion to `1 - w`, and
-`w` is large exactly for the players who make the eleven. Established starters
-carry 19 to 38 matches of evidence and barely feel the prior at all; the players
-the correction moves are the low-evidence ones, who are not in the team. So the
-change repriced the squad's fringe, not its spine, and the eleven's projection
-barely moved.
+The reason given at the time was that a shrinkage target only matters in
+proportion to `1 - w`, and `w` is large exactly for the players who make the
+eleven: established starters carry 19 to 38 matches of evidence, so the
+correction moved only the low-evidence fringe.
+
+> **Corrected 2026-09-16 (entry 29).** That was true of the REPLAY, which seeded
+> half of last season into every player all year, and false of PRODUCTION,
+> which retired the baseline at three club matches. From gameweek 4 an
+> established starter in the app carried three or four matches of evidence
+> against a six-match pull toward a position rate measured over every player
+> with a minute, and read 0.64 to 0.76 to start. This entry's verdict stands for
+> the replay it was measured on; its mechanism does not describe the app, and
+> it is not evidence that the start prior's target is unimportant.
 
 **Which relocates the open question rather than answering it.** The top decile of
 projections is 7.6% low on points while its expected minutes are within 1%
@@ -1681,6 +1697,167 @@ xG/xA rate quality, and early-window squad construction where a wrong opening
 15 echoes for weeks). Any future reopening must first find the 2023-24
 channel; running more weights is known to be useless, because no flat weight
 can satisfy three seasons whose optima genuinely differ.
+
+## 29. The xP calibration repair, measured in the production regime: ACCEPT
+
+- **Date:** 2026-09-16
+- **Decision: ACCEPT.** Shipped.
+- **Kind:** model repair with CALIBRATION as the objective, requested by the
+  owner after the xP audit of the same day. Points were pre-registered as a
+  guard, not the target. That is a deliberate departure from this file's "points
+  decide" rule for this one change, and it is recorded as such: entries 12, 13,
+  23, 24 and 28 all showed that a calibration gain on its own wins nothing, and
+  the owner's objective here was projections that describe football, which no
+  earlier entry had measured.
+- **Pre-registered** in `experiments/configs/xp-calibration.mjs` before either
+  arm ran: exposure 2023-24, 2024-25, 2025-26; SHIP if the per-window mean is
+  not significantly negative (t > -2.0 on 15 windows) AND no exposed season's
+  per-window mean is below -15; expected larger gains in the opening windows and
+  more hits.
+- **Instrument:** 3, paired trajectories, 15 exposed windows / 45 trajectories,
+  chips off. 2022-23 cannot be replayed as production (no predecessor).
+
+### What the audit found
+
+At the GW4 deadline of 2026/27 the median ever-present starter was projected to
+start 73% of the time and started 88%; the best player in the league projected
+3.87 and the best eleven 38.4 (scored 51). Every shape check passed. Causes, in
+order of size: the start prior (six matches of pull toward a position rate over
+every player with a minute, the baseline retired at three matches); a bench
+model that read zero non-starts as "never comes on" and so ranked nailed
+starters below squad players on appearance; the replay running a regime
+production did not; team strength built from a few scorelines with every club
+flagged promoted; assists read from raw xA; bonus from a curve alone; one hour
+curve for all positions; and venue normalisation inflating rates by about 4.8%.
+FINDINGS, "Every nailed starter was projected as a rotation risk", has each
+with its numbers.
+
+### The instrument had to be repaired first
+
+The replay seeded 0.5 of last season into every rate all season. Production
+never ran that: it overlaid last season at full weight until three matches and
+then used nothing. So the replay now rebuilds the raw payload at each deadline,
+builds the previous-season asset production would have shipped (players
+registered this season only; including departed players inflated the league's
+goal level), and resolves both through `engine/world.js`, the same function
+`app.js` calls. `tests/replay-production-regime.test.mjs` pins the equivalence,
+and `null-arm` reported +0 on all 45 trajectories in the new regime.
+
+### The candidate
+
+The previous season became a per-player prior for the whole season, and every
+parameter below was fitted on a prediction target, held out by season, in the
+production regime (`scripts/calibration/*.mjs`), never on planner points:
+
+- start: `pStart = (s + K * mu) / (m + K)`, `K = 0.5 + 0.15m` (no previous
+  season: `mu` from price percentile, `K = 0.75 + 0.05m`); the per-bucket optimal
+  K rose from 0.5-0.75 in GW1-3 to 2-3 by GW9-19, in line with entry 20;
+- bench: inferred substitute appearances shrunk at 40 opportunities toward a
+  position by start-probability table;
+- 60 minutes given a start and given a substitute appearance, per position;
+- every rate carries last season at a weight per stat and position;
+- assists: xA times a multiplier conditioned on position and relative xA and xG;
+- bonus: 0.7 own carried rate plus 0.3 curve;
+- strength: last season's squad xG and xGC by current club, this season's squad
+  xG blended in, goals at 160 pseudo-matches;
+- the venue factor taken out of the fixture baseline.
+
+### Calibration, which was the objective
+
+Archive, production regime, three seasons (`scripts/calibration-report.mjs`):
+
+| bucket | ever-present pStart, before / after / started | ever-present xP, before / after / scored | best eleven, before / after / scored after | rank correlation, before / after |
+| --- | --- | --- | --- | --- |
+| GW2-3 | 0.61 / 0.83 / 0.87 | 2.18 / 2.94 / 2.98 | 48.0 / 51.9 / 53.3 | 0.449 / 0.647 |
+| GW4-8 | 0.75 / 0.91 / 0.88 | 2.51 / 3.20 / 3.11 | 40.4 / 54.4 / 57.7 | 0.603 / 0.609 |
+| GW9-19 | 0.84 / 0.94 / 0.90 | 2.90 / 3.38 / 3.29 | 46.3 / 54.2 / 51.7 | 0.602 / 0.589 |
+| GW20-38 | 0.90 / 0.96 / 0.95 | 3.11 / 3.44 / 3.50 | 53.0 / 56.4 / 58.8 | 0.584 / 0.578 |
+
+Start log loss 0.3627 to 0.2454 (GW2-3) and 0.3073 to 0.2920 (GW4-8), slightly
+worse later (0.3065 to 0.3093, 0.3312 to 0.3359); appearance log loss better in
+every bucket (0.4457 to 0.3413 at GW4-8). Out of sample on 2026/27 GW4:
+ever-present pStart 0.73 to 0.88 (started 0.88), xP 2.62 to 3.33 (scored 3.60),
+top fifth 3.00 to 4.03 (scored 4.38 and 4.88 for the two populations), bottom
+fifth 0.92 to 0.63 (scored 0.30 and 0.71), best eleven 38.4 to 56.3.
+
+`calibration-report.mjs --check` (bands in `scripts/lib/calibration-guard.mjs`):
+the candidate passes all 12 gated season buckets, the control breaks 8.
+
+### Points, the guard
+
+| measure | per window (seeds averaged) |
+| --- | ---: |
+| observations | 15 |
+| mean | **+13.8** |
+| standard error | 13.7 |
+| t | **1.01** |
+| wins / losses / ties | 9 / 6 / 0 |
+| sign test p | 0.61 |
+
+| season | control | candidate | per window | W-L-T (trajectories) |
+| --- | ---: | ---: | ---: | --- |
+| 2023-24 | 10520 | 11147 | +41.8 | 14-1-0 |
+| 2024-25 | 11953 | 11818 | -9.0 | 6-9-0 |
+| 2025-26 | 11079 | 11206 | +8.5 | 7-7-1 |
+
+Control 33,552 across 45 trajectories, candidate 34,171. Captaincy value 1497
+to 1562, hits 10 to 12, projection bias -5.42 to -1.07 points a gameweek.
+
+**Both registered conditions hold** (t 1.01 > -2.0; lowest season -9.0 > -15),
+so it ships. **The registered mechanism did not show:** the opening windows
+(gw1-13) read +24.0 / -33.3 / -16.0, not the largest gains; the gains sit in
+gw14-26 (+14.3 / +101.0 / +52.0). Stated plainly because a prediction that
+failed is information: the early-window calibration gain is the largest of the
+season and it did not convert into early points.
+
+**The control and candidate are separate trees**, because the change replaces
+the evidence regime itself: control is a snapshot taken after the
+production-regime harness landed and before any model change (engine
+7e9c0d436ae1), candidate the repaired tree (d4a577279bb7), each run as a single
+arm on identical trajectories and merged by trajectory. The shipped tree
+(16600db29ea4, which adds the readiness guards below and rounds one fitted
+assist coefficient from 0.2066 to 0.207) was re-run afterwards: points, gross
+points, transfers, hits, bench points and captaincy value are identical in all
+45 trajectories, and projection bias differs by 0.002.
+
+### Also measured and not adopted
+
+- **A start calibration refitted on the population production applies it to**
+  (rows where the player was NOT listed missing in the API-Football
+  availability records, since production caps a listed player through
+  `chance_of_playing` instead), on the two seasons with an availability file
+  (2023-24, 2024-25): better in GW1-3, worse in GW4-19. Not adopted; the
+  archive's lack of injury flags remains the largest open calibration gap.
+- **The old bench estimator inside the new start model** ranked marginally
+  better late in the season and predicted appearances far worse. The late-season
+  rank-correlation dip (0.602 to 0.589 at GW9-19) traces to the calibrated bench
+  model, and was accepted for the appearance calibration.
+
+### Guards added with it
+
+`readiness.js` blocks `minutes_compressed` and `appearance_inverted` at
+`lineup`; both fire on the control's projections at the real 2026/27 GW3, GW4
+and GW5 deadlines and on none of the candidate's, and the shipped tree's re-run
+made identical decisions in all 45 trajectories, so neither changed a replayed
+decision. `tests/xp-calibration-guard.test.mjs` holds
+the captured 2026/27 GW3 and GW4 deadlines to the calibration bands.
+
+### What this changes for older entries
+
+Entries 10, 18, 20, 21, 23, 24 and 28 were measured in the seeded regime. Their
+verdicts stand as statements about that replay. Entry 10's mechanism ("starters
+barely feel the prior") is corrected in place. Entries 18 and 21's "no
+production prior-evidence path" is superseded: production now carries the
+previous season as a prior all season, by this entry, with the prior weight
+measured per stage of the season rather than as one flat weight.
+
+### Re-test if
+
+- 2026-27 completes and qualifies as a fourth production-regime season;
+- a source of historical injury flags becomes available (the start calibration
+  should then be refitted conditioned on them);
+- anything changes `engine/world.js`, the replay's payload rebuild, or the
+  previous-season asset.
 
 ## 28. Counted substitute appearances: the DATA change entry 24 asked for, REJECT
 
