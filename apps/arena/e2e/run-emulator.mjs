@@ -102,6 +102,9 @@ try {
     '--headless=new', '--disable-gpu', '--no-sandbox', '--no-first-run',
     `--remote-debugging-port=${CDP_PORT}`,
     `--user-data-dir=${profileDir}`,
+    // Headless Chrome still plays sound: every game here fires feedback.js's
+    // WebAudio cues, and on WSLg they reach the owner's speakers.
+    '--mute-audio',
     '--host-resolver-rules=MAP www.googletagmanager.com 127.0.0.1:1, MAP *.google-analytics.com 127.0.0.1:1',
     'about:blank',
   ], { stdio: 'ignore' });

@@ -40,6 +40,18 @@ asserts every entry in `SHAPE_LABELS` has a `SHAPE_DESCS` definition, because
 a label without one renders "X trajectory:" and then jumps to the generic
 sentence, which reads as a missing word rather than as a bug.
 
+**The link must be allowed to wrap.** It shipped as `.trajectory-link {
+white-space: nowrap; }`, and an unbreakable run sets the minimum width of the
+hero's `1fr` grid column. At 390 the paragraph has about 327 px for text: "See
+every Big finale show in the explorer →" pushed Breaking Bad's page to 394 px
+on Chromium 152 while fitting on CI's browser, and "See every Saved best for
+last show in the explorer →" (the longest label) measured 469 px at 390 and
+725 px in a 720 px desktop window in any font. The rule is gone; at 1280 the
+link still sits on one line. The browser audit's SEO smoke now swaps the
+longest label into the link and asserts no overflow at 390, so the check no
+longer depends on which font the runner happens to have (it failed with the
+old rule and passed without it, 2026-09-16).
+
 
 ## The boot payload was uncacheable, and revalidating it did nothing (2026-09-16)
 

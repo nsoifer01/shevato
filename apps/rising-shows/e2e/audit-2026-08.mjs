@@ -466,6 +466,12 @@ export async function run({ base, cdpPort }) {
         await setViewport(s, 390, 844, true);
         await sleep(300);
         t('SEO page: no horizontal overflow at 390', !(await evaluate(s, `document.documentElement.scrollWidth > document.documentElement.clientWidth`)));
+        // Breaking Bad's "Big finale" link fits or overflows by a few px
+        // depending on the font, so a nowrap trajectory link passed on CI and
+        // failed on Chromium 152. The longest label overflows in any font.
+        await evaluate(s, `(() => { document.querySelector('.trajectory-link').textContent = 'See every Saved best for last show in the explorer →'; return 1; })()`);
+        await sleep(300);
+        t('SEO page: the longest trajectory link wraps at 390', !(await evaluate(s, `document.documentElement.scrollWidth > document.documentElement.clientWidth`)));
       } finally { await closePage(cdpPort, s); }
     }
   }
