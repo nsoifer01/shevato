@@ -1701,7 +1701,7 @@ can satisfy three seasons whose optima genuinely differ.
 ## 29. The xP calibration repair, measured in the production regime: ACCEPT
 
 - **Date:** 2026-09-16
-- **Decision: ACCEPT.** Shipped.
+- **Decision: ACCEPT.** Shipped in #558 (squash aa19bb2c), live 2026-09-17.
 - **Kind:** model repair with CALIBRATION as the objective, requested by the
   owner after the xP audit of the same day. Points were pre-registered as a
   guard, not the target. That is a deliberate departure from this file's "points
@@ -1814,11 +1814,29 @@ season and it did not convert into early points.
 the evidence regime itself: control is a snapshot taken after the
 production-regime harness landed and before any model change (engine
 7e9c0d436ae1), candidate the repaired tree (d4a577279bb7), each run as a single
-arm on identical trajectories and merged by trajectory. The shipped tree
-(16600db29ea4, which adds the readiness guards below and rounds one fitted
-assist coefficient from 0.2066 to 0.207) was re-run afterwards: points, gross
-points, transfers, hits, bench points and captaincy value are identical in all
-45 trajectories, and projection bias differs by 0.002.
+arm on identical trajectories and merged by trajectory. The tree after the
+readiness guards below and a rounding of one fitted assist coefficient (0.2066
+to 0.207), engine 16600db29ea4, was re-run afterwards: points, gross points,
+transfers, hits, bench points and captaincy value are identical in all 45
+trajectories, and projection bias differs by 0.002.
+
+**What shipped adds two changes after that re-run, and neither can move a
+decision.** The projection model version string became `analytic-2`, a label.
+And the
+first CI run of #558 failed five CPU budgets: with starters no longer pinned at
+pAppear 1, the exact lineup search's squad-wide pruning ceiling stopped pruning
+and a live-sized horizon-8 plan went from 2.8s to 11.8s of CPU.
+`elevenAutosubBound` in `lineup.js` restores the pruning without changing the
+answer: it only skips elevens that cannot win, by construction, and the plans
+at horizons 3, 5 and 8 are byte-identical with and without it (horizon 8 now
+0.84s).
+
+**Found after shipping, open:** the chip bars were not re-measured. On the live
+GW5 payload the reporter's plan plays a Bench Boost on a bench that includes a
+suspended player, 9.54 projected against the 8-point bar with gameweek 9 at
+9.52, where the pre-fix engine sold that player and held its chips (FINDINGS,
+"What is still wrong" under the calibration repair). The thresholds need their
+own measurement before they are trusted on calibrated projections.
 
 ### Also measured and not adopted
 

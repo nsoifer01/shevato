@@ -14,7 +14,7 @@ tables.
 
 ---
 
-## Every nailed starter was projected as a rotation risk (found and FIXED 2026-09-16)
+## Every nailed starter was projected as a rotation risk (found 2026-09-16, FIXED and live 2026-09-17, PR #558)
 
 Reported on the GW5 squad of 2026/27: fifteen players between 2.7 and 3.8 xP,
 Saka and Bruno Fernandes level with an average midfielder, Isak below Barry. The
@@ -147,8 +147,37 @@ The 2026/27 deadlines, out of sample (`tests/fixtures/xp-calibration-2026`):
 won to 6, seasons +41.8 / -9.0 / +8.5. Captaincy value 1497 to 1562, projection
 bias -5.42 to -1.07 points a gameweek. Shipped under the registered rule.
 
+### Live in production (verified 2026-09-17)
+
+Merged as #558 (aa19bb2c) and published by CLI deploy
+`6aab6443875378a9fff79f4c` (RELEASE_ID `aa19bb2cca86`). The model and data
+status panel reads "Model version planner-1+analytic-2". The engine bytes
+shevato.com serves reproduce the GW3/GW4 calibration above with no band broken,
+and on the live GW5 payload through the production proxy (04:06 UTC, 17
+September) `evidence-probe.mjs` reads 138 regulars at a median start
+probability of 0.897, none below the bench median's appearance probability,
+every invariant ok and readiness `chips`. The fifteen players in the original
+report now read 2.9 (Trafford) to 5.9 (B.Fernandes) xP, against 2.7 to 3.8
+before the fix.
+
 ### What is still wrong
 
+- **The chip bars were set on compressed projections and have not been
+  re-measured, and one live recommendation shows it.** On the live GW5 payload
+  (04:03 UTC, 17 September) the reporter's plan is "Play your Bench Boost" with
+  no transfers, boosting a bench of Trafford, Muharemović, Egan and Foden, who
+  is suspended until 17 October and projects 0.0. The bench projects 9.54
+  against `BENCH_BOOST_THRESHOLD` 8, and gameweek 9 is valued at 9.52, so the
+  call rests on 0.03 points; the chips card itself says one bench player is
+  unlikely to play. The pre-fix engine on the same payload sold Foden and
+  Gabriel, captained Barry and held its chips. The 8-point bar rests on "a
+  normal bench delivers about 4 to 6 points", a figure that predates the repair
+  and was never re-measured, while the reporter's three AVAILABLE bench players
+  alone now project 9.5. The pre-registration for entry 29 already said the
+  absolute hit and chip thresholds were tuned on projections 20 to 30% low.
+  NOT fixed: the 2026-09-17 cleanup round was documentation only, by the
+  owner's instruction, and round 13 of the human test plan tells the owner not
+  to play the chip on the app's word.
 - **A player whose role changed with his club keeps last season's shape for a
   while.** Trafford started 4 of 38 matches in 2025-26 as a back-up and all 4
   of Leeds' this season, and still reads 0.83 to start at GW5 (2.94 xP): the
