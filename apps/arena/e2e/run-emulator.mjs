@@ -26,7 +26,7 @@ import { startEmulator } from '../tests-rules/emulator-harness.mjs';
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.resolve(HERE, '..', '..', '..');
 
-// 8080/8081/8083 are reserved on the maintainer's machine; defaults stay clear.
+// 8080/8083 are reserved on the maintainer's machine; defaults stay clear.
 const PORT = Number(process.env.ARENA_E2E_PORT || 8137);
 // A second static server gives the suite a THIRD isolated origin
 // (127.0.0.1:PORT, localhost:PORT, 127.0.0.1:PORT2 = three Firebase users)

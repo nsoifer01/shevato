@@ -60,8 +60,8 @@
 
 # Local dev only (netlify dev); no effect on deploys. Pins the dev server
 # to one address instead of a random port per run, serving the repo root
-# like production does. 8888 on purpose: 8080 and 8081 are reserved on the
-# owner's machine (never a dev server), and plain static servers go on 8082+.
+# like production does. 8888 on purpose: 8080 is reserved on the owner's
+# machine (never a dev server), and plain static servers go on 8081+.
 [dev]
   port = 8888
   publish = "."

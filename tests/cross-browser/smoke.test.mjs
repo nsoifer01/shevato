@@ -29,8 +29,8 @@ import { fileURLToPath } from 'node:url';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.resolve(HERE, '..', '..');
-// 8080/8081 are reserved on the maintainer's machine; 8099 belongs to the
-// CDP harness. This suite gets its own port so the two can run side by side.
+// 8080 is reserved on the maintainer's machine; 8099 belongs to the CDP
+// harness. This suite gets its own port so the two can run side by side.
 const PORT = Number(process.env.CROSS_BROWSER_PORT || 8215);
 const BASE = `http://127.0.0.1:${PORT}`;
 

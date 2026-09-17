@@ -242,8 +242,8 @@ npm run fetch:rising-shows-data
 | `BROWSER_TEST_CI` | unset | `1` on CI: precondition skips and zero-assertion suites fail |
 | `BROWSER_TEST_TIMING_JSON` | unset | Write per-suite timings (including fixed waits by source) to this file; `run-parallel.mjs` suffixes it per shard |
 
-Ports 8080 and 8081 are reserved on the maintainer's machine and must never
-become defaults here (local servers go on 8082+, see `CLAUDE.md`).
+Port 8080 is reserved on the maintainer's machine and must never become a
+default here (local servers go on 8081+, see `CLAUDE.md`).
 
 ## Layout
 
