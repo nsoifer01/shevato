@@ -232,7 +232,8 @@ auto-substitutions nor vice succession; see the note in `gameweekPoints`.
                          same-club appearance correlation
       transfers.js       transfer search, hits, roll value
       squad-builder.js   full 15-man build (wildcard, free hit, pre-season)
-      chips.js           chip evaluation across the season
+      chips.js           when each chip is played: window, bar, hold margin,
+                         last week, and the net value a chip plan is credited
       planner.js         multi-gameweek rolling horizon, top-level entry point
       explain.js         model-derived explanations
       counterfactual.js  "why not this player": forced-inclusion re-optimization
@@ -259,7 +260,9 @@ auto-substitutions nor vice succession; see the note in `gameweekPoints`.
                          derive-gw4-fixtures and derive-calibration-fixtures
                          (sanitized fixtures from captured payloads),
                          calibration-report (projections scored against what
-                         happened, --check for the bands)
+                         happened, --check for the bands), calibration/
+                         calibrate-chips (every deadline's chip facts and how
+                         each timing rule would have done)
     calibration/         the fits behind the minutes, rates and strength
                          parameters (outputs in .data/calibration/, gitignored)
     lib/calibration-guard.mjs  the calibration bands, shared by the report
@@ -646,6 +649,54 @@ is **not** the bottom of the same scale. The three ordinary bands grade how sure
 a sound projection is; this one says the inputs failed, and reads
 "Recommendations paused" with the reason.
 
+## When a chip is played
+
+`js/engine/chips.js` decides each chip for one squad, and `planner.js` asks it of
+every squad a candidate plan leads to. The rules were re-measured on analytic-2
+projections on 2026-09-17 (registry entry 30); every number below has its
+evidence in a comment beside the constant.
+
+- **One window at a time.** From 2025-26 each chip exists twice, once per half.
+  A chip is only compared with later weeks of its OWN window. A Bench Boost or
+  Triple Captain is played in the window's last week rather than lost, and when
+  both are unspent near the end each is due as soon as the weeks left no longer
+  cover both (`dueChipsAt`), because only one chip can be played a week.
+- **Bench Boost** is played when all four bench players are likely to play
+  (appearance probability 0.5 or more), the bench projects at least 8 points,
+  and no week INSIDE the projection horizon beats it by more than 4.7 points,
+  which is how far a near-week bench estimate is high on average (1.7) plus how
+  much it moves before its week (3.0). A tie is played. Weeks past the horizon
+  are never compared: their estimates run high and the best of thirty of them
+  used to slide the chip to gameweek 38. A bench with a player who will not play
+  is "not ready", and the planner searches separately for the sales that repair
+  it (`searchTransfers` with `outIds`), so "sell him, then boost" is a plan it
+  can find.
+- **Triple Captain** is played when this week's extra armband copy beats the
+  best later week of its window by 1.0 point, the SD of a captain estimate five
+  to eight weeks out; inside that margin the two weeks are a tie and it is
+  saved.
+- **Not before the first deadline.** While transfers are unlimited the fifteen
+  is still being chosen, so neither timing chip is recommended: a chip plan
+  would reshape the opening squad around one week's bench or armband, and the
+  rules were measured from gameweek 2.
+- **Wildcard and Free Hit** keep their 12-point bars, priced in hits, and are
+  never forced by a closing window: forced ones realized from -55 to +47 points
+  in the chips-on replays, and nothing measured them beforehand.
+- **What a chip plan is credited with.** Not the chip's raw points, which no
+  transfer could ever beat, but what the chip adds now less what keeping it is
+  worth: for a Triple Captain its lead over the best later week, for a Bench
+  Boost the bench less the larger of the bar and the best near week less 4.7.
+  Both are above zero exactly when the chip's rule says play. The chip card is
+  rewritten to describe the chip the plan actually plays, and an alternative
+  that differs in its chip shows the gap "counting what the chip is worth later".
+
+`scripts/calibration/calibrate-chips.mjs record --tree <label>` replays the
+planner with chips off in the production regime and records, at every deadline,
+what each chip evaluator saw and what the week produced; `analyze --tree <label>`
+scores every timing rule on 108 chip windows per chip with every fitted quantity
+held out by season. The chips-on experiment instruments cannot calibrate a chip
+on their own: each chip is played once or twice a season.
+
 ## Live points during a gameweek
 
 `event/{gw}/live` was wired into the API layer and called from nowhere, so the
@@ -773,9 +824,12 @@ objective is calibration pre-registers points as a guard instead (registry
 entry 29).
 
 A config names the arms; one of them must be called `control`. An arm may carry
-`env` (applied around its own cells), `opts` (merged into the replay options) or
-`strategy` (so "planner against greedy on the same trajectories" is the same
-kind of measurement as everything else). The runner:
+`env` (applied around its own cells), `opts` (merged into the replay options;
+`opts.planOptions` reaches `buildPlan`'s options, and its `transferOptions` the
+transfer search's margins, which is how `configs/hit-thresholds.mjs` moves a
+planner constant) or `strategy` (so "planner against greedy on the same
+trajectories" is the same kind of measurement as everything else). The deciding
+instruments run chips OFF; a chip experiment sets `chips: true` in its config. The runner:
 
 - re-measures the control arm every time, and offers no way to compare against a
   stored baseline, because four separate experiments in this project have been

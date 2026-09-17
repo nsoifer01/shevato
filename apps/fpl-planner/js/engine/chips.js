@@ -23,15 +23,46 @@
 //   freehit    a single gameweek only, because the squad returns afterwards.
 //              That makes it far more aggressive than a wildcard: it can empty
 //              the squad into one week's best eleven and pay nothing later.
-//   bboost     the bench, valued at this gameweek and at every later gameweek
-//              the current bench could be boosted in, with the transfer cost of
-//              repairing a weak bench charged against the later option.
-//   3xc        the extra captain multiplier now, against the best remaining
-//              week in the season, including doubles beyond the projection
-//              horizon estimated from fixture counts and difficulty.
+//   bboost     the bench now: played once all four are likely to play and it
+//              projects the bar, unless a week inside the projection horizon
+//              is clearly better; never compared with weeks the projections do
+//              not cover, whose estimates run high.
+//   3xc        the extra captain copy now, against the best later week of the
+//              same window, by a margin measured from how far such an estimate
+//              moves before its week arrives.
+//
+// OPPORTUNITY COST (2026-09-17, registry entry 30). A one-time chip played now
+// is worth what it adds now MINUS what keeping it is worth, and that net value,
+// not the raw bench or captain points, is what planner.js adds to a chip plan's
+// objective. Keeping a triple captain is worth its best later week; keeping a
+// bench boost is worth at least its bar and at least the best near week less
+// the margin a bench estimate moves by. Either way the net value is positive
+// exactly when the chip's own decision says play, so a plan and its chip card
+// cannot disagree.
+// Until then a chip plan was credited with the whole bench (9.5 points) while a
+// transfer plan was credited with nothing for keeping the chip, so no transfer
+// could beat a bench boost and a suspended player stayed on the boosted bench.
+//
+// NOT BEFORE THE FIRST DEADLINE. While transfers are unlimited the fifteen is
+// still being chosen at no cost, so a bench boost or triple captain plan would
+// shape the opening squad around one week's bench or armband, on projections
+// with no football of this season behind them; and the timing rules were
+// measured from gameweek 2 (the replays build their opening squad as a draft,
+// which plays no chip). Both hold with a reason until the squad is set.
+//
+// ONE WINDOW AT A TIME. Seasons from 2025-26 carry two of each chip, one per
+// half. A first-half chip is compared only with first-half weeks: the second
+// half has its own chip, so waiting for a second-half double is not an option
+// the first-half chip has. And in the last week a bench boost or a triple
+// captain can be played it is played rather than lost, because an expired chip
+// is worth nothing and neither can be worth less than nothing; when both share a
+// window's end, each is played early enough that neither is left without a week
+// (dueChipsAt). A wildcard and a free hit are NOT forced: a rebuild on its last
+// legal week can lose points, and in the chips-on replays of entry 30 forced
+// ones realized from -55 to +47.
 
 import { chipAvailableAt } from './rules.js';
-import { hitCost, transferStateOf } from './transfer-state.js';
+import { isUnlimited, transferStateOf } from './transfer-state.js';
 import { optimizeLineup } from './lineup.js';
 import { chooseCaptain } from './captain.js';
 import { buildSquad } from './squad-builder.js';
@@ -46,21 +77,71 @@ import { fixturesForTeam } from './fixtures.js';
 // current squad is already on by more than the hits it saves. Rebuilding a
 // squad normally means 4 to 6 transfers, which is 12 to 20 points of hits, and
 // anything below that is reachable with the weekly free transfers instead.
+// Kept at 12 by entry 30: the bar is priced in hits (4 points each), which the
+// projection scale does not move, and under analytic-2 the rebuild gain the
+// evaluator reports is smaller, not larger (mean 4.8 against 7.1, at or above
+// 12 at 9% of replay deadlines against 20%), so the recalibration made the bar
+// harder to reach rather than easier. It is not played just because its window
+// is ending (header).
 const WILDCARD_HORIZON_THRESHOLD = 12;
 
 // A free hit rents a squad for one gameweek. It has to beat both doing nothing
 // and taking the hits, so the bar is one gameweek's worth of a badly broken
-// squad: roughly two blanking players plus an unavailable one.
+// squad: roughly two blanking players plus an unavailable one. Kept at 12 by
+// entry 30 for the same reason: a one-week rental reaches it at 1.5% of replay
+// deadlines under analytic-2 against 1.8% before, the blank weeks it exists for.
 const FREE_HIT_THRESHOLD = 12;
 
-// A normal bench delivers about 4 to 6 points, so a bench boost that returns
-// less than this is a chip spent on an average week.
-const BENCH_BOOST_THRESHOLD = 8;
+// THE BENCH BOOST, measured (scripts/calibration/calibrate-chips.mjs, registry
+// entry 30). Every deadline of nine chips-off planner replays (three seasons,
+// three seeds, production regime) was recorded with what a boost would have
+// added over auto-substitutions, and timing rules were scored on 108 chip
+// windows with every fitted quantity held out by season.
+//
+//   BAR 8. What a bench projects predicts what a boost adds (r = 0.48), and
+//   the bench is the one place the projection scale barely moved: a bench
+//   holds the players the model thinks least likely to play, and the median
+//   projected bench is 8.9 points under analytic-1 and 9.1 under analytic-2,
+//   where the mean captain projection rose 16%. Under analytic-2 the lowest
+//   bench with all four players likely to play projected 8.1, so the bar
+//   almost never binds and bars from 6 to 10 realize the same 5.8 points a
+//   window: the availability condition below does the work. Bars of 11 and 12 read higher
+//   (6.8 and 7.5) on two favourable decisions (a 22-point bench in 2023-24,
+//   found identically by all three seeds, and a 15-point one in 2024-25),
+//   collapse at 13 (4.8), and lose 1.4 points under analytic-1, so a higher bar
+//   was not adopted on two events.
+//
+//   NO COMPARISON WITH WEEKS THE PROJECTIONS DO NOT COVER. The shipped rule
+//   played only when this week beat the best estimated week left in the
+//   season. Estimates beyond the horizon run high under analytic-2 (the bench
+//   is assumed to stay the bench), and the best of up to 30 of them almost
+//   always beats a real week, so the chip slid to gameweek 38, where
+//   auto-substitutions already recover most of a bench: 52 of 108 windows
+//   played in their last week, 18 expired, and the rule realized 1.67 points a
+//   window, against 6.1 for playing the first legal week.
+//
+//   A LATER WEEK HAS TO BE CLEARLY BETTER. Inside the horizon a later week's
+//   estimate is 1.7 points high on average and moves by 3.0 before the week
+//   arrives (1,248 revisions), so waiting is chosen only for a week that beats
+//   this one by more than both, 4.7 points: a double gameweek does, an
+//   ordinary week does not. The 1.7 and the 3.0 are not used apart. Requiring THIS week to beat later ones by a margin
+//   instead ("save on a tie") drove the chip to the season's end in both
+//   models and lost value, so a tie is played.
+const BENCH_BOOST_BAR = 8;
+const BENCH_BOOST_HOLD_MARGIN = 4.7;
 
-// The triple captain has to beat the best remaining week by a clear margin,
-// because the chip is gone forever afterwards and the estimate of a later week
-// is a maximum over many weeks and therefore optimistic already.
-const TRIPLE_CAPTAIN_MARGIN = 2.5;
+// THE TRIPLE CAPTAIN MARGIN, measured the same way. A captain's estimate for a
+// week five to eight gameweeks away moves by 1.0 point (standard deviation,
+// 1,056 revisions) before that week arrives, so this week has to beat the best
+// week left in the window by that much to be measurably better, and within it
+// the two weeks are a tie and the chip is saved. Compared only within its
+// window and played in its last week, it realizes 10.8 extra armband points a
+// window against 9.4 for the shipped rule (2.5 across the whole season), and no
+// chip expires where 18 of 108 did. Swept: 0 to 1.25 realize 10.6 to 11.2 and
+// 1.5 drops to 8.8 under analytic-2; under analytic-1, 1.0 to 1.5 are best
+// (13.7) and 0.5 or less loses 1.6 or more. 1.0 is the value near the best in
+// both, and the one the revision noise gives.
+const TRIPLE_CAPTAIN_MARGIN = 1.0;
 
 // Patience discount per gameweek when comparing a chip played now against the
 // same chip played later. Waiting is not free: injuries, price changes and
@@ -75,18 +156,29 @@ const CHIP_PATIENCE_PER_GW = 0.99;
 // is how much one step of difficulty is worth.
 const FDR_SENSITIVITY = 0.12;
 
-// A bench player who is this unlikely to appear is not boostable: the bench
-// would have to be rebuilt first, and that costs transfers.
-const BENCH_WEAK_P_APPEAR = 0.5;
+// A bench player this unlikely to appear makes the bench not ready to boost
+// (unchanged in value from the shipped BENCH_WEAK_P_APPEAR, now applied to the
+// week being decided rather than charged only against later weeks). In the
+// replays a boost added 3.9 points on a bench with such a player against 8.5
+// once all four were likely to play. Playing the chip with him in a slot spends
+// a whole chip on three players, while a transfer that sells him (planner.js,
+// "THE BENCH REPAIR") or a later week keeps the fourth slot's value. General
+// availability, not a rule about suspensions: injured, suspended, unavailable
+// and unused players all fall under it through their projected appearance
+// probability. The chips-off replays cannot sell the player, which is the
+// point of the rule, so they read no threshold from 0.05 to 0.5 as better than
+// none; the chips-on replays of entry 30 are its measurement.
+const BENCH_USABLE_P_APPEAR = 0.5;
 
 export const CHIP_PARAMS = Object.freeze({
   wildcardHorizonThreshold: WILDCARD_HORIZON_THRESHOLD,
   freeHitThreshold: FREE_HIT_THRESHOLD,
-  benchBoostThreshold: BENCH_BOOST_THRESHOLD,
+  benchBoostBar: BENCH_BOOST_BAR,
+  benchBoostHoldMargin: BENCH_BOOST_HOLD_MARGIN,
   tripleCaptainMargin: TRIPLE_CAPTAIN_MARGIN,
   chipPatiencePerGw: CHIP_PATIENCE_PER_GW,
   fdrSensitivity: FDR_SENSITIVITY,
-  benchWeakPAppear: BENCH_WEAK_P_APPEAR,
+  benchUsablePAppear: BENCH_USABLE_P_APPEAR,
 });
 
 // ---------------------------------------------------------------------------
@@ -247,7 +339,7 @@ function perFixtureRate(projections, playerId, gwFrom, horizon) {
 // Estimated points for a player in a gameweek that may be outside the horizon.
 // Inside the horizon this returns the projection itself, so the two regimes
 // agree at the boundary.
-function estimateXp(projections, gameState, player, gw, gwFrom, horizon) {
+export function estimateXp(projections, gameState, player, gw, gwFrom, horizon) {
   if (gw >= gwFrom && gw < gwFrom + horizon) {
     const row = projOf(projections, player.id, gw);
     if (row) return row.xPoints;
@@ -264,6 +356,73 @@ function legalGwsForChip(rules, chipName, gw, chipsUsed) {
     if (chipAvailableAt(rules, chipName, g, chipsUsed)) out.push(g);
   }
   return out;
+}
+
+// The unspent instance of a chip that `gw` falls in, as its gameweek range.
+// Null when the chip cannot be played at `gw`.
+export function chipWindowAt(rules, chipName, gw, chipsUsed = []) {
+  const used = chipsUsed
+    .map(c => (typeof c === 'string' ? { name: c, event: null } : c))
+    .filter(c => c && c.name === chipName);
+  for (const w of rules.chips.filter(c => c.name === chipName)) {
+    if (gw < w.startEvent || gw > w.stopEvent) continue;
+    const spent = used.some(u => u.event === null || (u.event >= w.startEvent && u.event <= w.stopEvent));
+    if (!spent) return { from: w.startEvent, to: Math.min(w.stopEvent, rules.totalEvents) };
+  }
+  return null;
+}
+
+// The timing chips that have to be played now or be lost. Only one chip can be
+// played a gameweek, so when as many unspent bench boosts and triple captains
+// share a window's last gameweek as that window has weeks left (this one
+// included), waiting a week loses one of them for certain, and each is due. In
+// the first chips-on replays of entry 30 both reached the last week of 2025-26's
+// first window unspent, and the triple captain expired behind the bench boost.
+// The wildcard and the free hit do not count: they are never forced (header),
+// and counting them pulled both timing chips into weeks worth 2 to 8 points.
+const FORCED_CHIPS = ['bboost', '3xc'];
+
+export function dueChipsAt(rules, gw, chipsUsed = []) {
+  const byEnd = new Map();
+  for (const name of FORCED_CHIPS) {
+    const window = chipWindowAt(rules, name, gw, chipsUsed);
+    if (!window) continue;
+    if (!byEnd.has(window.to)) byEnd.set(window.to, []);
+    byEnd.get(window.to).push(name);
+  }
+  const due = new Set();
+  for (const [to, names] of byEnd) {
+    if (names.length >= to - gw + 1) for (const name of names) due.add(name);
+  }
+  return due;
+}
+
+// No week left to wait for: the window ends this week, or the chips in hand
+// need every week that is left.
+function mustPlayNow(rules, chipName, window, gw, chipsUsed) {
+  return laterWeeksInWindow(window, gw).length === 0 || dueChipsAt(rules, gw, chipsUsed).has(chipName);
+}
+
+// The later weeks the SAME chip instance can still be played in.
+function laterWeeksInWindow(window, gw) {
+  const out = [];
+  if (!window) return out;
+  for (let g = gw + 1; g <= window.to; g++) out.push(g);
+  return out;
+}
+
+// Why a timing chip is played in a week it would otherwise wait past: its window
+// ends now, or the timing chips still in hand need every week that is left of it.
+function lastWeekReason(code, label, window, gw, consequence) {
+  if (window.to === gw) {
+    return makeReason(`${code}_last_week`, `Gameweek {v} is the last week this ${label} can be played, so ${consequence}.`, window.to, 'gw');
+  }
+  return makeReason(
+    `${code}_last_week`,
+    `Your Bench Boost and Triple Captain need every week left before this ${label}'s window closes after gameweek {v}, and only one chip can be played a week, so ${consequence}.`,
+    window.to,
+    'gw',
+  );
 }
 
 function patience(gw, gwFrom) {
@@ -294,6 +453,7 @@ function evaluateWildcard(ctx) {
   if (!legal) {
     return notAvailable('wildcard', legalGws, gw, reasons);
   }
+  const window = chipWindowAt(rules, 'wildcard', gw, chipsUsed);
 
   const budget = spendableTenths(squadState);
   const built = buildSquad({
@@ -309,8 +469,10 @@ function evaluateWildcard(ctx) {
   const changes = built.squad.filter(id => !squadState.picks.some(p => p.playerId === id)).length;
 
   // The week the current squad is most broken, from the calendar alone: players
-  // with no fixture, plus players who are already unavailable.
-  const structure = wildcardStructureScan(ctx, legalGws);
+  // with no fixture, plus players who are already unavailable. Only weeks this
+  // wildcard can still be played in.
+  const structure = wildcardStructureScan(ctx, legalGws.filter(g => g <= window.to));
+  const recommended = gain >= WILDCARD_HORIZON_THRESHOLD;
 
   reasons.push(makeReason(
     'wildcard_gain',
@@ -337,7 +499,10 @@ function evaluateWildcard(ctx) {
     available: true,
     valueNow: gain,
     threshold: WILDCARD_HORIZON_THRESHOLD,
-    recommended: gain >= WILDCARD_HORIZON_THRESHOLD,
+    recommended,
+    excess: gain - WILDCARD_HORIZON_THRESHOLD,
+    netValue: 0,
+    window,
     holdReason: makeReason(
       'hold_wildcard',
       `A wildcard rebuild gains {v} points over the horizon, short of the ${fmtValue(WILDCARD_HORIZON_THRESHOLD, 'points')} it has to beat.`,
@@ -393,6 +558,7 @@ function evaluateFreeHit(ctx) {
   if (!chipAvailableAt(rules, 'freehit', gw, chipsUsed)) {
     return notAvailable('freehit', legalGws, gw, []);
   }
+  const window = chipWindowAt(rules, 'freehit', gw, chipsUsed);
 
   const budget = spendableTenths(squadState);
   // A free hit is a one week rental, so it is optimized for one gameweek only.
@@ -410,7 +576,8 @@ function evaluateFreeHit(ctx) {
 
   // Where the free hit is classically worth most: the week the squad has the
   // fewest players with a fixture.
-  const scan = freeHitScan(ctx, legalGws);
+  const scan = freeHitScan(ctx, legalGws.filter(g => g <= window.to));
+  const recommended = gain >= FREE_HIT_THRESHOLD;
 
   const reasons = [
     makeReason('freehit_gain', 'A one week rental squad projects {v} more points than your own team this gameweek.', gain),
@@ -431,7 +598,10 @@ function evaluateFreeHit(ctx) {
     available: true,
     valueNow: gain,
     threshold: FREE_HIT_THRESHOLD,
-    recommended: gain >= FREE_HIT_THRESHOLD,
+    recommended,
+    excess: gain - FREE_HIT_THRESHOLD,
+    netValue: 0,
+    window,
     holdReason: makeReason(
       'hold_freehit',
       `A one week rental gains {v} points this gameweek, short of the ${fmtValue(FREE_HIT_THRESHOLD, 'points')} a free hit needs to be worth.`,
@@ -483,104 +653,185 @@ function freeHitScan(ctx, legalGws) {
 // Bench boost
 // ---------------------------------------------------------------------------
 
+// The decision for one bench, exported because planner.js asks it of every
+// squad it scores, not only the squad already owned: a bench boost on a squad
+// that sells an unavailable bench player first is a different, and often
+// better, plan than a bench boost on the squad as it stands.
+//
+//   valueNow        the bench's projected points this gameweek
+//   bestGw/Value    the best later week of the same window INSIDE the
+//                   projection horizon, with the same bench
+//   status          opening    transfers are unlimited: the squad is not set yet
+//                   last_week  the window ends this week: play rather than lose it
+//                   unusable   a bench player is unlikely to play
+//                   below_bar  the bench projects under BENCH_BOOST_BAR
+//                   later      a week inside the horizon beats this one by
+//                              more than BENCH_BOOST_HOLD_MARGIN
+//                   play       otherwise
+//   netValue        what the chip adds to a plan's objective: this week's bench
+//                   less the least keeping the chip is worth, the larger of
+//                   the bar and the best near week less the hold margin. It
+//                   is above zero exactly when the status is play (and the
+//                   whole bench in the last week), so the planner cannot play
+//                   a boost its own rule holds, or hold one it plays by a tie
+//                   of objectives; zero when not recommended
+export function benchBoostDecision({ benchIds, projections, gameState, rules, gw, horizon, chipsUsed = [], openingSquad = false }) {
+  const window = chipWindowAt(rules, 'bboost', gw, chipsUsed);
+  if (!window) return null;
+  const valueNow = benchIds.reduce((s, id) => s + xpOf(projections, id, gw), 0);
+  const unusable = benchIds.filter((id) => {
+    const row = projOf(projections, id, gw);
+    return !row || !(row.pAppear >= BENCH_USABLE_P_APPEAR);
+  });
+
+  const later = laterWeeksInWindow(window, gw);
+  const perGw = [];
+  let bestGw = null;
+  let bestValue = null;
+  for (const g of later) {
+    if (g >= gw + Math.max(1, horizon)) break;
+    let value = 0;
+    for (const id of benchIds) value += xpOf(projections, id, g);
+    perGw.push({ gw: g, value });
+    if (bestValue === null || value > bestValue) {
+      bestValue = value;
+      bestGw = g;
+    }
+  }
+
+  const lastWeek = !openingSquad && mustPlayNow(rules, 'bboost', window, gw, chipsUsed);
+  let status;
+  if (openingSquad) status = 'opening';
+  else if (lastWeek) status = valueNow > 0 ? 'last_week' : 'empty';
+  else if (unusable.length) status = 'unusable';
+  else if (valueNow < BENCH_BOOST_BAR) status = 'below_bar';
+  else if (bestValue !== null && bestValue - valueNow > BENCH_BOOST_HOLD_MARGIN) status = 'later';
+  else status = 'play';
+  const recommended = status === 'play' || status === 'last_week';
+  const keepValue = lastWeek ? 0 : Math.max(BENCH_BOOST_BAR, bestValue === null ? 0 : bestValue - BENCH_BOOST_HOLD_MARGIN);
+  const advantage = valueNow - keepValue;
+
+  return {
+    gw, window, bench: benchIds.slice(), valueNow, unusable, perGw, bestGw, bestValue,
+    lastWeek, keepValue, advantage, bar: BENCH_BOOST_BAR, margin: BENCH_BOOST_HOLD_MARGIN,
+    status, recommended,
+    netValue: recommended ? Math.max(0, advantage) : 0,
+  };
+}
+
+export function benchBoostReasons(d, gameState) {
+  const reasons = [makeReason('bboost_value_now', 'Your bench projects {v} points this gameweek.', d.valueNow)];
+  if (d.lastWeek) {
+    reasons.push(lastWeekReason('bboost', 'Bench Boost', d.window, d.gw, 'it is played rather than lost'));
+    return reasons;
+  }
+  reasons.push(makeReason(
+    'bboost_threshold',
+    'A Bench Boost is played once the bench projects {v} points with all four players likely to play.',
+    d.bar,
+  ));
+  if (d.status === 'unusable') {
+    reasons.push(makeReason(
+      'bboost_unusable',
+      `{v} of your bench ${d.unusable.length === 1 ? 'players is' : 'players are'} unlikely to play (${d.unusable.map(id => playerName(gameState, id)).join(', ')}), so the bench is not ready to boost.`,
+      d.unusable.length,
+      'count',
+    ));
+  }
+  if (d.bestGw !== null) {
+    reasons.push(makeReason(
+      'bboost_best_future',
+      `The best of the next few gameweeks for it is gameweek ${d.bestGw}, worth {v} points.`,
+      d.bestValue,
+    ));
+    if (d.status === 'play') {
+      reasons.push(makeReason(
+        'bboost_margin',
+        `A later week has to beat this one by more than {v} points before waiting pays, because a bench estimate moves that much before its week arrives, so this week is played.`,
+        d.margin,
+      ));
+    } else if (d.status === 'later') {
+      reasons.push(makeReason(
+        'bboost_later',
+        `Gameweek ${d.bestGw} beats this week by more than the {v} points a bench estimate moves, so the chip waits for it.`,
+        d.margin,
+      ));
+    }
+  }
+  return reasons;
+}
+
+function benchBoostHoldReason(d) {
+  if (d.status === 'opening') return openingHoldReason('hold_bboost', 'Bench Boost', d.gw);
+  if (d.status === 'unusable') {
+    return makeReason('hold_bboost', 'Your bench has {v} player unlikely to play, so a Bench Boost waits until the bench is repaired.', d.unusable.length, 'count');
+  }
+  if (d.status === 'below_bar') {
+    return makeReason(
+      'hold_bboost',
+      `Your bench projects {v} points this gameweek, short of the ${fmtValue(d.bar, 'points')} a Bench Boost needs.`,
+      d.valueNow,
+    );
+  }
+  return makeReason(
+    'hold_bboost',
+    `Your bench projects {v} points this gameweek, and gameweek ${d.bestGw} projects ${fmtValue(d.bestValue, 'points')}, so the chip is worth more then.`,
+    d.valueNow,
+  );
+}
+
 function evaluateBenchBoost(ctx) {
-  const { squadState, projections, gameState, rules, gw, horizon, baseline, chipsUsed } = ctx;
+  const { projections, gameState, rules, gw, horizon, baseline, chipsUsed } = ctx;
   const legalGws = legalGwsForChip(rules, 'bboost', gw, chipsUsed);
   if (!chipAvailableAt(rules, 'bboost', gw, chipsUsed)) {
     return notAvailable('bboost', legalGws, gw, []);
   }
-
   const now = baseline.gws[0];
-  const valueNow = now.xPointsBench;
   const benchIds = [now.bench.gk, ...now.bench.order];
-
-  // Team structure cost. A bench worth boosting is a bench with four players who
-  // actually start, and money spent on a fourth defender who plays is money not
-  // spent on the eleven. Rather than assert that in prose, it is charged as what
-  // it would actually cost to get there: one transfer per bench player who is
-  // unlikely to appear, at the hit rate once free transfers run out.
-  const weakBench = benchIds.filter(id => {
-    const row = projOf(projections, id, gw);
-    return !row || row.pAppear < BENCH_WEAK_P_APPEAR;
+  const d = benchBoostDecision({ benchIds, projections, gameState, rules, gw, horizon, chipsUsed, openingSquad: ctx.openingSquad });
+  return chipEntry('bboost', d, legalGws, benchBoostReasons(d, gameState), benchBoostHoldReason(d), {
+    bench: benchIds, unusable: d.unusable, perGw: d.perGw,
   });
-  const structureCost = hitCost(transferStateOf(squadState, rules), weakBench.length, rules);
-  const benchSpendTenths = squadState.picks
-    .filter(p => benchIds.includes(p.playerId))
-    .reduce((s, p) => s + p.sellingTenths, 0);
+}
 
-  // Later weeks, with the bench you actually own. Inside the horizon these are
-  // real projections; past it they are fixture count and difficulty scaled.
-  let bestGw = null;
-  let bestValue = -Infinity;
-  const perGw = [];
-  for (const g of legalGws) {
-    if (g === gw) continue;
-    let value = 0;
-    for (const id of benchIds) {
-      const player = gameState.players.get(id);
-      if (!player) continue;
-      value += estimateXp(projections, gameState, player, g, gw, horizon);
-    }
-    const discounted = value * patience(g, gw) - structureCost;
-    perGw.push({ gw: g, value, discounted });
-    if (discounted > bestValue) {
-      bestValue = discounted;
-      bestGw = g;
-    }
+// The per-chip entry for a decision planner.js took on a squad other than the
+// one the evaluation was run for, so the card and the explanation describe the
+// chip the plan actually plays.
+export function timingChipEntry(chip, decision, { rules, gw, chipsUsed = [], gameState }) {
+  const legalGws = legalGwsForChip(rules, chip, gw, chipsUsed);
+  if (chip === 'bboost') {
+    return chipEntry('bboost', decision, legalGws, benchBoostReasons(decision, gameState), benchBoostHoldReason(decision), {
+      bench: decision.bench, unusable: decision.unusable, perGw: decision.perGw,
+    });
   }
-  if (!Number.isFinite(bestValue)) bestValue = 0;
+  return chipEntry('3xc', decision, legalGws, tripleCaptainReasons(decision, gameState), null, {
+    captain: decision.captain, bestPlayer: decision.bestPlayer, perGw: decision.perGw,
+  });
+}
 
-  const recommended = valueNow >= BENCH_BOOST_THRESHOLD && valueNow >= bestValue;
-  const reasons = [
-    makeReason('bboost_value_now', 'Your bench projects {v} points this gameweek.', valueNow),
-    makeReason('bboost_threshold', 'A bench boost is worth spending at {v} points or more, because an average bench returns less than that.', BENCH_BOOST_THRESHOLD),
-  ];
-  if (bestGw !== null) {
-    reasons.push(makeReason(
-      'bboost_best_future',
-      `Your best remaining bench week looks like gameweek ${bestGw}, worth {v} points.`,
-      bestValue,
-    ));
-  }
-  if (weakBench.length) {
-    reasons.push(makeReason(
-      'bboost_weak_bench',
-      '{v} of your four bench players are unlikely to play, so the bench would need rebuilding first.',
-      weakBench.length,
-      'count',
-    ));
-  }
-
+// One shape for every timing chip, so planner.js and the explanation layer read
+// bench boost and triple captain the same way.
+function chipEntry(chip, d, legalGws, reasons, holdReason, detail) {
   return {
-    chip: 'bboost',
+    chip,
     available: true,
-    valueNow,
-    threshold: BENCH_BOOST_THRESHOLD,
-    recommended,
-    // Two ways to fall short, and they are different sentences: a bench that is
-    // not worth boosting at all, and a bench that is worth boosting in a better
-    // week than this one.
-    holdReason: valueNow < BENCH_BOOST_THRESHOLD
-      ? makeReason(
-        'hold_bboost',
-        `Your bench projects {v} points this gameweek, short of the ${fmtValue(BENCH_BOOST_THRESHOLD, 'points')} a bench boost needs.`,
-        valueNow,
-      )
-      : makeReason(
-        'hold_bboost',
-        `Your bench projects {v} points this gameweek, and gameweek ${bestGw} projects ${fmtValue(bestValue, 'points')}, so the chip is worth more later.`,
-        valueNow,
-      ),
-    bestGw,
-    bestValue,
+    valueNow: d.valueNow,
+    // The bar a reader compares valueNow with: the bench boost's absolute bar,
+    // the triple captain's margin over the best week left.
+    threshold: chip === 'bboost' ? d.bar : d.margin,
+    margin: d.margin,
+    advantage: d.advantage,
+    status: d.status,
+    lastWeek: d.lastWeek,
+    window: d.window,
+    recommended: d.recommended,
+    excess: d.lastWeek ? d.valueNow : (chip === 'bboost' ? d.advantage : d.advantage - d.margin),
+    netValue: d.netValue,
+    holdReason,
+    bestGw: d.bestGw,
+    bestValue: d.bestValue,
     nextLegalGw: legalGws.length ? legalGws[0] : null,
-    detail: {
-      bench: benchIds,
-      weakBench,
-      structureCost,
-      benchSpendTenths,
-      perGw,
-    },
+    detail,
     reasons,
   };
 }
@@ -589,34 +840,23 @@ function evaluateBenchBoost(ctx) {
 // Triple captain
 // ---------------------------------------------------------------------------
 
-function evaluateTripleCaptain(ctx) {
-  const { squadState, projections, gameState, rules, gw, horizon, baseline, chipsUsed } = ctx;
-  const legalGws = legalGwsForChip(rules, '3xc', gw, chipsUsed);
-  if (!chipAvailableAt(rules, '3xc', gw, chipsUsed)) {
-    return notAvailable('3xc', legalGws, gw, []);
-  }
-
-  const now = baseline.gws[0];
-  // Triple captain adds one further copy of the captain's points on top of the
-  // normal double, so its value is exactly the captain's projection.
-  //
-  // KNOWN UNDER-STATEMENT, left alone on purpose (2026-09-04). The extra copy
-  // is really worth `xPointsCaptaincy` - the captain when he plays and the VICE
-  // when he does not, because FPL passes the tripled armband on exactly as it
-  // passes the doubled one - so this under-values the chip for a doubtful
-  // captain. It is zero while `pAppear` is pinned at 1. Correcting it would
-  // change WHICH GAMEWEEK the chip is recommended for, which is a planner
-  // decision and needs registry validation, so it is not part of the reporting
-  // fix that introduced `gameweekPoints`.
-  const valueNow = now.captainExtra;
-  const squadIds = squadState.picks.map(p => p.playerId);
-
-  let bestGw = null;
-  let bestValue = -Infinity;
-  let bestPlayer = null;
+// The same timing decision for the armband. valueNow is one more copy of the
+// captain's projection; a later week's value is the best projection in the
+// squad that week, over the same window.
+//
+// KNOWN UNDER-STATEMENT, left alone on purpose (registry entry 25). The extra
+// copy is really worth `xPointsCaptaincy`, the captain when he plays and the
+// VICE when he does not. Entry 25 measured the correction as inert under the
+// old margin; entry 30 re-measured it under the new one (see there).
+export function tripleCaptainDecision({ squadIds, captainId, captainXp, projections, gameState, rules, gw, horizon, chipsUsed = [], openingSquad = false }) {
+  const window = chipWindowAt(rules, '3xc', gw, chipsUsed);
+  if (!window) return null;
+  const valueNow = captainXp;
   const perGw = [];
-  for (const g of legalGws) {
-    if (g === gw) continue;
+  let bestGw = null;
+  let bestValue = null;
+  let bestPlayer = null;
+  for (const g of laterWeeksInWindow(window, gw)) {
     let top = 0;
     let topId = null;
     for (const id of squadIds) {
@@ -630,53 +870,84 @@ function evaluateTripleCaptain(ctx) {
     }
     const discounted = top * patience(g, gw);
     perGw.push({ gw: g, value: top, discounted, playerId: topId });
-    if (discounted > bestValue) {
+    if (bestValue === null || discounted > bestValue) {
       bestValue = discounted;
       bestGw = g;
       bestPlayer = topId;
     }
   }
-  if (!Number.isFinite(bestValue)) bestValue = 0;
+  const lastWeek = !openingSquad && mustPlayNow(rules, '3xc', window, gw, chipsUsed);
+  const advantage = valueNow - (lastWeek || bestValue === null ? 0 : bestValue);
+  let status;
+  if (openingSquad) status = 'opening';
+  else if (lastWeek) status = valueNow > 0 ? 'last_week' : 'empty';
+  else if (advantage >= TRIPLE_CAPTAIN_MARGIN) status = 'play';
+  else if (advantage > -TRIPLE_CAPTAIN_MARGIN) status = 'tied';
+  else status = 'later';
+  const recommended = status === 'play' || status === 'last_week';
+  return {
+    gw, window, captain: captainId, valueNow, perGw, bestGw, bestValue, bestPlayer,
+    lastWeek, advantage, margin: TRIPLE_CAPTAIN_MARGIN, status, recommended,
+    netValue: recommended ? advantage : 0,
+  };
+}
 
-  const recommended = valueNow - bestValue >= TRIPLE_CAPTAIN_MARGIN;
-  const captainName = playerName(gameState, now.captain);
-  const reasons = [
-    makeReason('3xc_value_now', `Tripling ${captainName} this gameweek adds {v} points.`, valueNow),
-    makeReason('3xc_margin', 'The chip is only spent when this week beats the best week left by {v} points, because it cannot be won back.', TRIPLE_CAPTAIN_MARGIN),
-  ];
-  if (bestGw !== null) {
+export function tripleCaptainReasons(d, gameState) {
+  const captainName = playerName(gameState, d.captain);
+  const reasons = [makeReason('3xc_value_now', `Tripling ${captainName} this gameweek adds {v} points.`, d.valueNow)];
+  if (d.lastWeek) {
+    reasons.push(lastWeekReason('3xc', 'Triple Captain', d.window, d.gw, 'it is played rather than lost'));
+    return reasons;
+  }
+  reasons.push(makeReason('3xc_margin', 'The chip is only spent when this week beats the best week left by {v} points, because it cannot be won back.', d.margin));
+  reasons.push(makeReason(
+    '3xc_best_future',
+    `Your best remaining triple captain week looks like gameweek ${d.bestGw}${d.bestPlayer ? ` with ${playerName(gameState, d.bestPlayer)}` : ''}, worth {v} points.`,
+    d.bestValue,
+  ));
+  if (d.status === 'tied') {
     reasons.push(makeReason(
-      '3xc_best_future',
-      `Your best remaining triple captain week looks like gameweek ${bestGw}${bestPlayer ? ` with ${playerName(gameState, bestPlayer)}` : ''}, worth {v} points.`,
-      bestValue,
+      '3xc_tied',
+      `This week and gameweek ${d.bestGw} are {v} points apart, inside the margin, so the chip is saved rather than spent on a coin flip.`,
+      Math.abs(d.advantage),
     ));
   }
+  return reasons;
+}
 
-  return {
-    chip: '3xc',
-    available: true,
-    valueNow,
-    threshold: TRIPLE_CAPTAIN_MARGIN,
-    recommended,
-    // The triple captain's bar is a MARGIN over the best week left, not an
-    // absolute number of points, so saying "worth 6.0, short of the 2.5 it
-    // needs" would be false. What it is short of is the week it is being kept
-    // for.
-    holdReason: makeReason(
-      'hold_3xc',
-      `Tripling ${captainName} adds {v} points this gameweek, and the best week left is worth ${fmtValue(bestValue, 'points')}, so it does not clear it by the ${fmtValue(TRIPLE_CAPTAIN_MARGIN, 'points')} the chip needs.`,
-      valueNow,
-    ),
-    bestGw,
-    bestValue,
-    nextLegalGw: legalGws.length ? legalGws[0] : null,
-    detail: {
-      captain: now.captain,
-      bestPlayer,
-      perGw,
-    },
-    reasons,
-  };
+function evaluateTripleCaptain(ctx) {
+  const { squadState, projections, gameState, rules, gw, horizon, baseline, chipsUsed } = ctx;
+  const legalGws = legalGwsForChip(rules, '3xc', gw, chipsUsed);
+  if (!chipAvailableAt(rules, '3xc', gw, chipsUsed)) {
+    return notAvailable('3xc', legalGws, gw, []);
+  }
+  const now = baseline.gws[0];
+  const d = tripleCaptainDecision({
+    squadIds: squadState.picks.map(p => p.playerId), captainId: now.captain, captainXp: now.captainExtra,
+    projections, gameState, rules, gw, horizon, chipsUsed, openingSquad: ctx.openingSquad,
+  });
+  const captainName = playerName(gameState, now.captain);
+  // The triple captain's bar is a MARGIN over the best week left, not an
+  // absolute number of points, so the hold sentence names the week it is kept
+  // for.
+  const holdReason = d.status === 'opening' ? openingHoldReason('hold_3xc', 'Triple Captain', gw) : makeReason(
+    'hold_3xc',
+    `Tripling ${captainName} adds {v} points this gameweek, and the best week left is worth ${fmtValue(d.bestValue, 'points')}, so it does not clear it by the ${fmtValue(d.margin, 'points')} the chip needs.`,
+    d.valueNow,
+  );
+  return chipEntry('3xc', d, legalGws, tripleCaptainReasons(d, gameState), holdReason, {
+    captain: now.captain, bestPlayer: d.bestPlayer, perGw: d.perGw,
+  });
+}
+
+// A timing chip held because the squad it would be played on is not set yet.
+export function openingHoldReason(code, label, gw) {
+  return makeReason(
+    code,
+    `Transfers are unlimited until the gameweek {v} deadline, so your fifteen is still being chosen; a ${label} is judged once it is set.`,
+    gw,
+    'gw',
+  );
 }
 
 function playerName(gameState, playerId) {
@@ -700,6 +971,8 @@ function notAvailable(chip, legalGws, gw, reasons) {
     valueNow: 0,
     threshold: null,
     recommended: false,
+    excess: null,
+    netValue: 0,
     bestGw: null,
     bestValue: null,
     nextLegalGw: next,
@@ -735,7 +1008,8 @@ export function evaluateChips({ squadState, projections, gameState, rules, horiz
     squadIds, projections, gameState, rules, gwFrom: gw, horizon, discount, opts,
   });
 
-  const ctx = { squadState, projections, gameState, rules, gw, horizon, discount, baseline, chipsUsed, opts };
+  const openingSquad = isUnlimited(transferStateOf(squadState, rules));
+  const ctx = { squadState, projections, gameState, rules, gw, horizon, discount, baseline, chipsUsed, opts, openingSquad };
 
   const perChip = {
     wildcard: evaluateWildcard(ctx),
@@ -749,7 +1023,7 @@ export function evaluateChips({ squadState, projections, gameState, rules, horiz
   let best = null;
   for (const entry of Object.values(perChip)) {
     if (!entry.recommended) continue;
-    const margin = entry.valueNow - (entry.threshold || 0);
+    const margin = entry.excess;
     if (!best || margin > best.margin) best = { entry, margin };
   }
 
@@ -782,7 +1056,7 @@ export function evaluateChips({ squadState, projections, gameState, rules, horiz
 
 // Holding is the normal answer, so it gets real content: for each chip in hand,
 // what it is worth this week and what it needs to be worth.
-function holdReasons(perChip, gw) {
+export function holdReasons(perChip, gw) {
   const reasons = [];
   const inHand = Object.values(perChip).filter(c => c.available);
   reasons.push(makeReason(
@@ -793,10 +1067,10 @@ function holdReasons(perChip, gw) {
   ));
   for (const entry of inHand) {
     // Each chip writes its own sentence, because each chip has its own bar: an
-    // absolute points total for the wildcard, the free hit and the bench boost,
-    // a margin over the best week left for the triple captain. One shared
-    // sentence for all four would have to state at least one of them wrongly.
-    reasons.push(entry.holdReason);
+    // absolute gain for the wildcard and the free hit, a margin over the best
+    // later week of the window for the bench boost and the triple captain. One
+    // shared sentence for all four would have to state at least one wrongly.
+    if (entry.holdReason) reasons.push(entry.holdReason);
     if (entry.bestGw !== null && entry.bestGw !== gw) {
       reasons.push(makeReason(
         `hold_${entry.chip}_better`,

@@ -1698,6 +1698,356 @@ xG/xA rate quality, and early-window squad construction where a wrong opening
 channel; running more weights is known to be useless, because no flat weight
 can satisfy three seasons whose optima genuinely differ.
 
+## 30. Chip timing, and the hit and roll margins, re-measured on analytic-2: ACCEPT
+
+- **Date:** 2026-09-17
+- **Decision: ACCEPT** for the chip decisions below; the wildcard and free hit
+  bars, the hit margins and the roll values are KEPT, each on the measurement
+  given for it.
+- **Kind:** decision-rule recalibration, requested by the owner after the live
+  GW5 plan (a day after entry 29 shipped) played a Bench Boost with no transfers
+  on a bench of Trafford, Muharemović, Egan and Foden, who is suspended until 17
+  October and projects 0.0: 9.54 projected against the 8-point bar, with
+  gameweek 9 at 9.52, so "play" rested on 0.03 points.
+- **Pre-registered** in `experiments/configs/chip-thresholds.mjs` and
+  `experiments/configs/hit-thresholds.mjs` before any arm ran. The timing rules
+  were chosen on the calibration instrument below, never on planner points.
+
+### The audit: every chip and hit constant, and where it came from
+
+Every points constant in the chip evaluator and the transfer decision was
+written into the first engine commit (b64e649a, 2026-08-12) with a sentence of
+reasoning and no measurement, on projections entry 29 showed were 20 to 30%
+low. None had ever been selected by an experiment. Entry 3 tried a premium on
+top of the wildcard bar (REJECT) and entry 25 found the triple captain's vice
+correction inert behind the 2.5 margin, both in the seeded regime.
+
+| constant | where | value | selected by | kind | now |
+| --- | --- | --- | --- | --- | --- |
+| `BENCH_BOOST_THRESHOLD` | chips.js, evaluateBenchBoost | 8 | prose ("an average bench returns less") | absolute points bar | `BENCH_BOOST_BAR` 8, measured below |
+| `BENCH_WEAK_P_APPEAR` and the structure cost | chips.js | 0.5; one hit per weak bench player, charged to LATER weeks only | prose | appearance probability; points | 0.5 kept as a gate on THIS week (`BENCH_USABLE_P_APPEAR`); the cost is gone |
+| comparison set | chips.js | every later legal week of the season, extrapolated past the horizon | none | rule | same window only; bench boost inside the horizon only |
+| `TRIPLE_CAPTAIN_MARGIN` | chips.js | 2.5 | prose ("cannot be won back") | points margin over the best later week | **1.0**, measured below |
+| `WILDCARD_HORIZON_THRESHOLD` | chips.js | 12 | prose (4 to 6 transfers of hits) | points, priced in hits | 12 kept, below |
+| `FREE_HIT_THRESHOLD` | chips.js | 12 | prose | points | 12 kept, below |
+| `CHIP_PATIENCE_PER_GW` | chips.js | 0.99 | prose | relative, per week | kept: scale-free |
+| `FDR_SENSITIVITY` | chips.js | 0.12 | prose | relative | kept: scale-free |
+| `hitMarginPoints` | planner.js RISK_PROFILES.balanced | 2.0 | prose | points margin | swept below, kept |
+| `rollBonus` | planner.js | 0.6 | prose | points per banked transfer | swept below, kept |
+| `hitMargin` | transfers.js TRANSFER_DEFAULTS | 1.5 | prose | points margin | swept below, kept |
+| `ftValuePoints` | transfers.js | 1.2 | prose | points per banked transfer | swept below, kept |
+| `retentionCredit` | transfers.js | 0 | swept, REJECT (transfer-churn.md, seeded, void tables) | share | 0, nothing to scale |
+| `priceUrgencyFraction` | transfers.js | 0.1 | derived: a tenth of `ftValuePoints` | share | moves with `ftValuePoints` |
+| `riskAversion`, `minutesRiskWeight` | lineup.js balanced | 0.05, 0.35 | prose | points per SD, per unit of non-appearance | NOT re-measured (limitations) |
+| `FIXTURE_WEIGHT`, `MAX_TILT`, `CONFIDENCE_MAX_PENALTY` | captain.js | 0.15, 0.375, 0.45 | prose; entry 26 | relative multipliers | scale-free |
+| `ALTERNATIVE_TOLERANCE` | explain.js | 0.5 | prose | wording of an explanation only | decides nothing |
+| `PLAUSIBLE_GW_MIN/MAX`, `MIN_TOP_MEDIAN_GAP` | readiness.js | 30 to 100, 1.0 | entry 29 checked them on analytic-2 | guard bands | unchanged |
+
+Seven defects, not one number, made the live call:
+
+1. **The objective credited a chip's raw value with no opportunity cost.** A
+   Bench Boost plan scored its whole bench (9.54) and a transfer plan scored
+   nothing for keeping the chip, so no transfer could beat it.
+2. **A bench boost and a triple captain were only evaluated on the squad
+   already owned**, never on the squad a transfer leads to, so "sell Foden, then
+   boost" was not a plan the search could produce.
+3. **The weak-bench cost was charged only to later weeks**, and with a free
+   transfer in hand it was 0: a bench with a player who cannot play was never
+   worse THIS week.
+4. **Comparisons crossed chip windows.** From 2025-26 a first-half chip was
+   compared with second-half weeks up to gameweek 38, which another chip covers.
+5. **No chip was played in the last week of its window**, so the triple
+   captain expired in 18 of 108 replayed windows.
+6. **Estimates past the horizon run high under analytic-2**, and "this week
+   beats every later week" compared one real week with the best of up to 30
+   estimates, so the bench boost slid to gameweek 38, where auto-substitutions
+   already recover most of a bench.
+7. **The chip card could disagree with the plan**: it read the owned squad's
+   evaluation, not the chip the plan played.
+
+### The instrument: every deadline, not the one a chip happened to fire
+
+`scripts/calibration/calibrate-chips.mjs record` replays the planner with chips
+OFF in the production regime (three seasons with a predecessor, three seeds,
+nine replays, 333 scored deadlines) and at every deadline records what each
+chip evaluator would see for the post-transfer squad (the bench and its
+appearance probabilities, the captain, the estimated value of every later legal
+week) and what the week then produced (the bench's points not already
+auto-substituted in, the extra armband copy). A bench boost and a triple captain
+do not change the squad, so their value in ANY week is observed, not
+counterfactual. `analyze` cuts each chip window into episodes starting every
+third gameweek (108 per chip), walks a rule through each, and scores what the
+chip realized. Every fitted quantity is fitted on the other two seasons and
+scored on the held-out one. The pre-change rules are rebuilt from the recorded
+facts and agree with the old evaluator at all 684 recorded deadlines; the
+committed tool, re-run on 2025-26 seed 1 after the change, reproduces the
+original recording's facts exactly. Recordings were made on both model trees,
+`--tree analytic2` (this branch) and `--tree analytic1` (the pre-#558 tree), so
+every rule is checked on the projections it did not come from.
+
+What the recordings say about scale (analytic-2, then analytic-1):
+
+- median projected bench 9.1 and 8.9; mean captain projection 6.60 and 5.67
+  (+16%). The bench is the one place the scale barely moved.
+- bench projection against what a boost added: r 0.48 and 0.44.
+- a boost added 8.45 points with all four bench players likely to play (130
+  deadlines) and 3.90 with one or more unlikely (203); 7.95 and 3.82.
+- a bench estimate for a week under 5 gameweeks away is 1.72 points above that
+  week's own projection when it arrives, SD 2.97 (1,248 revisions); 1.61 and
+  2.97. Past 8 weeks the bias is +0.51 under analytic-2 and -0.18 under
+  analytic-1, which is what flipped the season-long comparison into sliding.
+- a captain estimate 5 to 8 weeks away moves by SD 1.03 (1,056); 1.19.
+
+### Bench boost
+
+Held out by season, 108 episodes, points the chip realized (analytic-2 /
+analytic-1):
+
+| rule | mean a-2 | bad | expired | in last week | mean a-1 |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| pre-change | 1.67 | 95 | 18 | 52 | 6.13 |
+| first legal week | 6.12 | 59 | 0 | 0 | 5.81 |
+| **shipped: bar 8, all four likely to play, hold for a near week 4.7 better, last week** | **5.76** | 60 | 0 | 30 | **6.44** |
+| the same, bias and SD fitted per fold | 5.76 | 60 | 0 | 30 | 6.44 |
+| without the availability gate | 5.86 | 66 | 0 | 12 | 7.23 |
+| without the hold | 5.94 | 57 | 0 | 30 | 5.86 |
+| bar 6, 7, 9, 10 | 5.76 to 5.80 | | | | 6.07 to 6.52 |
+| bar 11 / 12 / 13 | 6.75 / 7.53 / 4.78 | | | | 6.42 / 5.08 / 4.98 |
+| bar chosen on the other seasons (12, 12, 12 / 11, 6, 8) | 7.53 | 47 | 0 | 30 | 6.17 |
+| REJECTED save on a tie: beat every later window week by bias + SD | 0.72 | 107 | 0 | 108 | 2.11 |
+| REJECTED beat the mean of later window weeks | 6.05 | 60 | 0 | 30 | 6.06 |
+| REJECTED optimal stopping (bar from a fitted value curve) | 2.69 | 93 | 0 | 90 | 4.24 |
+
+Standard errors 0.5 to 0.7. "bad" is below the episode's average week.
+
+- **The pre-change rule is the defect.** 1.67 a window under analytic-2 against
+  6.13 under analytic-1: the same rule, broken by the scale of the far
+  estimates. Anything that stops comparing with them recovers about 4 points.
+- **The bar.** Under analytic-2 the lowest bench with all four likely to play
+  projected 8.1, so bars 6 to 10 decide identically and the availability
+  condition does the work. The nested selection picks 12 in every analytic-2
+  fold, and bar 12 realizes 7.53. That gain is two decisions: a 22-point
+  gameweek 7 bench in 2023-24 (the same in all three seeds, so one event) and a
+  15-point gameweek 36 bench in 2024-25 seed 2; bar 13 collapses to 4.78, and
+  bar 12 loses 1.36 under analytic-1, where the folds choose 11, 6 and 8. Not
+  adopted on two events at the edge of a cliff. 8 is kept, and stated as
+  non-binding.
+- **The hold.** A near week has to beat this one by the estimate's bias plus its
+  noise (1.7 + 3.0) before waiting is chosen; the fitted per-fold margin
+  decides identically to the constant. The hold is worth nothing measurable
+  here (5.76 against 5.94 without it, 6.44 against 5.86 the other way) and is
+  kept because it is what makes a tie play: a later week must be clearly better,
+  and "save on a tie" collapsed the chip to the season's end in both models.
+- **The availability gate reads as no gain on this instrument** (5.86 without
+  it, and gates from 0.05 to 0.5 all within 0.2 of none under analytic-2; 0.8 to
+  1.25 worse under analytic-1), and that is expected: a chips-off replay never
+  sells the player, so a gated bench simply waits. What the gate buys is the
+  repair, which only the chips-on replays below can see, and there no bench
+  boost realized 0 or less (3 did in the control's windows).
+- **Doubles and blanks.** No recorded bench ever held a player with two
+  fixtures: a chips-off squad never builds a double-gameweek bench. A blank
+  bench player projects 0 and falls under the gate. A rule that waits for bench
+  doubles is pushed to the last week of every window (0.72). Building a bench
+  for a double is not measurable on this instrument (limitations).
+
+### Triple captain
+
+| rule | mean a-2 | bad | expired | in last week | mean a-1 |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| pre-change: margin 2.5 over the best week of the SEASON | 9.39 | 51 | 18 | 48 | 12.06 |
+| **shipped: margin 1.0 over the best week of the WINDOW, last week** | **10.81** | 25 | 0 | 30 | **13.69** |
+| margin = 5-8 week revision SD fitted per fold (1.00, 0.90, 1.16) | 10.22 | 34 | 0 | 21 | 13.69 |
+| margin by distance | 11.03 | 25 | 0 | 18 | 13.31 |
+| margin 2.5 inside the window, last week | 9.72 | 49 | 0 | 66 | 13.56 |
+| margin chosen on the other seasons (0.5 x3 / 1, 0.75, 1) | 11.19 | 22 | 0 | 18 | 13.31 |
+| valued with vice succession (entry 25) | 10.56 | 31 | 0 | 21 | 13.55 |
+
+Sweep, analytic-2 / analytic-1: margin 0 10.82 / 11.80, 0.25 10.92 / 11.78,
+0.5 11.19 / 12.06, 0.75 10.56 / 13.31, 1.0 10.81 / 13.69, 1.25 10.81 / 13.69,
+1.5 8.81 / 13.69, 2.0 9.72 / 13.60, 3.0 9.72 / 10.89. 1.0 is the one value near
+the best in both models and the one the revision noise gives; 0.5, the
+analytic-2 pick, loses 1.63 under analytic-1. Entry 25's vice succession is
+re-measured here with the margin that hid it gone: +0.34 under analytic-2 and
+-0.14 under analytic-1, with 6 bad episodes where there were none, so it stays
+out.
+
+### Wildcard and free hit
+
+Their bars are priced in hits (4 points each), which the projection scale does
+not move, and both became HARDER to reach under analytic-2, not easier: the
+rebuild gain the wildcard evaluator reports averages 4.78 against 7.12 and is at
+or above 12 at 9.0% of deadlines against 19.8%; a free hit reaches 12 at 1.5%
+against 1.8%. Both keep 12, and neither is forced by a closing window (candidate
+B below). The only change is that their "best week" scans stay inside their own
+window, which moves a sentence, not a decision. In the chips-on replays the
+wildcard's realized value per play barely moved (52.3 to 48.9 a play, 12 to 14
+plays over nine seasons).
+
+### The planner side
+
+- **Net value in the objective.** A timing chip plan is credited with what the
+  chip adds now less what keeping it is worth: for a triple captain its
+  advantage over the best later window week, for a bench boost the bench less
+  the larger of the bar and the best near week less 4.7. Both are positive
+  exactly when the chip's own rule says play, so there is no band where the rule
+  plays and the objective holds (tested at every quarter point of the edge).
+- **Evaluated on every candidate squad**, not only the owned one.
+- **The bench repair.** When the owned bench has a player unlikely to play, the
+  transfer search is run a second time restricted to selling exactly those
+  players (`searchTransfers` `opts.outIds`), because selling a bench player
+  moves the horizon too little for the open search to rank it, and each repair
+  is offered to the bench boost. Found by a unit test: without it the planner
+  held a suspended player on the bench whatever the free transfers.
+- **Shared deadlines (`dueChipsAt`).** Only one chip is played a gameweek, so
+  when the unspent bench boost and triple captain of a window need every week
+  left of it, each is due. Found by candidate A's full-season replays below.
+  Wildcard and free hit are never forced and do not count (candidate B).
+- **Not before the first deadline.** While transfers are unlimited neither
+  timing chip is recommended (status `opening`). Found by the browser suite: a
+  restored pre-season fifteen was rebuilt around a gameweek 1 Bench Boost. The
+  replays never meet this state (their opening squad is a draft, which plays no
+  chip), and the chips-on runs on the final tree reproduce candidate C cell for
+  cell.
+- **The card follows the plan** (`reconcileChipEvaluation`), and an alternative
+  that differs from the plan in its chip is compared on the objective
+  (`deltaWithChipValue`, "counting what the chip is worth later").
+
+### Chips on: the guard
+
+Pre-registered: SHIP if the per-window mean on instrument 3 with chips ON is
+not significantly negative (t > -2.0 on 15 windows) AND no exposed season's
+per-window mean is below -15. The control is the pre-change tree (origin/master
+at d4cae20c) run once, each candidate the branch tree, merged by trajectory as
+entry 29 was. Three candidates were run against the same control runs, and all
+three are reported, because the second look is a second look:
+
+| candidate | what it was | instrument 3, per window | t | W / L | per season | full seasons, per replay |
+| --- | --- | ---: | ---: | --- | --- | --- |
+| A | no bench repair, no shared deadline, the bench boost credited against its best near week less 1.7 | not run | | | | +5.0 (+4.0 / +3.0 / +8.0) |
+| B | A + the repair, the shared deadline over all four chips, the credit consistent with the hold (4.7), EVERY chip forced in its last week | +2.0 | 0.27 | 9 / 6 | **-17.7** / +22.0 / +1.5 | +11.3 (-24.0 / +15.7 / +42.3) |
+| **C, shipped** | B with only the bench boost and triple captain forced; wildcard and free hit back to their bars | **+5.9** | **0.98** | **10 / 5** | -2.3 / +18.0 / +1.9 | +9.1 (-24.0 / +11.0 / +40.3) |
+
+- **A** was run on the full-season instrument only, as a first check. Its
+  triple captain expired in a 2025-26 replay behind a bench boost played in the
+  same last week, and a unit test written for this entry showed its planner
+  kept a suspended player on the bench whatever the free transfers. Both were
+  fixed before B, and the credit was made consistent with the hold after the
+  live GW5 plan showed a 1.7-to-4.7 band where the rule played and the objective
+  could tie.
+- **B failed the season guard**: 2023-24 read -17.7 a window, and the per-window
+  table put -78 of it in gw27-38, where a free hit forced into gameweek 38
+  returned -20 in all three seeds. Forced wildcards and free hits across B's
+  replays returned from -55 (a wildcard forced into gameweek 18 of 2025-26 by
+  the shared deadline) to +47. Their last-week play had been added by analogy
+  with the timing chips and never measured on the calibration instrument, which
+  only scores chips that do not change the squad, so it was taken out rather
+  than tuned: a wildcard or free hit is played only at its bar, and the shared
+  deadline counts only the two timing chips. Nothing else changed between B and
+  C.
+- **The shipped tree is C.** One change came after C ran (neither timing chip
+  is recommended while transfers are unlimited, below), a state no replay
+  reaches; re-run on the final tree (engine 8caf1d88f614 against C's
+  0b326e973ab9 and the control's 9b7ee9f2a5ef), all 45 paired and 9 full-season
+  cells are identical, and `null-arm` reads +0 on 45 trajectories with the
+  control at 34,171, the same total as entry 29's candidate and this entry's
+  hit sweep.
+- **C passes both registered conditions.** Stated plainly: C is the candidate
+  that exists because B failed, on the same trajectories, so its pass is weaker
+  evidence than a first-look pass would be. The change between them removes an
+  unmeasured behaviour rather than fitting a parameter, which is why it was
+  made rather than rejecting the whole entry.
+
+Per chip, control against C (full seasons, 9 replays; instrument 3, 45
+trajectories):
+
+| chip | plays, seasons | expired, seasons | mean realized, seasons | plays, windows | mean / median realized, windows | at or below 0, windows |
+| --- | --- | --- | --- | --- | --- | --- |
+| Bench Boost | 9 to 12 | 3 to 0 | 9.0 to 9.0 (8 of 9 control plays in gameweek 38 or 20, none of C's) | 15 to 40 | 13.6 / 16 to 10.8 / 9 | 3 to 0 |
+| Triple Captain | 6 to 12 | 6 to 0 | 15.5 to 10.8 | 13 to 27 | 13.9 / 11 to 10.2 / 11 | 0 to 3 |
+| Wildcard | 12 to 14 | 6 to 4 | 52.3 to 48.9 | 27 to 29 | 57.5 / 58 to 60.7 / 66 | 5 to 3 |
+| Free Hit | 3 to 3 | 9 to 9 | 31.0 to 19.0 | 0 to 0 | | |
+
+The shape is the one the calibration instrument predicted: no timing chip
+expires, the bench boost stops waiting for gameweek 38, and each chip is played
+more often for less a play and more in total (the bench boost's realized total
+over the nine seasons 81 to 108, the triple captain's 93 to 130). The three
+triple captains forced into gameweek 19 of 2025-26 returned 2, 2 and 0, where
+the control's expired. Opportunity cost against the best week of the window is
+the calibration instrument's regret: 14.9 to 10.8 for the bench boost and 8.5 to
+7.1 for the triple captain, a window, under analytic-2. The chips-on
+instruments cannot measure it (a window replay does not end where a chip window
+ends, so a chip kept past it costs nothing there, which is also why they favour
+earlier plays and are guards rather than judges of timing).
+
+How often each rule says play, at the 333 deadlines of the analytic-2
+recordings: bench boost 37 to 107, triple captain 15 to 36; wildcard at or above
+its bar 30 and free hit 5, unchanged.
+
+### Hits and rolls
+
+`experiments/configs/hit-thresholds.mjs`, instrument 3, chips off, 15 windows,
+each pair of margins moved together to half and to double (the search ranks hit
+plans with its own margin and the planner accepts one with its own, so moving
+one alone leaves the other binding):
+
+| arm | per window | se | t | W / L / T | 2023-24 | 2024-25 | 2025-26 | hits | hit gain / cost |
+| --- | ---: | ---: | ---: | --- | ---: | ---: | ---: | ---: | ---: |
+| control (2.0 + 1.5, 0.6 + 1.2) | | | | | | | | 12 | 295 / 48 |
+| hits-half (1.0 + 0.75) | +0.7 | 3.3 | 0.21 | 3 / 2 / 10 | -5.5 | +7.6 | +0.0 | 22 | 455 / 88 |
+| hits-double (4.0 + 3.0) | -3.7 | 2.9 | -1.27 | 1 / 4 / 10 | -0.7 | -10.5 | +0.0 | 4 | 95 / 16 |
+| roll-half (0.3 + 0.6) | -4.8 | 3.9 | -1.22 | 4 / 7 / 4 | +4.3 | -5.4 | -13.2 | 14 | 264 / 56 |
+| roll-double (1.2 + 2.4) | -6.9 | 6.6 | -1.04 | 5 / 10 / 0 | -10.5 | +7.4 | -17.5 | 8 | 155 / 32 |
+
+**KEEP all four**, as pre-registered: no arm beats control with t >= 2. The
+shape is the evidence that the shipped values still sit where they should on
+the new scale: halving the hit margins doubles the hits (12 to 22) for nothing
+(+0.7), doubling them costs points (-3.7), and moving the roll values either
+way costs points (-4.8 and -6.9), so the shipped roll value is at the top of
+what was measured. The control scored 34,171 over the 45 trajectories, exactly
+entry 29's candidate: nothing in this entry changes a chips-off replay.
+
+### Also measured and not adopted
+
+- **A higher bench boost bar (11 or 12).** Two events; see the bar above.
+- **Forcing the wildcard and free hit in their last week** (candidate B).
+- **Save on a tie** for the bench boost, **optimal stopping** and **beat the
+  mean of later weeks**: all in the table above.
+- **A per-distance triple captain margin** (11.03 against 10.81 under
+  analytic-2, 13.31 against 13.69 under analytic-1).
+- **Vice succession on the triple captain's value** (entry 25's correction).
+- **Gating the bench on outfield players only** (5.41 / 7.44 against 5.76 /
+  6.44), or on expected appearances of 3.25 of 4 (6.06 / 6.08): opposite signs
+  in the two models.
+
+### Limitations, still open
+
+- **Double gameweek benches are unmeasured.** The chips-off replays never build
+  one, so the bench boost's value of a bench built for a double, and whether to
+  spend transfers building it, has no evidence behind it. The hold margin will
+  wait for a double inside the horizon; it will not engineer one.
+- **The replay's fixture list is the final one.** A postponed match sits in its
+  rescheduled gameweek from the start of the replay, so a double inside the
+  horizon is visible earlier in a replay than it was live. The bench boost only
+  looks inside the horizon, which limits this to about four weeks.
+- **A seed changes little.** 2023-24's three seeds make the same chip decisions,
+  so the 108 episodes carry fewer independent decisions than their count, which
+  is why the bar was not moved on two of them.
+- **The lineup's risk weights** (`riskAversion` 0.05, `minutesRiskWeight` 0.35)
+  are absolute points and were not re-measured; neither is reachable from an
+  experiment arm without plumbing through every lineup call.
+- **The wildcard and free hit gains are the evaluator's**, not what the chip
+  realized; realized values come only from the chips-on replays, a handful of
+  plays each.
+
+### Re-test if
+
+- a season with double gameweeks in its first half completes in the production
+  regime, or the replay learns to build benches for a double;
+- the projection model changes version again (the far-estimate bias is what
+  broke the old rule, and a model can move it back);
+- the planner's default horizon changes (the bench boost's hold looks only
+  inside it).
+
 ## 29. The xP calibration repair, measured in the production regime: ACCEPT
 
 - **Date:** 2026-09-16
@@ -1831,12 +2181,11 @@ answer: it only skips elevens that cannot win, by construction, and the plans
 at horizons 3, 5 and 8 are byte-identical with and without it (horizon 8 now
 0.84s).
 
-**Found after shipping, open:** the chip bars were not re-measured. On the live
-GW5 payload the reporter's plan plays a Bench Boost on a bench that includes a
-suspended player, 9.54 projected against the 8-point bar with gameweek 9 at
-9.52, where the pre-fix engine sold that player and held its chips (FINDINGS,
-"What is still wrong" under the calibration repair). The thresholds need their
-own measurement before they are trusted on calibrated projections.
+**Found after shipping, closed by entry 30:** the chip bars were not
+re-measured. On the live GW5 payload the reporter's plan played a Bench Boost on
+a bench that included a suspended player, 9.54 projected against the 8-point bar
+with gameweek 9 at 9.52, where the pre-fix engine sold that player and held its
+chips.
 
 ### Also measured and not adopted
 

@@ -14,6 +14,121 @@ tables.
 
 ---
 
+## A Bench Boost rested on 0.03 points, with a suspended player on the bench (found and FIXED 2026-09-17)
+
+The day #558 went live, the reporter's GW5 plan was "Play your Bench Boost" with
+no transfers, on a bench of Trafford, Muharemović, Egan and Foden (suspended
+until 17 October, 0.0 xP): 9.54 projected against the 8-point bar, gameweek 9
+at 9.52. Registry entry 30 has the audit of every chip and hit constant, the
+experiments and the tables; the constants in `chips.js` carry their evidence.
+
+### It was not the 8
+
+Every chip and hit constant was written into the first engine commit with prose
+and no measurement, and none had ever been chosen by an experiment, but the bar
+was the least of it. Seven structural defects made the call, largest first:
+
+- **A chip plan was credited with the chip's whole raw value** (the 9.54 bench)
+  and a transfer plan with nothing for keeping the chip, so no transfer plan
+  could beat a Bench Boost plan.
+- **The Bench Boost and Triple Captain were only evaluated on the squad already
+  owned**, so "sell Foden, then boost" did not exist as a plan.
+- **The weak-bench penalty was charged only to LATER weeks**, as the hits it
+  would take to repair, and with a free transfer in hand it was 0.
+- **Comparisons crossed chip windows**: a first-half chip was compared with
+  second-half weeks up to gameweek 38, which a different chip covers.
+- **No chip was played in the last week of its window**; the Triple Captain
+  expired in 18 of 108 replayed windows.
+- **Past the horizon, estimates run high under analytic-2** (+0.5 points a bench
+  at 9+ weeks, against -0.2 under analytic-1), so "this week beats the best week
+  left in the season" compared one real week with the best of up to thirty
+  optimistic ones, and the Bench Boost slid to gameweek 38, where
+  auto-substitutions already recover most of a bench. The same rule realized
+  6.1 points a window under analytic-1 and 1.7 under analytic-2: the recalibration
+  of #558 broke a rule nobody had re-measured.
+- **The chip card read the owned squad's evaluation**, not the plan's chip.
+
+### What measures a chip rule, and what cannot
+
+A chips-on replay plays each chip once or twice a season, far too few decisions
+to calibrate anything. `scripts/calibration/calibrate-chips.mjs` replays the
+planner with chips OFF and records every deadline; a Bench Boost and a Triple
+Captain do not change the squad, so what either would have added in ANY week is
+observed, and a rule can be scored on 108 windows per chip, with every fitted
+quantity held out by season. Recording the same deadlines on both model trees
+(`--tree analytic2`, `--tree analytic1`) is what showed the old rule was broken
+by the new scale rather than wrong all along.
+
+Its blind spots are real and decided two things. It never sells anyone, so it
+cannot see what a bench gate buys (a gated bench just waits), which is why the
+gate's measurement is the chips-on replays. And no chips-off squad ever built a
+bench with a double gameweek, so double-gameweek benches are unmeasured.
+
+### What replaced it
+
+The rules in README "When a chip is played": one window at a time; a Bench Boost
+or Triple Captain played in its last week, and earlier when the two share a
+deadline (a Wildcard or Free Hit is never forced); Bench Boost when all four are
+likely to play, the bench projects 8, and no week inside the horizon is 4.7
+points better; Triple Captain by a 1.0 margin; Wildcard and Free Hit at 12. A
+chip plan is credited with its NET value, which is above zero exactly when the
+chip's rule says play (an earlier draft credited the bench against the best near
+week less 1.7 while holding at 4.7, so between the two a "play" could lose to a
+tie of objectives); both timing chips are evaluated on every candidate squad;
+and when the owned bench has a player unlikely to play, the transfer search is
+run again restricted to selling exactly those players, because a bench sale
+moves the horizon too little for the open search to rank it (a unit test found
+the planner otherwise kept a suspended player on the bench whatever the free
+transfers). Neither timing chip is recommended while transfers are unlimited:
+the browser suite found a restored pre-season fifteen being rebuilt around a
+gameweek 1 Bench Boost ("Play your Bench Boost" where the opening squad had
+been, and a different fifteen after a reload), because a free transfer that
+strengthens the bench looks like a gain once the boost is credited, and the
+rules were never measured at gameweek 1 (the replays build their opening squad
+as a draft).
+
+On the live GW5 payload the plan is now Foden to Gibbs-White and Isak to Thiago,
+then the Bench Boost on Trafford, Szoboszlai, Muharemović and Egan (13.67
+projected; the best week inside the horizon, gameweek 8, is 13.70, a tie, so it
+is played), credited 4.68 over keeping the chip.
+
+### The second look, and why it is reported
+
+The chips-on guard was pre-registered (instrument 3: t > -2 and no season below
+-15 a window). Candidate B, which also forced a Wildcard and Free Hit in their
+last week, FAILED it: 2023-24 read -17.7, most of it a Free Hit forced into
+gameweek 38 that returned -20 in all three seeds. Forced Wildcards and Free Hits
+returned from -55 to +47 across B's replays, and nothing had measured them (the
+calibration instrument only scores chips that do not change the squad), so that
+behaviour was removed rather than tuned, and the shipped candidate C reads +5.9
+a window, t 0.98, 10 wins to 5, seasons -2.3 / +18.0 / +1.9. C exists because B
+failed on the same trajectories, which makes its pass weaker evidence than a
+first look, and the registry says so. Two lessons worth keeping:
+
+- **A chips-on window replay is biased toward playing chips early**: a window
+  does not end where a chip window ends, so a chip kept past the replay's last
+  gameweek costs nothing there. It can guard against a collapse; it cannot judge
+  timing. Timing is judged on the calibration instrument.
+- **Do not extend a measured rule to a chip it was not measured on.** "Play it
+  rather than lose it" is safe for a chip that cannot score below zero (a bench
+  boost, a triple captain) and is a bet for one that replaces the squad.
+
+### Things that looked like improvements and were not
+
+- **A higher Bench Boost bar.** Under analytic-2 the lowest bench with all four
+  likely to play projected 8.1, so the 8 almost never binds, and a bar of 12 is
+  chosen in every held-out fold and realizes 7.5 against 5.8. It is two
+  decisions (one 22-point bench found identically by all three 2023-24 seeds,
+  one 15-point bench in 2024-25), 13 collapses to 4.8, and 12 loses 1.4 under
+  analytic-1. Do not re-open it without new seasons.
+- **"Save on a tie"** (this week must beat later weeks by the noise) pushed the
+  Bench Boost to the last week of every window: 0.7 and 2.1 a window.
+- **Optimal stopping** on a fitted value curve waited too long: 2.7 and 4.2.
+- **A 0.5 Triple Captain margin** is the analytic-2 pick and loses 1.6 under
+  analytic-1; 1.0 is near the best in both.
+
+---
+
 ## Every nailed starter was projected as a rotation risk (found 2026-09-16, FIXED and live 2026-09-17, PR #558)
 
 Reported on the GW5 squad of 2026/27: fifteen players between 2.7 and 3.8 xP,
@@ -162,22 +277,10 @@ before the fix.
 
 ### What is still wrong
 
-- **The chip bars were set on compressed projections and have not been
-  re-measured, and one live recommendation shows it.** On the live GW5 payload
-  (04:03 UTC, 17 September) the reporter's plan is "Play your Bench Boost" with
-  no transfers, boosting a bench of Trafford, Muharemović, Egan and Foden, who
-  is suspended until 17 October and projects 0.0. The bench projects 9.54
-  against `BENCH_BOOST_THRESHOLD` 8, and gameweek 9 is valued at 9.52, so the
-  call rests on 0.03 points; the chips card itself says one bench player is
-  unlikely to play. The pre-fix engine on the same payload sold Foden and
-  Gabriel, captained Barry and held its chips. The 8-point bar rests on "a
-  normal bench delivers about 4 to 6 points", a figure that predates the repair
-  and was never re-measured, while the reporter's three AVAILABLE bench players
-  alone now project 9.5. The pre-registration for entry 29 already said the
-  absolute hit and chip thresholds were tuned on projections 20 to 30% low.
-  NOT fixed: the 2026-09-17 cleanup round was documentation only, by the
-  owner's instruction, and round 13 of the human test plan tells the owner not
-  to play the chip on the app's word.
+- **The chip bars had not been re-measured on the new projections** and a live
+  GW5 Bench Boost rested on 0.03 points with a suspended player on the bench.
+  FIXED the same day: "A Bench Boost rested on 0.03 points" above, registry
+  entry 30.
 - **A player whose role changed with his club keeps last season's shape for a
   while.** Trafford started 4 of 38 matches in 2025-26 as a back-up and all 4
   of Leeds' this season, and still reads 0.83 to start at GW5 (2.94 xP): the
@@ -1244,7 +1347,13 @@ On live data today the correction is a no-op: both omitted terms are exactly
 zero under the `pAppear` pin, so team 3855835 still reads 54.654. Pinned by
 `tests/gameweek-points.test.mjs` (cases A-H). See registry entries 23 and 24.
 
-### The triple captain undervaluation is real and provably inert (2026-09-04)
+### The triple captain undervaluation is real and provably inert (2026-09-04, re-measured 2026-09-17)
+
+**Re-measured by entry 30 with the gate that hid it gone.** The margin is now
+1.0 and compared within the chip's window, so the correction is no longer
+inert, and on the calibration instrument it realizes +0.34 extra armband points
+a window under analytic-2 and -0.14 under analytic-1, with 6 bad windows where
+there were none. Still not adopted. What follows is the 2026-09-04 account.
 
 `evaluateTripleCaptain` values the chip at `now.captainExtra`, the captain's own
 xP. FPL passes a TRIPLED armband to the vice exactly as it passes a doubled one
@@ -1255,7 +1364,7 @@ inert, registry entry 25.
 **The numbers.** Over 129 replay gameweeks where the chip was available,
 `valueNow` differs in 50 (38.8%), by +0.16 on average, largest single uplift
 1.78. The recommendation flips in **0** of them, because the bar is
-`valueNow - bestValue >= TRIPLE_CAPTAIN_MARGIN` and that margin is **2.5** - an
+`valueNow - bestValue >= TRIPLE_CAPTAIN_MARGIN` and that margin was **2.5** - an
 order of magnitude larger than the correction. `chipCandidates()` then refuses
 to score any chip its evaluator did not recommend, so the corrected `chipBonus`
 never reaches a played chip either. Two gates in series, both closed. Replays

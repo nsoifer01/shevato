@@ -39,9 +39,12 @@ import { chooseCaptain } from './captain.js';
 import { searchTransfers } from './transfers.js';
 import { buildSquad } from './squad-builder.js';
 import { validatePlan } from './validate.js';
-import { evaluateChips, squadTrajectory, discountWeights, xpOf, chipLabel } from './chips.js';
+import {
+  evaluateChips, squadTrajectory, discountWeights, xpOf, chipLabel, makeReason,
+  benchBoostDecision, tripleCaptainDecision, timingChipEntry, holdReasons,
+} from './chips.js';
 import { explainPlan } from './explain.js';
-import { advance, transferAccounting, transferStateOf, freeTransfersFor } from './transfer-state.js';
+import { advance, transferAccounting, transferStateOf, freeTransfersFor, isUnlimited } from './transfer-state.js';
 import { seasonEvidence } from './minutes.js';
 import { gameweekLifecycle } from './lifecycle.js';
 import { assessReadiness, projectionVitals } from './readiness.js';
@@ -196,6 +199,10 @@ function resolveOptions(options, rules, gw) {
     dataVersion: options.dataVersion || null,
     sample: options.sample === undefined ? null : options.sample,
     maxCandidates: options.maxCandidates || 40,
+    // Overrides for the transfer search's own margins (transfers.js
+    // TRANSFER_DEFAULTS). Nothing in the app sets them; the replay passes them
+    // so an experiment can move a search margin (experiments/configs/hit-thresholds.mjs).
+    transferOptions: options.transferOptions || {},
   };
 }
 
@@ -437,7 +444,10 @@ function planFromScored(scored, { squadState, gameState, rules, cfg, gw, certain
   };
 }
 
-function alternativeFrom(scored, primary, gameState) {
+// `plan` is the built primary plan the numbers are reported against;
+// `primaryScored` is the scored candidate it was built from, which carries the
+// objective the two were ranked on.
+function alternativeFrom(scored, plan, primaryScored, gameState) {
   return {
     chip: scored.chip,
     transfersOut: scored.candidate.transfersOut.slice(),
@@ -448,7 +458,12 @@ function alternativeFrom(scored, primary, gameState) {
     bankAfterTenths: scored.money.bankAfterTenths,
     xPointsGw: scored.xPointsGw,
     xPointsHorizon: scored.xPointsHorizon,
-    deltaHorizon: scored.xPointsHorizon - primary.xPointsHorizon,
+    deltaHorizon: scored.xPointsHorizon - plan.xPointsHorizon,
+    // When the two plans differ in the chip they play, the projected points
+    // alone overstate the gap: a plan that keeps a Bench Boost gives up this
+    // week's bench but keeps the chip for later. This is the same comparison
+    // the planner ranked them on, which counts what keeping the chip is worth.
+    deltaWithChipValue: scored.chip !== primaryScored.chip ? scored.objective - primaryScored.objective : null,
     headline: alternativeHeadline(scored, gameState),
   };
 }
@@ -659,6 +674,7 @@ export async function buildPlan({ gameState, squadState, options = {}, onProgres
         maxHits: cfg.maxHits,
         maxCandidates: cfg.maxCandidates,
         seed: cfg.seed,
+        ...cfg.transferOptions,
       },
     }) || [];
 
@@ -687,11 +703,23 @@ export async function buildPlan({ gameState, squadState, options = {}, onProgres
       }))
       .filter(Boolean);
 
+    // THE BENCH REPAIR. A Bench Boost is not played on a bench with a player
+    // unlikely to appear (chips.js), and the move that fixes it, selling exactly
+    // that player, changes the horizon too little for the open search above to
+    // rank it among its candidates. So while the chip is in hand and the owned
+    // bench is not ready, the sales of exactly those players are searched for on
+    // their own and offered to the Bench Boost as squads to play it on. They are
+    // not offered as plans without the chip: on their own they are moves the
+    // open search already judged not worth making.
+    const repairBases = readiness.allow.transfers
+      ? benchRepairCandidates({ chipEvaluation, scoredList, squadState: workingSquad, projections, gameState, rules, cfg, gw })
+      : [];
+
     // A chip plan is scored on the same scale as a transfer plan, so a wildcard
     // and a one transfer upgrade are compared with one number rather than by
     // rule.
     const chipScored = chipCandidates({
-      chipEvaluation, squadState: workingSquad, projections, gameState, rules, cfg, gw,
+      chipEvaluation, scoredList, repairBases, squadState: workingSquad, projections, gameState, rules, cfg, gw,
     });
     scoredList = scoredList.concat(chipScored);
 
@@ -709,13 +737,15 @@ export async function buildPlan({ gameState, squadState, options = {}, onProgres
     alternatives = scoredList
       .filter(s => s !== primary)
       .slice(0, MAX_ALTERNATIVES);
+
+    reconcileChipEvaluation(chipEvaluation, primary, scoredList, { squadState: workingSquad, gameState, rules, gw });
   }
 
   await yieldToHost();
   emit(onProgress, 'build-plan');
 
   const plan = planFromScored(primary, { squadState: workingSquad, gameState, rules, cfg, gw, certainty: 'current' });
-  plan.alternatives = alternatives.map(s => alternativeFrom(s, plan, gameState));
+  plan.alternatives = alternatives.map(s => alternativeFrom(s, plan, primary, gameState));
 
   const explainContext = {
     squadState: workingSquad,
@@ -775,39 +805,160 @@ export async function buildPlan({ gameState, squadState, options = {}, onProgres
 
 // ---------------------------------------------------------------------------
 
-function chipCandidates({ chipEvaluation, squadState, projections, gameState, rules, cfg, gw }) {
+// A timing chip (bench boost, triple captain) played on a squad a transfer plan
+// has already scored. Same squad, same trajectory, same transfers: what changes
+// is the chip's own points in the reported gameweek total and its NET value in
+// the objective. The net value is what the chip adds now minus what keeping it
+// is worth (chips.js, OPPORTUNITY COST), so a chip that is only marginally
+// better now adds only a marginal amount, and a transfer plan that keeps the
+// chip can still win. Until 2026-09-17 the
+// objective took the chip's whole raw value (a 9.5-point bench) with no cost
+// for spending it, which no transfer could beat.
+function scoreWithTimingChip(base, chip, decision, { squadState, rules, cfg }) {
+  const acct = transferAccounting({
+    state: transferStateOf(squadState, rules), transfersMade: base.transferCount, chipPlayed: chip, rules,
+  });
+  if (acct.hits > cfg.maxHits) return null;
+  const first = base.trajectory.gws[0];
+  const chipPoints = chip === 'bboost' ? first.xPointsBench : first.captainExtra;
+  return {
+    ...base,
+    chip,
+    acct,
+    chipBonus: chipPoints,
+    chipDecision: decision,
+    ...gameweekPoints(first, chip, acct.hitCostPoints),
+    xPointsHorizon: base.trajectory.total + chipPoints - acct.hitCostPoints,
+    objective: base.trajectory.total + decision.netValue - acct.hitCostPoints
+      + bankedTransferValue(acct, cfg.rollBonus)
+      + cfg.variancePreference * first.sd,
+  };
+}
+
+function benchRepairCandidates({ chipEvaluation, scoredList, squadState, projections, gameState, rules, cfg, gw }) {
+  const entry = chipEvaluation && chipEvaluation.perChip && chipEvaluation.perChip.bboost;
+  if (!entry || !entry.available || entry.status !== 'unusable') return [];
+  const raw = searchTransfers({
+    squadState, projections, gameState, rules,
+    horizon: cfg.horizon,
+    opts: {
+      discount: cfg.discount,
+      maxHits: cfg.maxHits,
+      maxCandidates: cfg.maxCandidates,
+      seed: cfg.seed,
+      ...cfg.transferOptions,
+      outIds: entry.detail.unusable,
+    },
+  }) || [];
+  const signature = c => `${c.transfersOut.slice().sort((a, b) => a - b).join(',')}>${c.transfersIn.slice().sort((a, b) => a - b).join(',')}`;
+  const seen = new Set(scoredList.map(s => signature(s.candidate)));
+  const out = [];
+  for (const r of raw) {
+    const c = normalizeCandidate(r, { squadState, rules });
+    if (!c || !c.transfersIn.length || c.transfersIn.length !== c.transfersOut.length) continue;
+    if (seen.has(signature(c))) continue;
+    seen.add(signature(c));
+    const scored = scoreCandidate({ candidate: c, chip: null, squadState, projections, gameState, rules, cfg, gw });
+    if (scored) out.push(scored);
+  }
+  return out;
+}
+
+function chipCandidates({ chipEvaluation, scoredList, repairBases = [], squadState, projections, gameState, rules, cfg, gw }) {
   if (!chipEvaluation || !chipEvaluation.perChip) return [];
   const held = currentSquadIds(squadState);
+  const chipsUsed = squadState.chipsUsed || [];
+  const openingSquad = isUnlimited(transferStateOf(squadState, rules));
   const out = [];
 
   for (const entry of Object.values(chipEvaluation.perChip)) {
     if (!entry.available) continue;
 
-    let candidate;
     if (entry.chip === 'wildcard' || entry.chip === 'freehit') {
+      // A chip is only offered when its own evaluator recommended it. Scoring it
+      // anyway would let a chip win by a tenth of a point in a week it should be
+      // saved for, which is exactly the mistake chips.js exists to prevent.
+      if (!entry.recommended) continue;
       const squad = entry.detail && entry.detail.squad;
       if (!squad || squad.length !== rules.squadSize) continue;
-      candidate = {
+      const candidate = {
         transfersOut: held.filter(id => !squad.includes(id)),
         transfersIn: squad.filter(id => !held.includes(id)),
         squad: squad.slice(),
       };
-    } else {
-      candidate = { transfersOut: [], transfersIn: [], squad: held.slice() };
+      const scored = scoreCandidate({
+        candidate, chip: entry.chip, squadState, projections, gameState, rules, cfg, gw,
+      });
+      if (scored) out.push(scored);
+      continue;
     }
 
-    const scored = scoreCandidate({
-      candidate, chip: entry.chip, squadState, projections, gameState, rules, cfg, gw,
-    });
-    if (!scored) continue;
-
-    // A chip is only offered when its own evaluator recommended it. Scoring it
-    // anyway would let a chip win by a tenth of a point in a week it should be
-    // saved for, which is exactly the mistake chips.js exists to prevent.
-    if (!entry.recommended) continue;
-    out.push(scored);
+    // Bench boost and triple captain are decided for EVERY squad a transfer
+    // plan leads to, not only the squad already owned, because selling a bench
+    // player who will not play is exactly what makes a bench worth boosting.
+    const bases = entry.chip === 'bboost' ? scoredList.concat(repairBases) : scoredList;
+    for (const base of bases) {
+      if (base.chip) continue;
+      const first = base.trajectory.gws[0];
+      const decision = entry.chip === 'bboost'
+        ? benchBoostDecision({
+          benchIds: [first.bench.gk, ...first.bench.order],
+          projections, gameState, rules, gw, horizon: cfg.horizon, chipsUsed, openingSquad,
+        })
+        : tripleCaptainDecision({
+          squadIds: base.candidate.squad, captainId: first.captain, captainXp: first.captainExtra,
+          projections, gameState, rules, gw, horizon: cfg.horizon, chipsUsed, openingSquad,
+        });
+      if (!decision || !decision.recommended) continue;
+      const scored = scoreWithTimingChip(base, entry.chip, decision, { squadState, rules, cfg });
+      if (scored) out.push(scored);
+    }
   }
   return out;
+}
+
+// The chip card and the explanation read `chipEvaluation.recommendation`, which
+// is computed for the squad already owned. The plan can differ from it in both
+// directions: a bench boost on a squad that sells someone first, or no chip
+// because a plan that keeps the chip scores higher. The recommendation is made
+// to say what the plan does, so the card never announces a chip the plan does
+// not play, or plays one it argued against.
+function reconcileChipEvaluation(chipEvaluation, primary, scoredList, { squadState, gameState, rules, gw }) {
+  if (!chipEvaluation || !chipEvaluation.perChip) return;
+  const rec = chipEvaluation.recommendation;
+  if (primary.chip && primary.chipDecision) {
+    const entry = timingChipEntry(primary.chip, primary.chipDecision, {
+      rules, gw, chipsUsed: squadState.chipsUsed || [], gameState,
+    });
+    chipEvaluation.perChip[primary.chip] = entry;
+    chipEvaluation.recommendation = { decision: 'play', chip: primary.chip, value: entry.valueNow, reasons: entry.reasons };
+    return;
+  }
+  if (primary.chip) {
+    const entry = chipEvaluation.perChip[primary.chip];
+    if (entry && rec.chip !== primary.chip) {
+      chipEvaluation.recommendation = { decision: 'play', chip: primary.chip, value: entry.valueNow, reasons: entry.reasons };
+    }
+    return;
+  }
+  if (rec.decision !== 'play') return;
+  const bestWithChip = scoredList
+    .filter(s => s.chip === rec.chip)
+    .reduce((best, s) => (!best || s.objective > best.objective ? s : best), null);
+  const reasons = [];
+  if (bestWithChip) {
+    reasons.push(makeReason(
+      'chip_outscored',
+      `Playing your ${chipLabel(rec.chip)} this gameweek scores {v} points below the best plan that keeps it, once what the chip is worth later is counted.`,
+      Math.max(0, primary.objective - bestWithChip.objective),
+    ));
+  }
+  chipEvaluation.recommendation = {
+    decision: 'hold',
+    chip: null,
+    value: 0,
+    reasons: reasons.concat(holdReasons(chipEvaluation.perChip, gw)),
+  };
 }
 
 function buildFuturePlans({ plan, squadState, projections, gameState, rules, cfg, gw, chipEvaluation }) {
@@ -833,6 +984,7 @@ function buildFuturePlans({ plan, squadState, projections, gameState, rules, cfg
           maxHits: 0,
           maxCandidates: Math.max(8, Math.round(cfg.maxCandidates / 4)),
           seed: cfg.seed,
+          ...cfg.transferOptions,
         },
       }) || [];
       for (const r of raw) {
