@@ -720,6 +720,88 @@ function autosubCeiling(rows, byPosition, rules) {
   return fixedTerm + Math.min(maxCond * Math.min(slots, absences), richestBench);
 }
 
+// The most THIS eleven's bench could recover, cheaply and never below the truth.
+//
+// `autosubCeiling` above bounds every eleven of a squad at once, from the
+// squad's weakest starters and richest players wherever they sit. That is
+// enough when most starters are certain to play, because the bound is then
+// near zero and prunes almost everything. It stopped being enough on
+// 2026-09-16: the calibrated minutes model gives a nailed starter a real
+// chance of missing a match (pAppear 0.92 to 0.97 rather than a pinned 1), the
+// squad-wide bound became several points, nearly every eleven fell inside it,
+// and each one paid for the exact bench simulation. A live-sized horizon-8 plan
+// went from 2.8s to 11.8s of CPU, 12.3s of it in `expectedRecoveryAll`, while
+// 99.6% of the elevens simulated were two or more points behind the incumbent.
+//
+// This bound is the exact expected recovery with ONE thing relaxed: formation
+// legality, which can only stop a substitution, never add one. Given `a`
+// outfield absences, at most min(a, bench slots) substitutions happen, each
+// recovers the conditional points of a distinct bench player who turned up,
+// and no such set is worth more than the first `a` players to turn up in
+// descending order of conditional points. Its expectation is exact and cheap:
+//
+//   T(a) = sum over bench players j in descending conditional points of
+//          cond_j * pAppear_j * P(fewer than a of the players before j play)
+//
+// and the bound is sum over a of P(a absences) * T(a), with the absence count
+// Poisson-binomial over the outfield starters exactly as `absenceDistribution`
+// builds it, plus the reserve keeper's cover of the starting keeper. Every
+// bench order `orderBench` weighs is worth at most this, so an eleven whose
+// separable score plus the bound cannot beat the incumbent cannot beat it after
+// the simulation either, and skipping it leaves the answer bit-identical
+// (tests/lineup.test.mjs checks the bound against the simulation on randomized
+// squads).
+export function elevenAutosubBound(xiRows, benchRows, rules) {
+  const { fixed } = benchRulesInfo(rules);
+  let worstFixedAbsence = 0;
+  const outfieldStarters = [];
+  for (const r of xiRows) {
+    if (fixed.has(r.position)) {
+      const q = r.pAppear < 0 ? 1 : r.pAppear > 1 ? 0 : 1 - r.pAppear;
+      if (q > worstFixedAbsence) worstFixedAbsence = q;
+    } else {
+      outfieldStarters.push(r);
+    }
+  }
+  let bestReserve = 0;
+  const bench = [];
+  for (const r of benchRows) {
+    if (fixed.has(r.position)) {
+      const worth = r.pAppear * r.condPoints;
+      if (worth > bestReserve) bestReserve = worth;
+    } else {
+      const p = r.pAppear < 0 ? 0 : r.pAppear > 1 ? 1 : r.pAppear;
+      bench.push({ c: r.condPoints > 0 ? r.condPoints : 0, p });
+    }
+  }
+  let bound = worstFixedAbsence * bestReserve;
+  const slots = bench.length;
+  if (!slots || !outfieldStarters.length) return bound;
+
+  const absences = absenceDistribution(outfieldStarters, slots);
+  bench.sort((x, y) => y.c - x.c);
+
+  // ahead[k]: probability that exactly k of the bench players already walked
+  // (the richer ones) turned up. top[a]: expected sum of the first a to turn up.
+  let ahead = [1];
+  const top = new Array(slots + 1).fill(0);
+  for (const { c, p } of bench) {
+    let fewer = 0;
+    for (let a = 1; a <= slots; a++) {
+      fewer += ahead[a - 1] || 0;
+      top[a] += c * p * fewer;
+    }
+    const next = new Array(ahead.length + 1).fill(0);
+    for (let k = 0; k < ahead.length; k++) {
+      next[k] += ahead[k] * (1 - p);
+      next[k + 1] += ahead[k] * p;
+    }
+    ahead = next;
+  }
+  for (let a = 1; a <= slots; a++) bound += absences[a] * top[a];
+  return bound;
+}
+
 // Deterministic tie-break between two equally valuable bench orders, given as
 // index permutations over the same base array.
 function permLexLower(base, a, b) {
@@ -845,6 +927,9 @@ export function optimizeLineup(squadPlayerIds, projections, gw, rules, opts = {}
         // No bench can be worth more than the ceiling, so an eleven this far
         // behind on the separable score cannot win however it is benched.
         if (best !== null && score + ceiling <= best.total) return;
+        // Nor more than this eleven's own bound, which is far tighter once
+        // starters carry a real chance of missing the match.
+        if (best !== null && score + elevenAutosubBound(xiRows, benchRows, rules) <= best.total) return;
         consider(formation, xiRows, benchRows, score, points, variance);
       });
     }

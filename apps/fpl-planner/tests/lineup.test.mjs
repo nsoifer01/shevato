@@ -17,7 +17,9 @@ import { buildGameState } from '../js/engine/normalize.js';
 import { buildStrength } from '../js/engine/strength.js';
 import { buildProjections } from '../js/engine/projections.js';
 import { makeRng } from '../js/engine/ml.js';
-import { optimizeLineup, orderBench, legalFormations, squadHorizonValue, LINEUP_PARAMS } from '../js/engine/lineup.js';
+import {
+  optimizeLineup, orderBench, legalFormations, squadHorizonValue, elevenAutosubBound, LINEUP_PARAMS,
+} from '../js/engine/lineup.js';
 import { PLANNER_PARAMS } from '../js/engine/planner.js';
 import { validatePlan, outfieldPositionIds } from '../js/engine/validate.js';
 
@@ -287,6 +289,63 @@ test('the exact eleven matches an exhaustive search on every randomized squad', 
     checked++;
   }
   assert.equal(checked, 30);
+});
+
+test('the per-eleven auto-substitution bound is never below what the bench simulation recovers', () => {
+  // optimizeLineup skips an eleven when its separable score plus this bound
+  // cannot beat the incumbent, so a bound that undercut the simulation even
+  // once would silently lose the best eleven. Every legal eleven of every
+  // randomized squad, including starters who may well miss the match.
+  const rng = makeRng(20260917);
+  const params = { riskAversion: 0.05, minutesRiskWeight: 0.35 };
+  let pairs = 0;
+  for (let trial = 0; trial < 12; trial++) {
+    const rows = squadIds.map(id => {
+      const pAppear = [0, 0.3, 0.6, 0.85, 0.93, 0.97, 1][Math.floor(rng() * 7)];
+      const xPoints = pAppear === 0 ? 0 : Math.round(rng() * 900) / 100;
+      return row(id, { xPoints, pAppear, sd: Math.round(rng() * 300) / 100 });
+    });
+    const all = rowsFor(squadIds, makeProjections(rows), params);
+    for (const combo of combinations(all, rules.starters)) {
+      if (!isLegalXI(combo)) continue;
+      const inXi = new Set(combo.map(r => r.id));
+      const bench = all.filter(r => !inXi.has(r.id));
+      const simulated = orderBench(combo, bench, rules, { exact: true, resolveTies: false }).autosubValue;
+      const bound = elevenAutosubBound(combo, bench, rules);
+      assert.ok(bound >= simulated - 1e-9, `trial ${trial}: bound ${bound} below simulated ${simulated}`);
+      pairs++;
+    }
+  }
+  assert.ok(pairs > 5000, `checked ${pairs} elevens`);
+});
+
+test('the bound is the simulation itself when formation legality cannot stop a substitution', () => {
+  // Only midfielders can miss and only midfielders sit on the outfield bench,
+  // so every substitution is like for like and always legal: the relaxation
+  // the bound makes costs nothing, and the two must agree.
+  const xi = [
+    { id: 1, position: 1, pAppear: 1, condPoints: 4 },
+    { id: 3, position: 2, pAppear: 1, condPoints: 3 },
+    { id: 4, position: 2, pAppear: 1, condPoints: 3 },
+    { id: 5, position: 2, pAppear: 1, condPoints: 3 },
+    { id: 6, position: 2, pAppear: 1, condPoints: 3 },
+    { id: 8, position: 3, pAppear: 0.9, condPoints: 5 },
+    { id: 9, position: 3, pAppear: 0.8, condPoints: 6 },
+    { id: 10, position: 3, pAppear: 0.95, condPoints: 4 },
+    { id: 11, position: 3, pAppear: 0.7, condPoints: 7 },
+    { id: 13, position: 4, pAppear: 1, condPoints: 6 },
+    { id: 14, position: 4, pAppear: 1, condPoints: 5 },
+  ].map(r => ({ ...r, xPoints: r.pAppear * r.condPoints, sd: 0, score: r.pAppear * r.condPoints }));
+  const bench = [
+    { id: 2, position: 1, pAppear: 1, condPoints: 3 },
+    { id: 12, position: 3, pAppear: 0.6, condPoints: 4.5 },
+    { id: 7, position: 3, pAppear: 0.9, condPoints: 2.5 },
+    { id: 15, position: 3, pAppear: 0.5, condPoints: 3.5 },
+  ].map(r => ({ ...r, xPoints: r.pAppear * r.condPoints, sd: 0, score: r.pAppear * r.condPoints }));
+  const simulated = orderBench(xi, bench, rules, { exact: true }).autosubValue;
+  const bound = elevenAutosubBound(xi, bench, rules);
+  assert.ok(simulated > 0.3, `the case exercises the bench: ${simulated}`);
+  assert.ok(Math.abs(bound - simulated) < 1e-9, `bound ${bound} against simulated ${simulated}`);
 });
 
 // --- legality ---------------------------------------------------------------

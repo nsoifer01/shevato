@@ -179,6 +179,31 @@ bias -5.42 to -1.07 points a gameweek. Shipped under the registered rule.
   estimator ranks marginally better and predicts appearances far worse, and was
   not kept.
 
+### It made the lineup search four times slower, until the bound was fixed
+
+The first CI run of the repair failed five CPU budgets: a live-sized horizon-8
+plan measured 33.4s against 16s, and on the development machine it went from
+2.8s to 11.8s. Projections cost the same; 12.3s of it was `expectedRecoveryAll`
+in `lineup.js`. The exact lineup search prunes an eleven when its separable
+score plus a ceiling on bench recovery cannot beat the incumbent, and that
+ceiling (`autosubCeiling`, squad-wide) was only tight because the old model
+pinned most starters at pAppear 1: no absences, a ceiling near zero, almost
+nothing simulated. With every starter now carrying a real chance of missing,
+the ceiling became several points and 99.6% of the elevens sent to the
+simulation were two or more points behind the incumbent.
+
+`elevenAutosubBound` is the fix: the exact expected recovery with only formation
+legality relaxed (the first `a` bench players to turn up, by conditional points,
+weighted by the Poisson-binomial chance of `a` outfield absences). It never
+undercuts the simulation, so pruning on it is bit-identical: the plans at
+horizons 3, 5 and 8 on the sample world are byte-identical with and without it,
+and `tests/lineup.test.mjs` checks the bound against the simulation for every
+legal eleven of randomized squads, and its equality when legality cannot bind
+(a 0.9x mutant fails that and the exhaustive-search test). A live-sized plan is
+now 0.8s at horizon 5 and 0.84s at horizon 8, faster than before the repair.
+Expect the same from any future change that makes starters' absences real:
+anything whose cost was held down by a pinned probability will surface.
+
 ### What now guards it
 
 - **At runtime**, `readiness.js` asks two questions no aggregate could:
