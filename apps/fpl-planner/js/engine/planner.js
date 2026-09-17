@@ -203,6 +203,11 @@ function resolveOptions(options, rules, gw) {
     // TRANSFER_DEFAULTS). Nothing in the app sets them; the replay passes them
     // so an experiment can move a search margin (experiments/configs/hit-thresholds.mjs).
     transferOptions: options.transferOptions || {},
+    // Overrides for the lineup's risk weights (lineup.js RISK_PROFILES:
+    // `riskAversion`, `minutesRiskWeight`), passed to every lineup the plan is
+    // scored with. Nothing in the app sets them; the replay passes them so an
+    // experiment can move them (experiments/configs/lineup-risk.mjs).
+    lineupOptions: options.lineupOptions || {},
   };
 }
 
@@ -304,7 +309,7 @@ function scoreCandidate({
     gwFrom: gw,
     horizon: cfg.horizon,
     discount: cfg.discount,
-    opts: { seed: cfg.seed },
+    opts: { seed: cfg.seed, ...cfg.lineupOptions },
   });
 
   const first = trajectory.gws[0];
@@ -490,12 +495,12 @@ function buildDraftPlan({ squadState, projections, gameState, rules, cfg, gw }) 
     projections, gameState, rules, gw,
     horizon: cfg.horizon,
     budgetTenths: rules.budgetTenths,
-    opts: { discount: cfg.discount, seed: cfg.seed },
+    opts: { discount: cfg.discount, seed: cfg.seed, ...cfg.lineupOptions },
   });
 
   const trajectory = squadTrajectory({
     squadIds: built.squad, projections, gameState, rules,
-    gwFrom: gw, horizon: cfg.horizon, discount: cfg.discount, opts: { seed: cfg.seed },
+    gwFrom: gw, horizon: cfg.horizon, discount: cfg.discount, opts: { seed: cfg.seed, ...cfg.lineupOptions },
   });
 
   const costTenths = built.squad.reduce((s, id) => s + priceOf(gameState, id), 0);
@@ -662,7 +667,8 @@ export async function buildPlan({ gameState, squadState, options = {}, onProgres
     chipEvaluation = readiness.allow.chips
       ? evaluateChips({
         squadState: workingSquad, projections, gameState, rules,
-        horizon: cfg.horizon, discount: cfg.discount, opts: { seed: cfg.seed },
+        horizon: cfg.horizon, discount: cfg.discount,
+        opts: { seed: cfg.seed, ...cfg.lineupOptions },
       })
       : null;
 
@@ -674,6 +680,7 @@ export async function buildPlan({ gameState, squadState, options = {}, onProgres
         maxHits: cfg.maxHits,
         maxCandidates: cfg.maxCandidates,
         seed: cfg.seed,
+        ...cfg.lineupOptions,
         ...cfg.transferOptions,
       },
     }) || [];
@@ -838,6 +845,10 @@ function scoreWithTimingChip(base, chip, decision, { squadState, rules, cfg }) {
 function benchRepairCandidates({ chipEvaluation, scoredList, squadState, projections, gameState, rules, cfg, gw }) {
   const entry = chipEvaluation && chipEvaluation.perChip && chipEvaluation.perChip.bboost;
   if (!entry || !entry.available || entry.status !== 'unusable') return [];
+  // Exactly the players unlikely to play. Widening this to the sales of any
+  // bench player, to build a bench for a double gameweek, was measured and
+  // rejected (registry entry 34).
+  const outIds = entry.detail.unusable;
   const raw = searchTransfers({
     squadState, projections, gameState, rules,
     horizon: cfg.horizon,
@@ -846,8 +857,9 @@ function benchRepairCandidates({ chipEvaluation, scoredList, squadState, project
       maxHits: cfg.maxHits,
       maxCandidates: cfg.maxCandidates,
       seed: cfg.seed,
+      ...cfg.lineupOptions,
       ...cfg.transferOptions,
-      outIds: entry.detail.unusable,
+      outIds,
     },
   }) || [];
   const signature = c => `${c.transfersOut.slice().sort((a, b) => a - b).join(',')}>${c.transfersIn.slice().sort((a, b) => a - b).join(',')}`;
@@ -984,6 +996,7 @@ function buildFuturePlans({ plan, squadState, projections, gameState, rules, cfg
           maxHits: 0,
           maxCandidates: Math.max(8, Math.round(cfg.maxCandidates / 4)),
           seed: cfg.seed,
+          ...cfg.lineupOptions,
           ...cfg.transferOptions,
         },
       }) || [];

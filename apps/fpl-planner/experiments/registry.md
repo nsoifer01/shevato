@@ -15,7 +15,9 @@ Rules for this file:
   payloads and previous-season asset production would have read, resolved
   through `engine/world.js`). Entries before 29 were measured with the previous
   season seeded at weight 0.5, a regime production never ran; `--regime seeded`
-  reproduces it. Anything else is stated in the entry.
+  reproduces it. From entry 31 the production regime shows each deadline the
+  fixture list as it was known then (`fixtureLead`, default 3). Anything else is
+  stated in the entry.
 - All three comparable seasons are reported (2022-23, 2023-24, 2024-25), never a
   single season and never an aggregate on its own. Consistency is part of the
   result.
@@ -1698,9 +1700,307 @@ xG/xA rate quality, and early-window squad construction where a wrong opening
 channel; running more weights is known to be useless, because no flat weight
 can satisfy three seasons whose optima genuinely differ.
 
+## 34. Double-gameweek benches: building and holding for them, REJECT
+
+- **Date:** 2026-09-17
+- **Decision: REJECT**, all three arms; nothing shipped.
+- **Kind:** planner policy, requested by the owner as a limit of entry 30
+  ("double-gameweek benches are unmeasured").
+- **Pre-registered** in `experiments/configs/chip-rules-known.mjs` (the upgrade)
+  and `bench-double-hold.mjs` (the hold), each before its arms ran.
+
+Entry 30's calibration replays run chips off, and a chips-off squad never
+builds a bench for a boost, so no recorded bench held a player with two
+fixtures. Two ways the planner could, each measured with chips on, on the
+calendar as it was known (entry 31); `benchDoubles` in each replay's chip record
+counts a boosted bench's players who played twice that week:
+
+- **The bench upgrade**: THE BENCH REPAIR widened from the sales of a bench
+  player unlikely to play to the sales of any bench player, offered to the
+  Bench Boost.
+- **The double hold**: a Bench Boost whose window reaches gameweek 30 waits for a
+  week in which at least two clubs play twice (a seasonal pattern, not any
+  season's calendar), or its last week; with and without the upgrade.
+
+| arm vs the shipped rules | instrument 3, per window (t) | full seasons, per replay | Bench Boosts, full seasons | bench players with a double, per boost |
+| --- | ---: | ---: | --- | ---: |
+| shipped | | | 12, 150 points | 0.00 |
+| bench upgrade | +2.1 (1.00) | -17.0 (+0.0 / -51.0 / +0.0) | 12, 153 | 0.00 |
+| double hold | -5.0 (-1.04) | -3.0 (+49.0 / -38.0 / -20.0) | 12, 140 | 0.17 |
+| double hold with the upgrade | -4.6 (-0.94) | -3.0 | 12, 140 | 0.17 |
+
+- **The upgrade never built a double bench** (0.00 a boost): on the known
+  calendar a double is visible about three weeks ahead, and by then the chip has
+  been spent on a good ordinary bench. Its points differences are the transfer
+  path, not the mechanism. REJECT (the full seasons lose, and the registered
+  mechanism is absent).
+- **Holding for a double** produced doubling bench players on 0.17 of a boost
+  and fewer Bench Boost points (150 to 140), and lost on both instruments.
+  REJECT.
+- What this measures, stated plainly: three seasons, a handful of doubles each,
+  seeds that barely move a chip decision. It does not prove a double-gameweek
+  Bench Boost is worthless to a manager who plans for one months ahead; it
+  shows this planner, seeing doubles as late as FPL announces them, does better
+  playing the chip on a good bench when it has one.
+
+Both switches (`benchUpgrade`, `benchDoubleHold`) were removed after the runs;
+restore them from commit a043aa68 to re-run.
+
+### Re-test if
+
+- a fourth production-regime season exists, or dated fixture announcements
+  replace the modelled lead;
+- the planner learns to plan transfers several weeks ahead for a chip (it
+  plans each week's transfers for the horizon, not for a chip week).
+
+## 33. The chip rules recalibrated on the known calendar: ACCEPT
+
+- **Date:** 2026-09-17
+- **Decision: ACCEPT** `TRIPLE_CAPTAIN_MARGIN` 1.0 to **2.0** and
+  `BENCH_BOOST_HOLD_MARGIN` 4.7 to **5.0**, with the Bench Boost's edges drawn so
+  `play` is exactly a positive net value (above the bar, a later week less than
+  the margin better). **REJECT** applying the availability condition to the
+  three outfield bench players only.
+- **Kind:** decision-rule recalibration, forced by entry 31: entry 30 measured
+  every chip rule on the final fixture list.
+- **Pre-registered** in `experiments/configs/chip-rules-known.mjs` before any arm
+  ran. The margins were chosen on the calibration instrument before it.
+
+### What the honest calendar moved
+
+`calibrate-chips.mjs record` again, on the calendar as it was known (entry 31),
+under analytic-2 (`--tree analytic2-known`) and on the analytic-1 tree
+(`analytic1-known`), 333 deadlines each:
+
+| revision of a later week's estimate | final list (entry 30) | known calendar |
+| --- | ---: | ---: |
+| bench, under 5 weeks: bias / SD | 1.72 / 2.97 | 1.74 / 3.24 |
+| captain, 5 to 8 weeks: SD | 1.03 | 1.58 (analytic-1 1.61) |
+| captain, 9 weeks and more: SD | 1.39 | 1.91 (analytic-1 1.87) |
+
+A list that knows every reschedule from the first deadline never revises a
+later week for one; the honest calendar does, and the triple captain's
+comparison spans a whole window, most of it 9 weeks and more away.
+
+### Triple captain
+
+Held out by season, 108 windows, extra armband points a window:
+
+| margin | known, analytic-2 | known, analytic-1 | final, analytic-2 | final, analytic-1 |
+| --- | ---: | ---: | ---: | ---: |
+| pre-entry-30 rule | 9.89 | 11.39 | 9.39 | 12.06 |
+| 1.0 (entry 30) | 9.61 | 10.31 | 10.81 | 13.69 |
+| 1.5 | 11.00 | 12.19 | 8.81 | 13.69 |
+| **2.0** | **11.11** | **12.86** | 9.72 | 13.60 |
+| 2.5, within the window | 10.22 | 12.89 | 9.72 | 13.56 |
+| chosen on the other seasons | 11.00 (1.5, 2, 2) | 12.72 (2, 2.5, 2.5) | 11.19 | 13.31 |
+
+2.0 is the best margin under analytic-2 and within 0.03 of the best under
+analytic-1 on the known calendar, and it sits between the revision noise of a
+5-to-8-week estimate (1.6) and a further one (1.9). The final-list columns are
+kept to show why entry 30 chose 1.0 and why that choice did not survive the
+calendar correction.
+
+### Bench boost
+
+The hold margin is the near-week bias plus its revision SD, 1.74 + 3.24 = 5.0
+under analytic-2 (4.8 under analytic-1); it decides identically to 4.7 on both
+known recordings (5.62 and 5.37 a window). The table that matters is the one
+entry 30 could not settle, the availability condition:
+
+| rule, known calendar | analytic-2 | analytic-1 |
+| --- | ---: | ---: |
+| pre-entry-30 rule | 3.30 | 7.79 |
+| first legal week | 6.20 | 5.95 |
+| **shipped: all four likely to play, bar 8, hold 5.0, last week** | **5.62** | **5.37** |
+| without the availability condition | 6.45 | 7.44 |
+| the condition on the three outfield players only | 6.45 | 7.63 |
+| bar 12 | 6.76 | 4.52 |
+| optimal stopping | 9.38 | 4.71 |
+
+On this instrument the condition costs points in both models, as entry 30
+predicted it would: a chips-off replay never sells the player, so a held bench
+just waits. Optimal stopping reads 9.38 under analytic-2 on one event (2023-24,
+19.0 in all three seeds) and 2.69 on the final list, which is the size of the
+path noise between two replays of the same seasons: nothing here is chosen on a
+difference that small.
+
+### Chips on, the guard and the outfield condition
+
+Instrument 3 (15 windows) and full seasons (9 replays), known calendar. The
+control is the chip logic before entry 30 (d4cae20c `chips.js`, `planner.js`,
+`transfers.js`) run on this harness in its own tree; the candidate and the
+outfield arm run in this tree, merged by trajectory.
+
+| comparison | instrument 3, per window | t | W / L / T | seasons | full seasons, per replay |
+| --- | ---: | ---: | --- | --- | ---: |
+| **candidate vs pre-entry-30** | **+5.9** | **1.22** | 8 / 7 / 0 | +6.7 / +4.9 / +6.0 | +8.9 (-56.0 / +26.0 / +56.7) |
+| outfield condition vs candidate | +5.9 | 1.72 | 5 / 0 / 10 | +0.0 / +15.4 / +2.3 | **-10.6** (+0.0 / -15.0 / **-16.7**) |
+
+The guard passes. The outfield condition was registered to ship only if both
+instruments read at least 0 with no season below -15; the full seasons read
+-10.6 with 2025-26 at -16.7, so it is rejected and its switch removed.
+
+Per chip, pre-entry-30 logic against this entry (full seasons; instrument 3):
+
+| chip | plays | expired | mean a play | total | windows: plays, mean a play |
+| --- | --- | --- | --- | --- | --- |
+| Bench Boost | 10 to 12 | 2 to 0 | 8.3 to 12.5 | 83 to 150 | 20 to 44, 9.3 to 12.1 |
+| Triple Captain | 9 to 12 | 3 to 0 | 13.0 to 11.6 | 117 to 139 | 17 to 33, 13.4 to 10.8 |
+| Wildcard | 14 to 16 | 4 to 2 | 54.4 to 43.8 | 762 to 700 | 25 to 24, 68.3 to 64.3 |
+| Free Hit | 3 to 3 | 9 to 9 | 18.0 to 24.0 | 54 to 72 | 2 to 1 |
+
+The pre-entry-30 logic played seven of its ten Bench Boosts in the last week of
+a window (the gameweek 38 slide); this entry played none there. Against the
+same logic, entry 30's rules read +5.9 a window on the final fixture list, and
+this entry's rules read +5.9 on the known calendar.
+
+The final tree (engine 75111db3e724: these margins, the outfield and upgrade
+switches removed) reproduces the candidate arm (engine c08f0c2271ab) cell for
+cell, 45 of 45 on instrument 3 and 9 of 9 full seasons, and `null-arm` reads +0
+on 45 trajectories with the control at 34,252.
+
+### Re-test if
+
+- a fourth production-regime season exists;
+- the announcement lead of entry 31 is replaced by measured dates (the captain
+  revision noise, and so the margin, depends on it).
+
+## 32. The lineup's risk weights on analytic-2: KEEP
+
+- **Date:** 2026-09-17
+- **Decision: KEEP** `riskAversion` 0.05 and `minutesRiskWeight` 0.35 (lineup.js
+  balanced profile), as both pre-registrations required. The non-appearance
+  weight is measured as probably under-weighted, and the evidence stops short of
+  the bar.
+- **Kind:** decision parameter re-measured, requested by the owner as a limit of
+  entry 30.
+- **Pre-registered** in `experiments/configs/lineup-risk.mjs` and, for the
+  extension, `lineup-risk-extended.mjs`, each before its arms ran.
+
+`optimizeLineup` ranks an eleven on `xPoints - riskAversion * sd -
+minutesRiskWeight * (1 - pAppear)`. Both weights were written with the engine
+on 2026-08-12, never measured, and `minutesRiskWeight` is in points on a scale
+analytic-2 moved. They are now reachable from an experiment arm
+(`planOptions.lineupOptions`, passed to every lineup the planner scores: the
+transfer search, chip evaluations, the plan itself).
+
+Instrument 3, chips off, known calendar (entry 31), 15 windows:
+
+| arm | per window | se | t | W / L / T | 2023-24 | 2024-25 | 2025-26 |
+| --- | ---: | ---: | ---: | --- | ---: | ---: | ---: |
+| minutesRiskWeight 0 | -5.8 | 6.3 | -0.93 | 6 / 8 / 1 | -18.3 | -2.1 | +3.0 |
+| 0.175 | -7.4 | 5.8 | -1.27 | 3 / 7 / 5 | -8.1 | -4.7 | -9.4 |
+| **0.35 (shipped)** | | | | | | | |
+| 0.7 | +5.2 | 2.7 | **1.90** | 8 / 3 / 4 | +7.4 | +9.6 | -1.5 |
+| 1.05 (extension) | +2.9 | 2.5 | 1.15 | 8 / 5 / 2 | -0.5 | +6.3 | +3.1 |
+| 1.4 (extension) | +0.2 | 3.2 | 0.08 | 7 / 6 / 2 | -6.3 | +4.4 | +2.6 |
+| riskAversion 0 | -0.7 | 1.1 | -0.64 | 3 / 3 / 9 | -2.1 | +0.6 | -0.7 |
+| riskAversion 0.1 | -3.8 | 6.6 | -0.58 | 8 / 4 / 3 | -7.7 | +0.1 | -3.9 |
+
+- **`riskAversion` is inert** within noise either way and stays.
+- **`minutesRiskWeight` has a shape**: rising from 0 to a peak around 0.7 and
+  falling back by 1.4, which is what a penalty set on a lower points scale looks
+  like once the scale rises. 0.7 read +5.2 a window, 8 wins to 3, but t 1.90
+  against a registered 2.0, and the extension, registered to adopt the largest
+  qualifying weight, found none qualifying. It stays at 0.35, and the peak is
+  the reason to re-test rather than a result.
+
+### Re-test if
+
+- a fourth production-regime season exists (2026-27 completing): re-run
+  `lineup-risk.mjs` with 0.35 against 0.7 on the widened instrument;
+- the minutes or appearance model changes.
+
+## 31. The replay's calendar as it was known at each deadline: ACCEPT
+
+- **Date:** 2026-09-17
+- **Decision: ACCEPT**, an instrument correction, accepted on correctness. The
+  replay default is a three-gameweek announcement lead.
+- **Kind:** replay harness. Requested by the owner as a limit of entry 30: "the
+  replay's fixture list is the final one".
+- **Pre-registered** in `experiments/configs/known-fixtures.mjs` before any arm
+  ran.
+
+### The defect
+
+The production-regime replay rebuilt every deadline's `fixtures` payload from
+the archive, and the archive holds one fixture list, the final one. A match
+postponed out of round 29 and played in a gameweek 34 double sat in gameweek 34
+from the first deadline of the season, so every decision that looks past the
+week being decided saw doubles and blanks months before anyone could: a triple
+captain compared with later weeks of its window, a chip held for a double, a
+squad built toward one. Production reads `event: null` for a postponed match
+until the league dates it, typically three to six weeks ahead.
+
+### The reconstruction
+
+FPL numbers fixtures in the order of the original calendar, one round of ten at
+a time, so fixture `id` n was scheduled in round ceil(n / 10). The replayed
+seasons confirm it exactly: 366 (2023-24), 375 (2024-25) and 375 (2025-26) of
+380 fixtures were played in that round (359 in 2022-23, the World Cup season),
+and every exception is a known reschedule (2023-24's round 29 FA Cup clashes
+played in the gameweek 34 double, round 34's in gameweek 37, and so on). When a
+move was announced is in no archive, so it is modelled with one lead, three
+gameweeks before the week the match moved into: a match moved later sits in its
+original round at deadlines before that round, is undated from then until three
+weeks before its new week, and is dated from then; a match moved earlier sits in
+its original round until three weeks before its new week. `knownFixtureEvent`
+and `originalSchedule` in `js/engine/backtest.js`;
+`tests/replay-known-fixtures.test.mjs` pins the phases, the payload, and that
+the week being decided always reads exactly as the final list does (a match
+moved into it is dated by its deadline, a match moved out of it is not in it),
+so current-week projections, and every calibration measured on them, are
+unchanged. `fixtureLead: null` replays the final list.
+
+### What the hindsight was worth
+
+Instrument 3, 15 windows, the final list as control:
+
+| arm | chips off, per window (t) | chips on, per window (t) | chips on, full seasons per replay |
+| --- | ---: | ---: | ---: |
+| lead 1 | +0.9 (0.13) | -16.8 (-1.59) | +3.8 |
+| **lead 3 (default)** | **+1.8 (0.30)** | **-10.4 (-1.09)** | **+26.7** |
+| lead 6 | -6.5 (-1.14) | -16.7 (-2.05) | -2.9 |
+
+Chips off, the calendar is worth nothing measurable: the planner looks four
+weeks past the deadline and a move is known three weeks before its week. Chips
+on, instrument 3 read 10 to 17 points a window higher on the final list than on
+any known calendar, and the difference is not ordered by the lead, so it is the
+hindsight itself rather than its size: chip timing decisions that look across a
+whole window were being made against doubles nobody could see. The full-season
+readings (9 replays) are noise either way. Every chips-on number in entry 30
+was measured on the final list.
+
+### What it changes
+
+- **New baselines on the known calendar**, same instruments: instrument 3 chips
+  off 34,252 over 45 trajectories (was 34,171 on the final list); chips on
+  34,754 (was 35,224); full seasons chips on 20,764 over 9 replays (was
+  20,524).
+- **The chip calibration was recorded again on the known calendar** under both
+  models, and two measured quantities moved, which is entry 33.
+- **Recordings made before this entry say so**: `calibrate-chips.mjs analyze`
+  labels each recording's calendar, and `record --fixture-lead final` reproduces
+  the old one.
+
+### Re-test if
+
+- a source of historical fixture announcements (dated snapshots of the
+  `fixtures` endpoint) becomes available: the lead should then be measured, not
+  modelled;
+- anything changes `deadlinePayload`, the fixture ids' numbering, or a season
+  arrives whose fixture ids do not number a whole calendar (it replays its
+  final list, and says so only through `originalSchedule` returning null).
+
 ## 30. Chip timing, and the hit and roll margins, re-measured on analytic-2: ACCEPT
 
 - **Date:** 2026-09-17
+- **Superseded in part by entries 31 and 33 (same day):** every chips-on number
+  below was measured on the final fixture list, which knew every double from the
+  first deadline. On the calendar as it was known, the triple captain margin is
+  2.0 (not 1.0) and the bench boost hold margin 5.0 (not 4.7); the structure of
+  the rules below stands.
 - **Decision: ACCEPT** for the chip decisions below; the wildcard and free hit
   bars, the hit margins and the roll values are KEPT, each on the measurement
   given for it. Shipped in #560 (squash 7f1757bb), live 2026-09-17 by CLI deploy

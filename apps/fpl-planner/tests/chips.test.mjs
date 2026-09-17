@@ -1114,6 +1114,29 @@ test('before the first deadline a squad still being chosen is not told to play a
   assert.deepEqual(bundle.validation, { ok: true, violations: [] });
 });
 
+test('the lineup risk weights an experiment sets reach the lineup the plan is scored with', async () => {
+  const GW = 10;
+  const fixtures = makeFixtures({ gwTo: RULES.totalEvents });
+  const gameState = makeGameState(fixtures, GW);
+  const doubtful = STRONG_XI[5];
+  const xp = id => (id === doubtful ? 7 : STRONG_XI.includes(id) ? 6 : BENCH_FOUR.includes(id) ? 4 : 3);
+  // 7 x 0.6 = 4.2 projected, 0.2 above the bench's 4, and a 40% chance of not
+  // playing at all.
+  const projections = makeProjections(gameState, GW, GW + 8, xp, id => (id === doubtful ? 0.6 : 1));
+  const squadState = makeSquadState({ gw: GW });
+  const options = { horizon: 5, seed: 3, projections, strength: {}, maxHits: 0 };
+
+  const shipped = await buildPlan({ gameState, squadState, options });
+  const held = shipped.current.transferCount === 0 ? shipped.current : null;
+  const heavy = await buildPlan({ gameState, squadState, options: { ...options, lineupOptions: { minutesRiskWeight: 50 } } });
+  if (held && heavy.current.transferCount === 0) {
+    assert.ok(held.startingXI.includes(doubtful), 'at the shipped weight the doubtful player starts on 0.2 points');
+    assert.ok(!heavy.current.startingXI.includes(doubtful), 'at a heavy weight he is benched');
+  } else {
+    assert.fail('both plans should keep the squad in this world');
+  }
+});
+
 test('a chip already played is never planned again', async () => {
   const GW = 10;
   const fixtures = makeFixtures({ gwTo: RULES.totalEvents, doubles: { [GW]: SQUAD_CLUBS } });

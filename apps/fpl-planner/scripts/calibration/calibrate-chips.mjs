@@ -42,7 +42,11 @@
 // two recordings made with that engine (analytic-1 and analytic-2, 684
 // deadlines) the rebuild agrees with the old evaluator at every deadline.
 //
-//   node apps/fpl-planner/scripts/calibration/calibrate-chips.mjs record [--tree <label>] [--seeds 1,2,3] [--seasons ...]
+//   node apps/fpl-planner/scripts/calibration/calibrate-chips.mjs record [--tree <label>] [--seeds 1,2,3] [--seasons ...] [--fixture-lead <n>|final]
+//
+// The replay shows fixtures as they were known at each deadline (registry entry
+// 31); `--fixture-lead final` records on the final fixture list instead, as every
+// recording before entry 31 did.
 //   node apps/fpl-planner/scripts/calibration/calibrate-chips.mjs analyze [--tree <label>]
 //
 // Records land in apps/fpl-planner/.data/calibration/chips-<label>/ (gitignored).
@@ -67,6 +71,8 @@ const flag = (name, fallback = null) => {
   return i > 0 ? args[i + 1] : fallback;
 };
 const TREE = flag('tree', 'current');
+const LEAD_FLAG = flag('fixture-lead');
+const FIXTURE_LEAD = LEAD_FLAG === null ? undefined : LEAD_FLAG === 'final' ? null : Number(LEAD_FLAG);
 const OUT_DIR = path.join(DATA_DIR, 'calibration', `chips-${TREE}`);
 
 // The season's own chip catalogue, and the contiguous window of one chip
@@ -182,7 +188,10 @@ async function recordOne(season, seed) {
 
   const report = await replaySeason({
     dataset, season, strategy: 'planner', rules,
-    opts: { gwFrom: 1, gwTo: dataset.maxGw, seed, priorDataset, evidenceRegime: EVIDENCE_REGIMES.PRODUCTION, onPlanBundle },
+    opts: {
+      gwFrom: 1, gwTo: dataset.maxGw, seed, priorDataset, evidenceRegime: EVIDENCE_REGIMES.PRODUCTION, onPlanBundle,
+      ...(FIXTURE_LEAD === undefined ? {} : { fixtureLead: FIXTURE_LEAD }),
+    },
   });
   const realized = new Map(report.gws.map(g => [g.gw, g]));
   for (const d of decisions) {
@@ -195,7 +204,7 @@ async function recordOne(season, seed) {
   fs.mkdirSync(OUT_DIR, { recursive: true });
   const file = path.join(OUT_DIR, `${season}-seed${seed}.json`);
   fs.writeFileSync(file, JSON.stringify({
-    season, seed, tree: TREE, modelVersion: report.modelVersion, totalEvents: chipRules.totalEvents,
+    season, seed, tree: TREE, modelVersion: report.modelVersion, fixtureLead: report.opts.fixtureLead, totalEvents: chipRules.totalEvents,
     chips: chipRules.chips, seasonPoints: report.totals.seasonPoints, hits: report.totals.hits,
     hitEfficiency: report.totals.hitEfficiency, decisions,
   }));
@@ -208,7 +217,10 @@ async function recordAll() {
   const jobs = [];
   for (const season of seasons) for (const seed of seeds) jobs.push({ season, seed });
   await Promise.all(jobs.map(({ season, seed }) => new Promise((resolve, reject) => {
-    const child = spawn(process.execPath, [HERE, 'record-one', '--tree', TREE, '--season', season, '--seed', String(seed)], { stdio: 'inherit' });
+    const child = spawn(process.execPath, [
+      HERE, 'record-one', '--tree', TREE, '--season', season, '--seed', String(seed),
+      ...(LEAD_FLAG === null ? [] : ['--fixture-lead', LEAD_FLAG]),
+    ], { stdio: 'inherit' });
     child.on('exit', code => (code === 0 ? resolve() : reject(new Error(`${season} seed ${seed} exited ${code}`))));
   })));
 }
@@ -232,6 +244,9 @@ const median = (a) => {
 const fmt = (v, d = 2) => (Number.isFinite(v) ? v.toFixed(d) : '-');
 const patience = (g, from) => Math.pow(CHIP_PARAMS.chipPatiencePerGw, Math.max(0, g - from));
 const usable = d => d.bb.bench.every(b => b.pAppear >= CHIP_PARAMS.benchUsablePAppear);
+// The engine's decision rebuilt from a recording, edges included.
+const engineBenchBoost = (d, to) => d.gw === to || (usable(d) && d.bb.valueNow > CHIP_PARAMS.benchBoostBar
+  && !d.bb.perGw.some(r => r.gw > d.gw && r.gw <= to && r.gw - d.gw < NEAR_WEEKS && r.value - d.bb.valueNow >= CHIP_PARAMS.benchBoostHoldMargin));
 const inWindow = (d, r, to) => r.gw > d.gw && r.gw <= to;
 
 // The rules shipped before entry 30, rebuilt: the bench boost played at 8 points
@@ -415,7 +430,8 @@ function analyze() {
     .map(f => JSON.parse(fs.readFileSync(path.join(OUT_DIR, f), 'utf8')));
   const deadlines = files.flatMap(f => f.decisions.filter(d => d.realized && d.gw > 1));
   const models = [...new Set(files.map(f => f.modelVersion))].join(', ');
-  console.log(`chips-${TREE}: ${files.length} recordings, model ${models}, ${deadlines.length} scored deadlines`);
+  const leads = [...new Set(files.map(f => (f.fixtureLead === undefined ? 'final (recorded before entry 31)' : f.fixtureLead === null ? 'final' : `known, lead ${f.fixtureLead}`)))].join(', ');
+  console.log(`chips-${TREE}: ${files.length} recordings, model ${models}, calendar ${leads}, ${deadlines.length} scored deadlines`);
 
   console.log('\n== scale');
   const benchXp = deadlines.map(d => d.bb.valueNow);
@@ -433,11 +449,9 @@ function analyze() {
   const engineRows = deadlines.filter(d => d.bb.engine);
   if (engineRows.length) {
     const agreeBb = engineRows.filter((d) => {
-      const near = d.bb.perGw.filter(r => inWindow(d, r, d.bb.window.to) && r.gw - d.gw < NEAR_WEEKS);
-      const last = d.gw === d.bb.window.to;
-      const rule = last || (usable(d) && d.bb.valueNow >= CHIP_PARAMS.benchBoostBar
-        && !near.some(r => r.value - d.bb.valueNow > CHIP_PARAMS.benchBoostHoldMargin));
-      return rule === d.bb.engine.recommended;
+      // The last week of a window only; the recorder evaluates each chip alone,
+      // so the shared deadline of two chips never applies.
+      return engineBenchBoost(d, d.bb.window.to) === d.bb.engine.recommended;
     }).length;
     console.log(`  the engine's own bench boost decision agrees with the rule below at ${agreeBb} of ${engineRows.length} deadlines`);
   }
@@ -454,7 +468,7 @@ function analyze() {
     const rules = {
       'pre-change rule': preChangeBenchBoost,
       'first legal week': () => true,
-      'ENGINE: bar 8, usable, hold at 4.7, last week': engine(bar, CHIP_PARAMS.benchBoostHoldMargin),
+      [`ENGINE: bar ${bar}, all four likely to play, hold at ${CHIP_PARAMS.benchBoostHoldMargin}, last week`]: (d, c) => engineBenchBoost(d, c.to),
       'engine rule, bias + SD fitted on the other seasons': engine(bar, rev.nearBias + rev.nearSd),
       '  without the availability gate': engine(bar, rev.nearBias + rev.nearSd, 0),
       '  without the hold': engine(bar, 0, CHIP_PARAMS.benchUsablePAppear, false),
@@ -493,7 +507,7 @@ function analyze() {
     for (const m of margins) sweep[`  margin ${m}`] = (d, c) => c.last || beats(d, c, () => m);
     return {
       'pre-change rule': preChangeTripleCaptain,
-      'ENGINE: window, margin 1.0, last week': (d, c) => c.last || beats(d, c, () => CHIP_PARAMS.tripleCaptainMargin),
+      [`ENGINE: window, margin ${CHIP_PARAMS.tripleCaptainMargin}, last week`]: (d, c) => c.last || beats(d, c, () => CHIP_PARAMS.tripleCaptainMargin),
       'engine rule, margin = 5-8 week SD fitted on the other seasons': (d, c) => c.last || beats(d, c, () => rev.midSd),
       '  margin by distance': (d, c) => c.last || beats(d, c, k => rev.sdAt(k)),
       '  margin 2.5 (pre-change)': (d, c) => c.last || beats(d, c, () => PRE_CHANGE.tripleCaptainMargin),

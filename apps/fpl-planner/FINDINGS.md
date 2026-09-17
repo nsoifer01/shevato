@@ -14,6 +14,54 @@ tables.
 
 ---
 
+## The replay knew every double gameweek from the first deadline (found and FIXED 2026-09-17)
+
+The production-regime replay rebuilt every deadline's fixtures payload from the
+archive, and the archive only holds the FINAL fixture list: a match postponed
+out of round 29 and played in a gameweek 34 double sat in gameweek 34 from the
+first deadline. Chips off that was worth nothing measurable (the planner looks
+four weeks ahead, a move is known about three weeks ahead). Chips on it was
+worth 10 to 17 points a window of instrument 3, not ordered by how early the
+move was assumed known, so it was hindsight itself, and every chips-on number in
+registry entry 30 had it. Found as an owner-requested "limit" of entry 30, not
+by a failing check: nothing in the replay could notice that a payload knew more
+than production did. Registry entries 31 to 34.
+
+- **The original calendar is in the fixture ids.** FPL numbers fixtures in the
+  order of the original schedule, ten to a round, so id n was scheduled in round
+  ceil(n / 10): 366, 375 and 375 of 380 fixtures in 2023-24, 2024-25 and 2025-26
+  were played there, and every exception is a known reschedule. No archive
+  records WHEN a move was announced, so that is a modelled lead (three
+  gameweeks before the week the match moved into; 1 and 6 read the same within
+  noise). `tests/replay-known-fixtures.test.mjs` pins it, including that the week
+  being decided always reads exactly as the final list does, so current-week
+  projections and their calibration are untouched.
+- **What it moved.** A later week's estimate now gets revised when a reschedule
+  is announced, as it does live, so revision noise rose: a captain's estimate
+  five to eight weeks out moves by 1.6 points, not 1.0, and the Triple Captain
+  margin went from 1.0 to 2.0 on the chip calibration re-recorded under both
+  models (2.0 is best or within 0.03 of best in each); the Bench Boost hold from
+  4.7 to 5.0. The chip rules still beat the pre-entry-30 logic by +5.9 a window
+  (t 1.22) on the honest calendar.
+- **Measured while here, both kept.** The lineup's `minutesRiskWeight` (0.35)
+  peaks around 0.7 (+5.2 a window, t 1.90) and falls back by 1.4, short of its
+  registered t 2.0, so it stays and is the first thing to re-test with a fourth
+  season; `riskAversion` is inert.
+- **Double-gameweek benches, measured and rejected.** Selling any bench player
+  for a Bench Boost never built a double bench (0.00 doubling players a boost):
+  a double is visible about three weeks ahead and the chip has been spent on a
+  good bench by then. Holding the chip for a double got 0.17 doubling players a
+  boost, fewer Bench Boost points (150 to 140 over nine season replays) and lost on both
+  instruments. Requiring availability of the outfield bench players only
+  (letting a non-playing keeper through) read well chips off and on instrument 3
+  but lost 10.6 a season on the full seasons, failing its registration.
+- **A trap for any future harness change:** a replay can only be as blind as
+  production if every payload field is rebuilt as it was known. The fixture
+  list was the one field whose final state differs from its state at a
+  deadline in a way no test of the current week can see.
+
+---
+
 ## A Bench Boost rested on 0.03 points, with a suspended player on the bench (found and FIXED 2026-09-17)
 
 The day #558 went live, the reporter's GW5 plan was "Play your Bench Boost" with
@@ -62,15 +110,17 @@ by the new scale rather than wrong all along.
 Its blind spots are real and decided two things. It never sells anyone, so it
 cannot see what a bench gate buys (a gated bench just waits), which is why the
 gate's measurement is the chips-on replays. And no chips-off squad ever built a
-bench with a double gameweek, so double-gameweek benches are unmeasured.
+bench with a double gameweek; that was measured separately with chips on and
+rejected (next section, registry entry 34).
 
 ### What replaced it
 
 The rules in README "When a chip is played": one window at a time; a Bench Boost
 or Triple Captain played in its last week, and earlier when the two share a
 deadline (a Wildcard or Free Hit is never forced); Bench Boost when all four are
-likely to play, the bench projects 8, and no week inside the horizon is 4.7
-points better; Triple Captain by a 1.0 margin; Wildcard and Free Hit at 12. A
+likely to play, the bench projects more than 8, and no week inside the horizon
+is 5.0 points better; Triple Captain by a 2.0 margin (4.7 and 1.0 when first
+shipped, on the final fixture list; next section); Wildcard and Free Hit at 12. A
 chip plan is credited with its NET value, which is above zero exactly when the
 chip's rule says play (an earlier draft credited the bench against the best near
 week less 1.7 while holding at 4.7, so between the two a "play" could lose to a
