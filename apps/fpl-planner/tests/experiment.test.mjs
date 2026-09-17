@@ -10,6 +10,9 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 import {
   INSTRUMENTS,
@@ -374,3 +377,51 @@ test('no declared exposure is the old behaviour exactly', () => {
   assert.equal(a.structuralWindowCount, 0);
   assert.equal(a.windowStats.n, 1);
 });
+
+// ---------------------------------------------------------------------------
+// The worker pool
+// ---------------------------------------------------------------------------
+
+// A stand-in worker speaking the real protocol: it replays nothing, answers each
+// cell, and kills itself with SIGKILL on a cell named "die", as the kernel's OOM
+// killer does.
+function fakeWorker() {
+  const dir = mkdtempSync(join(tmpdir(), 'fpl-pool-'));
+  const file = join(dir, 'worker.mjs');
+  writeFileSync(file, `
+process.on('message', (msg) => {
+  if (msg.type !== 'cell') return;
+  if (msg.cell.id === 'die') { process.kill(process.pid, 'SIGKILL'); return; }
+  setTimeout(() => process.send({ type: 'result', result: { id: msg.cell.id } }), 20);
+});
+process.send({ type: 'ready' });
+`);
+  return { file, cleanup: () => rmSync(dir, { recursive: true, force: true }) };
+}
+
+const poolConfig = { arms: [{ name: 'control' }] };
+const cellsNamed = ids => ids.map(id => ({ id, arm: 'control' }));
+
+test('the pool returns every cell when every worker survives', async () => {
+  const { runPool } = await import('../scripts/experiment.mjs');
+  const worker = fakeWorker();
+  try {
+    const results = await runPool({ cells: cellsNamed(['a', 'b', 'c', 'd']), config: poolConfig, workers: 2, workerPath: worker.file });
+    assert.deepEqual(results.map(r => r.id).sort(), ['a', 'b', 'c', 'd']);
+  } finally { worker.cleanup(); }
+});
+
+test('a worker killed by a signal while replaying a cell fails the run instead of hanging it', async () => {
+  const { runPool } = await import('../scripts/experiment.mjs');
+  const worker = fakeWorker();
+  try {
+    const outcome = await Promise.race([
+      runPool({ cells: cellsNamed(['a', 'die', 'b', 'c']), config: poolConfig, workers: 2, workerPath: worker.file })
+        .then(() => 'resolved', err => err.message),
+      new Promise(resolve => setTimeout(() => resolve('hung'), 10000)),
+    ]);
+    assert.notEqual(outcome, 'hung', 'the pool waited forever on a dead worker');
+    assert.match(outcome, /A worker was killed by SIGKILL while replaying a cell/);
+  } finally { worker.cleanup(); }
+});
+

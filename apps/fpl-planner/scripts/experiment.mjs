@@ -181,7 +181,9 @@ export function resolveConfig(raw, overrides = {}) {
 // The pool
 // ---------------------------------------------------------------------------
 
-function runPool({ cells, config, workers, onProgress }) {
+// Exported, with the worker script as a parameter, so a test can hand it a
+// worker that dies.
+export function runPool({ cells, config, workers, onProgress, workerPath = WORKER }) {
   return new Promise((resolve, reject) => {
     const armByName = new Map(config.arms.map(a => [a.name, a]));
     const queue = cells.slice();
@@ -189,8 +191,11 @@ function runPool({ cells, config, workers, onProgress }) {
     const failures = [];
     const children = [];
     let done = 0;
+    let finished = false;
 
     const finish = () => {
+      if (finished) return;
+      finished = true;
       for (const child of children) child.kill();
       if (failures.length) {
         reject(new Error(
@@ -214,7 +219,7 @@ function runPool({ cells, config, workers, onProgress }) {
 
     const count = Math.max(1, Math.min(workers, cells.length));
     for (let i = 0; i < count; i++) {
-      const child = fork(WORKER, [], { stdio: ['ignore', 'inherit', 'inherit', 'ipc'] });
+      const child = fork(workerPath, [], { stdio: ['ignore', 'inherit', 'inherit', 'ipc'] });
       child.busy = false;
       children.push(child);
       child.on('message', (msg) => {
@@ -237,9 +242,15 @@ function runPool({ cells, config, workers, onProgress }) {
         }
       });
       child.on('error', err => failures.push({ id: 'fork', message: err.message }));
-      child.on('exit', (code) => {
-        if (code !== 0 && code !== null && child.busy) {
-          failures.push({ id: 'worker', message: `A worker exited with code ${code}` });
+      // A worker that dies holding a cell is a failure however it died. This
+      // used to count only a non-zero exit CODE, and a worker killed by a
+      // signal exits with code null: on 2026-09-17 the kernel's OOM killer took
+      // workers from four concurrent runs, every pool waited forever on a cell
+      // nobody was replaying, and 90 minutes of replays were lost when the
+      // hung runs had to be killed. Workers `finish` kills are idle by then.
+      child.on('exit', (code, signal) => {
+        if (child.busy && code !== 0) {
+          failures.push({ id: 'worker', message: `A worker ${signal ? `was killed by ${signal}` : `exited with code ${code}`} while replaying a cell` });
           child.busy = false;
           if (children.every(c => !c.busy)) finish();
         }

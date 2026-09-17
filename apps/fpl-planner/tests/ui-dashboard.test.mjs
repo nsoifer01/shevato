@@ -63,6 +63,26 @@ test('the hero leads with the gameweek, the deadline, the action and the armband
   assert.ok(query(hero, 'fpl-conf-pill'), 'the band is rendered');
 });
 
+test('the hero says what the engine concluded about the chip it plays, not that it is the best window', () => {
+  const event = { deadline: new Date(NOW + 26 * 3600 * 1000).toISOString() };
+  const playing = (chip, entry) => ({
+    ...bundle,
+    current: {
+      ...plan,
+      chip,
+      explanation: { ...plan.explanation, chipReason: { ...(plan.explanation.chipReason || {}), perChip: { [chip]: { chip, ...entry } } } },
+    },
+  });
+  const noteOf = b => textOf(query(heroCard({ bundle: b, gameState, event, now: NOW }), 'is-chip'));
+  const tie = noteOf(playing('bboost', { status: 'play', lastWeek: false }));
+  assert.match(tie, /Play Bench Boost/);
+  assert.match(tie, /No week in reach is clearly better for it/);
+  assert.doesNotMatch(tie, /best window/);
+  assert.match(noteOf(playing('3xc', { status: 'last_week', lastWeek: true })), /Played now rather than lost when its window closes/);
+  assert.match(noteOf(playing('3xc', { status: 'play', lastWeek: false })), /Clearly better now than any week left in its window/);
+  assert.match(noteOf(playing('wildcard', { recommended: true })), /Clears its bar this gameweek/);
+});
+
 test('a passed deadline is worded exactly once, by countdown() alone', () => {
   // The regression: the hero prefixed "Deadline in " unconditionally while
   // countdown() already worded the passed case, rendering "Deadline passed

@@ -87,10 +87,22 @@ strengthens the bench looks like a gain once the boost is credited, and the
 rules were never measured at gameweek 1 (the replays build their opening squad
 as a draft).
 
-On the live GW5 payload the plan is now Foden to Gibbs-White and Isak to Thiago,
-then the Bench Boost on Trafford, Szoboszlai, Muharemović and Egan (13.67
+Live since 2026-09-17 (PR #560, deploy `6aab91d8e2d64d0a141b7326`, RELEASE_ID
+`7f1757bb0076`; the 29 served engine files are byte-identical to the merge). On
+the live GW5 payload (07:09 UTC) the plan is now Foden to Gibbs-White and Isak to
+Thiago, then the Bench Boost on Trafford, Szoboszlai, Muharemović and Egan (13.67
 projected; the best week inside the horizon, gameweek 8, is 13.70, a tie, so it
-is played), credited 4.68 over keeping the chip.
+is played), credited 4.68 over keeping the chip; captain Gibbs-White, 73.3 xP.
+The owned bench, with Foden, reads `unusable` at 9.54. Playwright on shevato.com
+with the Team ID renders exactly that at 1280 and 390, no page errors.
+
+The hero's chip fact still said "This gameweek is the best window for it" for
+every played chip, above a Chips card naming gameweek 8 as 0.03 points better.
+A note that asserts a superlative the engine no longer computes is the same
+class of defect as the chip card contradicting the plan, so it now reports the
+rule's conclusion ("No week in reach is clearly better for it", "Played now
+rather than lost when its window closes", "Clearly better now than any week left
+in its window", or for a Wildcard or Free Hit "Clears its bar this gameweek").
 
 ### The second look, and why it is reported
 
@@ -842,6 +854,16 @@ reported. `experiments/configs/null-arm.mjs` runs two identical arms and must
 report exactly zero on every trajectory (60 on the current four-season
 configuration); run it after touching the runner or the replay. There is deliberately no way to compare against a stored baseline:
 the control arm is re-measured every time.
+
+**Do not run several experiments at once on this machine.** Four concurrent
+runs (26 workers at 1.1 to 1.7 GB each) on 2026-09-17 met the kernel's OOM
+killer, and the pool counted only a non-zero exit CODE as a dead worker: a
+worker killed by a signal exits with code null, so all four runs waited forever
+on cells nobody was replaying, with their results only in memory. The pool now
+fails the run when a worker dies holding a cell however it died
+(`tests/experiment.test.mjs`), but a failed run is still a lost run. Alone,
+instrument 3 takes about three minutes; four together took over half an hour
+before they hung.
 
 **Average the seeds inside a window before counting anything.** Three seeds
 through one window are the same thirteen gameweeks with the same fixtures,

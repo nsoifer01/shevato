@@ -1703,7 +1703,13 @@ can satisfy three seasons whose optima genuinely differ.
 - **Date:** 2026-09-17
 - **Decision: ACCEPT** for the chip decisions below; the wildcard and free hit
   bars, the hit margins and the roll values are KEPT, each on the measurement
-  given for it.
+  given for it. Shipped in #560 (squash 7f1757bb), live 2026-09-17 by CLI deploy
+  `6aab91d8e2d64d0a141b7326` (RELEASE_ID `7f1757bb0076`): all 29 engine files
+  shevato.com serves are byte-identical to the merge, and run on the live GW5
+  payload (07:09 UTC) they produce the plan in FINDINGS. The hero's chip note
+  claimed "This gameweek is the best window for it" for every played chip, which
+  a tie-played Bench Boost contradicts; it now says what the rule concluded
+  (the follow-up PR to #560).
 - **Kind:** decision-rule recalibration, requested by the owner after the live
   GW5 plan (a day after entry 29 shipped) played a Bench Boost with no transfers
   on a bench of Trafford, Muharemović, Egan and Foden, who is suspended until 17

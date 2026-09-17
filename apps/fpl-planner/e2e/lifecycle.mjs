@@ -517,7 +517,8 @@ export async function run({ base, cdpPort }) {
         const t = document.body.innerText;
         return JSON.stringify({
           paused: /Recommendations paused|advice is paused|Paused:/i.test(t),
-          bestWindow: /best window for it/i.test(t),
+          // The hero's chip fact is marked is-chip only when a chip is played.
+          bestWindow: !!document.querySelector('.fpl-fact.is-chip'),
           wildcard: /Play your Wildcard/i.test(t),
           contradiction: /Moderate confidence/i.test(t) && /minutes are unclear/i.test(t),
         });
