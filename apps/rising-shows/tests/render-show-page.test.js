@@ -5,8 +5,9 @@ const assert = require('node:assert/strict');
 
 const {
   renderShowPage, buildDescription, buildTvSeasonSchema, renderSeasonNav, normalizeProviders,
-  SHAPE_LABELS, SHAPE_DESCS,
+  renderEpisodeAverageRow, SHAPE_LABELS, SHAPE_DESCS,
 } = require('../scripts/render-show-page.js');
+const { ABOVE_IMDB_MIN_VOTES } = require('../scripts/finder-lib.js');
 const { groupBySeries } = require('../scripts/build-show-pages.js');
 
 const BREAKING_BAD = {
@@ -745,4 +746,60 @@ test('a show with no dominant shape still explains what the app sorts by', () =>
   assert.match(m[1], /do not settle into one shape/);
   // Nothing to pre-filter by, so it must not invent a shape link.
   assert.equal(/#shape=/.test(m[1]), false, 'a shapeless show must not link to a shape filter');
+});
+
+// The episode average is the one figure this app has that IMDb's own page does
+// not, and the generated pages are where essentially all arrivals land, so it
+// belongs in the hero stats rather than only in the OG card's alt text.
+test('the hero prints the episode average next to the IMDb rating it is compared with', () => {
+  const html = renderShowPage(BREAKING_BAD);
+  const hero = html.slice(html.indexOf('class="show-stats"'), html.indexOf('</dl>'));
+  // Breaking Bad's fixture: two episodes, 8.0 and 8.2, against a 9.5 series
+  // rating, so the average is 8.1 and it trails its reputation by 1.4.
+  assert.match(hero, /<dt>Episode average<\/dt><dd><strong>8\.1<\/strong>/);
+  assert.match(hero, /-1\.4 vs IMDb/);
+  // It follows the IMDb rating, so the two numbers read as a pair.
+  assert.ok(hero.indexOf('IMDb rating') < hero.indexOf('Episode average'));
+});
+
+test('the "beats IMDb" mark is asserted on exactly the app\'s terms', () => {
+  const votes = ABOVE_IMDB_MIN_VOTES;
+  // Above the rating AND above the vote floor: the app shows its arrow, so the
+  // page colours the delta.
+  const asserted = renderEpisodeAverageRow('8.4', 8.0, votes);
+  assert.match(asserted, /class="ep-delta ep-delta--up"/);
+  assert.match(asserted, /↑ \+0\.4 vs IMDb/);
+  // Same gap, one vote short of the floor: the number still prints, the claim
+  // does not. This is the case the app refuses to badge.
+  const thin = renderEpisodeAverageRow('8.4', 8.0, votes - 1);
+  assert.match(thin, /class="ep-delta"/);
+  assert.match(thin, /\+0\.4 vs IMDb/);
+  assert.doesNotMatch(thin, /ep-delta--up/);
+  assert.doesNotMatch(thin, /↑/);
+  // Below its reputation: printed as a fact, never coloured, never arrowed.
+  const below = renderEpisodeAverageRow('7.2', 8.0, votes * 100);
+  assert.match(below, /-0\.8 vs IMDb/);
+  assert.doesNotMatch(below, /ep-delta--up/);
+});
+
+test('the printed delta always equals the difference of the two printed numbers', () => {
+  // Rounded to the tenth each side is shown at, 8.04 and 7.96 both print as
+  // "8.0", so the row must say they match rather than claim a +0.1 gap that
+  // the page contradicts one line above.
+  const row = renderEpisodeAverageRow('8.04', 7.96, 50000);
+  assert.match(row, /<strong>8\.0<\/strong>/);
+  assert.match(row, /matches the IMDb rating/);
+  assert.doesNotMatch(row, /0\.1/);
+});
+
+test('the episode-average row degrades instead of printing a nonsense number', () => {
+  // No usable average: the row is omitted entirely rather than printing 0.0.
+  assert.equal(renderEpisodeAverageRow('0.0', 8.0, 50000), '');
+  assert.equal(renderEpisodeAverageRow(undefined, 8.0, 50000), '');
+  // An average with nothing to compare it to still prints, with no delta.
+  const noRating = renderEpisodeAverageRow('8.1', undefined, undefined);
+  assert.match(noRating, /<strong>8\.1<\/strong><\/dd>/);
+  assert.doesNotMatch(noRating, /vs IMDb/);
+  // Missing vote counts must never be read as clearing the floor.
+  assert.doesNotMatch(renderEpisodeAverageRow('8.4', 8.0, undefined), /ep-delta--up/);
 });

@@ -1222,6 +1222,29 @@ event and action vocabulary. Lesson: when a field changes from free text to a
 code, change its producers in the same PR, because a normaliser that fails
 closed hides the breakage behind a valid-looking value.
 
+**`app_error` is not zero any more, and the events left are not ours
+(2026-09-20).** The `wasOpen` fix held: its last 4 events are dated 09-05,
+both users hours before #476 merged, and none since. What replaced it is a
+noise class worth recognising before anyone chases it. Between 09-12 and 09-16,
+13 events arrived from 8 users, ALL in China, ALL on generated Rising Shows
+show pages, every one with `error_code` `script_error` (or `unclassified` from
+the releases before the 09-13 classifier landed) and **no `error_source` at
+all**. That combination is the browser's fixed `Script error.` placeholder for
+a throw inside a script from another origin: the page's own scripts are
+same-origin, and since 09-13 those report a real name and a path, so a
+source-less `script_error` is by construction NOT this site's JavaScript. The
+only cross-origin script a show page loads is `googletagmanager.com/gtag/js`;
+the likelier thrower is what the host injects, since 5 of the 8 are Baidu-app
+Android WebViews (m.baidu.com referrals went 19 to 97 users that fortnight,
+and China WebView users 42 to 101) and 3 are China-located desktop Chrome
+reporting a null OS. Nothing breaks: the one visitor we can follow further
+threw twice, then clicked into the finder, which loaded and fired `app_open`
+normally. The consequence is for reading the metric, not for the code: split
+`app_error` by `error_code` and treat a source-less `script_error` from that
+cohort as third-party noise, or the next real bug will be buried under it.
+Kept being sent on purpose, because the same class arriving from OUTSIDE that
+cohort would be a real signal (a broken CDN, gtag failing).
+
 ## `var a = 1; b = 2` silently creates a global
 
 `assets/js/util.js` `navList()` opened with
