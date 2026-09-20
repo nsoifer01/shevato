@@ -1245,6 +1245,35 @@ cohort as third-party noise, or the next real bug will be buried under it.
 Kept being sent on purpose, because the same class arriving from OUTSIDE that
 cohort would be a real signal (a broken CDN, gtag failing).
 
+## A reused build tree publishes the first build's release_id (2026-09-20)
+
+`scripts/stamp-release.mjs` writes the build id INTO the source file
+(`assets/js/analytics.js`), replacing a `__SHEVATO_RELEASE__` token. The token
+therefore survives exactly one build, and the script's early return, "already
+stamped, nothing to do", then froze that first id into every later build of
+the same tree.
+
+Netlify never hits this: every build there is a fresh clone. It bites the
+local workflow this repo documents, which builds a throwaway worktree TWICE on
+purpose, once for the DEV draft deploy and once for the merged commit. On
+2026-09-20 production served `release_id = aa8e531086ea`, the pre-squash commit
+of a branch that had been deleted seconds earlier, so every `app_error` from
+that deploy named a commit that does not exist on master. The published page
+bytes were correct; a squash of one commit has the identical tree. Only the
+telemetry lied, which matters because `release_id` is the field an error is
+triaged by.
+
+`stamp()` is now a pure function that replaces the token OR an existing stamp,
+returns null when the id is unchanged, and says "(re-stamped a reused tree)"
+when it rewrites one. Pinned by `tests/static/release-stamp.test.mjs`,
+including the exact two-build sequence that shipped the wrong id.
+
+Two things to remember beyond the fix: a second build of the same tree is only
+as correct as the SOURCE mutations it inherits (`inline-partials.mjs` rewrites
+every HTML file in place too), and "idempotent" in a build script has to say
+idempotent WITH RESPECT TO WHAT. This one was idempotent per build and wrong
+across builds.
+
 ## `var a = 1; b = 2` silently creates a global
 
 `assets/js/util.js` `navList()` opened with
