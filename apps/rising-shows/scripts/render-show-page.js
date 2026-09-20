@@ -7,7 +7,9 @@ const { renderMoreFooter } = require('./render-footer.js');
 // and the app can never label the same show differently. deriveShowShapes owns
 // the definition; detectShapes is the per-episode classifier it runs over the
 // per-season averages. Neither module requires this one, so no cycle.
-const { deriveShowShapes, showShapeConfidence, orderShapesByConfidence } = require('./finder-lib.js');
+const {
+  deriveShowShapes, showShapeConfidence, orderShapesByConfidence, ABOVE_IMDB_MIN_VOTES,
+} = require('./finder-lib.js');
 const { detectShapes, shapeConfidence } = require('./match.js');
 // Streaming-provider vocabulary is shared with the browser app for the same
 // reason shapes are: a page must never name a service the app spells
@@ -317,6 +319,7 @@ ${seasonSchemas}
         ${cleanOverview ? `<p class="show-overview">${escapeHtml(cleanOverview)}</p>` : ''}
         <dl class="show-stats">
           ${seriesRating ? `<div><dt>IMDb rating</dt><dd><strong>${seriesRating.toFixed(1)}</strong>${seriesVotes ? ` <span class="muted">(${seriesVotes.toLocaleString()} votes)</span>` : ''}</dd></div>` : ''}
+          ${renderEpisodeAverageRow(overallAvgRating, seriesRating, seriesVotes)}
           <div><dt>Seasons</dt><dd>${numberOfSeasons}</dd></div>
           ${stillAiring ? '<div><dt>Status</dt><dd>Still airing</dd></div>' : ''}
           ${mainstreamProviders.length ? `<div><dt>Streaming (US)</dt><dd>${mainstreamProviders.map(escapeHtml).join(' · ')}</dd></div>` : ''}
@@ -627,6 +630,36 @@ function computeOverallAvgRating(seasons) {
   return (Math.round((Math.round(sum * 10) * 10) / count) / 100).toFixed(1);
 }
 
+// The episode-weighted average, printed next to the IMDb rating that sits
+// directly above it in the same list. This is the one figure this app knows
+// that IMDb's own page does not show, and the generated page computed it (for
+// the OG card alt text) without ever printing it in the body, on the very
+// pages where essentially all inbound traffic lands.
+//
+// The "better than its reputation" CLAIM is asserted exactly where the app
+// asserts it (aboveImdbBadge in js/app.js): the average must beat the series
+// rating AND the show must clear ABOVE_IMDB_MIN_VOTES, so a thinly voted show
+// never gets the arrow. Otherwise the delta is still printed, as a plain fact
+// in muted type with no claim attached. The app has no below-IMDb badge, so
+// neither does this row: a lower average is never coloured as a failure.
+function renderEpisodeAverageRow(overallAvgRating, seriesRating, seriesVotes) {
+  const avg = parseFloat(overallAvgRating);
+  if (!Number.isFinite(avg) || avg <= 0) return '';
+  const row = (inner) => `<div><dt>Episode average</dt><dd><strong>${avg.toFixed(1)}</strong>${inner}</dd></div>`;
+  if (typeof seriesRating !== 'number' || !Number.isFinite(seriesRating)) return row('');
+  // Differenced AFTER rounding both sides to the tenth each is printed at, so
+  // the delta always equals the difference of the two numbers on screen. Taking
+  // it from the raw values instead lets 8.04 and 7.96 print as "8.0" and "8.0"
+  // beside a "+0.1".
+  const shownAvg = Math.round(avg * 10) / 10;
+  const shownRating = Math.round(seriesRating * 10) / 10;
+  const diff = Math.round((shownAvg - shownRating) * 10) / 10;
+  if (diff === 0) return row(' <span class="ep-delta">matches the IMDb rating</span>');
+  const asserted = diff > 0 && typeof seriesVotes === 'number' && seriesVotes >= ABOVE_IMDB_MIN_VOTES;
+  const sign = diff > 0 ? '+' : '-';
+  return row(` <span class="${asserted ? 'ep-delta ep-delta--up' : 'ep-delta'}">${asserted ? '↑ ' : ''}${sign}${Math.abs(diff).toFixed(1)} vs IMDb</span>`);
+}
+
 function buildDescription(title, year, n, rating, votes, overview) {
   const yearLabel = year ? ` (${year})` : '';
   const ratingLabel = rating ? ` IMDb ${rating.toFixed(1)}/10${votes ? ` (${votes.toLocaleString()} votes)` : ''}.` : '';
@@ -732,6 +765,7 @@ module.exports = {
   GAP_HUB_LABEL,
   computeDominantShape,
   computeOverallAvgRating,
+  renderEpisodeAverageRow,
   normalizeProviders,
   jsonLd,
 };

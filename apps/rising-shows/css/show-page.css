@@ -15,6 +15,7 @@
   --accent: #7aa2ff;
   --accent-2: #5cd1c5;
   --gold: #f5c518; /* the Rising Shows app's amber accent; footer links match it */
+  --good: #34d39e; /* same value as the app's --good, so the "beats IMDb" mark reads identically on both surfaces */
   --curve-line: #7aa2ff;
   --curve-area: rgba(122, 162, 255, 0.18);
   --shape: #1f2c4d;
@@ -215,6 +216,12 @@ main { max-width: 1080px; margin: 0 auto; padding: 24px; }
 .show-stats dt { font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); }
 .show-stats dd { margin: 2px 0 0; font-size: 15px; }
 .show-stats .muted { color: var(--muted); font-size: 13px; }
+/* The episode average's delta against the IMDb rating above it. Only the
+   asserted case (beats IMDb, and enough votes to say so) is coloured; every
+   other delta is a plain muted fact, because the app has no below-IMDb mark
+   either. Kept off `font-weight` so it never competes with the number. */
+.show-stats .ep-delta { color: var(--muted); font-size: 13px; white-space: nowrap; }
+.show-stats .ep-delta--up { color: var(--good); }
 
 /* The trajectory explainer: the first thing on the page that says what a
    "shape" is, for a reader who arrived from a search engine and has never

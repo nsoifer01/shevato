@@ -421,6 +421,12 @@ Events, all carrying `app_name` and `app_section` automatically:
 | `app_error` | uncaught error or unhandled rejection (capped at 5/page) | `error_scope` (`window`/`promise`), `error_code` (a standard error name such as `referenceerror`, a Firebase-style code such as `auth_network-request-failed`, `script_error`, `non_error_rejection` or `unclassified`; never the message), `error_source` (window only: a same-origin script path, or `external`) |
 | `page_not_found` | 404.html renders | `not_found_path`, `referrer_domain` |
 
+A `script_error` with NO `error_source` is a throw inside a cross-origin
+script, which the browser refuses to describe; it is never this site's own
+code. In practice that is a third party injecting script into the page (see
+"`app_error` is not zero any more" in `FINDINGS.md`), so split this event by
+`error_code` before reading it as an alarm.
+
 Two rules when adding tracking:
 
 1. **Never send anything the user typed.** Report a query's length and result

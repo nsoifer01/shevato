@@ -1847,3 +1847,51 @@ trajectory. A 1.7-point jump in the final season scores `big-finale` 0.85 agains
 `slow-burn` 0.23, so that fixture was only slow-burn-dominant because slow-burn is
 emitted first. It is now `[7.0, 6.8, 8.4, 8.5]` (slow-burn 0.73, big-finale 0.10),
 which lifts in the second half without a finale spike - what slow-burn means.
+
+## The one number the pages had and never printed (2026-09-20)
+
+GA4 for 2026-09-05..09-18, with the owner's three devices excluded, says the
+generated show pages ARE this app: 367 of the app's 376 page_views landed on
+`/shows/<slug>/`, from 353 users. The finder itself got 9 views from 6 users.
+Worth reading twice before any work is planned here:
+
+- **The finder's search has never been used by an external visitor**, in any
+  fortnight on record. Every `search` event GA4 holds is the owner's. Filters:
+  3 events, one visitor, on 2026-08-31.
+- From the show pages, **outbound clicks beat clicks into the finder 3:1**
+  (9 to TMDB/IMDb against 3 into the app), even though the page already links
+  into the finder in six places (header launch button, breadcrumb, `#show=`
+  deep link, the browse line, the shape CTA, and the sticky CTA).
+- Median engagement on a show page is 4 seconds. Most arrivals come from
+  ChatGPT (20 users, up from 7) having asked about ONE show, and from
+  m.baidu.com (97 users, up from 19) which is near-zero-engagement bounce.
+
+So the visitor on these pages wants a fact about one show, not a discovery
+tool, and a seventh finder CTA would have been the wrong change. What the page
+was missing is the only fact it knows that IMDb's own page does not: the
+episode-weighted average, and how it compares to the show's reputation. The
+page had already computed it (`computeOverallAvgRating`, for `og:image:alt`
+and `twitter:data2`) and then never printed it in the body.
+
+`renderEpisodeAverageRow` now prints it in the hero stats next to the IMDb
+rating. Two rules it must keep:
+
+1. **It asserts the "beats IMDb" mark on exactly the app's terms.** The arrow
+   and the green require the average to beat the series rating AND the show to
+   clear `ABOVE_IMDB_MIN_VOTES` (1,000), which is what `aboveImdbBadge` in
+   `js/app.js` requires. A lower average prints muted with no arrow, because
+   the app has no below-IMDb badge and the page must not invent a verdict the
+   app would refuse. Colour claims are checked by computed style: the green is
+   10.14:1 on the page background, the muted grey 7.66:1.
+2. **The delta is differenced AFTER rounding both sides to the tenth each is
+   printed at.** Taking it from the raw values lets 8.04 and 7.96 print as
+   "8.0" and "8.0" beside a "+0.1", contradicting the two numbers one line
+   above. Pinned by a test.
+
+Also verified while measuring this, because it is the one conversion path with
+real traffic: the show page's deep links into the app work, on desktop and at
+390px. `#show=<id>` opens that show's modal by name, `#shape=<slug>` lands on
+the filtered explorer (24 rows for `bad-finale`), and neither throws. The
+earlier "no modal" reading was a probe bug: the show modal is `#showModal`,
+and a selector loop that stops at the first hidden `.modal` finds
+`#changelogModal` and reports the app broken.
