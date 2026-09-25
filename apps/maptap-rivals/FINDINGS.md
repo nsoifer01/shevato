@@ -3,6 +3,49 @@
 Living document: the current best understanding of how this app behaves and
 where it bites. Rewrite sections rather than appending to them.
 
+## Every MapTap profile link comes from one helper (2026-09-25)
+
+A rival's maptap.gg profile is linked from the rival page header ("↗ MapTap",
+a quieter sibling of Sync / Edit), an icon among the dashboard card's Sync /
+Edit icons, a small icon after the name on the leaderboard, a live
+"↗ View <name> on MapTap" line under the edit modal's username field, the
+score cells of the recent-games and history tables, the "Their rivals"
+discovery rows, and the profile card's own link. All of them go through
+`mapTapProfileUrl()` in `app.js` (the leaderboard, card, header and modal via
+the `mapTapProfileLink()` element builder, which also sets `target=_blank`,
+`rel="noopener noreferrer"`, the "View <name> on MapTap" name, and a
+`stopPropagation` so a link inside a clickable card or row opens only the
+profile). The profile card and discovery rows used to concatenate their own
+URLs, one of them unencoded.
+
+- **Normalization was already there**: `normalizeMapTapUsername` (and its
+  zero-dependency twin `normalizeHandle` in `network.js`) accepts a bare
+  handle, `@handle`, and a profile URL with or without scheme, whitespace or a
+  trailing slash / query, and `saveRivalFromModal` stores the normalized
+  form. Nothing about that changed.
+- **The URL helper refuses what is not a single path segment** (whitespace,
+  `/`, `\`, `?`, `#`, `.` / `..`), so a foreign URL typed into the field
+  yields no link instead of `maptap.gg/u/https%3A...`. Everything else is
+  `encodeURIComponent`-ed, so no stored value can point a link off
+  `maptap.gg/u/`. MapTap's real nickname alphabet is unknown, so the check
+  deliberately stops there rather than guessing an allow-list that could hide
+  a real profile.
+- **The username input used to be `maxlength=32`**, which silently truncated
+  a pasted profile URL for any username longer than 12 characters
+  (`https://maptap.gg/u/` is 20). It is 100 now; storage still holds only the
+  normalized username.
+- **Deliberately not linked**: the matrix (dense, and its row heads are
+  comparison labels, not identities), the predictions rows (the name is
+  already the finishes toggle and the row is tight at 390; the rival card
+  with the link sits just below), the Records period cards (per-period
+  tallies), and the rival switcher (an `<option>` cannot hold a link).
+- At 390 the leaderboard icon drops to its own line under the name, the same
+  way the name itself already wraps in that narrow column.
+
+Covered by the `mapTapProfileUrl` tests in `tests/app-helpers.test.js` and the
+"profile links" checks in `e2e/quality.mjs` (coordinate clicks prove the card
+and the leaderboard row do not also navigate).
+
 ## The calendar heatmap was unreachable by keyboard, and colour-only (2026-09-16)
 
 Each day in the rival calendar was a bare `<span>` with a class, a `title`, an

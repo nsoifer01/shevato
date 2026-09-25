@@ -147,6 +147,7 @@ test('vm harness: app.js exports every helper these tests drive', () => {
     'persistGames', 'loadGamesFromStorage', 'storedGamesAreInline',
     'normalizeStoredGames', 'onExternalStorage', 'reassignGames',
     'state', 'summarizeMapTapProfile', 'syncMapTapForRival', 'syncAllRivals',
+    'normalizeMapTapUsername', 'mapTapProfileUrl',
   ];
   const missing = expected.filter((name) => helpers[name] == null);
   assert.deepEqual(missing, [], `js/app.js stopped exporting: ${missing.join(', ')}`);
@@ -702,6 +703,37 @@ test('rivalNameHint (D13): duplicate (case-insensitive) and me-equal names get a
   assert.match(hint('nik', null), /your own name/);
   assert.equal(hint('Carol', null), '');
   assert.equal(hint('   ', null), '');
+});
+
+// Every MapTap profile link in the app (rival page, dashboard card, leaderboard,
+// edit modal, score cells, discovery) is built by mapTapProfileUrl, so these
+// are the only rules that decide where one points.
+test('mapTapProfileUrl: every accepted input form resolves to the same profile', () => {
+  const { mapTapProfileUrl, normalizeMapTapUsername } = helpers;
+  const want = 'https://maptap.gg/u/gghali04';
+  for (const raw of [
+    'gghali04', '@gghali04', '  gghali04  ',
+    'https://maptap.gg/u/gghali04', ' https://maptap.gg/u/gghali04 ',
+    'maptap.gg/u/gghali04', 'http://www.maptap.gg/u/gghali04/', 'https://maptap.gg/u/gghali04?tab=games',
+  ]) {
+    assert.equal(mapTapProfileUrl(raw), want, JSON.stringify(raw));
+    assert.equal(normalizeMapTapUsername(raw), 'gghali04', JSON.stringify(raw));
+  }
+});
+
+test('mapTapProfileUrl: no link for an empty or unusable username', () => {
+  const { mapTapProfileUrl } = helpers;
+  for (const raw of [null, undefined, '', '   ', '@', 'maptap.gg/u/', '.', '..',
+    'https://evil.example/u/x', 'two words', 'a/b', 'a?b', 'a#b', 'a\\b']) {
+    assert.equal(mapTapProfileUrl(raw), null, JSON.stringify(raw));
+  }
+});
+
+test('mapTapProfileUrl: the link always stays on maptap.gg/u/ and is percent-encoded', () => {
+  const { mapTapProfileUrl } = helpers;
+  assert.equal(mapTapProfileUrl('javascript:alert(1)'), 'https://maptap.gg/u/javascript%3Aalert(1)');
+  assert.equal(mapTapProfileUrl('José'), 'https://maptap.gg/u/Jos%C3%A9');
+  assert.equal(mapTapProfileUrl('Mixed_Case.1-2'), 'https://maptap.gg/u/Mixed_Case.1-2');
 });
 
 // ---------------------------------------------------------------------------

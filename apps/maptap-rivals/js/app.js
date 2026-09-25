@@ -115,6 +115,12 @@
     '<path d="M21 12a9 9 0 0 1-15 6.7L3 16"/>' +
     '<path d="M3 21v-5h5"/>' +
     '</svg>';
+  const ICON_EXTERNAL =
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">' +
+    '<path d="M14 4h6v6"/>' +
+    '<path d="M20 4l-9 9"/>' +
+    '<path d="M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/>' +
+    '</svg>';
   const ICON_EDIT =
     '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">' +
     '<path d="M12 20h9"/>' +
@@ -512,9 +518,35 @@
     const tok = maptapMonthDay(iso);
     return tok ? `https://maptap.gg/history/${tok}` : null;
   }
+  // The one place a maptap.gg profile URL is built. Takes whatever is
+  // stored or typed (a bare handle, "@handle", or a pasted profile URL),
+  // normalizes it, and returns null for anything that cannot be a single
+  // profile path segment (a foreign URL, whitespace inside, "." / "..") so
+  // a stored value can never steer the link off maptap.gg/u/.
   function mapTapProfileUrl(username) {
     const u = normalizeMapTapUsername(username);
-    return u ? `https://maptap.gg/u/${encodeURIComponent(u)}` : null;
+    if (!u || /[\s/\\?#]/.test(u) || /^\.+$/.test(u)) return null;
+    return `https://maptap.gg/u/${encodeURIComponent(u)}`;
+  }
+  // Outbound "open on maptap.gg" link for a rival (or null when they have no
+  // usable username, so callers never render a dead link). `content` is the
+  // visible label; icon-only callers pass `html` and rely on aria-label. The
+  // click never bubbles, so a link inside a clickable card or row opens the
+  // profile without also navigating to the rival page.
+  function mapTapProfileLink(username, name, attrs) {
+    const url = mapTapProfileUrl(username);
+    if (!url) return null;
+    const a = Object.assign({
+      href: url,
+      target: '_blank',
+      rel: 'noopener noreferrer',
+      title: `View ${name} on MapTap`,
+      'aria-label': `View ${name} on MapTap (opens in a new tab)`,
+      onclick: (e) => e.stopPropagation(),
+    }, attrs || {});
+    const content = a.content;
+    delete a.content;
+    return el('a', a, content);
   }
   // Score <td> for the games/history tables. When the player has a known
   // maptap.gg username the score number links to their profile. maptap.gg
@@ -1119,6 +1151,7 @@
     title.textContent = rival ? 'Edit rival' : 'Add rival';
     nameInput.value = rival ? rival.name : '';
     $('#rival-maptap-username').value = rival ? (rival.maptapUsername || '') : '';
+    refreshRivalProfileLink();
     state.pickedColor = rival ? rival.color : COLORS[state.rivals.length % COLORS.length];
     state.pickedIcon = rival ? rival.icon : ICONS[state.rivals.length % ICONS.length];
     deleteBtn.hidden = !rival;
@@ -1129,6 +1162,23 @@
 
     refreshRivalNameHint();
     openModal('rival-modal', '#rival-name');
+  }
+
+  // Live "View <name> on MapTap" link under the username field. Built from
+  // what is typed right now (so a pasted profile URL or "@handle" resolves
+  // the same way Save will store it) and hidden whenever that is not a
+  // usable username, so the modal never shows a dead link.
+  function refreshRivalProfileLink() {
+    const host = $('#rival-maptap-profile');
+    if (!host) return;
+    const typed = $('#rival-maptap-username').value;
+    const name = $('#rival-name').value.trim() || 'this rival';
+    const link = mapTapProfileLink(typed, name, {
+      class: 'rival-maptap-profile-link',
+      content: `↗ View ${name} on MapTap`,
+    });
+    host.replaceChildren(...(link ? [link] : []));
+    host.hidden = !link;
   }
 
   function closeRivalModal() {
@@ -3360,6 +3410,10 @@
         html: ICON_SYNC,
         onclick: (e) => { e.stopPropagation(); syncMapTapForRival(r.id); },
       }),
+      mapTapProfileLink(r.maptapUsername, r.name, {
+        class: 'rival-card-maptap',
+        html: ICON_EXTERNAL,
+      }),
       el('button', {
         type: 'button',
         class: 'rival-card-edit',
@@ -3811,6 +3865,11 @@
       type: 'button', class: 'btn btn-ghost',
       onclick: () => openRivalModal(rival.id),
     }, '✎ Edit'));
+    const profileLink = mapTapProfileLink(rival.maptapUsername, rival.name, {
+      class: 'btn rival-maptap-profile',
+      content: '↗ MapTap',
+    });
+    if (profileLink) actions.appendChild(profileLink);
     headerHost.appendChild(actions);
 
     // Reflect any in-flight sync state on the freshly rendered button.
@@ -5117,6 +5176,10 @@
           class: 'lb-rival-link',
           onclick: (e) => { e.preventDefault(); e.stopPropagation(); state.selectedRivalId = s.rival.id; persistSelected(); setView('rival'); },
         }, s.rival.icon + ' ' + s.rival.name),
+        mapTapProfileLink(s.rival.maptapUsername, s.rival.name, {
+          class: 'lb-maptap-link',
+          html: ICON_EXTERNAL,
+        }),
       ]));
       tr.appendChild(el('td', {}, String(s.total)));
       tr.appendChild(el('td', { style: 'color:var(--good);font-weight:600' }, String(s.wins)));
@@ -6257,9 +6320,9 @@
         el('span', {}, 'Profile: '),
         el('a', {
           class: 'username',
-          href: `https://maptap.gg/u/${state.myMapTap}`,
+          href: mapTapProfileUrl(state.myMapTap) || undefined,
           target: '_blank',
-          rel: 'noopener',
+          rel: 'noopener noreferrer',
         }, p.nickname || state.myMapTap),
       ]);
       body.appendChild(verifiedLine);
@@ -7126,7 +7189,7 @@
         el('span', { class: 'discovery-name' }, p.name),
         el('a', {
           class: 'discovery-handle',
-          href: `https://maptap.gg/u/${encodeURIComponent(p.handle)}`,
+          href: mapTapProfileUrl(p.handle) || undefined,
           target: '_blank',
           rel: 'noopener noreferrer',
           title: 'Open their maptap.gg profile',
@@ -8323,6 +8386,9 @@
       if (e.key === 'Enter') { e.preventDefault(); saveRivalFromModal(); }
     });
     $('#rival-name').addEventListener('input', refreshRivalNameHint);
+    // The profile link's label names the rival, so it follows both fields.
+    $('#rival-name').addEventListener('input', refreshRivalProfileLink);
+    $('#rival-maptap-username').addEventListener('input', refreshRivalProfileLink);
     // Delete-rival confirmation modal
     $('#delete-rival-modal').querySelectorAll('[data-close="delete-rival-modal"]').forEach(node => {
       node.addEventListener('click', closeDeleteRivalModal);
@@ -8606,6 +8672,8 @@
       parseWhatsAppText,
       dayBucketDate,
       rivalNameHint,
+      normalizeMapTapUsername,
+      mapTapProfileUrl,
       // The MapTap sync run, and the live state it writes through, so a test
       // can count what one "Sync all rivals" press actually persists. A run
       // used to be N saves for N rivals, each of them restamping the same
