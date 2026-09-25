@@ -648,9 +648,10 @@
       </div>
       <label class="modal-field">
         <span>MapTap username (optional)</span>
-        <input type="text" id="rival-maptap-username" maxlength="32" placeholder="e.g. susmabit" autocomplete="off" spellcheck="false">
-        <span class="modal-field-hint">From their profile URL: <code>maptap.gg/u/<b>username</b></code>. Used to sync games automatically.</span>
+        <input type="text" id="rival-maptap-username" maxlength="100" placeholder="e.g. susmabit" autocomplete="off" spellcheck="false">
+        <span class="modal-field-hint">From their profile URL: <code>maptap.gg/u/<b>username</b></code> (pasting the whole URL works too). Used to sync games automatically.</span>
       </label>
+      <p class="modal-field-hint rival-maptap-profile" id="rival-maptap-profile" hidden></p>
       <div class="modal-actions">
         <button type="button" class="btn btn-ghost" data-close="modal">Cancel</button>
         <button type="button" class="btn btn-danger" id="rival-delete-btn" hidden>Delete</button>

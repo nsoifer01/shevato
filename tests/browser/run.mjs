@@ -158,8 +158,10 @@ const EXPECTED_CHECKS = {
   // Plus 6 "Sync all rivals" checks (progress counter, run totals, me-only
   // days, the predictions actual, the already-up-to-date rerun, JS errors).
   // 126 before 2026-09-07; +1 for the check that the profile card claims a
-  // LOOKUP rather than an ownership check (audit F03).
-  'apps/maptap-rivals/e2e/quality.mjs': 127,
+  // LOOKUP rather than an ownership check (audit F03). 141 since 2026-09-25:
+  // +14 MapTap profile-link checks (card, rival header, leaderboard, the edit
+  // modal's live link, and that no link fires its row or card as well).
+  'apps/maptap-rivals/e2e/quality.mjs': 141,
   // Deliberately NOT pinned: apps/rising-shows/e2e/audit-2026-08.mjs emits 51
   // checks when the dataset is on disk and 11 skip entries when it is not, so
   // a single number cannot describe both environments. The zero-run guard

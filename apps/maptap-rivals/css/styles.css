@@ -2269,7 +2269,8 @@ body.maptap-rivals-app textarea:focus {
   align-self: center;
 }
 .rival-card-edit,
-.rival-card-sync {
+.rival-card-sync,
+.rival-card-maptap {
   width: 26px;
   height: 26px;
   padding: 0;
@@ -2287,25 +2288,31 @@ body.maptap-rivals-app textarea:focus {
   transition: background 0.15s ease, color 0.15s ease;
 }
 .rival-card-edit:hover,
-.rival-card-sync:hover {
+.rival-card-sync:hover,
+.rival-card-maptap:hover {
   background: rgba(255, 255, 255, 0.06);
   color: var(--text) !important;
   box-shadow: none !important;
 }
 .rival-card-edit:hover:active,
-.rival-card-sync:hover:active { background-color: rgba(255, 255, 255, 0.06); }
+.rival-card-sync:hover:active,
+.rival-card-maptap:hover:active { background-color: rgba(255, 255, 255, 0.06); }
 .rival-card-edit:focus-visible,
-.rival-card-sync:focus-visible {
+.rival-card-sync:focus-visible,
+.rival-card-maptap:focus-visible {
   outline: none;
   background: rgba(255, 255, 255, 0.06);
   box-shadow: 0 0 0 2px var(--accent-soft) !important;
 }
 .rival-card-edit svg,
-.rival-card-sync svg {
+.rival-card-sync svg,
+.rival-card-maptap svg {
   width: 14px;
   height: 14px;
   display: block;
 }
+/* The profile icon is an <a>: drop main.css's red link underline. */
+.rival-card-maptap { text-decoration: none; }
 .rival-card-sync[disabled] { opacity: 0.45; cursor: not-allowed; }
 .rival-card-sync.is-loading { color: var(--accent-2) !important; animation: spin 0.9s linear infinite; }
 @keyframes spin { from { transform: rotate(0); } to { transform: rotate(360deg); } }
@@ -6005,3 +6012,58 @@ body.maptap-rivals-app select option {
 .matrix-wrap:focus-visible,
 .games-table-wrap:focus-visible,
 .leaderboard-wrap:focus-visible { outline-offset: -2px; }
+
+/* ---------- MapTap profile links ----------
+   Outbound links to a rival's maptap.gg profile, built by mapTapProfileLink()
+   in app.js. All of them are <a> elements, so each pins its colour and
+   underline against main.css's red `a` theme. */
+
+/* Rival page header: a quieter sibling of the Sync / Edit buttons. */
+.btn.rival-maptap-profile,
+.btn.rival-maptap-profile:visited {
+  background: transparent;
+  color: var(--muted) !important;
+  text-decoration: none;
+}
+.btn.rival-maptap-profile:hover {
+  background: var(--surface-2);
+  color: var(--text) !important;
+}
+
+/* Leaderboard: a tiny icon after the rival's name. */
+.lb-maptap-link,
+.lb-maptap-link:visited {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  margin-left: 0.3rem;
+  vertical-align: middle;
+  border-radius: 5px;
+  color: var(--muted) !important;
+  text-decoration: none;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+.lb-maptap-link:hover,
+.lb-maptap-link:focus-visible {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text) !important;
+}
+.lb-maptap-link:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--accent-soft); }
+.lb-maptap-link svg { width: 12px; height: 12px; display: block; }
+
+/* Edit-rival modal: live link under the username field. */
+.modal-field-hint.rival-maptap-profile { margin-top: 0.45rem; }
+.modal-field-hint.rival-maptap-profile[hidden] { display: none; }
+.rival-maptap-profile-link,
+.rival-maptap-profile-link:visited {
+  color: var(--accent-2) !important;
+  text-decoration: none;
+  font-weight: 500;
+}
+.rival-maptap-profile-link:hover,
+.rival-maptap-profile-link:focus-visible {
+  text-decoration: underline;
+  outline: none;
+}

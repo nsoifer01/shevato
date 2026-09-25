@@ -254,6 +254,77 @@ export async function run({ base, cdpPort }) {
     await clickAt(s, undoBox.x, undoBox.y); await sleep(500);
     t('Undo restores the rival and their game', (await evaluate(s, "JSON.parse(localStorage.getItem('maptapRivalsRivals')).length")) === 4 && (await evaluate(s, "JSON.parse(localStorage.getItem('maptapRivalsGames')).some(g=>g.rivalId==='r-cy')")));
 
+    // ---- MapTap profile links (2026-09-25) ----
+    // Every outbound profile link is built by mapTapProfileUrl() from the
+    // stored username. A window capture listener cancels the new-tab
+    // navigation (the suite never reaches the internet) without stopping
+    // propagation, so the checks see exactly what a real click would reach.
+    await hashTo(s, '#dashboard', 900);
+    const PROFILE = 'https://maptap.gg/u/';
+    const linkFacts = (sel) => `(()=>{const a=document.querySelector(${JSON.stringify(sel)}); return a ? {href:a.href, target:a.target, rel:a.rel, label:a.getAttribute('aria-label')||'', text:a.textContent.trim(), hidden:!a.offsetParent} : null})()`;
+    const cardLink = await evaluate(s, linkFacts('.rival-card[data-rival-id="r-ari"] a.rival-card-maptap'));
+    t('profile links: a dashboard card links the rival\'s MapTap profile in a new tab, safely, with a name',
+      cardLink && cardLink.href === PROFILE + 'ari_mt' && cardLink.target === '_blank' && cardLink.rel === 'noopener noreferrer' && /View Ari on MapTap/.test(cardLink.label) && !cardLink.hidden, JSON.stringify(cardLink));
+    t('profile links: a rival with no MapTap username gets no card link',
+      (await evaluate(s, "document.querySelectorAll('.rival-card[data-rival-id=\"r-cy\"] a.rival-card-maptap').length")) === 0);
+    const armClickLog = `(()=>{window.__extClicks=[]; if(!window.__extArmed){window.__extArmed=1; window.addEventListener('click',e=>{const a=e.target.closest&&e.target.closest('a[target=_blank]'); if(a){window.__extClicks.push(a.href); e.preventDefault();}},true);} return 1})()`;
+    await evaluate(s, armClickLog);
+    const cardIcon = await evaluate(s, "(()=>{const a=document.querySelector('.rival-card[data-rival-id=\"r-ari\"] a.rival-card-maptap'); a.scrollIntoView({block:'center'}); const r=a.getBoundingClientRect(); const x=r.left+r.width/2, y=r.top+r.height/2; const h=document.elementFromPoint(x,y); return {x, y, onTop: !!h && a.contains(h)}})()");
+    await clickAt(s, cardIcon.x, cardIcon.y); await sleep(400);
+    t('profile links: clicking the card icon opens only the profile (the card does not also navigate)',
+      cardIcon.onTop && (await evaluate(s, 'location.hash')) === '#dashboard' && JSON.stringify(await evaluate(s, 'window.__extClicks')) === JSON.stringify([PROFILE + 'ari_mt']),
+      JSON.stringify({ cardIcon, hash: await evaluate(s, 'location.hash'), clicks: await evaluate(s, 'window.__extClicks') }));
+
+    await hashTo(s, '#rival/r-ari', 1000);
+    const headLink = await evaluate(s, linkFacts('#rival-header a.rival-maptap-profile'));
+    t('profile links: the rival page header carries "↗ MapTap" beside Sync / Edit',
+      headLink && headLink.href === PROFILE + 'ari_mt' && headLink.target === '_blank' && headLink.rel === 'noopener noreferrer' && headLink.text === '↗ MapTap'
+        && (await evaluate(s, "document.querySelector('#rival-header a.rival-maptap-profile').parentElement.classList.contains('rival-header-actions')")), JSON.stringify(headLink));
+    await hashTo(s, '#rival/r-cy', 1000);
+    t('profile links: the rival page header has no profile link for a rival without a username',
+      (await evaluate(s, "document.querySelectorAll('#rival-header a.rival-maptap-profile').length")) === 0 && (await txt(s, '#rival-header h2')) === 'Cy');
+
+    await hashTo(s, '#leaderboard', 1000);
+    await evaluate(s, armClickLog);
+    t('profile links: leaderboard names carry an icon link only for rivals with a username (3 of 4)',
+      (await evaluate(s, "document.querySelectorAll('#leaderboard-table a.lb-maptap-link, .lb-maptap-link').length")) === 3);
+    const lbIcon = await evaluate(s, "(()=>{const a=[...document.querySelectorAll('.lb-maptap-link')].find(x=>/ari_mt$/.test(x.href)); a.scrollIntoView({block:'center'}); const r=a.getBoundingClientRect(); const x=r.left+r.width/2, y=r.top+r.height/2; const h=document.elementFromPoint(x,y); return {x, y, onTop: !!h && a.contains(h)}})()");
+    await clickAt(s, lbIcon.x, lbIcon.y); await sleep(400);
+    t('profile links: clicking the leaderboard icon does not also open the rival page',
+      lbIcon.onTop && (await evaluate(s, 'location.hash')) === '#leaderboard' && JSON.stringify(await evaluate(s, 'window.__extClicks')) === JSON.stringify([PROFILE + 'ari_mt']),
+      JSON.stringify({ lbIcon, hash: await evaluate(s, 'location.hash'), clicks: await evaluate(s, 'window.__extClicks') }));
+
+    // Edit modal: the link follows the field live, for every accepted form.
+    await hashTo(s, '#dashboard', 900);
+    await clickSel(s, '.rival-card[data-rival-id="r-ari"] .rival-card-edit', { settle: 300 });
+    const modalLink = await evaluate(s, linkFacts('#rival-maptap-profile a'));
+    t('profile links: the edit modal shows a live "View Ari on MapTap" link for the stored username',
+      modalLink && modalLink.href === PROFILE + 'ari_mt' && modalLink.text === '↗ View Ari on MapTap' && modalLink.rel === 'noopener noreferrer' && !modalLink.hidden, JSON.stringify(modalLink));
+    const typed = await evaluate(s, `(()=>{const i=document.getElementById('rival-maptap-username'); const out={}; for (const v of ['gghali04','@gghali04',' https://maptap.gg/u/gghali04 ','https://maptap.gg/u/gghali04','maptap.gg/u/gghali04','','   ','https://evil.example/x']) { i.value=v; i.dispatchEvent(new Event('input',{bubbles:true})); const a=document.querySelector('#rival-maptap-profile a'); out[JSON.stringify(v)] = document.getElementById('rival-maptap-profile').hidden || !a ? null : a.href; } return out})()`);
+    const want = PROFILE + 'gghali04';
+    t('profile links: the modal link updates as you type and resolves every accepted form to maptap.gg/u/gghali04',
+      ['"gghali04"', '"@gghali04"', '" https://maptap.gg/u/gghali04 "', '"https://maptap.gg/u/gghali04"', '"maptap.gg/u/gghali04"'].every(k => typed[k] === want), JSON.stringify(typed));
+    t('profile links: a blank, whitespace-only or foreign value hides the modal link (no dead link)',
+      typed['""'] === null && typed['"   "'] === null && typed['"https://evil.example/x"'] === null, JSON.stringify(typed));
+    await pressKey(s, 'Escape', 'Escape', 27); await sleep(250);
+    t('profile links: cancelling the modal leaves the stored username alone',
+      (await evaluate(s, "JSON.parse(localStorage.getItem('maptapRivalsRivals')).find(r=>r.id==='r-ari').maptapUsername")) === 'ari_mt');
+
+    // Saving a pasted URL stores the bare username and every link follows.
+    await clickSel(s, '.rival-card[data-rival-id="r-cy"] .rival-card-edit', { settle: 300 });
+    await evaluate(s, "(()=>{const i=document.getElementById('rival-maptap-username'); i.value=' https://maptap.gg/u/gghali04 '; i.dispatchEvent(new Event('input',{bubbles:true})); return 1})()");
+    await clickSel(s, '#rival-save-btn', { settle: 500 });
+    t('profile links: saving a pasted profile URL stores "gghali04" and the card links exactly maptap.gg/u/gghali04',
+      (await evaluate(s, "JSON.parse(localStorage.getItem('maptapRivalsRivals')).find(r=>r.id==='r-cy').maptapUsername")) === 'gghali04'
+        && (await evaluate(s, "(document.querySelector('.rival-card[data-rival-id=\"r-cy\"] a.rival-card-maptap')||{}).href")) === want);
+    await clickSel(s, '.rival-card[data-rival-id="r-cy"] .rival-card-edit', { settle: 300 });
+    await evaluate(s, "(()=>{const i=document.getElementById('rival-maptap-username'); i.value=''; i.dispatchEvent(new Event('input',{bubbles:true})); return 1})()");
+    await clickSel(s, '#rival-save-btn', { settle: 500 });
+    t('profile links: clearing the username removes the card link again',
+      (await evaluate(s, "document.querySelectorAll('.rival-card[data-rival-id=\"r-cy\"] a.rival-card-maptap').length")) === 0
+        && (await evaluate(s, "JSON.parse(localStorage.getItem('maptapRivalsRivals')).find(r=>r.id==='r-cy').maptapUsername")) === '');
+    t('profile links: no JS errors while driving the links', cleanErrors(s).length === 0, cleanErrors(s).join(' | '));
+
     // ---- paste date resets after a save ----
     await evaluate(s, "document.querySelectorAll('.share-toast').forEach(t => t.remove())");
     // Chromium restores a <details> open state across same-document navigations,
