@@ -187,8 +187,10 @@ and reachable through the A-Z index for app users, but since 2026-08 the
 non-curated pages carry `noindex, follow`: the 2026-05 full-catalogue launch put
 ~34k templated pages in front of Google, which crawled them and then declined to
 index nearly all of them (GSC "Crawled - currently not indexed" ~60k by 2026-08,
-with the site's search traffic collapsing in June under the sitewide quality
-drag). Curating the sitemap alone did not shrink that backlog because the pages
+with the site's search traffic collapsing overnight on 2026-05-29 under the
+sitewide quality drag: impressions fell from 3,350 to 331 a day and average
+position from 17 to 57, and 28-day clicks went from 264 to single digits by
+July). Curating the sitemap alone did not shrink that backlog because the pages
 still self-identified as indexable; the explicit noindex drains it while the
 `follow` keeps internal link equity flowing to the curated pages. After the page builders run,
 `scripts/stamp-sitemap-index.mjs` (repo root) re-derives the root `sitemap.xml`
