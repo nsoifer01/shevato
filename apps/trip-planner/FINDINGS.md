@@ -2506,21 +2506,44 @@ meant exactly the right thing: rows are the only `normal` demand in the app.
 response carries the hours line, the stay's `Location not verified` check
 (`paintPlaceWarning`, which stays silent until an answer lands) and the
 Places-grade point that tops the distance ladder. With the switch Off those
-appear only for places the session already holds. Rows still locate from a
+appear only for places the session already holds, except for stays (below). Rows still locate from a
 saved `it.place` record and from the free Photon top-up (`queueVenueLookups`,
 which only deferred to Google when a lookup was pending, and none is now). A
 free alternative for hours does not exist: they are the Enterprise SKU.
 
-The one consequence worth watching: a stay the traveller TYPED (no saved
-`place` record yet) used to get its canonical identity and point from the
-row lookup on the first load and keep it (`persistResolvedPlaces`). With the
-switch Off it is anchored by the free geocoders instead, which is exactly the
-ladder the 2026-09-05/06 rounds showed can land on a province centroid (the
-Ko Phi Phi 344 km day). Switching ratings on once for that trip resolves and
-PERSISTS the stay, after which it stays anchored with the switch Off. The
-baseline browser run made this visible: 19 `canonical-coordinates` checks, 3
-`assistant-identity` B checks and 6 `audit-fixes` HR-01/PP-04 checks went red
-until those blocks pressed the switch.
+**Stays are the exception, anchored on load (owner decision, same day,
+follow-up PR).** A stay the traveller TYPED (no saved `place` record) used to
+get its canonical identity and point from the row lookup on the first load
+and keep it (`persistResolvedPlaces`). With only the switch, it was anchored
+by the free geocoders instead, which is exactly the ladder the 2026-09-05/06
+rounds showed can land on a province centroid (the Ko Phi Phi 344 km day):
+a confident wrong number on every distance of the stay's days, which is worse
+than a missing rating. So `anchorStays` (called from `render`) requests, in
+the URGENT lane, every stay for which `stayNeedsAnchor` (trip-logic.js) says
+the item cannot answer for itself: a non-cancelled stay with no record, a
+record with no point, a point past the 29-day window, or a point its own
+city refuses. Nothing else is asked. It paints no rating (paintTripMapsLink
+still returns while Off); it does bring back the stay's `Location not
+verified` warning, which is the point.
+- **Cost:** one billed call per typed hotel, then persisted, so none on later
+  loads until the coordinates age out: about once per hotel per 29 days, for
+  trips that are opened. A name that matches nothing is refused at the free
+  ID search and its verdict is kept server-side, so it bills nothing.
+- **Urgent, not normal, on purpose:** switching ratings Off cancels the
+  normal lane, and an anchor must survive that.
+- **Where it can repeat:** a shared view cannot persist (save() refuses), and
+  a stay whose Google point its own city centroid refuses is never stored as
+  positioned. Both cost one call per page load per such stay; the session
+  cache stops any repeat within a page.
+- **`e2e/places.mjs` P0b** pins it end to end: with the switch Off the typed
+  stay and nothing else is asked, no row shows a rating, the stay persists
+  with its point, Days asks nothing more, and a reload costs zero requests.
+  `tests/stay-anchor.test.js` pins the predicate (8 node checks).
+
+The baseline browser run of the opt-in PR is what exposed the dependency: 19
+`canonical-coordinates` checks, 3 `assistant-identity` B checks and 6
+`audit-fixes` HR-01/PP-04 checks went red until those blocks pressed the
+switch (they test activity rows too, so they still do).
 
 **Not governed by the switch, on purpose:** the assistant (`.ap-rating`
 urgent requests, the discovery pre-verification, `warmStayAnchors` resolving

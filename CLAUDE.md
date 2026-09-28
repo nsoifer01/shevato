@@ -62,10 +62,14 @@ REJECT, whichever way it goes.
   chore/docs/seo edits, before reporting done. Cross-cutting invariant tests
   under `sync-system/tests/` catch tiny edits (sitemap forms, A-Z ordering,
   shared-UI scoping).
-- **`npm run test:browser:parallel` must be green BEFORE `gh pr create`, not
-  after.** About eleven minutes (11.1, measured 2026-09-14), four shards at
-  once; budget it into the round. It never touches the internet: third-party
-  requests are answered from `tests/browser/vendor/third-party/`, and when
+- **`npm run test:browser:parallel` must be green BEFORE the PR merges.**
+  Open the PR as soon as the work is committed and let this run alongside CI
+  rather than waiting on it first (owner, 2026-09-28: waiting twice wastes the
+  round); never merge until both are green, and if either goes red, fix, push
+  and rewrite the PR body. About eleven minutes (11.1, measured 2026-09-14),
+  four shards at once; budget it into the round. It never touches the
+  internet: third-party requests are answered from
+  `tests/browser/vendor/third-party/`, and when
   `npm test` says the mirror is missing an asset, run
   `node tests/browser/refresh-third-party.mjs`.
   `npm test` structurally cannot see browser-only breakage: 71 of 187 source
