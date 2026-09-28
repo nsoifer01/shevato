@@ -7089,6 +7089,28 @@ const TripLogic = (() => {
     return out;
   }
 
+  // DOES THIS STAY NEED A PLACES LOOKUP TO ANCHOR ITS DAYS? (2026-09-28)
+  //
+  // Itinerary ratings are opt-in (see setRowRatings in app.js), but a stay is
+  // not a row like the others: its point is the anchor every distance on its
+  // days, the Day route and the "Location not verified" check are measured
+  // from, and the free geocoders can put a typed hotel on a province centroid
+  // (the Ko Phi Phi 344 km day). So a stay is resolved on load, ratings switch
+  // or not - but ONLY when the item cannot answer for itself:
+  //   - a stay (never an activity, a meal or a leg), not cancelled;
+  //   - with no saved place record carrying a usable point. A record whose
+  //     coordinates aged past the 29-day window, or that its own city refuses,
+  //     answers "no point" exactly as normalizePlaceRecord does on every read.
+  // A resolved stay is persisted by persistResolvedPlaces, so this answers
+  // false for it on every later load until its coordinates age out: about one
+  // billed call per typed hotel per 29 days, for trips that are opened.
+  function stayNeedsAnchor(it, opts) {
+    if (!it || typeof it !== 'object' || !isStay(it) || it.status === 'cancelled') return false;
+    if (!it.place) return true;
+    const rec = normalizePlaceRecord(it.place, opts);
+    return !(rec && validCoord(rec.lat, rec.lon));
+  }
+
   // THE URL FOR A RESOLVED PLACE, defined once. Three surfaces render a link to
   // the same resolved entity - the rating chip on a card, the card's own Maps
   // link, and the itinerary row - and before this each decided for itself: the
@@ -11095,7 +11117,7 @@ const TripLogic = (() => {
     normalizePlaceQuery, placeCacheKey, placeAreaKey, planPlacesLookup, placesCacheUpdates,
     placeLookupFor, placeLookupRequest, asPlaceLookup, placeIdentity,
     areaAnchorFor, TRUSTED_GEO_CONF,
-    placeRecordFrom, normalizePlaceRecord, placeMapsUrl, placeEntryUrl, plausiblePlacePoint,
+    placeRecordFrom, normalizePlaceRecord, stayNeedsAnchor, placeMapsUrl, placeEntryUrl, plausiblePlacePoint,
     assistDiscoveryIntent, discoveryHintFrom, discoveryQueryFrom, rebuildAssistProse,
     placeIdentityOf, dedupeByIdentity, placeQualityScore, rankVerifiedPlaces,
     mealFitness, MEAL_FIT_NUDGE,

@@ -295,6 +295,53 @@ export async function run({ base, cdpPort }) {
     });
   }
 
+  /* ------- P0b. the one exception: a stay with no saved point (2026-09-28) --
+     A typed hotel anchors every distance on its days, so it is resolved on
+     load whatever the switch says - and only it: activities wait for the
+     switch, the hotel row shows no rating, a stay that already carries a
+     fresh point costs nothing, a cancelled stay costs nothing, and a reload
+     after the stay was persisted costs nothing. */
+  freshIds();
+  {
+    const log = [];
+    const PB = 'KiloVenue';
+    const tb = trip({ name: 'Anchor trip', items: [
+      item({ type: 'stay', title: `${PB} Typed Hotel`, location: 'Tokyo', startDate: iso(10), endDate: iso(13) }),
+      item({ type: 'stay', title: `${PB} Saved Hotel`, location: 'Tokyo', startDate: iso(13), endDate: iso(15),
+        place: { id: 'PID_SAVED', at: Date.now() - 86400000, lat: 35.68, lon: 139.76 } }),
+      item({ type: 'stay', title: `${PB} Cancelled Hotel`, location: 'Tokyo', startDate: iso(10), endDate: iso(11), status: 'cancelled' }),
+      item({ type: 'activity', title: `${PB} Museum`, location: 'Tokyo', startDate: iso(11), startTime: '10:00' }),
+      item({ type: 'activity', title: `${PB} Ramen`, location: 'Tokyo', startDate: iso(11), startTime: '13:00' }),
+    ] });
+    const asked = () => log.flatMap(e => e.queries).filter(q => q.includes(PB));
+    await withPage('tp-places P0b', { db: dbOf([tb]), net: placesMock(log, 'ok') }, async (s) => {
+      await waitForExpr(s, `document.querySelectorAll('#board .tp-maps-link[data-place-key]').length >= 3`, { timeout: 12000 });
+      await sleep(2000);
+      const q = asked();
+      await t('tp-places P0b: with the switch Off, the typed stay is looked up on load',
+        q.some(x => /Typed Hotel/.test(x)), JSON.stringify(q), s);
+      await t('tp-places P0b: and nothing else is: no activity, no saved stay, no cancelled stay',
+        q.length === 1, JSON.stringify(q), s);
+      await t('tp-places P0b: the switch still reads Off and no row shows a rating',
+        (await evaluate(s, `document.getElementById('ratingsToggle').getAttribute('aria-pressed')`)) === 'false'
+          && (await evaluate(s, `document.querySelectorAll('.tpm-rating').length`)) === 0, '', s);
+      const saved = await evaluate(s, `(() => { const db = JSON.parse(localStorage.getItem('trip-planner:v1'));
+        const it = db.trips[0].items.find(i => /Typed Hotel/.test(i.title)); return it && it.place || null; })()`);
+      await t('tp-places P0b: the resolved stay is persisted with its point',
+        !!saved && !!saved.id && Number.isFinite(saved.lat) && Number.isFinite(saved.lon), JSON.stringify(saved), s);
+      await switchView(s, 'days');
+      await sleep(1200);
+      await t('tp-places P0b: opening Days asks for nothing more',
+        asked().length === 1, JSON.stringify(asked()), s);
+
+      const before = log.length;
+      await gotoHard(s, base + APP, { settle: 1600 });
+      await sleep(1500);
+      await t('tp-places P0b: after a reload the persisted stay costs nothing at all',
+        log.length === before, `${before} posts before the reload, ${log.length} after`, s);
+    });
+  }
+
   /* ------- P1. a 50-venue trip does not bill for what nobody has seen ------ */
   freshIds();
   {

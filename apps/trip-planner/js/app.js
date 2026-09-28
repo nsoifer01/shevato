@@ -23,7 +23,7 @@
   // js/app.js, in index.html and in sw.js's PRECACHE list alike. Bumping the
   // cache-buster without bumping this number is what made "build 31" outlive
   // v=32..38 and stop identifying anything.
-  const TP_BUILD = 84;
+  const TP_BUILD = 85;
   const LS_KEY = 'trip-planner:v1';
   // Which trip THIS DEVICE has open. Navigation, not data: it is not part of
   // the synced value and is deliberately absent from app-sync-init.js's key
@@ -138,7 +138,7 @@
     normalizePlaceQuery, placeCacheKey, createPlacesQueue, placesPauseReason, mapsSearchUrl, assistMapsLink, placeStateLabel, costDisplayParts,
     // the one place identity every surface resolves through, plus the record
     // it becomes once a place is verified and saved (see placeLookupFor)
-    placeLookupFor, placeLookupRequest, placeRecordFrom, normalizePlaceRecord, areaAnchorFor,
+    placeLookupFor, placeLookupRequest, placeRecordFrom, normalizePlaceRecord, stayNeedsAnchor, areaAnchorFor,
     placeUnresolved, unlocatedSummary, legsBoundToStay,
     placeMapsUrl, placeEntryUrl, plausiblePlacePoint,
     // discovery: only verified places reach a "find me places" answer
@@ -1423,6 +1423,7 @@
       renderIssues(issues);
       renderBoard(trip, issues);
       applyView();
+      anchorStays(trip);
       syncClearFilters();
       syncUndoButtons();
       refreshDocIndicators();
@@ -10891,9 +10892,10 @@
   //
   //   ITINERARY ROWS (.tp-maps-link) are asked for ONLY while the traveller
   //   has switched the view's Google ratings on (see setRowRatings), and then
-  //   only as they come near the viewport. Opening Timeline or Days costs
-  //   nothing at all. rootMargin does the looking-ahead so a row is normally
-  //   rated before it is read.
+  //   only as they come near the viewport. Opening Timeline or Days asks for
+  //   no row at all (a stay with no saved point is the one exception, and it
+  //   is anchorStays that asks, not a row). rootMargin does the looking-ahead
+  //   so a row is normally rated before it is read.
   //
   // Deliberately NOT done: a background sweep of the rest of the trip. That is
   // precisely the pattern that produced the 429s, and it buys nothing the
@@ -10926,11 +10928,12 @@
   // picker keep asking exactly as before, because those are comparisons the
   // traveller explicitly requested.
   //
-  // What rides on the same billed response goes with it: opening hours in the
-  // Days view, the stay's "Location not verified" check and the Places-grade
-  // coordinates for distances. Those still paint whenever the session already
-  // holds the entry, and a row's saved place record and the free Photon
-  // fallback still place it on the map. The flag itself (rowRatingsOn) is
+  // What rides on the same billed response goes with it for activities and
+  // meals: their Days-view opening hours and Places-grade coordinates. Those
+  // still paint whenever the session already holds the entry, and a row's
+  // saved place record and the free Photon fallback still place it on the
+  // map. STAYS are the exception: anchorStays resolves the ones with no saved
+  // point on load, because the whole day is measured from them. The flag itself (rowRatingsOn) is
   // declared beside `ui`, so no render can reach it before it exists.
 
   // The toggle's state word. "Loading" while any row in the current view is
@@ -10956,6 +10959,34 @@
     btn.classList.toggle('on', rowRatingsOn);
     btn.setAttribute('aria-busy', busy ? 'true' : 'false');
     if (out.textContent !== word) out.textContent = word;
+  }
+
+  // THE ONE EXCEPTION TO THE OPT-IN: A STAY'S ANCHOR (owner decision,
+  // 2026-09-28). A hotel the traveller typed has no saved position, and its
+  // point is what every distance on its days, the Day route and the "Location
+  // not verified" check are measured from; the free geocoders can put it on a
+  // province centroid and print a confident 344 km day. So on every render the
+  // stays that cannot answer for themselves (stayNeedsAnchor, trip-logic.js)
+  // are resolved, whatever the ratings switch says. It paints no rating (the
+  // row link stays plain while the switch is Off, see paintTripMapsLink) and
+  // costs about one billed call per typed hotel per 29 days: the result is
+  // persisted by persistResolvedPlaces, the session cache and the queue's
+  // reservation stop any repeat within a page, and a name that matches
+  // nothing is refused before the billed call (the free ID search) and then
+  // remembered server-side. Urgent, so switching ratings Off (which cancels
+  // the 'normal' lane) never withdraws an anchor.
+  function anchorStays(trip) {
+    if (!trip || !Array.isArray(trip.items)) return;
+    const lookups = [];
+    for (const it of trip.items) {
+      if (!stayNeedsAnchor(it, { cityPoint: cityAnchor((it.location || '').trim()) })) continue;
+      const lookup = placeFor(it, trip);
+      if (!lookup || !lookup.key || placesQueue.has(lookup.key)) continue;
+      lookups.push(lookup);
+    }
+    if (!lookups.length) return;
+    placesLog('anchor: resolving stays with no saved point', lookups.map(l => l.key));
+    placesQueue.request(lookups, { priority: 'urgent' });
   }
 
   // Idempotent in both directions, so a double click or a burst of them can
