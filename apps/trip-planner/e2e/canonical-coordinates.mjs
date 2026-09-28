@@ -21,7 +21,7 @@
 import {
   APP, recorder, freshIds, item, trip, dbOf,
   openApp, tpErrors, closePage, evaluate, waitForExpr, sleep,
-  clickSel, gotoHard, switchView, setValue,
+  clickSel, gotoHard, switchView, setValue, ratingsOn,
 } from './helpers.mjs';
 import { EXTERNAL_HOSTS } from '../../../tests/browser/cdp.mjs';
 
@@ -177,6 +177,10 @@ export async function run({ base, cdpPort }) {
     let s = null;
     try {
       s = await openApp(cdpPort, base, opts);
+      // Every block here is about the Places-resolved identity of a ROW, which
+      // the itinerary only looks up with Google ratings switched on (opt-in
+      // since 2026-09-28). A reload inside a block starts Off again.
+      await ratingsOn(s);
       await fn(s);
       await t(`${label}: no page errors`, tpErrors(s).length === 0, tpErrors(s).slice(0, 2).join(' | '), s);
     } catch (e) {
@@ -233,6 +237,7 @@ export async function run({ base, cdpPort }) {
       /* --- 2. the row, the chip and the footer --- */
       await gotoHard(s, base + APP, { settle: 1600 });
       await switchView(s, 'days');
+      await ratingsOn(s);
       await waitForExpr(s, `!!document.querySelector('#daysList .day-card[data-date="${DAY}"] .dc-route-tot')`, { timeout: 15000 });
       const day = await readDay(s);
       const mango = (day && day.rows.find(r => /Mango Garden/.test(r.label))) || null;
@@ -428,6 +433,7 @@ export async function run({ base, cdpPort }) {
         return 1; })()`);
       await gotoHard(s, base + APP, { settle: 1600 });
       await switchView(s, 'days');
+      await ratingsOn(s);
       await sleep(3000);
       const kept = await saved();
       await t('C7: a record the traveller already had is never re-pointed by a lookup',
@@ -571,6 +577,7 @@ export async function run({ base, cdpPort }) {
 
       await gotoHard(s, base + APP, { settle: 1600 });
       await switchView(s, 'days');
+      await ratingsOn(s);
       await sleep(3500);
       const reloaded = await warn();
       await t('E7b: and after a reload the warning stays gone',

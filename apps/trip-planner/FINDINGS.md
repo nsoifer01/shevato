@@ -2458,6 +2458,84 @@ the per-tier day/month split. Owner-gated, and it carries no key, no token and
 no client ids. To change the ceiling, edit `MONTHLY_BUDGET` - and read the
 paragraph above it first, because the number is an argument, not a preference.
 
+## Itinerary ratings are opt-in (2026-09-28)
+
+Owner request: pages with many places were still exhausting the monthly
+Places allowance and running into 429s, even after the 2026-08-17 round below
+made demand follow the eye. That round bounded what a LOAD costs to the first
+screen; it did nothing about READING. Every row that scrolled within 600px of
+the viewport was a billed Place Details call the traveller never asked for,
+and a long trip read top to bottom in Timeline and again in Days (the session
+cache covers the switch, but a reload does not) walked straight through the
+850 budget.
+
+**The trace, for whoever touches this next.** Timeline (`render` -> `board`)
+and Days (`renderDays` -> `#daysList`) both render the same combined row link
+(`tripMapsRatingHtml` -> `.tp-maps-link[data-place-key]`) and both hand their
+container to ONE function, `hydrateRatings`. That function paints from the
+session cache and then did two things: requested every `.ap-rating`
+(assistant card, hotel picker) at once as `urgent`, and registered every
+`.tp-maps-link` with the IntersectionObserver, which requested them as
+`normal`. So the cleanest layer was that second line, and the lanes already
+meant exactly the right thing: rows are the only `normal` demand in the app.
+
+**What changed.**
+- `rowRatingsOn` (declared beside `ui`, session-only, false on every load)
+  gates the observer registration in `hydrateRatings`, the observer callback
+  itself (an entry already delivered when the switch goes off must not
+  request), and `paintTripMapsLink` (a row whose place the assistant already
+  resolved stays a plain link while Off, and is NOT marked painted, so
+  switching On paints it free).
+- One toolbar button `#ratingsToggle` (`aria-pressed`) beside the view tabs
+  for BOTH views, hidden on the Map and on an empty plan. The state word is
+  derived, not stored: `Loading…` while any row in the current view is
+  `isPending` in the queue, `Paused` while pending on a parked queue,
+  `Unavailable` when the queue is `off` (no key). The queue calls `onUpdate`
+  on every landing, pause and switch-off, which is what keeps the word honest.
+- Off calls `placesObserver.disconnect()` and the new
+  `createPlacesQueue().cancel('normal')`, which withdraws every queued,
+  unsent row lookup. In-flight batches are paid for and still land. An
+  urgent entry is never touched, including a row key the assistant
+  `promote`d. A cancelled key is no longer `known`, so switching On again
+  asks for it once.
+- Every toggle is a `render()`: Off drops the painted segments with the old
+  DOM, On paints cached rows and registers the rest. The toggle is idempotent
+  and the queue reserves on plan, so a burst of clicks cannot duplicate.
+
+**What goes with the rating, and why that is accepted.** The same billed
+response carries the hours line, the stay's `Location not verified` check
+(`paintPlaceWarning`, which stays silent until an answer lands) and the
+Places-grade point that tops the distance ladder. With the switch Off those
+appear only for places the session already holds. Rows still locate from a
+saved `it.place` record and from the free Photon top-up (`queueVenueLookups`,
+which only deferred to Google when a lookup was pending, and none is now). A
+free alternative for hours does not exist: they are the Enterprise SKU.
+
+The one consequence worth watching: a stay the traveller TYPED (no saved
+`place` record yet) used to get its canonical identity and point from the
+row lookup on the first load and keep it (`persistResolvedPlaces`). With the
+switch Off it is anchored by the free geocoders instead, which is exactly the
+ladder the 2026-09-05/06 rounds showed can land on a province centroid (the
+Ko Phi Phi 344 km day). Switching ratings on once for that trip resolves and
+PERSISTS the stay, after which it stays anchored with the switch Off. The
+baseline browser run made this visible: 19 `canonical-coordinates` checks, 3
+`assistant-identity` B checks and 6 `audit-fixes` HR-01/PP-04 checks went red
+until those blocks pressed the switch.
+
+**Not governed by the switch, on purpose:** the assistant (`.ap-rating`
+urgent requests, the discovery pre-verification, `warmStayAnchors` resolving
+the day's stay as a CHAT anchor) and the hotel picker's `#stayRating`. Those
+are comparisons the traveller explicitly asked for. `e2e/places.mjs` P11 pins
+that the chat cards rate themselves while the switch reads Off.
+
+**Test consequence:** every browser block that asserts a painted rating,
+hours line, stay warning or Places-grade distance on a ROW has to press the
+switch first (`ratingsOn(s)` in `e2e/helpers.mjs`), exactly as a traveller
+would. A block that forgets it fails as "nothing painted", which looks like a
+lookup bug and is not. P0 in `e2e/places.mjs` pins the opt-in itself (zero
+requests on Timeline and Days, scroll included; On/Off/On; five rapid
+clicks; a repeated venue; a re-render; the Loading state on a held request).
+
 ## Places ratings: the 2026-08-17 429 round
 
 Reported as "POST /.netlify/functions/tp-places 429" on trips of every size,

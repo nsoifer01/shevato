@@ -1367,6 +1367,19 @@
   .trip-planner-app .view-switch button.on:focus,
   .trip-planner-app .view-switch button.on:active { background: var(--accent-fill); color: #fff; }
 
+  /* ---------- Google ratings toggle (itinerary rows, opt-in) ----------
+     A pressed/unpressed button beside the view tabs. The state word carries
+     the colour (dim Off, accent On, amber while loading or paused) so the
+     label itself never moves. It sets display, so it restates [hidden]. */
+  .tb-ratings { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+  .tb-ratings[hidden] { display: none; }
+  .tbr-star { font-size: 13px; line-height: 1; filter: grayscale(1); opacity: .7; }
+  .tb-ratings.on .tbr-star { filter: none; opacity: 1; }
+  .trip-planner-app .tb-ratings .tbr-state { color: var(--text-dim); min-width: 4.4em; text-align: left; }
+  .trip-planner-app .tb-ratings.on { border-color: color-mix(in srgb, var(--accent) 60%, var(--border)); background: var(--accent-soft); }
+  .trip-planner-app .tb-ratings.on .tbr-state { color: var(--accent); }
+  .trip-planner-app .tb-ratings[aria-busy="true"] .tbr-state { color: var(--amber); }
+
   /* ---------- night coverage strip ---------- */
   .strip-box {
     background: var(--bg-card); border: 1px solid var(--border-soft); border-radius: 12px;
@@ -3196,6 +3209,10 @@
     .tb-pair { order: 2; flex: none; }
     .tb-more-wrap { order: 3; display: inline-block; flex: none; }
     .toolbar .view-switch { order: 4; }
+    /* the ratings toggle sits under the view tabs as a full-width row: the
+       two do not fit one 390px row with a readable label (~365px of 350) */
+    .toolbar .tb-ratings { order: 4; flex: 1 1 100%; justify-content: center; }
+    .trip-planner-app .tb-ratings .tbr-state { min-width: 0; }
     .tb-filters { order: 5; }
     /* ONE action row (Add item, undo/redo, More) plus the view tabs: the six
        secondary tools and the filter row fold behind More, so the first

@@ -5193,6 +5193,24 @@ const TripLogic = (() => {
         lo = lo.filter(k => entries.has(k));
       },
       generation: () => gen,
+      // Withdraw every queued, UNSENT lookup in one lane. The itinerary rows
+      // are the only 'normal' demand, so this is what switching the view's
+      // ratings off calls: nothing they asked for goes on the wire afterwards.
+      // In-flight batches are already paid for and land in the cache as usual,
+      // and an urgent (assistant) entry is never touched, including a row's
+      // key that the assistant promoted.
+      cancel(priority) {
+        const lane = priority === 'urgent' ? 'urgent' : 'normal';
+        let dropped = 0;
+        for (const key of [...entries.keys()]) {
+          if (inFlight.has(key) || entries.get(key).priority !== lane) continue;
+          entries.delete(key);
+          dropped += 1;
+        }
+        hi = hi.filter(k => entries.has(k));
+        lo = lo.filter(k => entries.has(k));
+        return dropped;
+      },
       pump,
       status: () => ({
         off,
