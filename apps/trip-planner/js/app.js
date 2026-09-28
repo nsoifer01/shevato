@@ -23,7 +23,7 @@
   // js/app.js, in index.html and in sw.js's PRECACHE list alike. Bumping the
   // cache-buster without bumping this number is what made "build 31" outlive
   // v=32..38 and stop identifying anything.
-  const TP_BUILD = 83;
+  const TP_BUILD = 84;
   const LS_KEY = 'trip-planner:v1';
   // Which trip THIS DEVICE has open. Navigation, not data: it is not part of
   // the synced value and is deliberately absent from app-sync-init.js's key
@@ -171,6 +171,9 @@
   // read it (and rewrite a missing one on receipt); save() only repairs it when
   // it names no trip. ensureTrip() resolves this id when it is unset or gone.
   let openTripId = null;
+  // Google ratings on the Timeline/Days rows: session-only, Off on every
+  // load. See setRowRatings.
+  let rowRatingsOn = false;
   // The *TripId pins: the trip each dialog was opened FOR. A save commits to
   // that trip or refuses (tripForWrite), whatever is open by the time it runs.
   const ui = { search: '', filterType: '', filterStatus: '', filterTraveler: '', packingFilter: '', packingTripId: null, essentialsTripId: null, shiftTripId: null, visaTripId: null, itemTripId: null, editingId: null, shiftTarget: null, tripModalMode: 'new', confirmAction: null, flashId: null, view: 'timeline', filtersOpen: false };
@@ -1466,6 +1469,9 @@
       b.setAttribute('aria-selected', on ? 'true' : 'false');
     }
     document.body.classList.toggle('view-days', v === 'days');
+    // Ratings belong to the two views that draw rows; the Map has none and an
+    // empty plan has nothing to rate.
+    $('#ratingsToggle').hidden = empty || v === 'map';
     if (v === 'map') renderMap();
     if (v === 'days') renderDays();
     syncViewHash();
@@ -10505,6 +10511,7 @@
       }
       persistResolvedPlaces(results);
       placesQuotaNotice();
+      syncRatingsToggle();
     },
   });
 
@@ -10670,6 +10677,11 @@
   // a repeat paintPlaces call (a later batch, a re-render sharing the cache) a
   // no-op, and the count parenthetical is dropped when Google has no reviews.
   function paintTripMapsLink(el) {
+    // Opt-in (see rowRatingsOn): with the view's ratings off the row stays a
+    // plain Maps link even when the session already holds its entry (the
+    // assistant or the hotel picker may have resolved it). Not marked painted,
+    // so switching ratings on paints it from the cache at no cost.
+    if (!rowRatingsOn) return;
     if (el.dataset.painted === '1') return;
     const entry = placesCache.get(el.dataset.placeKey || '');
     if (!entry || entry.status !== 'ok') return;
@@ -10877,11 +10889,11 @@
   //   open panel, and the pick-one badges (candidateBadges) are a judgement
   //   ACROSS the set - half a set is a worse answer than none.
   //
-  //   ITINERARY ROWS (.tp-maps-link) are asked for when they come near the
-  //   viewport. A 50-place trip then opens with the handful of ratings its
-  //   first screen can show instead of 50 requests the quota cannot serve, and
-  //   the rest arrive as the traveller scrolls to them. rootMargin does the
-  //   looking-ahead so a row is normally rated before it is read.
+  //   ITINERARY ROWS (.tp-maps-link) are asked for ONLY while the traveller
+  //   has switched the view's Google ratings on (see setRowRatings), and then
+  //   only as they come near the viewport. Opening Timeline or Days costs
+  //   nothing at all. rootMargin does the looking-ahead so a row is normally
+  //   rated before it is read.
   //
   // Deliberately NOT done: a background sweep of the rest of the trip. That is
   // precisely the pattern that produced the 429s, and it buys nothing the
@@ -10897,8 +10909,73 @@
         const lookup = lookupFromEl(e.target);
         if (lookup) lookups.push(lookup);
       }
-      if (lookups.length) placesQueue.request(lookups, { priority: 'normal' });
+      if (rowRatingsOn && lookups.length) placesQueue.request(lookups, { priority: 'normal' });
+      syncRatingsToggle();
     }, { rootMargin: PLACES_LOOKAHEAD });
+  }
+
+  // RATINGS ON THE ITINERARY ARE OPT-IN (owner request, 2026-09-28). Even
+  // with the viewport gating above, every row that scrolled into view was a
+  // billed Place Details call the traveller never asked for, and a long trip
+  // read top to bottom spent the monthly allowance and ran into 429s. So the
+  // Timeline and Days rows ask for nothing until the traveller presses
+  // "Google ratings" in the toolbar, and the choice is not remembered: every
+  // load starts Off. It is ONE switch for both views (they read one session
+  // cache, so a rating fetched on Timeline is already there on Days), and it
+  // governs the rows only - the assistant's candidate chips and the hotel
+  // picker keep asking exactly as before, because those are comparisons the
+  // traveller explicitly requested.
+  //
+  // What rides on the same billed response goes with it: opening hours in the
+  // Days view, the stay's "Location not verified" check and the Places-grade
+  // coordinates for distances. Those still paint whenever the session already
+  // holds the entry, and a row's saved place record and the free Photon
+  // fallback still place it on the map. The flag itself (rowRatingsOn) is
+  // declared beside `ui`, so no render can reach it before it exists.
+
+  // The toggle's state word. "Loading" while any row in the current view is
+  // queued or on the wire, "Paused" while the queue is parked on a 429 (the
+  // quota notice explains why), "Unavailable" when no key is configured.
+  function syncRatingsToggle() {
+    const btn = $('#ratingsToggle');
+    const out = $('#ratingsToggleState');
+    if (!btn || !out) return;
+    let word = 'Off';
+    let busy = false;
+    if (rowRatingsOn) {
+      const st = placesQueue.status();
+      const scope = ui.view === 'days' ? $('#daysList') : $('#board');
+      const pending = !!scope && [...scope.querySelectorAll('.tp-maps-link[data-place-key]')]
+        .some(el => placesQueue.isPending(el.dataset.placeKey || ''));
+      if (st.off) word = 'Unavailable';
+      else if (pending && st.paused) word = 'Paused';
+      else if (pending) { word = 'Loading…'; busy = true; }
+      else word = 'On';
+    }
+    btn.setAttribute('aria-pressed', rowRatingsOn ? 'true' : 'false');
+    btn.classList.toggle('on', rowRatingsOn);
+    btn.setAttribute('aria-busy', busy ? 'true' : 'false');
+    if (out.textContent !== word) out.textContent = word;
+  }
+
+  // Idempotent in both directions, so a double click or a burst of them can
+  // never queue anything twice: the queue reserves a key the moment it is
+  // planned, and a switch to the state already held does nothing.
+  function setRowRatings(on) {
+    on = !!on;
+    if (on === rowRatingsOn) { syncRatingsToggle(); return; }
+    rowRatingsOn = on;
+    if (!on) {
+      // Stop spending: rows stop being watched and everything they queued but
+      // did not send is withdrawn. What already landed stays in the session
+      // cache (hidden, not deleted), so switching back on repaints it free.
+      if (placesObserver) placesObserver.disconnect();
+      placesQueue.cancel('normal');
+    }
+    // A fresh render drops painted segments when switching off and, when
+    // switching on, paints the cached rows and registers the rest.
+    render();
+    syncRatingsToggle();
   }
 
   // A slot that the session cache can already answer needs neither an observer
@@ -10927,7 +11004,10 @@
       placesQueue.promote(eager);
       placesQueue.request(eager, { priority: 'urgent' });
     }
-    container.querySelectorAll('.tp-maps-link[data-place-key]').forEach(observeRatingSlot);
+    // Itinerary rows only while the traveller has switched ratings on: a
+    // render with them off registers nothing and can cause no request.
+    if (rowRatingsOn) container.querySelectorAll('.tp-maps-link[data-place-key]').forEach(observeRatingSlot);
+    syncRatingsToggle();
   }
 
   // ---------- discovery: verify BEFORE rendering, replace what fails ----------
@@ -13048,6 +13128,7 @@
   $('#viewTimeline').addEventListener('click', () => setView('timeline'));
   $('#viewDays').addEventListener('click', () => setView('days'));
   $('#viewMap').addEventListener('click', () => setView('map'));
+  $('#ratingsToggle').addEventListener('click', () => setRowRatings(!rowRatingsOn));
   $('#selectBtn').addEventListener('click', () => {
     if (selMode) exitSelectMode();
     else { selMode = true; selIds.clear(); ui.view = 'timeline'; }

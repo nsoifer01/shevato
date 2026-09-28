@@ -291,6 +291,16 @@ export async function switchView(s, view, settle = 900) {
   return evaluate(s, `document.querySelector(${JSON.stringify(id)}).classList.contains('on')`);
 }
 
+// Google ratings on the Timeline/Days rows are opt-in and Off on every load
+// (2026-09-28), so a block that tests what a resolved row paints (a rating,
+// hours, a stay's location check, Places-grade distances) presses the
+// toolbar switch first, exactly as a traveller would. Idempotent.
+export async function ratingsOn(s, settle = 300) {
+  const on = () => evaluate(s, `document.getElementById('ratingsToggle').getAttribute('aria-pressed') === 'true'`);
+  if (!(await on())) await clickSel(s, '#ratingsToggle', { settle });
+  return on();
+}
+
 export const escape = (s) => pressKey(s, 'Escape', 'Escape', 27);
 export const ctrlKey = (s, key, keyCode) => pressKey(s, key, 'Key' + key.toUpperCase(), keyCode, 2);
 

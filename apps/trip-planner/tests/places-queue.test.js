@@ -180,6 +180,59 @@ test('a venue an itinerary row already queued is promoted, not requested twice',
   assert.equal(h.queue.request(['Venue Number 39 Tokyo'], { priority: 'urgent' }), 0);
 });
 
+// ---------- cancel: switching the itinerary's ratings off ----------
+
+test('cancel(normal) withdraws every unsent row lookup and leaves the urgent lane alone', async () => {
+  // The Timeline/Days "Google ratings" switch (2026-09-28): turning it off
+  // must stop spending at once. Rows are the only 'normal' demand, so their
+  // queued work is dropped; an assistant candidate (urgent) is not, and a row
+  // key the assistant promoted is the assistant's now.
+  const pending = [];
+  const wire = [];
+  const h = harness({
+    concurrency: 1,
+    send: (queries) => {
+      wire.push(...queries.map(reqText));
+      return new Promise(r => pending.push(() => r({ ok: true, results: queries.map(okResult) })));
+    },
+  });
+  h.queue.request(venues(30).map(v => 'ROW ' + v), { priority: 'normal' });
+  await settle(10);
+  assert.equal(pending.length, 1, 'one batch on the wire, the rest queued');
+  h.queue.promote(['ROW Venue Number 30 Tokyo']);
+  h.queue.request(['Urgent Candidate Tokyo'], { priority: 'urgent' });
+
+  const dropped = h.queue.cancel('normal');
+  assert.equal(dropped, 30 - L.PLACES_BATCH_MAX - 1, 'every queued row except the promoted one');
+  assert.equal(h.queue.status().queued, 2, 'the urgent candidate and the promoted row stay queued');
+
+  // The batch already on the wire was paid for: it still lands. After it, only
+  // the urgent lane is sent, and none of the cancelled rows ever reach the wire.
+  while (pending.length) { pending.shift()(); await settle(20); }
+  const asked = wire;
+  assert.equal(h.queue.status().cached, L.PLACES_BATCH_MAX + 2);
+  assert.ok(asked.includes('Urgent Candidate Tokyo'));
+  assert.ok(asked.includes('ROW Venue Number 30 Tokyo'));
+  assert.equal(asked.length, L.PLACES_BATCH_MAX + 2, 'nothing cancelled was sent: ' + asked.length);
+});
+
+test('a cancelled row is not known any more, so switching ratings back on asks for it once', async () => {
+  const h = harness({ send: () => new Promise(() => {}), concurrency: 1 });
+  h.queue.request(venues(20), { priority: 'normal' });
+  await settle(6);
+  h.queue.cancel('normal');
+  assert.equal(h.queue.status().queued, 0);
+  // the 8 cancelled keys are plannable again; the 12 on the wire are not
+  assert.equal(h.queue.request(venues(20), { priority: 'normal' }), 20 - L.PLACES_BATCH_MAX);
+  assert.equal(h.queue.request(venues(20), { priority: 'normal' }), 0, 'and a double click adds nothing');
+});
+
+test('cancel on an idle queue is a no-op', () => {
+  const h = harness();
+  assert.equal(h.queue.cancel('normal'), 0);
+  assert.equal(h.queue.cancel('urgent'), 0);
+});
+
 // ---------- 429 handling ----------
 
 test('a 429 parks the batch and puts it back, rather than losing the rest of the trip', async () => {
