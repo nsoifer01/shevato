@@ -36,7 +36,7 @@ import {
   APP, recorder, freshIds, iso, item, trip, dbOf,
   openApp, openTab, readDb, activeTripOf, openTripIdOf, tpErrors, closePage, evaluate, evalAsync, waitForExpr, standardTrip, pressKey,
   clickSel, setValue, switchView, menuAct, addItemViaUi, escape, ctrlKey,
-  toastText, overlayOpenId, sleep, buildShareHash, gotoHard, ratingsOn,
+  toastText, overlayOpenId, sleep, buildShareHash, gotoHard, loadAllRatings,
 } from './helpers.mjs';
 
 export async function run({ base, cdpPort }) {
@@ -737,8 +737,8 @@ export async function run({ base, cdpPort }) {
   };
   await withPage('tp-audit HR-01', { db: dbOf([hoursTrip]), net: hoursNet }, async (s) => {
     await switchView(s, 'days');
-    // hours ride the billed row lookup, which is opt-in since 2026-09-28
-    await ratingsOn(s);
+    // hours ride the billed row lookup, which is on demand since 2026-09-28
+    await loadAllRatings(s);
     await waitForExpr(s, `[...document.querySelectorAll('.dc-hours')].filter(e => e.dataset.painted === '1').length >= 3`, { timeout: 12000 });
     // the title cell carries the place chip inline, so rows are matched by
     // substring rather than by an exact key
@@ -1003,7 +1003,7 @@ export async function run({ base, cdpPort }) {
     try {
       s = await openApp(cdpPort, base, { db: dbOf([placesTrip]), net: spy });
       await switchView(s, 'days');
-      await ratingsOn(s);
+      await loadAllRatings(s);
       await waitForExpr(s, `[...document.querySelectorAll('.tp-maps-link[data-place-key]')].length >= 1`, { timeout: 8000 });
       await sleep(1200);
       await t('tp-audit PP-04: the live row is looked up',

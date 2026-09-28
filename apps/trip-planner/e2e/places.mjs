@@ -1,7 +1,7 @@
 // Trip Planner E2E: the Google Places ratings subsystem.
 //
-//   P0. ratings on the itinerary are OPT-IN: opening Timeline or Days bills
-//       nothing until the traveller switches "Google ratings" on
+//   P0. ratings on the itinerary are ON DEMAND: opening Timeline or Days
+//       bills nothing; one place per "Check rating"; a confirmed bulk load
 //   P1. fanout on a 50-venue trip: the first screen is served, the other forty
 //       venues are NOT billed for before anyone has scrolled to them
 //   P2. no duplicate lookups, ever - across renders, view switches and scrolls
@@ -18,7 +18,7 @@
 import {
   APP, recorder, freshIds, iso, item, trip, dbOf,
   openApp, tpErrors, switchView, closePage, evaluate, waitForExpr, sleep,
-  clickSel, gotoHard, menuAct, setValue, ratingsOn,
+  clickSel, gotoHard, menuAct, setValue, loadAllRatings,
 } from './helpers.mjs';
 import { EXTERNAL_HOSTS } from '../../../tests/browser/cdp.mjs';
 
@@ -175,132 +175,185 @@ export async function run({ base, cdpPort }) {
     }
   };
 
-  /* ------- P0. the itinerary's Google ratings are opt-in (2026-09-28) ------
-     Owner request: opening Timeline or Days made billed Place Details calls
-     for every row that scrolled into view, which spent the month's allowance
-     and ran into 429s. Now the rows ask for nothing until the traveller
-     presses the toolbar's "Google ratings" switch, which starts Off on every
-     load and is one switch for both views. */
+  /* ------- P0. Google ratings on the itinerary are ON DEMAND (2026-09-28) --
+     Owner request: nothing is looked up until the traveller asks, and the
+     normal way to ask is ONE place at a time (each row's "Check rating").
+     The toolbar's "Load all Google ratings" is the bulk option and confirms
+     how many lookups it will make before it sends any. Every count here is
+     scoped to this block's own venues (the leaked-tab trap in FINDINGS: the
+     first navigation boots the PREVIOUS suite's trip, whose typed stays are
+     legitimately anchored on load). */
   freshIds();
   {
     const log = [];
     const P0 = 'ZuluVenue';
-    const big = venueTrip(30, 'Opt-in trip', P0);
+    const big = venueTrip(30, 'On-demand trip', P0);
     // The same venue three more times: one place on the page, one lookup.
     for (let i = 0; i < 3; i++) {
       big.items.push(item({ type: 'activity', title: `${P0} 01`, location: 'Tokyo', startDate: iso(10), startTime: `${String(18 + i)}:30` }));
     }
-    const toggle = (s) => evaluate(s, `(() => { const b = document.getElementById('ratingsToggle');
-      return { hidden: b.hidden, pressed: b.getAttribute('aria-pressed'), text: b.innerText.replace(/\\s+/g, ' ').trim() }; })()`);
-    const daysPainted = (s) => evaluate(s, `document.querySelectorAll('#daysList .tp-maps-link .tpm-rating').length`);
+    const q0 = () => totals(log, P0);
+    // Every row's control, keyed by the venue it names.
+    const controls = (s, root = '#board') => evaluate(s, `[...document.querySelectorAll('${root} .tpm-check[data-place-key]')].map(b => ({
+      key: b.dataset.placeKey, state: b.dataset.state, text: b.textContent.trim(), hidden: b.hidden, disabled: b.disabled,
+      rating: ((b.previousElementSibling && b.previousElementSibling.querySelector('.tpm-score')) || {}).textContent || '' }))`);
+    const clickCheck = (s, venue, root = '#board') => evaluate(s, `(() => {
+      const b = [...document.querySelectorAll('${root} .tpm-check[data-place-key]')].find(x => x.dataset.placeKey.startsWith(${JSON.stringify(venue.toLowerCase())}));
+      if (!b) return false; b.click(); return true; })()`);
+    const bulk = (s) => evaluate(s, `(() => { const b = document.getElementById('ratingsLoadAll');
+      return { hidden: b.hidden, disabled: b.disabled, text: b.innerText.replace(/\\s+/g, ' ').trim() }; })()`);
+    const confirmOpen = (s) => evaluate(s, `document.getElementById('confirmOverlay').classList.contains('open')`);
+
     await withPage('tp-places P0', { db: dbOf([big]), net: placesMock(log, 'ok') }, async (s) => {
-      await waitForExpr(s, `document.querySelectorAll('#board .tp-maps-link[data-place-key]').length >= 33`, { timeout: 12000 });
+      await waitForExpr(s, `document.querySelectorAll('#board .tpm-check[data-place-key]').length >= 33`, { timeout: 12000 });
       await sleep(1500);
-      let tg = await toggle(s);
-      await t('tp-places P0: the switch is on the Timeline, Off by default',
-        tg.hidden === false && tg.pressed === 'false' && /Google ratings: Off/.test(tg.text), JSON.stringify(tg), s);
-      // Scoped to this block's venues (the leaked-tab trap in FINDINGS: the
-      // first navigation boots the PREVIOUS suite's trip, whose typed stays
-      // are legitimately anchored on load).
-      await t('tp-places P0: opening Timeline makes ZERO Places requests',
-        totals(log, P0).queries === 0, JSON.stringify(totals(log, P0)), s);
+      let c = await controls(s);
+      await t('tp-places P0 (1): opening Timeline makes ZERO Places requests',
+        q0().queries === 0, JSON.stringify(q0()), s);
+      await t('tp-places P0: every row offers "Check rating" beside its plain Google Maps link',
+        c.length === 33 && c.every(x => x.state === 'idle' && x.text === '☆ Check rating' && !x.hidden && !x.rating),
+        JSON.stringify(c.slice(0, 2)), s);
       await scrollBoardToEnd(s);
-      await sleep(1200);
+      await sleep(1000);
       await evaluate(s, 'window.scrollTo(0, 0)');
-      await t('tp-places P0: and reading it top to bottom makes none either',
-        totals(log, P0).queries === 0, JSON.stringify(totals(log, P0)), s);
-      await t('tp-places P0: every row keeps its plain Google Maps link, unrated',
-        (await slotCount(s)) === 33 && (await paintedCount(s)) === 0, '', s);
-
+      await t('tp-places P0: scrolling the whole Timeline asks for nothing',
+        q0().queries === 0, JSON.stringify(q0()), s);
       await switchView(s, 'days');
-      await sleep(1500);
-      tg = await toggle(s);
-      await t('tp-places P0: the same switch shows on Days, still Off',
-        tg.hidden === false && tg.pressed === 'false', JSON.stringify(tg), s);
-      await t('tp-places P0: opening Days makes ZERO Places requests',
-        totals(log, P0).queries === 0 && (await daysPainted(s)) === 0, JSON.stringify(totals(log, P0)), s);
+      await sleep(1200);
+      await t('tp-places P0 (2): opening Days makes ZERO Places requests',
+        q0().queries === 0 && (await controls(s, '#daysList')).every(x => x.state === 'idle'), JSON.stringify(q0()), s);
       await switchView(s, 'map');
-      await t('tp-places P0: the Map has no rows, so no switch',
-        (await toggle(s)).hidden === true, '', s);
+      await t('tp-places P0: the Map has no rows, so no bulk button',
+        (await bulk(s)).hidden === true, '', s);
       await switchView(s, 'timeline');
-      await sleep(800);
+      await sleep(600);
 
-      // A burst of clicks ending On: one reservation per venue, no storm.
-      for (let i = 0; i < 5; i++) await clickSel(s, '#ratingsToggle', { settle: 40 });
-      await waitForExpr(s, `document.querySelectorAll('#board .tp-maps-link .tpm-rating').length > 0`, { timeout: 8000 });
-      await sleep(1500);
-      const on1 = totals(log, P0);
-      tg = await toggle(s);
-      await t('tp-places P0: switching on reads On and paints ratings beside the rows',
-        tg.pressed === 'true' && /Google ratings: On/.test(tg.text) && (await paintedCount(s)) > 0, JSON.stringify(tg), s);
-      await t('tp-places P0: switching on asks for the rows on screen, not the whole trip',
-        on1.queries > 0 && on1.unique < 30, JSON.stringify(on1), s);
-      await t('tp-places P0: five rapid clicks and a repeated venue still ask for each place once',
-        on1.duplicates === 0, JSON.stringify(on1), s);
-      await t('tp-places P0: the repeated venue is painted on every row that shows it',
-        (await evaluate(s, `[...document.querySelectorAll('#board .tp-maps-link[data-place-key]')]
-          .filter(a => /zuluvenue 01/.test(a.dataset.placeKey)).every(a => !!a.querySelector('.tpm-rating'))`)) === true, '', s);
-
-      // Re-renders are free: a filter change and back, and a view round trip.
-      await setValue(s, '#filterStatus', 'booked');
+      /* one place, then another */
+      await clickCheck(s, `${P0} 05`);
+      await waitForExpr(s, `!!document.querySelector('#board .tp-maps-link .tpm-rating')`, { timeout: 8000 });
       await sleep(400);
-      await setValue(s, '#filterStatus', '');
+      let asked = log.flatMap(e => e.queries).filter(q => q.includes(P0));
+      await t('tp-places P0 (3): Check rating on one place looks up exactly that place',
+        asked.length === 1 && /ZuluVenue 05/.test(asked[0]), JSON.stringify(asked), s);
+      c = await controls(s);
+      const five = c.filter(x => x.key.startsWith('zuluvenue 05'));
+      await t('tp-places P0: that row now reads Google Maps · ⭐ rating, and its control is gone',
+        five.length === 1 && five[0].hidden && /^\d\.\d$/.test(five[0].rating), JSON.stringify(five), s);
+      await t('tp-places P0 (4): every other place stays unloaded',
+        c.filter(x => !x.key.startsWith('zuluvenue 05')).every(x => x.state === 'idle' && !x.rating), '', s);
+      await clickCheck(s, `${P0} 09`);
       await sleep(1200);
-      // A re-render may bring a row into view that was not before (the page
-      // re-lays out); what it may never do is ask for a venue a second time.
-      await t('tp-places P0: a re-render re-bills nothing already asked for',
-        totals(log, P0).duplicates === 0, JSON.stringify(totals(log, P0)), s);
+      asked = log.flatMap(e => e.queries).filter(q => q.includes(P0));
+      await t('tp-places P0 (5): Check rating on another place looks up only that one',
+        asked.length === 2 && /ZuluVenue 09/.test(asked[1]), JSON.stringify(asked), s);
+
+      /* duplicates: the repeated venue, clicked on ONE of its four rows */
+      await clickCheck(s, `${P0} 01`);
+      await sleep(1200);
+      c = await controls(s);
+      const ones = c.filter(x => x.key.startsWith('zuluvenue 01'));
+      await t('tp-places P0 (7): a place shown on four rows is looked up once and rated on all four',
+        q0().queries === 3 && ones.length === 4 && ones.every(x => x.hidden && x.rating), JSON.stringify({ q: q0(), ones }), s);
+
+      /* fast repeated clicks */
+      await evaluate(s, `(() => { const b = [...document.querySelectorAll('#board .tpm-check')].find(x => x.dataset.placeKey.startsWith('zuluvenue 12'));
+        for (let i = 0; i < 6; i++) b.click(); return 1; })()`);
+      await sleep(1200);
+      await t('tp-places P0 (8): six fast clicks on one place make one lookup',
+        q0().queries === 4 && q0().duplicates === 0, JSON.stringify(q0()), s);
+
+      /* views and re-renders reuse what is loaded */
       await switchView(s, 'days');
-      await sleep(1500);
-      await t('tp-places P0: Days, with the switch On, paints from the same session cache',
-        (await daysPainted(s)) > 0 && (await toggle(s)).pressed === 'true', '', s);
+      await sleep(900);
+      const d = await controls(s, '#daysList');
+      await t('tp-places P0 (6): Days shows the loaded ratings at once, and asks for nothing',
+        q0().queries === 4 && d.filter(x => x.hidden && x.rating).length === 7
+          && d.filter(x => !x.hidden).every(x => x.state === 'idle'),
+        JSON.stringify({ q: q0(), rated: d.filter(x => x.rating).length }), s);
       await switchView(s, 'timeline');
-      await sleep(800);
+      await setValue(s, '#filterStatus', 'booked');
+      await sleep(300);
+      await setValue(s, '#filterStatus', '');
+      await sleep(900);
+      await t('tp-places P0: re-renders ask for nothing and keep every loaded rating',
+        q0().queries === 4 && (await paintedCount(s)) === 7, `${q0().queries} queries, ${await paintedCount(s)} painted`, s);
 
-      // Off: ratings hide, nothing more is asked, even while reading on.
-      await clickSel(s, '#ratingsToggle', { settle: 400 });
-      const off1 = totals(log, P0);
-      await t('tp-places P0: switching off hides every rating and says Off',
-        (await paintedCount(s)) === 0 && /Google ratings: Off/.test((await toggle(s)).text), '', s);
-      await scrollBoardToEnd(s);
-      await sleep(1500);
-      await evaluate(s, 'window.scrollTo(0, 0)');
-      await t('tp-places P0: with the switch Off again, scrolling asks for nothing more',
-        totals(log, P0).queries === off1.queries, `${off1.queries} -> ${totals(log, P0).queries}`, s);
-
-      // On again: what was fetched repaints from the cache without a request.
-      await clickSel(s, '#ratingsToggle', { settle: 1500 });
-      await t('tp-places P0: switching back on repaints the fetched ratings for free',
-        (await paintedCount(s)) >= on1.unique - 1 && totals(log, P0).queries === off1.queries,
-        `painted ${await paintedCount(s)}, queries ${off1.queries} -> ${totals(log, P0).queries}`, s);
-      await t('tp-places P0: no duplicate across the whole sequence',
-        totals(log, P0).duplicates === 0, JSON.stringify(totals(log, P0)), s);
+      /* bulk: warn first, cancel sends nothing, confirm sends the rest */
+      await clickSel(s, '#ratingsLoadAll', { settle: 400 });
+      const warn = await evaluate(s, `({ title: document.getElementById('confirmTitle').textContent,
+        text: document.getElementById('confirmText').textContent, yes: document.getElementById('confirmYes').textContent })`);
+      await t('tp-places P0 (9): Load all shows a quota warning before any request',
+        (await confirmOpen(s)) && /Load Google ratings for all places in this view\?/.test(warn.title)
+          && /monthly quota/.test(warn.text) && /individually/.test(warn.text) && q0().queries === 4,
+        JSON.stringify(warn), s);
+      await t('tp-places P0 (12): and it offers only the places not already loaded (26 of 30)',
+        warn.yes === 'Load all ratings (26)', warn.yes, s);
+      await clickSel(s, '#confirmOverlay [data-close]', { settle: 800 });
+      await t('tp-places P0 (10): Cancel makes zero requests',
+        !(await confirmOpen(s)) && q0().queries === 4, JSON.stringify(q0()), s);
+      const loaded = await loadAllRatings(s);
+      await waitForExpr(s, `document.querySelectorAll('#board .tp-maps-link .tpm-rating').length >= 33`, { timeout: 12000 });
+      await t('tp-places P0 (11): confirming loads every remaining place in the view, each once',
+        loaded === 26 && q0().unique === 30 && q0().duplicates === 0 && (await paintedCount(s)) === 33,
+        JSON.stringify({ loaded, q: q0(), painted: await paintedCount(s) }), s);
+      await t('tp-places P0: and every batch respects the server cap of 12',
+        log.every(e => e.queries.length <= 12), JSON.stringify(log.map(e => e.queries.length)), s);
+      await clickSel(s, '#ratingsLoadAll', { settle: 500 });
+      await t('tp-places P0: with everything loaded, Load all asks nothing and says so',
+        !(await confirmOpen(s)) && q0().queries === 30
+          && /already has its Google rating/.test(await evaluate(s, `[...document.querySelectorAll('#toasts .toast')].map(x => x.textContent).join(' | ')`)),
+        '', s);
     });
 
-    // Loading is a small state on the switch, and the page stays usable.
+    // Loading is a small state on the row (and on the bulk button), and the
+    // page stays usable. Only this block's own venue is held.
     const held = [];
     await withPage('tp-places P0 loading', {
       db: dbOf([venueTrip(4, 'Held trip', 'YankeeVenue')]),
-      // Only this block's own venues are held and counted (see the leaked-tab
-      // trap above); anything else is answered empty.
       net: (url, request) => {
         if (!url.includes('tp-places')) return EXTERNAL_HOSTS.test(url) ? 'fail' : null;
         if (/YankeeVenue/.test(request.postData || '')) { held.push(url); return 'hold'; }
         return { status: 200, body: { results: [] } };
       },
     }, async (s) => {
-      await sleep(1200);
-      await t('tp-places P0 loading: nothing is requested before the switch',
-        held.length === 0, String(held.length), s);
-      await clickSel(s, '#ratingsToggle', { settle: 800 });
-      const tg = await toggle(s);
-      await t('tp-places P0 loading: while a lookup is on the wire the switch says Loading',
-        held.length === 1 && /Loading/.test(tg.text)
-          && (await evaluate(s, `document.getElementById('ratingsToggle').getAttribute('aria-busy')`)) === 'true',
-        JSON.stringify({ held: held.length, tg }), s);
+      await waitForExpr(s, `document.querySelectorAll('#board .tpm-check[data-place-key]').length >= 4`, { timeout: 12000 });
+      await sleep(600);
+      await t('tp-places P0 loading: nothing is requested before a click', held.length === 0, String(held.length), s);
+      await clickCheck(s, 'YankeeVenue 02');
+      await sleep(600);
+      const row = (await controls(s)).find(x => x.key.startsWith('yankeevenue 02'));
+      await t('tp-places P0 loading: the clicked row says Loading and cannot be clicked again',
+        held.length === 1 && row.state === 'loading' && row.text === '⭐ Loading…' && row.disabled,
+        JSON.stringify({ held: held.length, row }), s);
+      await loadAllRatings(s);
+      await sleep(600);
+      await t('tp-places P0 loading: a bulk load in flight shows on the toolbar button',
+        /Loading ratings/.test((await bulk(s)).text) && (await bulk(s)).disabled, JSON.stringify(await bulk(s)), s);
       await switchView(s, 'days');
       await t('tp-places P0 loading: and the rest of the app does not wait for it',
         (await evaluate(s, `document.querySelectorAll('#daysList .dc-event').length`)) === 4, '', s);
+    });
+
+    // A quota 429 on a click: the row says so, nothing is retried on its own,
+    // and a second click while the quota is out sends nothing at all.
+    const qlog = [];
+    await withPage('tp-places P0 quota', { db: dbOf([venueTrip(4, 'Quota click trip', 'XrayVenue')]), net: placesMock(qlog, '429') }, async (s) => {
+      await waitForExpr(s, `document.querySelectorAll('#board .tpm-check[data-place-key]').length >= 4`, { timeout: 12000 });
+      await sleep(500);
+      await clickCheck(s, 'XrayVenue 01');
+      await sleep(2500);
+      const row = (await controls(s)).find(x => x.key.startsWith('xrayvenue 01'));
+      await t('tp-places P0 quota: a refused place reads "Rating unavailable (quota limit)"',
+        row.state === 'quota' && row.text === 'Rating unavailable (quota limit)', JSON.stringify(row), s);
+      const after = totals(qlog, 'XrayVenue').posts;
+      await clickCheck(s, 'XrayVenue 02');
+      await sleep(3000);
+      await t('tp-places P0 (13): a 429 is not retried, and a click while the quota is out sends nothing',
+        after === 1 && totals(qlog, 'XrayVenue').posts === 1
+          && (await controls(s)).find(x => x.key.startsWith('xrayvenue 02')).state === 'quota',
+        `${after} -> ${totals(qlog, 'XrayVenue').posts}`, s);
+      await t('tp-places P0 quota: the bulk button says the ratings are paused',
+        /paused \(quota limit\)/.test((await bulk(s)).text) && (await bulk(s)).disabled, JSON.stringify(await bulk(s)), s);
     });
   }
 
@@ -331,9 +384,14 @@ export async function run({ base, cdpPort }) {
         q.some(x => /Typed Hotel/.test(x)), JSON.stringify(q), s);
       await t('tp-places P0b: and nothing else is: no activity, no saved stay, no cancelled stay',
         q.length === 1, JSON.stringify(q), s);
-      await t('tp-places P0b: the switch still reads Off and no row shows a rating',
-        (await evaluate(s, `document.getElementById('ratingsToggle').getAttribute('aria-pressed')`)) === 'false'
-          && (await evaluate(s, `document.querySelectorAll('.tpm-rating').length`)) === 0, '', s);
+      // The stay's lookup is already paid for, so its rating shows for free;
+      // the activities were never asked for and still offer "Check rating".
+      const rowsNow = await evaluate(s, `[...document.querySelectorAll('#board .tpm-check[data-place-key]')].map(b => ({
+        key: b.dataset.placeKey, state: b.dataset.state, rated: !!(b.previousElementSibling && b.previousElementSibling.querySelector('.tpm-rating')) }))`);
+      await t('tp-places P0b: the anchored stay shows its (already paid) rating; the activities stay unloaded',
+        rowsNow.filter(r => /typed hotel/.test(r.key)).every(r => r.rated && r.state === 'loaded')
+          && rowsNow.filter(r => /museum|ramen/.test(r.key)).every(r => !r.rated && r.state === 'idle'),
+        JSON.stringify(rowsNow), s);
       const saved = await evaluate(s, `(() => { const db = JSON.parse(localStorage.getItem('trip-planner:v1'));
         const it = db.trips[0].items.find(i => /Typed Hotel/.test(i.title)); return it && it.place || null; })()`);
       await t('tp-places P0b: the resolved stay is persisted with its point',
@@ -351,7 +409,7 @@ export async function run({ base, cdpPort }) {
     });
   }
 
-  /* ------- P1. a 50-venue trip does not bill for what nobody has seen ------ */
+  /* ------- P1. a 50-venue bulk load is batched, bounded and deduplicated -- */
   freshIds();
   {
     const log = [];
@@ -360,31 +418,24 @@ export async function run({ base, cdpPort }) {
     await withPage('tp-places P1', { db: dbOf([big]), net: placesMock(log, 'ok') }, async (s) => {
       await waitForExpr(s, `document.querySelectorAll('#board .tp-maps-link[data-place-key]').length >= 50`, { timeout: 12000 });
       await sleep(1500);
-      await t('tp-places P1: with ratings off, the load itself bills nothing',
+      await t('tp-places P1: the load itself bills nothing',
         totals(log, P1).queries === 0, JSON.stringify(totals(log, P1)), s);
-      await ratingsOn(s);
-      await sleep(2500);
-      const first = totals(log, P1);
-
-      await t('tp-places P1: all 50 venues render a rating slot',
-        (await slotCount(s)) === 50, String(await slotCount(s)), s);
-      await t('tp-places P1: the first screen does NOT bill all 50 venues',
-        first.queries > 0 && first.queries < 50, JSON.stringify(first), s);
-      await t('tp-places P1: and it does not burst a POST per batch of the whole trip',
-        first.posts <= 2, JSON.stringify(first), s);
-      await t('tp-places P1: the venues it did ask for came back painted',
-        (await paintedCount(s)) === first.unique, `painted ${await paintedCount(s)} of ${first.unique}`, s);
-
-      // Scrolling is what buys the rest, and it must still be duplicate-free.
+      const offered = await loadAllRatings(s);
+      await waitForExpr(s, `document.querySelectorAll('#board .tp-maps-link .tpm-rating').length >= 50`, { timeout: 15000 });
+      const all = totals(log, P1);
+      await t('tp-places P1: the warning offered all 50 places, off-screen ones included',
+        offered === 50, String(offered), s);
+      await t('tp-places P1: all 50 are looked up once each',
+        all.unique === 50 && all.duplicates === 0, JSON.stringify(all), s);
+      await t('tp-places P1: in batches of at most 12, not a POST per place',
+        all.posts === Math.ceil(50 / 12) && log.every(e => e.queries.length <= 12),
+        JSON.stringify(log.map(e => e.queries.length)), s);
+      await t('tp-places P1: and every row is painted',
+        (await paintedCount(s)) === 50, String(await paintedCount(s)), s);
       await scrollBoardToEnd(s);
-      await sleep(2500);
-      const after = totals(log, P1);
-      await t('tp-places P1: scrolling fetches the venues that came into view',
-        after.queries > first.queries, `${first.queries} -> ${after.queries}`, s);
-      await t('tp-places P1: and never asks for a venue twice',
-        after.duplicates === 0, JSON.stringify(after), s);
-      await t('tp-places P1: every batch respects the server cap of 12',
-        log.every(e => e.queries.length <= 12), JSON.stringify(log.map(e => e.queries.length)), s);
+      await sleep(1200);
+      await t('tp-places P1: scrolling afterwards asks for nothing more',
+        totals(log, P1).queries === all.queries, `${all.queries} -> ${totals(log, P1).queries}`, s);
     });
   }
 
@@ -395,7 +446,7 @@ export async function run({ base, cdpPort }) {
     const P3 = 'BravoVenue';
     const mid = venueTrip(8, 'Switch trip', P3);
     await withPage('tp-places P3', { db: dbOf([mid]), net: placesMock(log, 'ok') }, async (s) => {
-      await ratingsOn(s);
+      await loadAllRatings(s);
       await waitForExpr(s, `document.querySelectorAll('#board .tp-maps-link .tpm-rating').length >= 8`, { timeout: 12000 });
       const settled = totals(log, P3);
       await t('tp-places P3: a small trip gets every rating it can',
@@ -432,7 +483,7 @@ export async function run({ base, cdpPort }) {
       ],
     });
     await withPage('tp-places P4', { db: dbOf([legs]), net: placesMock(log, 'ok') }, async (s) => {
-      await ratingsOn(s);
+      await loadAllRatings(s);
       await sleep(2500);
       const asked = log.flatMap(e => e.queries).filter(q => /LEGQUERY|Fushimi/.test(q)).join(' | ');
       await t('tp-places P4: no travel leg was ever sent to Places',
@@ -451,7 +502,7 @@ export async function run({ base, cdpPort }) {
     const P5 = 'DeltaVenue';
     const big = venueTrip(40, 'Quota trip', P5);
     await withPage('tp-places P5', { db: dbOf([big]), net: placesMock(log, '429') }, async (s) => {
-      await ratingsOn(s);
+      await loadAllRatings(s);
       await sleep(2000);
       const early = totals(log, P5).posts;
       // Re-render hard: view switches, scrolling, more renders. None of it may
@@ -493,7 +544,7 @@ export async function run({ base, cdpPort }) {
       };
     };
     await withPage('tp-places P5b', { db: dbOf([t5b]), net }, async (s) => {
-      await ratingsOn(s);
+      await loadAllRatings(s);
       await sleep(2500);
       const asked = totals(log, P5b).posts;
       await t('tp-places P5b: every row still renders its Maps link',
@@ -527,7 +578,7 @@ export async function run({ base, cdpPort }) {
     const P7 = 'EchoVenue';
     const mid = venueTrip(6, 'Partial trip', P7);
     await withPage('tp-places P7', { db: dbOf([mid]), net: placesMock(log, 'partial') }, async (s) => {
-      await ratingsOn(s);
+      await loadAllRatings(s);
       await sleep(3000);
       const painted = await paintedCount(s);
       await t('tp-places P7: the venues that resolved are shown',
@@ -554,12 +605,16 @@ export async function run({ base, cdpPort }) {
     const b = venueTrip(4, 'Trip B', 'GolfVenue');
     b.items.forEach((it) => { it.location = 'Barcelona'; });
     await withPage('tp-places P8', { db: dbOf([a, b], a.id), net: placesMock(log, 'ok') }, async (s) => {
-      await ratingsOn(s);
+      await loadAllRatings(s);
       await sleep(1200);
       await evaluate(s, `(() => { const sel = document.getElementById('tripSelect'); sel.value = ${JSON.stringify(b.id)}; sel.dispatchEvent(new Event('change', { bubbles: true })); return 1; })()`);
-      await sleep(3000);
+      await sleep(1500);
+      await t('tp-places P8: switching to trip B asks for none of its venues by itself',
+        !log.flatMap(e => e.queries).some(q => /GolfVenue/.test(q)), '', s);
+      await loadAllRatings(s);
+      await sleep(1500);
       const asked = log.flatMap(e => e.queries);
-      await t('tp-places P8: trip B\'s venues are looked up after the switch',
+      await t('tp-places P8: trip B\'s venues are looked up when the traveller loads them',
         asked.some(q => /GolfVenue/.test(q)), '', s);
       await t('tp-places P8: no duplicate survived the switch',
         totals(log, P8).duplicates === 0 && totals(log, 'GolfVenue').duplicates === 0,
@@ -604,7 +659,7 @@ export async function run({ base, cdpPort }) {
     ] });
     await withPage('tp-places P10', { db: dbOf([hoursTrip]), net: hoursMock }, async (s) => {
       await switchView(s, 'days');
-      await ratingsOn(s);
+      await loadAllRatings(s);
       const painted = await waitForExpr(s, `!!document.querySelector('#daysList .dc-hours.is-closed')`, { timeout: 8000 });
       const rows = () => evaluate(s, `[...document.querySelectorAll('#daysList .dc-event')].map(r => ({
         title: (r.querySelector('.dc-title') || {}).textContent || '',
@@ -646,7 +701,7 @@ export async function run({ base, cdpPort }) {
     const P9 = 'HotelVenue';
     const small = venueTrip(3, 'Body trip', P9);
     await withPage('tp-places P9', { db: dbOf([small]), net: placesMock(log, 'ok') }, async (s) => {
-      await ratingsOn(s);
+      await loadAllRatings(s);
       await sleep(2500);
       const mine = log.filter(e => e.queries.some(q => q.includes(P9)));
       await t('tp-places P9: every request carries a stable clientId',
@@ -837,14 +892,17 @@ export async function run({ base, cdpPort }) {
           && (saved.find(i => /Kyoto/.test(i.location)) || {}).place?.id === 'PID_KYOTO',
         JSON.stringify(saved.map(i => [i.location, i.place && i.place.id])), s);
 
-      // The assistant's cards rated themselves with the itinerary's ratings
-      // switch still Off: chat is not governed by it. The rows are, so the
-      // switch goes on here - and it bills nothing, the cards resolved these.
-      await t('tp-places P11: the chat cards were rated while the itinerary switch was Off',
-        (await evaluate(s, `document.getElementById('ratingsToggle').getAttribute('aria-pressed')`)) === 'false',
-        '', s);
+      // The assistant's cards rated themselves while the trip's own Tsukiji
+      // row was never asked for: chat is automatic, the itinerary on demand.
+      // The Days rows are then bulk-loaded, and the accepted places bill
+      // nothing (the cards already resolved them).
+      await t('tp-places P0 (14): chat rates its own cards with no itinerary lookup asked for',
+        (await evaluate(s, `(() => { const b = [...document.querySelectorAll('#board .tpm-check[data-place-key]')]
+          .find(x => /tsukiji/.test(x.dataset.placeKey)); return b ? b.dataset.state : 'missing'; })()`)) === 'idle'
+          && !p11log.flat().some(e => /Tsukiji/.test(e.q)),
+        JSON.stringify(p11log.flat().map(e => e.q)), s);
       await switchView(s, 'days');
-      await ratingsOn(s);
+      await loadAllRatings(s);
       await waitForExpr(s, `document.querySelectorAll('#daysList .tp-maps-link .tpm-rating').length >= 2`, { timeout: 8000 });
       const rows = await evaluate(s, `[...document.querySelectorAll('#daysList .dc-event')]
         .filter(r => /P11 Chain/.test(r.textContent))

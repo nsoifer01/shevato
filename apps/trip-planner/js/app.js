@@ -23,7 +23,7 @@
   // js/app.js, in index.html and in sw.js's PRECACHE list alike. Bumping the
   // cache-buster without bumping this number is what made "build 31" outlive
   // v=32..38 and stop identifying anything.
-  const TP_BUILD = 85;
+  const TP_BUILD = 86;
   const LS_KEY = 'trip-planner:v1';
   // Which trip THIS DEVICE has open. Navigation, not data: it is not part of
   // the synced value and is deliberately absent from app-sync-init.js's key
@@ -171,9 +171,6 @@
   // read it (and rewrite a missing one on receipt); save() only repairs it when
   // it names no trip. ensureTrip() resolves this id when it is unset or gone.
   let openTripId = null;
-  // Google ratings on the Timeline/Days rows: session-only, Off on every
-  // load. See setRowRatings.
-  let rowRatingsOn = false;
   // The *TripId pins: the trip each dialog was opened FOR. A save commits to
   // that trip or refuses (tripForWrite), whatever is open by the time it runs.
   const ui = { search: '', filterType: '', filterStatus: '', filterTraveler: '', packingFilter: '', packingTripId: null, essentialsTripId: null, shiftTripId: null, visaTripId: null, itemTripId: null, editingId: null, shiftTarget: null, tripModalMode: 'new', confirmAction: null, flashId: null, view: 'timeline', filtersOpen: false };
@@ -1267,9 +1264,15 @@
     // a different branch while the session cache warms up.
     const saved = lookup.record ? placeMapsUrl(lookup.record) : '';
     const hooks = doLookup ? placeHooks(lookup) : '';
+    // The row's own on-demand control sits BESIDE the link (a button cannot
+    // live inside an anchor): "Check rating" until the traveller asks, then
+    // the state paintRowRatingControl derives. Hidden once the rating lands,
+    // because the link itself then carries it.
+    const check = doLookup
+      ? `<button type="button" class="tpm-check"${hooks}>☆ Check rating</button>` : '';
     return `<a class="tp-maps-link"${hooks}`
       + ` href="${esc(saved || mapsSearchUrl(lookup.query))}" target="_blank" rel="noopener">`
-      + `<span class="tpm-label">Google Maps</span></a>`;
+      + `<span class="tpm-label">Google Maps</span></a>` + check;
   }
 
   // THE STAY SAYS SO ITSELF WHEN IT COULD NOT BE FOUND (owner report,
@@ -1472,7 +1475,7 @@
     document.body.classList.toggle('view-days', v === 'days');
     // Ratings belong to the two views that draw rows; the Map has none and an
     // empty plan has nothing to rate.
-    $('#ratingsToggle').hidden = empty || v === 'map';
+    $('#ratingsLoadAll').hidden = empty || v === 'map';
     if (v === 'map') renderMap();
     if (v === 'days') renderDays();
     syncViewHash();
@@ -5596,10 +5599,19 @@
     render();
   }
 
-  function confirmDialog(title, text, yesLabel, action) {
+  // `opts` (optional) turns the delete-shaped dialog into a plain question:
+  // { icon, tone: 'primary' }. Every call resets both, so a later delete can
+  // never inherit a non-destructive look.
+  function confirmDialog(title, text, yesLabel, action, opts) {
+    const o = opts || {};
+    const primary = o.tone === 'primary';
     $('#confirmTitle').textContent = title;
     $('#confirmText').textContent = text;
     $('#confirmYes').textContent = yesLabel;
+    $('#confirmYes').classList.toggle('danger', !primary);
+    $('#confirmYes').classList.toggle('primary', primary);
+    const icon = $('#confirmOverlay .m-icon');
+    if (icon) { icon.textContent = o.icon || '🗑'; icon.classList.toggle('danger', !primary); }
     ui.confirmAction = action;
     openOverlay('#confirmOverlay');
   }
@@ -10512,7 +10524,8 @@
       }
       persistResolvedPlaces(results);
       placesQuotaNotice();
-      syncRatingsToggle();
+      withdrawQuotaRefusedRows();
+      syncRowRatings();
     },
   });
 
@@ -10678,11 +10691,6 @@
   // a repeat paintPlaces call (a later batch, a re-render sharing the cache) a
   // no-op, and the count parenthetical is dropped when Google has no reviews.
   function paintTripMapsLink(el) {
-    // Opt-in (see rowRatingsOn): with the view's ratings off the row stays a
-    // plain Maps link even when the session already holds its entry (the
-    // assistant or the hotel picker may have resolved it). Not marked painted,
-    // so switching ratings on paints it from the cache at no cost.
-    if (!rowRatingsOn) return;
     if (el.dataset.painted === '1') return;
     const entry = placesCache.get(el.dataset.placeKey || '');
     if (!entry || entry.status !== 'ok') return;
@@ -10881,100 +10889,208 @@
   }
 
   // WHAT GETS ASKED FOR, AND WHEN. A rating costs the owner $0.02 whether or
-  // not anyone reads it, and Google's terms forbid keeping one, so a rating
-  // fetched for the fortieth day of a trip whose first screen is still on
-  // screen is money spent on nothing. Demand is therefore split in two:
+  // not anyone reads it, and Google's terms forbid keeping one, so every
+  // billed lookup has to be one somebody actually wanted. Demand is split:
   //
   //   ASSISTANT CANDIDATES (.ap-rating) are asked for immediately. They are a
   //   comparison the traveller explicitly requested, they arrive together in an
   //   open panel, and the pick-one badges (candidateBadges) are a judgement
   //   ACROSS the set - half a set is a worse answer than none.
   //
-  //   ITINERARY ROWS (.tp-maps-link) are asked for ONLY while the traveller
-  //   has switched the view's Google ratings on (see setRowRatings), and then
-  //   only as they come near the viewport. Opening Timeline or Days asks for
-  //   no row at all (a stay with no saved point is the one exception, and it
-  //   is anchorStays that asks, not a row). rootMargin does the looking-ahead
-  //   so a row is normally rated before it is read.
+  //   ITINERARY ROWS (.tp-maps-link) are asked for ONE PLACE AT A TIME, when
+  //   the traveller presses that row's "Check rating" (owner request,
+  //   2026-09-28). Opening Timeline or Days, scrolling, switching views,
+  //   expanding a group and every re-render ask for nothing. The toolbar's
+  //   "Load all Google ratings" is the bulk option, and it confirms how many
+  //   lookups it is about to make before it sends any. (An earlier round
+  //   rated rows as they scrolled into view, first unconditionally and then
+  //   behind an on/off switch; both let a long trip spend the month.)
   //
-  // Deliberately NOT done: a background sweep of the rest of the trip. That is
-  // precisely the pattern that produced the 429s, and it buys nothing the
-  // traveller can see.
-  const PLACES_LOOKAHEAD = '600px 0px';
-  let placesObserver = null;
-  if (typeof IntersectionObserver === 'function') {
-    placesObserver = new IntersectionObserver((entries, obs) => {
-      const lookups = [];
-      for (const e of entries) {
-        if (!e.isIntersecting) continue;
-        obs.unobserve(e.target);
-        const lookup = lookupFromEl(e.target);
-        if (lookup) lookups.push(lookup);
-      }
-      if (rowRatingsOn && lookups.length) placesQueue.request(lookups, { priority: 'normal' });
-      syncRatingsToggle();
-    }, { rootMargin: PLACES_LOOKAHEAD });
-  }
-
-  // RATINGS ON THE ITINERARY ARE OPT-IN (owner request, 2026-09-28). Even
-  // with the viewport gating above, every row that scrolled into view was a
-  // billed Place Details call the traveller never asked for, and a long trip
-  // read top to bottom spent the monthly allowance and ran into 429s. So the
-  // Timeline and Days rows ask for nothing until the traveller presses
-  // "Google ratings" in the toolbar, and the choice is not remembered: every
-  // load starts Off. It is ONE switch for both views (they read one session
-  // cache, so a rating fetched on Timeline is already there on Days), and it
-  // governs the rows only - the assistant's candidate chips and the hotel
-  // picker keep asking exactly as before, because those are comparisons the
-  // traveller explicitly requested.
+  //   STAYS with no saved point are the one exception, and it is anchorStays
+  //   that asks, not a row: the whole day is measured from them.
   //
-  // What rides on the same billed response goes with it for activities and
-  // meals: their Days-view opening hours and Places-grade coordinates. Those
-  // still paint whenever the session already holds the entry, and a row's
-  // saved place record and the free Photon fallback still place it on the
-  // map. STAYS are the exception: anchorStays resolves the ones with no saved
-  // point on load, because the whole day is measured from them. The flag itself (rowRatingsOn) is
-  // declared beside `ui`, so no render can reach it before it exists.
+  // Whatever the session cache already holds is painted on every row for
+  // free, whoever paid for it (a click, the bulk load, the assistant, a stay
+  // anchor), so a place rated in Days is rated in Timeline with no request.
 
-  // The toggle's state word. "Loading" while any row in the current view is
-  // queued or on the wire, "Paused" while the queue is parked on a 429 (the
-  // quota notice explains why), "Unavailable" when no key is configured.
-  function syncRatingsToggle() {
-    const btn = $('#ratingsToggle');
-    const out = $('#ratingsToggleState');
-    if (!btn || !out) return;
-    let word = 'Off';
-    let busy = false;
-    if (rowRatingsOn) {
-      const st = placesQueue.status();
-      const scope = ui.view === 'days' ? $('#daysList') : $('#board');
-      const pending = !!scope && [...scope.querySelectorAll('.tp-maps-link[data-place-key]')]
-        .some(el => placesQueue.isPending(el.dataset.placeKey || ''));
-      if (st.off) word = 'Unavailable';
-      else if (pending && st.paused) word = 'Paused';
-      else if (pending) { word = 'Loading…'; busy = true; }
-      else word = 'On';
+  // What the traveller has ASKED for on the itinerary this session (a click or
+  // the bulk load), and which of those a quota refused. Session-only: the
+  // cache they describe is session-only too.
+  const rowRatingAsked = new Set();
+  const rowRatingQuota = new Set();
+
+  // A row's rating state, derived from the queue and the cache every time, so
+  // it can never disagree with them:
+  //   loaded   the cache has a rating; the Maps link itself carries it
+  //   settled  the cache has an answer with no star (no match, no rating yet)
+  //   loading  queued or on the wire
+  //   quota    asked for, and refused by a quota pause; not retried by itself
+  //   failed   asked for, and Google did not answer (parked 10 min by the queue)
+  //   idle     nobody has asked
+  function rowRatingState(key) {
+    const entry = placesCache.get(key);
+    if (entry && entry.status === 'ok' && Number.isFinite(entry.rating)) return { state: 'loaded' };
+    if (entry) {
+      const label = placeStateLabel(entry);
+      return { state: 'settled', text: label ? label.text : 'Rating unavailable', why: label ? label.why : '' };
     }
-    btn.setAttribute('aria-pressed', rowRatingsOn ? 'true' : 'false');
-    btn.classList.toggle('on', rowRatingsOn);
-    btn.setAttribute('aria-busy', busy ? 'true' : 'false');
-    if (out.textContent !== word) out.textContent = word;
+    if (placesQueue.isPending(key)) return { state: 'loading' };
+    if (rowRatingQuota.has(key)) return { state: 'quota' };
+    if (rowRatingAsked.has(key)) return { state: 'failed' };
+    return { state: 'idle' };
   }
 
-  // THE ONE EXCEPTION TO THE OPT-IN: A STAY'S ANCHOR (owner decision,
+  function paintRowRatingControl(btn) {
+    const key = btn.dataset.placeKey || '';
+    const s = rowRatingState(key);
+    let text = '☆ Check rating', title = 'Look up this place\'s Google rating (one Google Places request)';
+    let disabled = false, hidden = false, busy = false;
+    if (s.state === 'loaded') hidden = true;
+    else if (s.state === 'settled') { text = s.text; title = s.why || text; disabled = true; }
+    else if (s.state === 'loading') { text = '⭐ Loading…'; title = 'Looking this place up on Google'; disabled = true; busy = true; }
+    else if (s.state === 'quota') {
+      text = 'Rating unavailable (quota limit)';
+      const st = placesQueue.status();
+      title = 'Google ratings are paused: ' + placesPauseReason(st.scope || 'free_month') + '. Nothing is retried on its own; press again once the limit has reset.';
+    } else if (s.state === 'failed') { text = 'Rating unavailable'; title = 'Google did not answer for this place. Press to try again in a few minutes.'; }
+    if (btn.hidden !== hidden) btn.hidden = hidden;
+    if (btn.disabled !== disabled) btn.disabled = disabled;
+    btn.dataset.state = s.state;
+    btn.setAttribute('aria-busy', busy ? 'true' : 'false');
+    if (btn.textContent !== text) btn.textContent = text;
+    btn.title = title;
+  }
+
+  // The view the bulk load and the toolbar read: Timeline's board or the Days
+  // list, whichever is showing.
+  const ratingView = () => (ui.view === 'days' ? $('#daysList') : $('#board'));
+
+  function syncRowRatings(root) {
+    const scope = root && root.querySelectorAll ? root : document;
+    scope.querySelectorAll('.tpm-check[data-place-key]').forEach(paintRowRatingControl);
+    const btn = $('#ratingsLoadAll');
+    const label = $('#ratingsLoadAllLabel');
+    if (!btn || !label) return;
+    const st = placesQueue.status();
+    const view = ratingView();
+    const pending = !!view && [...view.querySelectorAll('.tpm-check[data-place-key]')]
+      .some(el => rowRatingAsked.has(el.dataset.placeKey) && placesQueue.isPending(el.dataset.placeKey));
+    let text = 'Load all Google ratings', disabled = false, busy = false;
+    if (st.off) { text = 'Google ratings unavailable'; disabled = true; }
+    else if (st.paused && st.scope) { text = 'Ratings paused (quota limit)'; disabled = true; }
+    else if (pending) { text = 'Loading ratings…'; disabled = true; busy = true; }
+    if (label.textContent !== text) label.textContent = text;
+    btn.disabled = disabled;
+    btn.setAttribute('aria-busy', busy ? 'true' : 'false');
+  }
+
+  // A 429 with a quota behind it parks the queue until the bucket refills.
+  // That is right for the assistant and the stay anchors, which re-ask on
+  // their own terms, but a place the traveller clicked must not be quietly
+  // re-sent an hour (or a month) later: its unsent lookups are withdrawn and
+  // the row says why, and pressing it again is the traveller's call.
+  function withdrawQuotaRefusedRows() {
+    const st = placesQueue.status();
+    if (!(st.paused && st.scope)) return;
+    const mine = [...rowRatingAsked].filter(k => placesQueue.isPending(k));
+    if (!mine.length) return;
+    placesQueue.drop(mine);
+    for (const k of mine) if (!placesQueue.isPending(k)) rowRatingQuota.add(k);
+  }
+
+  function requestRowRatings(lookups, priority) {
+    const st = placesQueue.status();
+    if (st.off) { toast('Google ratings are not available on this site right now.'); return 0; }
+    for (const l of lookups) rowRatingAsked.add(l.key);
+    if (st.paused && st.scope) {
+      for (const l of lookups) rowRatingQuota.add(l.key);
+      toast('Google ratings are paused for now - ' + placesPauseReason(st.scope) + '.');
+      syncRowRatings();
+      return 0;
+    }
+    for (const l of lookups) rowRatingQuota.delete(l.key);
+    if (priority === 'urgent') placesQueue.promote(lookups);
+    const n = placesQueue.request(lookups, { priority });
+    syncRowRatings();
+    return n;
+  }
+
+  // ONE place, on the traveller's click. Repeat clicks are free: the button
+  // is disabled while loading, and the queue reserves the key the moment it
+  // is planned, so the same place anywhere else on the page joins this lookup.
+  function requestPlaceRating(btn) {
+    if (btn.disabled) return;
+    const lookup = lookupFromEl(btn);
+    if (!lookup) return;
+    const n = requestRowRatings([lookup], 'urgent');
+    if (!n && rowRatingState(lookup.key).state === 'failed') {
+      toast('Google did not answer for this place just now. Try again in a few minutes.');
+    }
+  }
+
+  // THE BULK OPTION: every place in the view showing, minus what is already
+  // loaded, settled or on its way, deduplicated by place - and nothing is sent
+  // until the traveller has read how many lookups that is.
+  function loadAllRowRatings() {
+    const view = ratingView();
+    if (!view) return;
+    const seen = new Set();
+    const lookups = [];
+    for (const el of view.querySelectorAll('.tpm-check[data-place-key]')) {
+      if (!el.getClientRects().length) continue;          // folded away, not in view
+      const key = el.dataset.placeKey || '';
+      if (!key || seen.has(key)) continue;
+      const s = rowRatingState(key).state;
+      if (s === 'loaded' || s === 'settled' || s === 'loading') continue;
+      seen.add(key);
+      const l = lookupFromEl(el);
+      if (l) lookups.push(l);
+    }
+    if (!lookups.length) { toast('Every place in this view already has its Google rating loaded.'); return; }
+    const n = lookups.length;
+    confirmDialog(
+      'Load Google ratings for all places in this view?',
+      `This looks up ${n} place${n === 1 ? '' : 's'} on Google at once. Each one uses a Google Places API request, `
+        + 'and they come out of the monthly quota. You can load ratings individually instead, with "Check rating" beside each place.',
+      `Load all ratings (${n})`,
+      () => requestRowRatings(lookups, 'normal'),
+      { icon: '⭐', tone: 'primary' });
+  }
+
+  // Called once per render. Paints whatever the session already knows (a
+  // re-render, a view switch or a repeat venue costs nothing at all), asks
+  // for the assistant's candidates, and sets every row's rating control.
+  // Itinerary rows are never requested from here.
+  function hydrateRatings(container) {
+    paintPlaces(container);
+    const eager = [...container.querySelectorAll('.ap-rating[data-place-key]')]
+      .map(lookupFromEl)
+      .filter(Boolean);
+    // Urgent, and PROMOTED if a row already queued the same venue: a candidate
+    // set the traveller is reading must not wait behind a bulk row load,
+    // because its winner badges are a judgement across the whole set.
+    if (eager.length) {
+      placesLog('assistant batch', eager.map(l => ({ key: l.key, area: l.area })));
+      placesQueue.promote(eager);
+      placesQueue.request(eager, { priority: 'urgent' });
+    }
+    syncRowRatings(container);
+  }
+
+  // THE ONE EXCEPTION TO ON-DEMAND: A STAY'S ANCHOR (owner decision,
   // 2026-09-28). A hotel the traveller typed has no saved position, and its
   // point is what every distance on its days, the Day route and the "Location
   // not verified" check are measured from; the free geocoders can put it on a
   // province centroid and print a confident 344 km day. So on every render the
   // stays that cannot answer for themselves (stayNeedsAnchor, trip-logic.js)
-  // are resolved, whatever the ratings switch says. It paints no rating (the
-  // row link stays plain while the switch is Off, see paintTripMapsLink) and
-  // costs about one billed call per typed hotel per 29 days: the result is
+  // are resolved without a click. The stay's rating then shows for free (the
+  // response is already paid for), and it costs about one billed call per
+  // typed hotel per 29 days: the result is
   // persisted by persistResolvedPlaces, the session cache and the queue's
   // reservation stop any repeat within a page, and a name that matches
   // nothing is refused before the billed call (the free ID search) and then
-  // remembered server-side. Urgent, so switching ratings Off (which cancels
-  // the 'normal' lane) never withdraws an anchor.
+  // remembered server-side. Urgent, and never a row the traveller asked for,
+  // so a quota pause parks it rather than withdrawing it.
   function anchorStays(trip) {
     if (!trip || !Array.isArray(trip.items)) return;
     const lookups = [];
@@ -10989,57 +11105,6 @@
     placesQueue.request(lookups, { priority: 'urgent' });
   }
 
-  // Idempotent in both directions, so a double click or a burst of them can
-  // never queue anything twice: the queue reserves a key the moment it is
-  // planned, and a switch to the state already held does nothing.
-  function setRowRatings(on) {
-    on = !!on;
-    if (on === rowRatingsOn) { syncRatingsToggle(); return; }
-    rowRatingsOn = on;
-    if (!on) {
-      // Stop spending: rows stop being watched and everything they queued but
-      // did not send is withdrawn. What already landed stays in the session
-      // cache (hidden, not deleted), so switching back on repaints it free.
-      if (placesObserver) placesObserver.disconnect();
-      placesQueue.cancel('normal');
-    }
-    // A fresh render drops painted segments when switching off and, when
-    // switching on, paints the cached rows and registers the rest.
-    render();
-    syncRatingsToggle();
-  }
-
-  // A slot that the session cache can already answer needs neither an observer
-  // nor a request; paintPlaces has just filled it.
-  function observeRatingSlot(el) {
-    if (placesQueue.has(el.dataset.placeKey || '')) return;
-    if (placesObserver) placesObserver.observe(el);
-    // No IntersectionObserver (very old browser): fall back to asking for
-    // everything the render produced, which is what the app did before.
-    else { const l = lookupFromEl(el); if (l) placesQueue.request([l], { priority: 'normal' }); }
-  }
-
-  // Called once per render. Paints whatever the session already knows (a
-  // re-render, a view switch or a repeat venue costs nothing at all), then
-  // registers demand for what is genuinely missing.
-  function hydrateRatings(container) {
-    paintPlaces(container);
-    const eager = [...container.querySelectorAll('.ap-rating[data-place-key]')]
-      .map(lookupFromEl)
-      .filter(Boolean);
-    // Urgent, and PROMOTED if a row already queued the same venue: a candidate
-    // set the traveller is reading must not wait behind a screen of itinerary
-    // rows, because its winner badges are a judgement across the whole set.
-    if (eager.length) {
-      placesLog('assistant batch', eager.map(l => ({ key: l.key, area: l.area })));
-      placesQueue.promote(eager);
-      placesQueue.request(eager, { priority: 'urgent' });
-    }
-    // Itinerary rows only while the traveller has switched ratings on: a
-    // render with them off registers nothing and can cause no request.
-    if (rowRatingsOn) container.querySelectorAll('.tp-maps-link[data-place-key]').forEach(observeRatingSlot);
-    syncRatingsToggle();
-  }
 
   // ---------- discovery: verify BEFORE rendering, replace what fails ----------
   // For an ordinary turn the app renders cards first and paints ratings into
@@ -11337,7 +11402,7 @@
 
     placesLog('slots: verifying', candidates.map(c => c.lookup.key));
     // PROMOTE, THEN REQUEST. `request` skips a key the queue already holds, so
-    // a candidate the itinerary's own IntersectionObserver had already queued
+    // a candidate an itinerary row (now: a bulk load) had already queued
     // at normal priority stayed in the slow lane behind a screenful of rows,
     // missed the deadline, and was rejected as unverified - then replaced by a
     // billed search for a venue whose answer arrived a second later. `promote`
@@ -13018,6 +13083,8 @@
     if (next) next.focus({ preventScroll: true });
   });
   $('#daysList').addEventListener('click', e => {
+    const rate = e.target.closest('button.tpm-check');
+    if (rate) { requestPlaceRating(rate); return; }
     if (e.target.closest('[data-act="clear-filters"]')) { clearFilters(); return; }
     // The row's own issue marker: open the panel listing every issue in full.
     // The marker already CARRIES the sentence (its aria-label and tooltip), so
@@ -13159,7 +13226,7 @@
   $('#viewTimeline').addEventListener('click', () => setView('timeline'));
   $('#viewDays').addEventListener('click', () => setView('days'));
   $('#viewMap').addEventListener('click', () => setView('map'));
-  $('#ratingsToggle').addEventListener('click', () => setRowRatings(!rowRatingsOn));
+  $('#ratingsLoadAll').addEventListener('click', loadAllRowRatings);
   $('#selectBtn').addEventListener('click', () => {
     if (selMode) exitSelectMode();
     else { selMode = true; selIds.clear(); ui.view = 'timeline'; }
@@ -13525,6 +13592,9 @@
       render();
       return;
     }
+    // A row's own "Check rating": read-only, so a shared view may use it too.
+    const rate = e.target.closest('button.tpm-check');
+    if (rate) { requestPlaceRating(rate); return; }
     if (e.target.closest('[data-act="clear-filters"]')) { clearFilters(); return; }
     // The row's own issue marker: open the panel listing every issue in full.
     // The marker already CARRIES the sentence (its aria-label and tooltip), so

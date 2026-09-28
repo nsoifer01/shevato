@@ -31,7 +31,7 @@
 import {
   APP, recorder, freshIds, item, trip, dbOf,
   openApp, tpErrors, closePage, evaluate, waitForExpr, sleep,
-  clickSel, gotoHard, setValue, switchView, ratingsOn,
+  clickSel, gotoHard, setValue, switchView, loadAllRatings,
 } from './helpers.mjs';
 import { EXTERNAL_HOSTS } from '../../../tests/browser/cdp.mjs';
 
@@ -421,10 +421,9 @@ export async function run({ base, cdpPort }) {
     };
 
     await withPage('assistant-identity B', { db: dbOf([kataTrip]), stores, net: placesDouble(log) }, async (s) => {
-      // Rows resolve through Places only with the itinerary's Google ratings
-      // switched on (opt-in since 2026-09-28); this block is about that path.
-      // Switched on from the Timeline, where the stay row resolves first.
-      await ratingsOn(s);
+      // Rows resolve through Places only on demand (since 2026-09-28); this
+      // block is about that path, so it bulk-loads the Timeline first.
+      await loadAllRatings(s);
       await sleep(1500);
       await switchView(s, 'days', 1200);
       // Days renders into #daysList; #board is the Timeline's panel.
