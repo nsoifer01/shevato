@@ -21,7 +21,7 @@
 import {
   APP, recorder, freshIds, item, trip, dbOf,
   openApp, tpErrors, closePage, evaluate, waitForExpr, sleep,
-  clickSel, gotoHard, switchView, setValue, ratingsOn,
+  clickSel, gotoHard, switchView, setValue, loadAllRatings,
 } from './helpers.mjs';
 import { EXTERNAL_HOSTS } from '../../../tests/browser/cdp.mjs';
 
@@ -178,9 +178,9 @@ export async function run({ base, cdpPort }) {
     try {
       s = await openApp(cdpPort, base, opts);
       // Every block here is about the Places-resolved identity of a ROW, which
-      // the itinerary only looks up with Google ratings switched on (opt-in
-      // since 2026-09-28). A reload inside a block starts Off again.
-      await ratingsOn(s);
+      // the itinerary only looks up on demand (since 2026-09-28), so each view
+      // a block reads is bulk-loaded, and again after a reload.
+      await loadAllRatings(s);
       await fn(s);
       await t(`${label}: no page errors`, tpErrors(s).length === 0, tpErrors(s).slice(0, 2).join(' | '), s);
     } catch (e) {
@@ -237,7 +237,7 @@ export async function run({ base, cdpPort }) {
       /* --- 2. the row, the chip and the footer --- */
       await gotoHard(s, base + APP, { settle: 1600 });
       await switchView(s, 'days');
-      await ratingsOn(s);
+      await loadAllRatings(s);
       await waitForExpr(s, `!!document.querySelector('#daysList .day-card[data-date="${DAY}"] .dc-route-tot')`, { timeout: 15000 });
       const day = await readDay(s);
       const mango = (day && day.rows.find(r => /Mango Garden/.test(r.label))) || null;
@@ -335,6 +335,7 @@ export async function run({ base, cdpPort }) {
 
     await withPage('canonical-coords B', { db: dbOf([tp]), stores, net: net(log) }, async (s) => {
       await switchView(s, 'days');
+      await loadAllRatings(s);
       await waitForExpr(s, `!!document.querySelector('#daysList .day-card[data-date="${DAY}"] .dc-route-tot')`, { timeout: 20000 });
       await sleep(1500);
       const day = await readDay(s);
@@ -380,6 +381,7 @@ export async function run({ base, cdpPort }) {
 
     await withPage('canonical-coords C', { db: dbOf([tp]), stores, net: net(log) }, async (s) => {
       await switchView(s, 'days');
+      await loadAllRatings(s);
       await waitForExpr(s, `!!document.querySelector('#daysList .day-card[data-date="${DAY}"] .dc-route-tot')`, { timeout: 20000 });
       await sleep(2500);
 
@@ -433,7 +435,7 @@ export async function run({ base, cdpPort }) {
         return 1; })()`);
       await gotoHard(s, base + APP, { settle: 1600 });
       await switchView(s, 'days');
-      await ratingsOn(s);
+      await loadAllRatings(s);
       await sleep(3000);
       const kept = await saved();
       await t('C7: a record the traveller already had is never re-pointed by a lookup',
@@ -491,6 +493,7 @@ export async function run({ base, cdpPort }) {
 
     await withPage('canonical-coords E', { db: dbOf([tp]), stores, net: net(log, UNIDENTIFIABLE) }, async (s) => {
       await switchView(s, 'days');
+      await loadAllRatings(s);
       await waitForExpr(s, `!!document.querySelector('#daysList .day-card[data-date="${MIDDLE}"]')`, { timeout: 20000 });
       await sleep(4000);
 
@@ -548,6 +551,7 @@ export async function run({ base, cdpPort }) {
       await setValue(s, '#inTitle', GOOD);
       await clickSel(s, '#itemSaveBtn', { settle: 1200 });
       await switchView(s, 'days');
+      await loadAllRatings(s);
       await sleep(4500);
 
       const after = await warn();
@@ -577,7 +581,7 @@ export async function run({ base, cdpPort }) {
 
       await gotoHard(s, base + APP, { settle: 1600 });
       await switchView(s, 'days');
-      await ratingsOn(s);
+      await loadAllRatings(s);
       await sleep(3500);
       const reloaded = await warn();
       await t('E7b: and after a reload the warning stays gone',

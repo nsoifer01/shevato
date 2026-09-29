@@ -71,7 +71,7 @@
   <link rel="stylesheet" href="../../assets/css/main.css">
   <link rel="stylesheet" href="../../assets/css/sync-status.css">
   <link rel="stylesheet" href="/assets/css/back-to-top.css">
-  <link rel="stylesheet" href="css/styles.css?v=70">
+  <link rel="stylesheet" href="css/styles.css?v=71">
 
   <!-- Google Analytics. Loaded async + defer so it never blocks first paint;
        all tracking goes through the shared helper in analytics.js, which
@@ -222,15 +222,14 @@
       <button id="viewDays" role="tab" aria-selected="false" aria-controls="daysBox">Days</button>
       <button id="viewMap" role="tab" aria-selected="false" aria-controls="mapBox">Map</button>
     </span>
-    <!-- Google ratings on the itinerary rows are OPT-IN, off on every load:
-         each one is a billed Place Details call. One control serves both
-         Timeline and Days; applyView hides it on the Map and on an empty plan.
-         The assistant's own rating chips do not depend on it. -->
-    <button type="button" class="btn tb-ratings" id="ratingsToggle" aria-pressed="false"
-            title="Look up Google Maps ratings (and opening hours) for the places on screen">
-      <span class="tbr-star" aria-hidden="true">⭐</span>
-      <span class="tbr-label">Google ratings:</span>
-      <span class="tbr-state" id="ratingsToggleState">Off</span>
+    <!-- The BULK option for Google ratings on the itinerary. The normal path
+         is each row's own "Check rating"; this looks up every place in the
+         view showing, after a confirmation that says how many lookups that
+         is. One button for Timeline and Days; applyView hides it on the Map
+         and on an empty plan. The assistant does not depend on it. -->
+    <button type="button" class="btn tb-ratings" id="ratingsLoadAll">
+      <span class="tbr-star" id="ratingsLoadAllIcon" aria-hidden="true">⭐</span>
+      <span class="tbr-label" id="ratingsLoadAllLabel">Load all Google ratings</span>
     </button>
     <div class="tb-group tb-filters" role="group" aria-label="Search and filters">
     <span class="search-wrap">
@@ -626,6 +625,9 @@
     </div>
     <div class="m-body">
       <p class="m-prose" id="confirmText"></p>
+      <!-- an optional second line a caller fills in after opening (the bulk
+           ratings warning's "lookups left"); confirmDialog hides it again -->
+      <p class="m-prose m-note" id="confirmNote" hidden></p>
     </div>
     <div class="modal-foot">
       <button type="button" class="btn ghost" data-close>Cancel</button>
@@ -1000,8 +1002,8 @@
     }
   </script>
 
-  <script src="js/trip-logic.js?v=56"></script>
-  <script src="js/app.js?v=85"></script>
+  <script src="js/trip-logic.js?v=57"></script>
+  <script src="js/app.js?v=86"></script>
   <script src="/assets/js/back-to-top.js" defer></script>
 </body>
 </html>

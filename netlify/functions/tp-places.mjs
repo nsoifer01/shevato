@@ -47,6 +47,12 @@
 //   curl -H "X-TP-Owner-Token: <token>" -H "Origin: https://shevato.com" \
 //     "https://shevato.com/.netlify/functions/tp-places?status=1"
 //
+// ANYONE'S OWN HEADROOM: a POST of { clientId, budget: true } (plus
+// ownerToken, if any) answers { left, scope, resetAt } - how many lookups
+// THIS caller could make right now across every bucket, which binds, and when
+// it refills. The Trip Planner's bulk "Load all Google ratings" warning shows
+// it. Read-only: nothing is reserved or written, nothing else is returned.
+//
 // The CLI must be linked to the site that actually serves shevato.com before
 // running those commands; the blob store is per-site, so writing it while
 // linked to any other project leaves this endpoint on 503.
@@ -56,7 +62,7 @@
 // render next to any rating it shows; see ATTRIBUTION below.
 
 import { createHash, timingSafeEqual } from 'node:crypto';
-import { checkQuota, releaseQuota, resetAtFor, budgetStatus, MONTHLY_BUDGET, DEFAULT_LIMITS, OWNER_LIMITS } from './lib/tp-places-quota.mjs';
+import { checkQuota, releaseQuota, resetAtFor, budgetStatus, lookupsLeft, MONTHLY_BUDGET, DEFAULT_LIMITS, OWNER_LIMITS } from './lib/tp-places-quota.mjs';
 import { updateUsage } from './lib/blob-cas.mjs';
 import { originAllowed, json, upstreamSignal } from './lib/tp-http.mjs';
 import { networkIdFor } from './lib/tp-client-identity.mjs';
@@ -207,6 +213,17 @@ export default async function handler(req) {
     if (!isOwner) return json({ error: 'method_not_allowed' }, 405);
     const usage = (await store.get(USAGE_KEY, { type: 'json' })) || {};
     return json(budgetStatus(usage, Date.now()), 200);
+  }
+
+  // The caller's own headroom, read-only: the smallest room across every
+  // bucket a lookup would spend against (lookupsLeft), the bucket that binds
+  // and when it refills. Nothing is reserved or written, and nothing but this
+  // caller's figure is returned.
+  if (clamped.budget) {
+    const now = Date.now();
+    const usage = (await store.get(USAGE_KEY, { type: 'json' })) || {};
+    const b = lookupsLeft(usage, clamped.clientId, now, limits, tier, networkIdFor(req, now));
+    return json({ left: b.left, scope: b.scope, resetAt: b.resetAt }, 200);
   }
 
   // (5) Quota. Reserve an upper bound BEFORE any upstream call so parallel
@@ -473,6 +490,11 @@ export function clampBody(body) {
   // Clamped like everything else so a hostile body cannot smuggle in a
   // megabyte for the comparison to chew on.
   const ownerToken = typeof body.ownerToken === 'string' ? body.ownerToken.slice(0, 200).trim() : '';
+
+  // A BUDGET question: "how many lookups could I make right now?", asked by
+  // the Trip Planner's bulk-load warning before the traveller commits. It
+  // carries no queries, spends nothing and is answered from the counters.
+  if (body.budget === true) return { ok: true, clientId, queries: [], discover: null, ownerToken, budget: true };
 
   // A DISCOVERY request is the other shape this endpoint answers: not "resolve
   // these named venues" but "find me candidates for this category, here". It

@@ -5193,22 +5193,23 @@ const TripLogic = (() => {
         lo = lo.filter(k => entries.has(k));
       },
       generation: () => gen,
-      // Withdraw every queued, UNSENT lookup in one lane. The itinerary rows
-      // are the only 'normal' demand, so this is what switching the view's
-      // ratings off calls: nothing they asked for goes on the wire afterwards.
-      // In-flight batches are already paid for and land in the cache as usual,
-      // and an urgent (assistant) entry is never touched, including a row's
-      // key that the assistant promoted.
-      cancel(priority) {
-        const lane = priority === 'urgent' ? 'urgent' : 'normal';
+      // Withdraw specific queued, UNSENT lookups (keys or lookups). This is
+      // how a place the traveller clicked stops waiting behind a quota pause:
+      // the app drops what it asked for rather than let it go out on its own
+      // later. In-flight batches are already paid for and land in the cache
+      // as usual. A dropped key is no longer known, so asking again plans it.
+      drop(keys) {
         let dropped = 0;
-        for (const key of [...entries.keys()]) {
-          if (inFlight.has(key) || entries.get(key).priority !== lane) continue;
+        for (const raw of Array.isArray(keys) ? keys : []) {
+          const key = typeof raw === 'string' ? raw : (asPlaceLookup(raw) || {}).key;
+          if (!key || inFlight.has(key) || !entries.has(key)) continue;
           entries.delete(key);
           dropped += 1;
         }
-        hi = hi.filter(k => entries.has(k));
-        lo = lo.filter(k => entries.has(k));
+        if (dropped) {
+          hi = hi.filter(k => entries.has(k));
+          lo = lo.filter(k => entries.has(k));
+        }
         return dropped;
       },
       pump,
@@ -7091,12 +7092,13 @@ const TripLogic = (() => {
 
   // DOES THIS STAY NEED A PLACES LOOKUP TO ANCHOR ITS DAYS? (2026-09-28)
   //
-  // Itinerary ratings are opt-in (see setRowRatings in app.js), but a stay is
-  // not a row like the others: its point is the anchor every distance on its
-  // days, the Day route and the "Location not verified" check are measured
-  // from, and the free geocoders can put a typed hotel on a province centroid
-  // (the Ko Phi Phi 344 km day). So a stay is resolved on load, ratings switch
-  // or not - but ONLY when the item cannot answer for itself:
+  // Itinerary ratings are on demand, one place at a time (see
+  // requestPlaceRating in app.js), but a stay is not a row like the others:
+  // its point is the anchor every distance on its days, the Day route and
+  // the "Location not verified" check are measured from, and the free
+  // geocoders can put a typed hotel on a province centroid (the Ko Phi Phi
+  // 344 km day). So a stay is resolved on load, without a click - but ONLY
+  // when the item cannot answer for itself:
   //   - a stay (never an activity, a meal or a leg), not cancelled;
   //   - with no saved place record carrying a usable point. A record whose
   //     coordinates aged past the 29-day window, or that its own city refuses,

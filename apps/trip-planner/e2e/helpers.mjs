@@ -291,14 +291,24 @@ export async function switchView(s, view, settle = 900) {
   return evaluate(s, `document.querySelector(${JSON.stringify(id)}).classList.contains('on')`);
 }
 
-// Google ratings on the Timeline/Days rows are opt-in and Off on every load
-// (2026-09-28), so a block that tests what a resolved row paints (a rating,
-// hours, a stay's location check, Places-grade distances) presses the
-// toolbar switch first, exactly as a traveller would. Idempotent.
-export async function ratingsOn(s, settle = 300) {
-  const on = () => evaluate(s, `document.getElementById('ratingsToggle').getAttribute('aria-pressed') === 'true'`);
-  if (!(await on())) await clickSel(s, '#ratingsToggle', { settle });
-  return on();
+// Google ratings on the Timeline/Days rows are on demand (2026-09-28): a row
+// is looked up only when its "Check rating" is pressed, or when the toolbar's
+// "Load all Google ratings" is pressed and its quota warning confirmed. A
+// block that tests what a resolved row paints (a rating, hours, a stay's
+// location check, Places-grade distances) does the bulk load for the view
+// showing, exactly as a traveller would. One-shot, not a mode: a row drawn
+// later (another view, a new item) needs it again. Returns the number the
+// warning offered, 0 when there was nothing left to load.
+export async function loadAllRatings(s, settle = 400) {
+  await clickSel(s, '#ratingsLoadAll', { settle: 250 });
+  const offered = await evaluate(s, `(() => {
+    const o = document.getElementById('confirmOverlay');
+    if (!o || !o.classList.contains('open')) return 0;
+    const m = /\\((\\d+)\\)/.exec(document.getElementById('confirmYes').textContent || '');
+    return m ? Number(m[1]) : -1;
+  })()`);
+  if (offered) await clickSel(s, '#confirmYes', { settle });
+  return offered;
 }
 
 export const escape = (s) => pressKey(s, 'Escape', 'Escape', 27);

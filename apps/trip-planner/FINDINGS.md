@@ -2458,106 +2458,129 @@ the per-tier day/month split. Owner-gated, and it carries no key, no token and
 no client ids. To change the ceiling, edit `MONTHLY_BUDGET` - and read the
 paragraph above it first, because the number is an argument, not a preference.
 
-## Itinerary ratings are opt-in (2026-09-28)
+## Itinerary ratings are on demand, one place at a time (2026-09-28)
 
-Owner request: pages with many places were still exhausting the monthly
-Places allowance and running into 429s, even after the 2026-08-17 round below
-made demand follow the eye. That round bounded what a LOAD costs to the first
-screen; it did nothing about READING. Every row that scrolled within 600px of
-the viewport was a billed Place Details call the traveller never asked for,
-and a long trip read top to bottom in Timeline and again in Days (the session
-cache covers the switch, but a reload does not) walked straight through the
-850 budget.
+Owner request, reached in three steps on one day, and the last one is the
+design. Pages with many places were exhausting the monthly Places allowance
+and running into 429s even after the 2026-08-17 round below made demand
+follow the eye: that bounded what a LOAD cost, but every row that scrolled
+within 600px of the viewport was still a billed Place Details call nobody
+asked for. Step one (PR #571) put that observer behind a session on/off
+switch; the owner then rejected the switch as too coarse, because On still
+rated every place on the page as it scrolled. Now:
+
+- **Nothing is looked up for a row until the traveller asks.** Opening
+  Timeline or Days, scrolling, view switches, expanding a group and every
+  re-render request nothing. The IntersectionObserver is gone, and
+  `hydrateRatings` no longer requests rows at all.
+- **One place per click.** `tripMapsRatingHtml` renders a `.tpm-check`
+  button BESIDE the `.tp-maps-link` (a button cannot live inside an anchor),
+  carrying the same `placeHooks`. `requestPlaceRating` asks for that one
+  lookup, urgent lane (a click is someone waiting), with `promote` in case a
+  bulk load queued it.
+- **Bulk is confirmed and one-shot.** `#ratingsLoadAll` gathers every
+  `.tpm-check` in the view showing (`ratingView()`: board or `#daysList`)
+  that has client rects (a folded group is not "in view"), skips loaded,
+  settled and in-flight keys, dedupes by key, and opens the existing
+  `confirmDialog` with the count before sending anything, normal lane.
+  The dialog also shows how many lookups this browser has LEFT right now:
+  `fetchLookupsLeft` POSTs `{ budget: true }` as the dialog opens and fills
+  `#confirmNote` when it answers (a stamp stops a late answer landing in a
+  reopened dialog). Server side, `lookupsLeft` (tp-places-quota.mjs) is the
+  smallest room across every bucket `checkQuota` would charge, read-only;
+  both read ONE `quotaRoom`, so the number shown can never be computed
+  differently from the one enforced (pinned by a test comparing them). A 0
+  disables the confirm; the answer is null on any failure and the line says
+  so rather than guessing. The owner status GET stays owner-only; this
+  answers only the caller's own figure.
+- **The bulk button's own states:** `Loading ratings…` only while keys from
+  the LAST BULK load (`rowRatingBulk`) are in flight, because keying it on
+  every asked key let one slow single click lock the bulk option (found
+  while screenshotting); `✓ All ratings loaded`, green and disabled, once
+  every shown row is loaded or settled. "Shown" is measured on the row's
+  Maps link, never on the control (`rowShown`): a loaded row's control is
+  hidden on purpose, and measuring it dropped exactly the finished rows, so
+  the done state could never be reached (caught by P0 on its first run).
+  `confirmDialog` gained an optional `{ icon, tone: 'primary' }` so a
+  non-destructive question does not wear the delete dialog's red 🗑; every
+  call resets both, so a later delete cannot inherit the blue look.
+- **States are derived, never stored** (`rowRatingState`), from the cache,
+  the queue and two session Sets (`rowRatingAsked`, `rowRatingQuota`): loaded
+  (button hidden, the link carries the rating), settled (a cached no-star
+  answer, labelled by `placeStateLabel` like the cards), loading, quota,
+  failed, idle. `syncRowRatings` repaints every control and the bulk button
+  from `hydrateRatings` and from the queue's `onUpdate`, which fires on every
+  landing, pause and switch-off.
+- **Cached ratings paint on every row, whoever paid.** The earlier switch hid
+  cached entries while Off; that was a cost-free rating being thrown away.
+  Now a place loaded in Days shows in Timeline at once, and the assistant's
+  or a stay anchor's lookups show on their rows.
+- **A quota 429 is never retried for a row.** The queue parks on a 429 and
+  re-sends when the bucket refills, which is right for the assistant and
+  stay anchors. For a place the traveller clicked it is not: an hour (or a
+  month) later it would go out unasked. `withdrawQuotaRefusedRows` (from
+  `onUpdate`) `drop`s every still-waiting key in `rowRatingAsked` and marks it
+  quota; a click while `status().paused && scope` sends nothing and marks
+  the row. `createPlacesQueue().drop(keys)` replaced the lane-wide
+  `cancel(priority)` of the switch round, which nothing needs now.
 
 **The trace, for whoever touches this next.** Timeline (`render` -> `board`)
-and Days (`renderDays` -> `#daysList`) both render the same combined row link
-(`tripMapsRatingHtml` -> `.tp-maps-link[data-place-key]`) and both hand their
-container to ONE function, `hydrateRatings`. That function paints from the
-session cache and then did two things: requested every `.ap-rating`
-(assistant card, hotel picker) at once as `urgent`, and registered every
-`.tp-maps-link` with the IntersectionObserver, which requested them as
-`normal`. So the cleanest layer was that second line, and the lanes already
-meant exactly the right thing: rows are the only `normal` demand in the app.
+and Days (`renderDays` -> `#daysList`) render the same combined row link
+through `mapsHtmlFor` -> `tripMapsRatingHtml` and hand their container to ONE
+function, `hydrateRatings`, which paints from the session cache, requests the
+assistant's `.ap-rating` candidates (urgent) and syncs the row controls. Both
+views' click handlers route `button.tpm-check` to `requestPlaceRating` before
+the shared-mode gate: a lookup writes nothing.
 
-**What changed.**
-- `rowRatingsOn` (declared beside `ui`, session-only, false on every load)
-  gates the observer registration in `hydrateRatings`, the observer callback
-  itself (an entry already delivered when the switch goes off must not
-  request), and `paintTripMapsLink` (a row whose place the assistant already
-  resolved stays a plain link while Off, and is NOT marked painted, so
-  switching On paints it free).
-- One toolbar button `#ratingsToggle` (`aria-pressed`) beside the view tabs
-  for BOTH views, hidden on the Map and on an empty plan. The state word is
-  derived, not stored: `Loading…` while any row in the current view is
-  `isPending` in the queue, `Paused` while pending on a parked queue,
-  `Unavailable` when the queue is `off` (no key). The queue calls `onUpdate`
-  on every landing, pause and switch-off, which is what keeps the word honest.
-- Off calls `placesObserver.disconnect()` and the new
-  `createPlacesQueue().cancel('normal')`, which withdraws every queued,
-  unsent row lookup. In-flight batches are paid for and still land. An
-  urgent entry is never touched, including a row key the assistant
-  `promote`d. A cancelled key is no longer `known`, so switching On again
-  asks for it once.
-- Every toggle is a `render()`: Off drops the painted segments with the old
-  DOM, On paints cached rows and registers the rest. The toggle is idempotent
-  and the queue reserves on plan, so a burst of clicks cannot duplicate.
+**What goes with a row's rating.** The same billed response carries the Days
+hours line and the Places-grade point that tops the distance ladder, so both
+arrive when that place is loaded. Rows still locate from a saved `it.place`
+record and from the free Photon top-up (`queueVenueLookups`). A free
+alternative for hours does not exist: they are the Enterprise SKU.
 
-**What goes with the rating, and why that is accepted.** The same billed
-response carries the hours line, the stay's `Location not verified` check
-(`paintPlaceWarning`, which stays silent until an answer lands) and the
-Places-grade point that tops the distance ladder. With the switch Off those
-appear only for places the session already holds, except for stays (below). Rows still locate from a
-saved `it.place` record and from the free Photon top-up (`queueVenueLookups`,
-which only deferred to Google when a lookup was pending, and none is now). A
-free alternative for hours does not exist: they are the Enterprise SKU.
-
-**Stays are the exception, anchored on load (owner decision, same day,
-follow-up PR).** A stay the traveller TYPED (no saved `place` record) used to
-get its canonical identity and point from the row lookup on the first load
-and keep it (`persistResolvedPlaces`). With only the switch, it was anchored
-by the free geocoders instead, which is exactly the ladder the 2026-09-05/06
-rounds showed can land on a province centroid (the Ko Phi Phi 344 km day):
-a confident wrong number on every distance of the stay's days, which is worse
-than a missing rating. So `anchorStays` (called from `render`) requests, in
-the URGENT lane, every stay for which `stayNeedsAnchor` (trip-logic.js) says
-the item cannot answer for itself: a non-cancelled stay with no record, a
-record with no point, a point past the 29-day window, or a point its own
-city refuses. Nothing else is asked. It paints no rating (paintTripMapsLink
-still returns while Off); it does bring back the stay's `Location not
-verified` warning, which is the point.
-- **Cost:** one billed call per typed hotel, then persisted, so none on later
-  loads until the coordinates age out: about once per hotel per 29 days, for
-  trips that are opened. A name that matches nothing is refused at the free
-  ID search and its verdict is kept server-side, so it bills nothing.
-- **Urgent, not normal, on purpose:** switching ratings Off cancels the
-  normal lane, and an anchor must survive that.
+**Stays are anchored on load (owner decision, PR #572).** A stay the
+traveller TYPED (no saved `place` record) used to get its canonical identity
+and point from the row lookup and keep it (`persistResolvedPlaces`). Without
+it the free geocoders anchor it, and they can land on a province centroid
+(the Ko Phi Phi 344 km day): a confident wrong number on every distance of
+the stay's days, worse than a missing rating. So `anchorStays` (from
+`render`) requests, URGENT, every stay `stayNeedsAnchor` (trip-logic.js)
+says cannot answer for itself: non-cancelled, and no record, no point, a
+point past the 29-day window, or a point its own city refuses. Its rating
+then shows for free, and its `Location not verified` warning works.
+- **Cost:** one billed call per typed hotel, then persisted, so about once
+  per hotel per 29 days for trips that are opened. A name that matches
+  nothing is refused at the free ID search and its verdict is kept
+  server-side, so it bills nothing.
+- **Urgent, and never in `rowRatingAsked`,** so a quota pause parks an
+  anchor rather than withdrawing it.
 - **Where it can repeat:** a shared view cannot persist (save() refuses), and
-  a stay whose Google point its own city centroid refuses is never stored as
-  positioned. Both cost one call per page load per such stay; the session
-  cache stops any repeat within a page.
-- **`e2e/places.mjs` P0b** pins it end to end: with the switch Off the typed
-  stay and nothing else is asked, no row shows a rating, the stay persists
-  with its point, Days asks nothing more, and a reload costs zero requests.
-  `tests/stay-anchor.test.js` pins the predicate (8 node checks).
+  a stay whose Google point its own city refuses is never stored as
+  positioned: one call per page load per such stay, none within a page.
 
-The baseline browser run of the opt-in PR is what exposed the dependency: 19
-`canonical-coordinates` checks, 3 `assistant-identity` B checks and 6
-`audit-fixes` HR-01/PP-04 checks went red until those blocks pressed the
-switch (they test activity rows too, so they still do).
+**Not on demand, on purpose:** the assistant (`.ap-rating` urgent requests,
+the discovery pre-verification, `warmStayAnchors` resolving the day's stay as
+a CHAT anchor) and the hotel picker's `#stayRating`. Those are comparisons
+the traveller explicitly asked for.
 
-**Not governed by the switch, on purpose:** the assistant (`.ap-rating`
-urgent requests, the discovery pre-verification, `warmStayAnchors` resolving
-the day's stay as a CHAT anchor) and the hotel picker's `#stayRating`. Those
-are comparisons the traveller explicitly asked for. `e2e/places.mjs` P11 pins
-that the chat cards rate themselves while the switch reads Off.
-
-**Test consequence:** every browser block that asserts a painted rating,
-hours line, stay warning or Places-grade distance on a ROW has to press the
-switch first (`ratingsOn(s)` in `e2e/helpers.mjs`), exactly as a traveller
-would. A block that forgets it fails as "nothing painted", which looks like a
-lookup bug and is not. P0 in `e2e/places.mjs` pins the opt-in itself (zero
-requests on Timeline and Days, scroll included; On/Off/On; five rapid
-clicks; a repeated venue; a re-render; the Loading state on a held request).
+**Tests.** `e2e/places.mjs` P0 pins the owner's fourteen points (zero requests
+opening Timeline and Days and scrolling; one click, one place; others stay
+unloaded; a second click, only that place; a place on four rows is one lookup
+rated on all four; six fast clicks, one lookup; Days shows loaded ratings at
+once; re-renders ask nothing; the bulk warning appears before any request,
+offers only the unloaded places, Cancel sends nothing, confirming loads the
+rest once each in batches of 12; Loading on a held request; a quota 429 is
+not retried and a click during it sends nothing; chat rates its cards with no
+itinerary lookup), P0b the stay anchor, P1 a 50-place bulk load.
+`tests/places-queue.test.js` pins `drop`, `tests/stay-anchor.test.js` the
+predicate. Every browser block that asserts a painted rating, hours line or
+Places-grade distance on a ROW calls `loadAllRatings(s)` (e2e/helpers.mjs)
+for the view it reads, exactly as a traveller would. It is one-shot, not a
+mode: a block that reads Days after loading Timeline, or adds a row, loads
+again. A block that forgets fails as "nothing painted", which looks like a
+lookup bug and is not. The first run of the switch round is what exposed how
+much rode on the automatic row lookups: 19 `canonical-coordinates` checks, 3
+`assistant-identity` B checks and 6 `audit-fixes` HR-01/PP-04 checks.
 
 ## Places ratings: the 2026-08-17 429 round
 

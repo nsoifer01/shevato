@@ -1,14 +1,14 @@
 {
   "css/styles.css": {
-    "pin": 70,
-    "sha256": "b72af76e35799e5a"
+    "pin": 71,
+    "sha256": "6368cd399ddef7a2"
   },
   "js/trip-logic.js": {
-    "pin": 56,
-    "sha256": "5011012943cf04ce"
+    "pin": 57,
+    "sha256": "d7d11490e93c6035"
   },
   "js/app.js": {
-    "pin": 85,
-    "sha256": "391a09153fbd02c5"
+    "pin": 86,
+    "sha256": "6334894b76de660e"
   }
 }

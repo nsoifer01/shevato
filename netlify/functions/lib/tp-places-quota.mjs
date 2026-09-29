@@ -232,20 +232,19 @@ function poolKeys(tier) {
 // rating and three stay quiet is a much better outcome than eight blank cards,
 // and the caller reserves exactly `granted` before spending. allowed is false
 // only when granted would be 0, so the caller can answer 429.
-export function checkQuota(usage, clientId, now, cost = 1, limits = DEFAULT_LIMITS, tier = 'public', networkId = '') {
-  const hb = hourBucket(now);
-  const db = dayBucket(now);
-  const mb = monthBucket(now);
-  const u = pruneUsage(usage, hb, db, mb);
+// Every bucket a lookup by this caller would spend against, with the room
+// left in each, from ALREADY-PRUNED usage. One definition, read by the write
+// path (checkQuota) and the read-only answer (lookupsLeft), so the number a
+// traveller is shown can never be computed differently from the one the
+// server then enforces.
+function quotaRoom(u, clientId, limits, tier, networkId) {
   const id = String(clientId);
-  const want = Math.max(0, Math.floor(cost));
   const pool = poolKeys(tier);
   // Public tier only: the owner tier presents a secret, which is identity
   // rather than an inference from an address. '' means the platform gave no
   // address, and the dimension is skipped - fail open.
   const net = tier === 'owner' ? '' : String(networkId || '');
-
-  const room = [
+  return [
     ['client_hour', limits.perClientHour - (u.clientHour[id] || 0)],
     ['client_day', limits.perClientDay - (u.clientDay[id] || 0)],
     ...(net ? [
@@ -260,6 +259,38 @@ export function checkQuota(usage, clientId, now, cost = 1, limits = DEFAULT_LIMI
     // knowing about.
     ['free_month', MONTHLY_BUDGET - u.billedMonth],
   ];
+}
+
+// HOW MANY LOOKUPS THIS CALLER COULD MAKE RIGHT NOW, read-only (2026-09-28).
+// The Trip Planner's bulk "Load all Google ratings" warning states it before
+// the traveller commits, so "this will use 40 lookups" can be read against
+// "you have 12 left". It is the smallest room across every bucket checkQuota
+// would charge, named by the bucket that binds (ties go to the later row, so
+// an exhausted month reads as free_month, as a 429 would), with the time that
+// bucket refills. It writes nothing and reveals nothing but the caller's own
+// headroom: no counters, no other client's figures.
+export function lookupsLeft(usage, clientId, now, limits = DEFAULT_LIMITS, tier = 'public', networkId = '') {
+  const u = pruneUsage(usage, hourBucket(now), dayBucket(now), monthBucket(now));
+  let left = Infinity;
+  let scope = null;
+  for (const [name, room] of quotaRoom(u, clientId, limits, tier, networkId)) {
+    if (room <= left) { left = room; scope = name; }
+  }
+  left = Math.max(0, Math.floor(left));
+  return { left, scope, resetAt: resetAtFor(scope, now) };
+}
+
+export function checkQuota(usage, clientId, now, cost = 1, limits = DEFAULT_LIMITS, tier = 'public', networkId = '') {
+  const hb = hourBucket(now);
+  const db = dayBucket(now);
+  const mb = monthBucket(now);
+  const u = pruneUsage(usage, hb, db, mb);
+  const id = String(clientId);
+  const want = Math.max(0, Math.floor(cost));
+  const pool = poolKeys(tier);
+  const net = tier === 'owner' ? '' : String(networkId || '');
+
+  const room = quotaRoom(u, clientId, limits, tier, networkId);
   let granted = want;
   let scope = null;
   for (const [name, left] of room) {
