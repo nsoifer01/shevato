@@ -422,12 +422,14 @@ export async function run({ base, cdpPort }) {
 
     await withPage('assistant-identity B', { db: dbOf([kataTrip]), stores, net: placesDouble(log) }, async (s) => {
       // Rows resolve through Places only on demand (since 2026-09-28); this
-      // block is about that path, so it bulk-loads the Timeline first.
-      await loadAllRatings(s);
+      // block is about that path. The stay anchors itself on load; the dinner
+      // sits folded under it on the Timeline (the bulk load skips folded
+      // rows), so the rows are loaded where they are read: in Days.
       await sleep(1500);
       await switchView(s, 'days', 1200);
       // Days renders into #daysList; #board is the Timeline's panel.
       await waitForExpr(s, `document.querySelectorAll('#daysList .dc-title').length >= 3`, { timeout: 15000 });
+      await loadAllRatings(s);
       // the chips are painted from the caches after the lookups land
       await sleep(2500);
       const legs = await evaluate(s, `(() => {

@@ -531,9 +531,17 @@ request (`createPlacesQueue` in trip-logic.js):
   settled or in flight, deduplicated by place, and asks first: "Load Google
   ratings for all places in this view? This looks up N places on Google at
   once ... monthly quota ... You can load ratings individually instead", with
-  `Cancel` and `Load all ratings (N)`. Cancel sends nothing. It is not a mode:
-  rows drawn later ask for nothing until asked. While its lookups are in
-  flight it reads `Loading ratings…`.
+  `Cancel` and `Load all ratings (N)`. Cancel sends nothing. As it opens it
+  asks the ratings function how many lookups this browser could make right
+  now (a read-only `{ budget: true }` POST, answered by `lookupsLeft` across
+  every bucket), and a second line reads `Google lookups left right now: 412.
+  This would use 26 of them.`; in amber when fewer are left than the view
+  needs (`Only about 3 of these 5 would load ...`), and with none left the
+  confirm button is disabled and the line says when it refills. It is not a
+  mode: rows drawn later ask for nothing until asked. While ITS lookups are in
+  flight it reads `Loading ratings…` (a slow single click never locks it),
+  and once every place in the view has its answer it becomes a green, inert
+  `✓ All ratings loaded`.
 - **A quota 429 is never retried for a row.** The queue still parks on a 429
   for the assistant and stay anchors, but every row lookup the traveller
   asked for that is still waiting is withdrawn (`createPlacesQueue().drop`)

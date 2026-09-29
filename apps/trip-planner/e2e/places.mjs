@@ -26,12 +26,19 @@ const PLACES = '/.netlify/functions/tp-places';
 
 // A recording mock of tp-places. `mode` decides what the server says; `log`
 // accumulates one entry per POST so a block can assert on the exact fanout.
-function placesMock(log, mode = 'ok') {
+function placesMock(log, mode = 'ok', budget = { left: 500 }) {
   let granted = 0;
   return (url, request) => {
     if (!url.includes('tp-places')) return EXTERNAL_HOSTS.test(url) ? 'fail' : null;
     let body = {};
     try { body = JSON.parse(request.postData || '{}'); } catch { /* recorded as empty */ }
+    // The bulk warning's "how many lookups are left?" question. It spends
+    // nothing, so it is answered from `budget` (mutable per block) and never
+    // lands in `log`: every count below is about lookups.
+    if (body.budget === true) {
+      budget.asked = (budget.asked || 0) + 1;
+      return { status: 200, body: { left: budget.left, scope: 'free_month', resetAt: Date.UTC(2026, 9, 1, 8) } };
+    }
     // The queue now posts WIRE REQUESTS - { id, q, city?, country?, lat?, lon? }
     // - because a lookup's area is part of its identity (see placeLookupFor).
     // The log keeps the query TEXT so the assertions below still read in venue
@@ -204,7 +211,8 @@ export async function run({ base, cdpPort }) {
       return { hidden: b.hidden, disabled: b.disabled, text: b.innerText.replace(/\\s+/g, ' ').trim() }; })()`);
     const confirmOpen = (s) => evaluate(s, `document.getElementById('confirmOverlay').classList.contains('open')`);
 
-    await withPage('tp-places P0', { db: dbOf([big]), net: placesMock(log, 'ok') }, async (s) => {
+    const budget0 = { left: 500 };
+    await withPage('tp-places P0', { db: dbOf([big]), net: placesMock(log, 'ok', budget0) }, async (s) => {
       await waitForExpr(s, `document.querySelectorAll('#board .tpm-check[data-place-key]').length >= 33`, { timeout: 12000 });
       await sleep(1500);
       let c = await controls(s);
@@ -288,6 +296,10 @@ export async function run({ base, cdpPort }) {
         JSON.stringify(warn), s);
       await t('tp-places P0 (12): and it offers only the places not already loaded (26 of 30)',
         warn.yes === 'Load all ratings (26)', warn.yes, s);
+      const noteOk = await waitForExpr(s, `/Google lookups left right now: 500\\. This would use 26 of them\\./.test(document.getElementById('confirmNote').textContent)`, { timeout: 6000 });
+      await t('tp-places P0: the warning shows how many Google lookups are left against what it would use',
+        noteOk && budget0.asked === 1 && q0().queries === 4,
+        await evaluate(s, `document.getElementById('confirmNote').textContent`), s);
       await clickSel(s, '#confirmOverlay [data-close]', { settle: 800 });
       await t('tp-places P0 (10): Cancel makes zero requests',
         !(await confirmOpen(s)) && q0().queries === 4, JSON.stringify(q0()), s);
@@ -298,11 +310,19 @@ export async function run({ base, cdpPort }) {
         JSON.stringify({ loaded, q: q0(), painted: await paintedCount(s) }), s);
       await t('tp-places P0: and every batch respects the server cap of 12',
         log.every(e => e.queries.length <= 12), JSON.stringify(log.map(e => e.queries.length)), s);
+      await sleep(400);
+      const done = await bulk(s);
+      await t('tp-places P0: with every place loaded the button reads "All ratings loaded", done and inert',
+        /✓ All ratings loaded/.test(done.text) && done.disabled
+          && (await evaluate(s, `document.getElementById('ratingsLoadAll').classList.contains('is-done')`)),
+        JSON.stringify(done), s);
       await clickSel(s, '#ratingsLoadAll', { settle: 500 });
-      await t('tp-places P0: with everything loaded, Load all asks nothing and says so',
-        !(await confirmOpen(s)) && q0().queries === 30
-          && /already has its Google rating/.test(await evaluate(s, `[...document.querySelectorAll('#toasts .toast')].map(x => x.textContent).join(' | ')`)),
-        '', s);
+      await t('tp-places P0: and pressing it anyway asks nothing',
+        !(await confirmOpen(s)) && q0().queries === 30, '', s);
+      await switchView(s, 'days');
+      await sleep(600);
+      await t('tp-places P0: Days, holding the same places, reads done too',
+        /All ratings loaded/.test((await bulk(s)).text), JSON.stringify(await bulk(s)), s);
     });
 
     // Loading is a small state on the row (and on the bulk button), and the
@@ -354,6 +374,44 @@ export async function run({ base, cdpPort }) {
         `${after} -> ${totals(qlog, 'XrayVenue').posts}`, s);
       await t('tp-places P0 quota: the bulk button says the ratings are paused',
         /paused \(quota limit\)/.test((await bulk(s)).text) && (await bulk(s)).disabled, JSON.stringify(await bulk(s)), s);
+    });
+  }
+
+  /* ------- P0c. the warning's "lookups left" when it is short, or none ---- */
+  freshIds();
+  {
+    const log = [];
+    const budget = { left: 3 };
+    const shortTrip = venueTrip(5, 'Short budget trip', 'WhiskeyVenue');
+    // A flight: a delete that confirms (a leg, so it has no rating control).
+    shortTrip.items.push(item({ type: 'flight', title: 'Tokyo (HND) to Osaka (ITM)', startDate: iso(9), startTime: '08:00' }));
+    await withPage('tp-places P0c', { db: dbOf([shortTrip]), net: placesMock(log, 'ok', budget) }, async (s) => {
+      await waitForExpr(s, `document.querySelectorAll('#board .tpm-check[data-place-key]').length >= 5`, { timeout: 12000 });
+      await clickSel(s, '#ratingsLoadAll', { settle: 300 });
+      const shortOk = await waitForExpr(s, `/left right now: 3\\. Only about 3 of these 5 would load/.test(document.getElementById('confirmNote').textContent)`, { timeout: 6000 });
+      await t('tp-places P0c: fewer left than the view needs says how many will load, in amber',
+        shortOk && (await evaluate(s, `document.getElementById('confirmNote').classList.contains('is-short')`))
+          && !(await evaluate(s, `document.getElementById('confirmYes').disabled`)),
+        await evaluate(s, `document.getElementById('confirmNote').textContent`), s);
+      await clickSel(s, '#confirmOverlay [data-close]', { settle: 400 });
+      budget.left = 0;
+      await clickSel(s, '#ratingsLoadAll', { settle: 300 });
+      const noneOk = await waitForExpr(s, `/left right now: 0\\./.test(document.getElementById('confirmNote').textContent)`, { timeout: 6000 });
+      await t('tp-places P0c: none left disables "Load all ratings" and says when it refills',
+        noneOk && (await evaluate(s, `document.getElementById('confirmYes').disabled`))
+          && /refills/.test(await evaluate(s, `document.getElementById('confirmNote').textContent`)),
+        await evaluate(s, `document.getElementById('confirmNote').textContent`), s);
+      await clickSel(s, '#confirmOverlay [data-close]', { settle: 400 });
+      await t('tp-places P0c: and none of this made a single lookup', totals(log, 'WhiskeyVenue').queries === 0, '', s);
+      // A later delete must not inherit the ratings dialog's look or its note.
+      await evaluate(s, `(() => { const r = [...document.querySelectorAll('#board .tp-row')].find(x => /HND/.test(x.textContent));
+        const b = r && r.querySelector('[data-act="delete"]'); b && b.click(); return !!b; })()`);
+      await sleep(400);
+      await t('tp-places P0c: the next confirm (a delete) is its red self again, with no note',
+        (await evaluate(s, `(() => { const y = document.getElementById('confirmYes');
+          return y.classList.contains('danger') && !y.classList.contains('primary') && !y.disabled
+            && document.getElementById('confirmNote').hidden; })()`)) === true, '', s);
+      await clickSel(s, '#confirmOverlay [data-close]', { settle: 300 });
     });
   }
 

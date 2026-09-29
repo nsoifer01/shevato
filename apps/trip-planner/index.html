@@ -227,9 +227,8 @@
          view showing, after a confirmation that says how many lookups that
          is. One button for Timeline and Days; applyView hides it on the Map
          and on an empty plan. The assistant does not depend on it. -->
-    <button type="button" class="btn tb-ratings" id="ratingsLoadAll"
-            title="Look up the Google rating of every place in this view (asks first: each is a Google Places request)">
-      <span class="tbr-star" aria-hidden="true">⭐</span>
+    <button type="button" class="btn tb-ratings" id="ratingsLoadAll">
+      <span class="tbr-star" id="ratingsLoadAllIcon" aria-hidden="true">⭐</span>
       <span class="tbr-label" id="ratingsLoadAllLabel">Load all Google ratings</span>
     </button>
     <div class="tb-group tb-filters" role="group" aria-label="Search and filters">
@@ -626,6 +625,9 @@
     </div>
     <div class="m-body">
       <p class="m-prose" id="confirmText"></p>
+      <!-- an optional second line a caller fills in after opening (the bulk
+           ratings warning's "lookups left"); confirmDialog hides it again -->
+      <p class="m-prose m-note" id="confirmNote" hidden></p>
     </div>
     <div class="modal-foot">
       <button type="button" class="btn ghost" data-close>Cancel</button>

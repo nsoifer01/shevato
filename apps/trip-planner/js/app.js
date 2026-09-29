@@ -5608,6 +5608,11 @@
     $('#confirmTitle').textContent = title;
     $('#confirmText').textContent = text;
     $('#confirmYes').textContent = yesLabel;
+    $('#confirmYes').disabled = false;
+    $('#confirmNote').hidden = true;
+    $('#confirmNote').textContent = '';
+    $('#confirmNote').dataset.stamp = '';
+    $('#confirmNote').classList.remove('is-short');
     $('#confirmYes').classList.toggle('danger', !primary);
     $('#confirmYes').classList.toggle('primary', primary);
     const icon = $('#confirmOverlay .m-icon');
@@ -10918,6 +10923,10 @@
   // cache they describe is session-only too.
   const rowRatingAsked = new Set();
   const rowRatingQuota = new Set();
+  // The keys the last BULK load asked for. The toolbar button reads "Loading
+  // ratings…" only while one of THESE is in flight: a single slow click must
+  // never lock the bulk option for the rest of the view.
+  const rowRatingBulk = new Set();
 
   // A row's rating state, derived from the queue and the cache every time, so
   // it can never disagree with them:
@@ -10964,6 +10973,14 @@
   // The view the bulk load and the toolbar read: Timeline's board or the Days
   // list, whichever is showing.
   const ratingView = () => (ui.view === 'days' ? $('#daysList') : $('#board'));
+  // Is this row's place actually drawn (not folded inside a collapsed group)?
+  // Asked of the Maps link beside the control, never of the control itself:
+  // a LOADED row's control is hidden on purpose, and measuring it would drop
+  // exactly the finished rows from "every place in this view".
+  const rowShown = el => {
+    const link = el.previousElementSibling;
+    return !!(link && link.classList.contains('tp-maps-link') && link.getClientRects().length);
+  };
 
   function syncRowRatings(root) {
     const scope = root && root.querySelectorAll ? root : document;
@@ -10973,13 +10990,21 @@
     if (!btn || !label) return;
     const st = placesQueue.status();
     const view = ratingView();
-    const pending = !!view && [...view.querySelectorAll('.tpm-check[data-place-key]')]
-      .some(el => rowRatingAsked.has(el.dataset.placeKey) && placesQueue.isPending(el.dataset.placeKey));
-    let text = 'Load all Google ratings', disabled = false, busy = false;
+    const rows = view ? [...view.querySelectorAll('.tpm-check[data-place-key]')].filter(rowShown) : [];
+    const pending = rows.some(el => rowRatingBulk.has(el.dataset.placeKey) && placesQueue.isPending(el.dataset.placeKey));
+    // DONE: every place in the view has its answer (a rating, or a settled
+    // "no rating"), so there is nothing left to offer and the button says so
+    // instead of inviting a click that could only report the same thing.
+    const done = rows.length > 0 && rows.every(el => ['loaded', 'settled'].includes(el.dataset.state));
+    let text = 'Load all Google ratings', icon = '⭐', disabled = false, busy = false;
     if (st.off) { text = 'Google ratings unavailable'; disabled = true; }
-    else if (st.paused && st.scope) { text = 'Ratings paused (quota limit)'; disabled = true; }
     else if (pending) { text = 'Loading ratings…'; disabled = true; busy = true; }
+    else if (done) { text = 'All ratings loaded'; icon = '✓'; disabled = true; }
+    else if (st.paused && st.scope) { text = 'Ratings paused (quota limit)'; disabled = true; }
     if (label.textContent !== text) label.textContent = text;
+    const ico = $('#ratingsLoadAllIcon');
+    if (ico && ico.textContent !== icon) ico.textContent = icon;
+    btn.classList.toggle('is-done', !busy && done && !st.off);
     btn.disabled = disabled;
     btn.setAttribute('aria-busy', busy ? 'true' : 'false');
   }
@@ -11028,6 +11053,42 @@
     }
   }
 
+  // "HOW MANY LOOKUPS DO I HAVE LEFT?" for the bulk warning: the caller's own
+  // headroom across every bucket a lookup would spend against, read-only on
+  // the server (lookupsLeft in tp-places-quota.mjs). null when it cannot be
+  // told (offline, not configured, a slow answer), which the dialog says
+  // rather than guessing.
+  async function fetchLookupsLeft() {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 6000);
+    try {
+      const body = placesRequestBody([]);
+      delete body.queries;
+      body.budget = true;
+      const res = await fetch('/.netlify/functions/tp-places', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body), signal: ctrl.signal,
+      });
+      if (!res.ok) return null;
+      const j = await res.json();
+      return Number.isFinite(j.left) ? { left: j.left, scope: j.scope || '', resetAt: Number(j.resetAt) || 0 } : null;
+    } catch { return null; }
+    finally { clearTimeout(timer); }
+  }
+
+  // The dialog line, from the answer: how many are left against how many this
+  // would use, and when the binding allowance refills when that matters.
+  function lookupsLeftNote(b, n) {
+    if (!b) return { text: 'Could not check how many Google lookups are left right now.', block: false };
+    const when = b.resetAt ? new Date(b.resetAt).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '';
+    const refills = when ? ` It refills ${when}.` : '';
+    if (b.left <= 0) return { text: `Google lookups left right now: 0.${refills} Nothing would load until then.`, block: true };
+    if (b.left < n) {
+      return { text: `Google lookups left right now: ${b.left}. Only about ${b.left} of these ${n} would load; the rest would show "Rating unavailable (quota limit)".${refills}`, block: false };
+    }
+    return { text: `Google lookups left right now: ${b.left}. This would use ${n} of them.`, block: false };
+  }
+
   // THE BULK OPTION: every place in the view showing, minus what is already
   // loaded, settled or on its way, deduplicated by place - and nothing is sent
   // until the traveller has read how many lookups that is.
@@ -11037,7 +11098,7 @@
     const seen = new Set();
     const lookups = [];
     for (const el of view.querySelectorAll('.tpm-check[data-place-key]')) {
-      if (!el.getClientRects().length) continue;          // folded away, not in view
+      if (!rowShown(el)) continue;                        // folded away, not in view
       const key = el.dataset.placeKey || '';
       if (!key || seen.has(key)) continue;
       const s = rowRatingState(key).state;
@@ -11053,8 +11114,24 @@
       `This looks up ${n} place${n === 1 ? '' : 's'} on Google at once. Each one uses a Google Places API request, `
         + 'and they come out of the monthly quota. You can load ratings individually instead, with "Check rating" beside each place.',
       `Load all ratings (${n})`,
-      () => requestRowRatings(lookups, 'normal'),
+      () => { for (const l of lookups) rowRatingBulk.add(l.key); requestRowRatings(lookups, 'normal'); },
       { icon: '⭐', tone: 'primary' });
+    // The count left is asked for as the dialog opens and filled in when it
+    // answers, so the warning never waits on the network to appear. A token
+    // stamped on the note keeps a late answer from landing in a dialog that
+    // was closed and reopened for something else in the meantime.
+    const note = $('#confirmNote');
+    const stamp = String(Date.now()) + Math.random();
+    note.dataset.stamp = stamp;
+    note.textContent = 'Checking how many Google lookups are left…';
+    note.hidden = false;
+    fetchLookupsLeft().then(b => {
+      if (note.dataset.stamp !== stamp || note.hidden) return;
+      const line = lookupsLeftNote(b, n);
+      note.textContent = line.text;
+      note.classList.toggle('is-short', !!b && b.left < n);
+      if (line.block) $('#confirmYes').disabled = true;
+    });
   }
 
   // Called once per render. Paints whatever the session already knows (a

@@ -912,6 +912,12 @@
   }
   .m-icon.danger { background: var(--red-soft); color: var(--red); }
   .m-prose { margin: 0; color: var(--text-dim); font-size: 13.5px; line-height: 1.55; }
+  /* a dialog's second, factual line (the bulk ratings "lookups left") */
+  .m-prose.m-note {
+    margin-top: 10px; padding: 8px 10px; border-radius: 10px;
+    background: var(--bg-soft); border: 1px solid var(--border-soft); color: var(--text);
+  }
+  .m-prose.m-note.is-short { border-color: color-mix(in srgb, var(--amber) 45%, var(--border)); color: var(--amber); }
 
   .m-section { display: flex; flex-direction: column; gap: var(--m-gap); }
   .m-section + .m-section {
@@ -1375,6 +1381,13 @@
   .tbr-star { font-size: 13px; line-height: 1; }
   .trip-planner-app .tb-ratings:disabled { opacity: .6; cursor: default; }
   .trip-planner-app .tb-ratings[aria-busy="true"] { color: var(--amber) !important; opacity: 1; }
+  /* done: every place in the view has its answer. A settled, quiet state in
+     green rather than a dimmed offer, so it reads as finished, not broken. */
+  .trip-planner-app .tb-ratings.is-done {
+    opacity: 1; color: var(--green) !important;
+    background: var(--green-soft); border-color: color-mix(in srgb, var(--green) 35%, var(--border));
+  }
+  .tb-ratings.is-done .tbr-star { font-weight: 700; }
 
   /* ---------- a row's own "Check rating" (Timeline + Days) ----------
      A quiet text button beside the Google Maps pill: secondary to the title,

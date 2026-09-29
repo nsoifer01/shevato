@@ -335,6 +335,7 @@ export async function run({ base, cdpPort }) {
 
     await withPage('canonical-coords B', { db: dbOf([tp]), stores, net: net(log) }, async (s) => {
       await switchView(s, 'days');
+      await loadAllRatings(s);
       await waitForExpr(s, `!!document.querySelector('#daysList .day-card[data-date="${DAY}"] .dc-route-tot')`, { timeout: 20000 });
       await sleep(1500);
       const day = await readDay(s);
@@ -380,6 +381,7 @@ export async function run({ base, cdpPort }) {
 
     await withPage('canonical-coords C', { db: dbOf([tp]), stores, net: net(log) }, async (s) => {
       await switchView(s, 'days');
+      await loadAllRatings(s);
       await waitForExpr(s, `!!document.querySelector('#daysList .day-card[data-date="${DAY}"] .dc-route-tot')`, { timeout: 20000 });
       await sleep(2500);
 
@@ -491,6 +493,7 @@ export async function run({ base, cdpPort }) {
 
     await withPage('canonical-coords E', { db: dbOf([tp]), stores, net: net(log, UNIDENTIFIABLE) }, async (s) => {
       await switchView(s, 'days');
+      await loadAllRatings(s);
       await waitForExpr(s, `!!document.querySelector('#daysList .day-card[data-date="${MIDDLE}"]')`, { timeout: 20000 });
       await sleep(4000);
 
@@ -548,6 +551,7 @@ export async function run({ base, cdpPort }) {
       await setValue(s, '#inTitle', GOOD);
       await clickSel(s, '#itemSaveBtn', { settle: 1200 });
       await switchView(s, 'days');
+      await loadAllRatings(s);
       await sleep(4500);
 
       const after = await warn();

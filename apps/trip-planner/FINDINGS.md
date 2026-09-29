@@ -2483,6 +2483,24 @@ rated every place on the page as it scrolled. Now:
   that has client rects (a folded group is not "in view"), skips loaded,
   settled and in-flight keys, dedupes by key, and opens the existing
   `confirmDialog` with the count before sending anything, normal lane.
+  The dialog also shows how many lookups this browser has LEFT right now:
+  `fetchLookupsLeft` POSTs `{ budget: true }` as the dialog opens and fills
+  `#confirmNote` when it answers (a stamp stops a late answer landing in a
+  reopened dialog). Server side, `lookupsLeft` (tp-places-quota.mjs) is the
+  smallest room across every bucket `checkQuota` would charge, read-only;
+  both read ONE `quotaRoom`, so the number shown can never be computed
+  differently from the one enforced (pinned by a test comparing them). A 0
+  disables the confirm; the answer is null on any failure and the line says
+  so rather than guessing. The owner status GET stays owner-only; this
+  answers only the caller's own figure.
+- **The bulk button's own states:** `Loading ratings…` only while keys from
+  the LAST BULK load (`rowRatingBulk`) are in flight, because keying it on
+  every asked key let one slow single click lock the bulk option (found
+  while screenshotting); `✓ All ratings loaded`, green and disabled, once
+  every shown row is loaded or settled. "Shown" is measured on the row's
+  Maps link, never on the control (`rowShown`): a loaded row's control is
+  hidden on purpose, and measuring it dropped exactly the finished rows, so
+  the done state could never be reached (caught by P0 on its first run).
   `confirmDialog` gained an optional `{ icon, tone: 'primary' }` so a
   non-destructive question does not wear the delete dialog's red 🗑; every
   call resets both, so a later delete cannot inherit the blue look.
