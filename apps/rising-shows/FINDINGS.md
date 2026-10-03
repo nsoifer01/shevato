@@ -3,6 +3,43 @@
 A living document: best current understanding, not a diary. See the
 repo-root `CLAUDE.md` for the convention.
 
+## One-season cards drew a dot for 25 days: a renamed field nobody read (2026-10-03)
+
+From PR #509 (merged 2026-09-08 UTC, `1ad7d000`) to 2026-10-03, every
+one-season show's Finder spark (grid card and list row) was a single centered
+orange dot instead of its episode curve: 24,148 shows, Chernobyl and The
+Queen's Gambit among them. Multi-season shows were unaffected.
+
+**Cause.** The F08 split moved the show fold to build time. `buildShowsIndex`
+ships the single-season series as a flat `epRatings` array instead of
+`buildShowAgg`'s `episodeSeries` objects (a deliberate 9.3 MB raw saving), and
+the app switched to `showAgg = dataset.shows`. Both `drawFinderSpark` call
+sites still passed `s.episodeSeries`, which no boot record has, so the
+single-season branch fell through to its one-rated-episode fallback dot. The
+data was always right; the consumer read the old name. Before #509 the browser
+ran `buildShowAgg` itself, which rebuilds `episodeSeries` from `epRatings`.
+
+**Fix.** `finderSparkSeries(row)` in `app.js` rebuilds the series from
+`epRatings` with the same mapping `buildShowAgg` uses (positional episode
+numbers, votes 0, never drawn), and both call sites use it. No duplicated
+points: a show with one rated episode still gets the dot.
+
+**Why it shipped green.** Each half was tested against itself.
+`shows-index-parity.test.js` pinned that the build writes `epRatings` equal to
+the old `episodeSeries` ratings, i.e. it asserted the rename.
+`finder-lib.test.js` pinned that `buildShowAgg` yields `episodeSeries`, a
+function the browser no longer calls. `drawFinderSpark` had no test of any
+kind, and no browser check looked at a spark. `tests/finder-spark.test.js` now
+builds boot rows with the real `buildShowsIndex`, draws them with the real
+`drawFinderSpark` and counts plotted points (plus every one-season show in the
+real catalogue when present); `tests/browser/suites/apps.mjs` counts the line
+points on the rendered Chernobyl, Queen's Gambit and Breaking Bad cards. Both
+were run against the pre-fix `app.js` and fail there.
+
+**Lesson.** A parity test across a representation change has to reach the
+consumer. Holding the new file equal to the old fold proves the bytes; only
+drawing from them proves the field names line up.
+
 ## The generated pages never said what a shape is (2026-09-16)
 
 Measured over 60 days to 2026-09-15, GA4 with the owner excluded:
