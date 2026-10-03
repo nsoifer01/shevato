@@ -68,7 +68,9 @@ const CURRENT = {
   // The hosting paragraph gained the edge check that turns away the Chrome 99
   // scraper (netlify/edge-functions/block-crawler.mjs): it reads the browser
   // identification string and the Netlify-derived country, and keeps nothing.
-  date: '2 October 2026',
+  // Written on 2 October UTC, merged (#575) on 3 October UTC, so it carries
+  // the merge day.
+  date: '3 October 2026',
   digest: '82375f32805f6b2bee8beda1b3f1aa7ba0de5ba9df04dec6f0432fb71d93f3e2',
 };
 
