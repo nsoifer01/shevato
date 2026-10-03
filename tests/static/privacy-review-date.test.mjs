@@ -63,14 +63,13 @@ const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const html = readFileSync(join(REPO_ROOT, 'privacy.html'), 'utf8');
 
 // The two most recent reviews. Append by moving CURRENT down to PREVIOUS.
-const PREVIOUS = { date: '15 September 2026', digest: '0cb35252ddb8c21102864552ac04a8a8d433e5760a4e61776ab659afbd90cd06' };
+const PREVIOUS = { date: '16 September 2026', digest: '7cfd8d056553663dc4aee4f232fb28695475e521d89282b00d723cd1dcb225bd' };
 const CURRENT = {
-  // The analytics section gained the "started" half of each app's funnel
-  // (workout_started, race_form_opened, rival_added, trip_created,
-  // team_connected, match_form_opened, match_logged, game_started) and a
-  // paragraph saying why those events exist.
-  date: '16 September 2026',
-  digest: '7cfd8d056553663dc4aee4f232fb28695475e521d89282b00d723cd1dcb225bd',
+  // The hosting paragraph gained the edge check that turns away the Chrome 99
+  // scraper (netlify/edge-functions/block-crawler.mjs): it reads the browser
+  // identification string and the Netlify-derived country, and keeps nothing.
+  date: '2 October 2026',
+  digest: '82375f32805f6b2bee8beda1b3f1aa7ba0de5ba9df04dec6f0432fb71d93f3e2',
 };
 
 /**
