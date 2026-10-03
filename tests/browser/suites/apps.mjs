@@ -485,7 +485,10 @@ export async function run({ base, cdpPort }) {
         // they cannot be asserted on a dataset-less runner, and both checks
         // still have to be reported for the count pin to hold.
         'season badges name the highest and lowest-average seasons',
-        'episode badges name the top-rated and most-rated episodes']) {
+        'episode badges name the top-rated and most-rated episodes',
+        // Sparkline checks search for named shows in the real catalogue.
+        'one-season cards draw their episode curve, not a dot',
+        'multi-season cards draw one point per season']) {
         skip(`${A}: ${check}`, reason);
       }
       t(`${A}: no JS errors`, cleanErrors(s).length === 0, cleanErrors(s).slice(0, 2).join(' | '));
@@ -494,6 +497,32 @@ export async function run({ base, cdpPort }) {
     }
 
     t(`${A}: results render`, baseRows > 0, `${baseRows} rows of ${baseTotal}`);
+
+    // Card sparklines, read off the rendered svg. A one-season show draws its
+    // EPISODE curve; from PR #509 to 2026-10-03 the app read a row field the
+    // boot index no longer ships and every one of them drew a single centered
+    // dot (Chernobyl, The Queen's Gambit). Counts the line's M/L points, so a
+    // dot (no line, one circle) cannot pass.
+    const sparkOf = (id) => evaluate(s, `(()=>{const sv=document.querySelector('[data-series-id="${id}"] .finder-spark');
+      if(!sv)return null;const d=sv.querySelector('.curve-line').getAttribute('d')||'';
+      return JSON.stringify({pts:d.split(' ').filter(c=>/^[ML]/.test(c)).length,
+        dots:sv.querySelectorAll('.finder-spark-dot circle').length,
+        single:sv.classList.contains('finder-spark--single')})})()`);
+    const sparks = {};
+    for (const [id, q] of [['tt7366338', 'chernobyl'], ['tt10048342', 'queen\'s gambit'], ['tt0903747', 'breaking bad']]) {
+      await setValue(s, '#finderSearch', q);
+      await waitForExpr(s, `!!document.querySelector('[data-series-id="${id}"] .finder-spark')`);
+      sparks[id] = JSON.parse((await sparkOf(id)) || 'null');
+    }
+    await setValue(s, '#finderSearch', '');
+    await waitForExpr(s, totalIsExpr(`m[1] === ${JSON.stringify(baseTotal)}`));
+    const oneSeasonOk = (sp, n) => !!sp && sp.pts === n && sp.dots === 0 && sp.single;
+    t(`${A}: one-season cards draw their episode curve, not a dot`,
+      oneSeasonOk(sparks.tt7366338, 5) && oneSeasonOk(sparks.tt10048342, 7),
+      JSON.stringify({ chernobyl: sparks.tt7366338, queensGambit: sparks.tt10048342 }));
+    t(`${A}: multi-season cards draw one point per season`,
+      !!sparks.tt0903747 && sparks.tt0903747.pts === 5 && sparks.tt0903747.dots === 0 && !sparks.tt0903747.single,
+      JSON.stringify(sparks.tt0903747));
 
     // Assert on the total, not the page of 24.
     await setValue(s, '#finderSearch', 'breaking bad');

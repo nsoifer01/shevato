@@ -4704,7 +4704,7 @@ function buildFinderTable(page) {
     dot.setAttribute('class', 'finder-spark-dot');
     spark.append(area, line, dot);
     trendTd.appendChild(spark);
-    drawFinderSpark(spark, s.seasonAvgs, s.episodeSeries, 200, 56);
+    drawFinderSpark(spark, s.seasonAvgs, finderSparkSeries(s), 200, 56);
     tr.appendChild(trendTd);
 
     tbody.appendChild(tr);
@@ -4724,6 +4724,18 @@ function buildFinderTable(page) {
   scroller.setAttribute('aria-label', 'Results table');
   scroller.appendChild(table);
   return scroller;
+}
+
+// The episode series a single-season show's spark plots, rebuilt from the
+// boot index's flat `epRatings` (split-data.js ships ratings only, in episode
+// order). The row has no `episodeSeries`: that was buildShowAgg's field, and
+// since the F08 split (PR #509) the browser never runs buildShowAgg, so
+// reading it handed drawFinderSpark undefined and every one-season show
+// collapsed to the centered fallback dot. Same mapping buildShowAgg applies
+// to `epRatings`: positional episode numbers, votes unknown (never drawn).
+function finderSparkSeries(s) {
+  if (!Array.isArray(s.epRatings)) return undefined;
+  return s.epRatings.map((rating, i) => ({ episode: i + 1, rating, votes: 0 }));
 }
 
 // Show-level trajectory. Multi-season shows draw one point per season's
@@ -4803,7 +4815,7 @@ function buildFinderCard(s) {
   node.querySelector('.stat-runtime').textContent =
     s.runtimeHrs > 0 ? `${s.runtimeHrs.toFixed(1)}h` : 'runtime n/a';
 
-  drawFinderSpark(node.querySelector('.finder-spark'), s.seasonAvgs, s.episodeSeries);
+  drawFinderSpark(node.querySelector('.finder-spark'), s.seasonAvgs, finderSparkSeries(s));
 
   const posterEl = node.querySelector('.card-poster');
   const cardPosterFallback = () => {
@@ -7149,6 +7161,8 @@ if (typeof window !== 'undefined') {
   window._rsTestExports = {
     computeStdDev,
     computeShowRelated,
+    drawFinderSpark,
+    finderSparkSeries,
     languagesCompatible,
     clampScrollY,
     viewKeyFromHash,

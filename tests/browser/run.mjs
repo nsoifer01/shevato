@@ -126,7 +126,9 @@ const EXPECTED_CHECKS = {
   'tests/browser/suites/site.mjs': 189,
   // 103 from master, plus the two Rising Shows highlight-badge checks added
   // in this branch.
-  'tests/browser/suites/apps.mjs': 105,
+  // +2 on 2026-10-03: the Rising Shows card sparkline checks (one-season
+  // episode curve, multi-season season line).
+  'tests/browser/suites/apps.mjs': 107,
   // 72 from master's B7/B8 keyboard + touch-target blocks, plus the two
   // seeded MapTap Rivals state scans added in this branch.
   // 79 on master before 2026-09-07; +11 for the chart-accessibility block
