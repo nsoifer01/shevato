@@ -7,6 +7,10 @@
   # exercises/) is intentionally gitignored.
   command = "npm run build:site"
   functions = "netlify/functions"
+  # One edge function, block-crawler.mjs: a 403 for one scraper's exact
+  # fingerprint, pages only (root FINDINGS.md, "The Chrome 99 crawler").
+  # Like functions, Netlify bundles it from the repository, not from dist/.
+  edge_functions = "netlify/edge-functions"
   # AN EXPLICIT PUBLISH DIRECTORY (2026-09-05 audit F15).
   #
   # Netlify used to publish the repo root, so /FINDINGS.md, /TESTING-AUDIT.md

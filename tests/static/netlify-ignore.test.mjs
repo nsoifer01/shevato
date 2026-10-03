@@ -475,7 +475,9 @@ test('netlify.toml has no build input this script does not know about', () => {
     return (end === -1 ? rest : rest.slice(0, end)).map((l) => /^\s*([\w.-]+)\s*=\s*"?([^"]*)"?/.exec(l)).filter(Boolean);
   };
   const buildKeys = block('build');
-  assert.deepEqual(buildKeys.map((k) => k[1]).filter((k) => !['command', 'functions', 'publish', 'ignore'].includes(k)), [],
+  // edge_functions (2026-10-02, block-crawler) lives under netlify/, which
+  // classifyPath always builds for; the loop below proves it is not inert.
+  assert.deepEqual(buildKeys.map((k) => k[1]).filter((k) => !['command', 'functions', 'edge_functions', 'publish', 'ignore'].includes(k)), [],
     'a new [build] key can add build inputs');
   assert.deepEqual(block('functions').map((k) => k[1]).filter((k) => k !== 'node_bundler'), [],
     'a new [functions] key (included_files, external_node_modules) can add build inputs');

@@ -93,7 +93,7 @@
 
       <article class="about-shell">
 
-        <p><strong>Last reviewed:</strong> 16 September 2026.
+        <p><strong>Last reviewed:</strong> 2 October 2026.
           <!-- THE RULE, for whoever is editing this file (it is not the owner's chore):
                if your change alters what any app sends, stores, syncs or deletes, OR
                alters the wording below, bump this date IN THE SAME PULL REQUEST, to the
@@ -377,7 +377,7 @@
 
         <p>The venue-ratings function also keeps a small server-side configuration holding our own Google Places API key and a secret token that lets the site owner's browsers use a higher rate limit than the public one. Neither value is ever sent to your browser, and neither has anything to do with your data. If you are not the owner, your requests simply count against the public limits.</p>
 
-        <p>Separately from anything we write, this site is hosted on Netlify, and Netlify processes ordinary request metadata such as IP addresses in the course of serving, securing and diagnosing the site. That is the hosting provider's own activity rather than something the apps do, and we do not read those records. The one exception is the network counter described just above: the two Trip Planner functions and the Fantasy Premier League proxy read the address Netlify reports for the request that is in front of them, hash it with the day as described, and keep only that hash. They do not read Netlify's stored logs, and no app does anything else with this metadata. How long Netlify keeps them is governed by its own service terms and the plan the site runs on. For the functions described above, Netlify's documentation states that function logs are retained for at least 24 hours of activity, extending to 7 days on certain of its pricing plans.</p>
+        <p>Separately from anything we write, this site is hosted on Netlify, and Netlify processes ordinary request metadata such as IP addresses in the course of serving, securing and diagnosing the site. That is the hosting provider's own activity rather than something the apps do, and we do not read those records. The one exception is the network counter described just above: the two Trip Planner functions and the Fantasy Premier League proxy read the address Netlify reports for the request that is in front of them, hash it with the day as described, and keep only that hash. They do not read Netlify's stored logs, and no app does anything else with this metadata. Separately, every page request passes a check that reads two pieces of that metadata, the browser identification string and the country Netlify works out from the address, for one purpose only: turning away an automated scraper that identifies itself as one specific 2022 build of Chrome on Windows 10 from China. That check logs and stores nothing, and every other request goes on to the page unchanged. How long Netlify keeps them is governed by its own service terms and the plan the site runs on. For the functions described above, Netlify's documentation states that function logs are retained for at least 24 hours of activity, extending to 7 days on certain of its pricing plans.</p>
 
         <!-- The 24 hour / 7 day figure applies specifically to FUNCTION logs and is quoted from
              https://docs.netlify.com/build/functions/logs/ ("Logs are retained for at least 24 hours of function

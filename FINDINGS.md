@@ -58,6 +58,46 @@ reporter output a local reproduction of the CI unit job drops at the root
 `*.heapsnapshot`, `*.orig` and `*.rej`. The standing rule is in `CLAUDE.md`,
 "Close the round on the artifacts too".
 
+## The Chrome 99 crawler is blocked at the edge (2026-10-02)
+
+GA's 5 September - 2 October report claimed 2,103 active users (+163%) at a 3 s
+average engagement. 1,191 of them were one scraper, found in the BigQuery
+export (`shevato-site.analytics_430646926`):
+
+- `device.web_info.browser_version = '99.0.4844.51'` (a March 2022 build),
+  Windows 10, desktop, `geo.country = 'China'` with no city, `zh-cn`, direct
+  with no referrer.
+- Every one of its 1,884 pseudo IDs (2026-08-08 to 2026-10-01) has exactly
+  first_visit + session_start + one page_view, on one day. None ever had a
+  second page view. 33 sent a single unload `user_engagement` of 1-8 s.
+- It runs JavaScript, so GA counts each fetch as a new user. Almost all hits
+  are generated Rising Shows show pages (770 distinct in 8 days), a few Gym
+  Tracker exercise pages.
+- 5-34 IDs a day since the export began, so it was already about half of
+  every earlier fortnight's "users"; on 2026-09-24 it stepped up about tenfold
+  (107-216 a day).
+
+Without it, and without the Baidu WebView cohort, external users went 324 ->
+199 (8 Aug - 4 Sep vs 5 Sep - 1 Oct) while engaged non-China users went 34 -> 44.
+
+`netlify/edge-functions/block-crawler.mjs` answers 403 (`no-store`,
+`noindex`) only when ALL three match: the UA contains `Chrome/99.0.4844.51`,
+the UA contains `Windows NT 10.0`, and Netlify's `context.geo.country.code`
+is `CN`. Everything else passes through untouched (the handler returns
+`undefined`). It runs on pages only: `excludedPath` keeps `/.netlify/*`,
+`/assets/*`, `/images/*` and every static extension out, so invocations track
+page views, not asset requests. It logs and stores nothing; privacy.html's
+hosting paragraph says so. GA4 data filters cannot express a UA rule (they
+cover internal IP and developer traffic only), which is why the block lives
+at the edge and not in GA.
+
+**Checking it worked:** the daily table after deploy should show near-zero
+rows for that `browser_version`. Rows that still arrive mean the crawler's
+HTTP User-Agent differs from what GA parsed (GA reads UA client hints too) or
+Netlify geolocates it outside CN; confirm with a draft-deploy curl before
+widening the match. If it pivots to a new fingerprint, add it with evidence of
+the same shape (one view per ID, never a second visit), never by country alone.
+
 ## A stale deploy log reads exactly like a missed deploy (2026-09-16)
 
 The Firestore rules were verified in production and are byte-identical to the
@@ -234,8 +274,8 @@ Netlify documentation. Nothing was built to measure it.
 | Build hook, CLI deploy, workflow calling Netlify | none existed: `listSiteBuildHooks` is empty and every deploy to 14 September is `deploy_source: api`, `manual_deploy: false` | none |
 | Merge to `master` from 2026-09-15 to the 1 October reset | none: `build_settings.stop_builds: true`; each merge is built locally and published with `netlify deploy --prod --no-build` | none (a CLI deploy costs no build minutes) |
 
-Functions are bundled inside every build (1 s). There are no edge functions and
-no build plugins.
+Functions are bundled inside every build (1 s). There is one edge function
+(`block-crawler`, below, since 2026-10-02) and no build plugins.
 
 ### Where one build's time goes
 
