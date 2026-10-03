@@ -1,6 +1,252 @@
 {
   "updates": [
     {
+      "builtAt": "2026-10-03T11:41:34.324Z",
+      "totals": {
+        "seasons": 66994,
+        "delta": 7
+      },
+      "shapeCounts": {
+        "rebound": 10206,
+        "rising": 2632,
+        "slow-burn": 4437,
+        "big-finale": 12220,
+        "u-shaped": 3084,
+        "rollercoaster": 14209,
+        "saved-best-for-last": 1483,
+        "shape-drift": 1583,
+        "mid-peak": 4627,
+        "front-loaded": 3514,
+        "declining": 1908,
+        "bad-finale": 4671,
+        "consistent": 2636
+      },
+      "shapeDeltas": {
+        "rebound": 3,
+        "rising": -4,
+        "slow-burn": 4,
+        "big-finale": -6,
+        "u-shaped": 4,
+        "rollercoaster": 2,
+        "saved-best-for-last": -4,
+        "shape-drift": -1,
+        "front-loaded": 2,
+        "declining": 2,
+        "bad-finale": 6,
+        "consistent": -6
+      },
+      "added": [
+        {
+          "seriesId": "tt21097264",
+          "title": "East of Eden",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt10590066",
+          "title": "All Creatures Great & Small",
+          "season": 7,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt26735683",
+          "title": "Toxic",
+          "season": 2,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt3886188",
+          "title": "The Fixies",
+          "season": 2,
+          "seasonYear": 2013
+        },
+        {
+          "seriesId": "tt0143068",
+          "title": "Toonsylvania",
+          "season": 2,
+          "seasonYear": 1998
+        },
+        {
+          "seriesId": "tt3444938",
+          "title": "The Tonight Show Starring Jimmy Fallon",
+          "season": 14,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt0305051",
+          "title": "Kiteretsu Daihyakka",
+          "season": 1,
+          "seasonYear": 1988
+        },
+        {
+          "seriesId": "tt1626459",
+          "title": "My Kitchen Rules",
+          "season": 15,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt1152296",
+          "title": "Who Do You Think You Are?",
+          "season": 9,
+          "seasonYear": 2018
+        },
+        {
+          "seriesId": "tt2141591",
+          "title": "Aircrash Confidential",
+          "season": 1,
+          "seasonYear": 2011
+        },
+        {
+          "seriesId": "tt31925820",
+          "title": "Dupahiya",
+          "season": 2,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt38268282",
+          "title": "Steel Ball Run: JoJo's Bizarre Adventure",
+          "season": 2,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt44144688",
+          "title": "Hold On, Harutora-kun",
+          "season": 1,
+          "seasonYear": 2026
+        }
+      ],
+      "removed": [
+        {
+          "seriesId": "tt14873528",
+          "title": "The Nate & Jeremiah Home Project",
+          "season": 1,
+          "seasonYear": 2021
+        },
+        {
+          "seriesId": "tt6833398",
+          "title": "Nate & Jeremiah by Design",
+          "season": 2,
+          "seasonYear": 2018
+        },
+        {
+          "seriesId": "tt6833398",
+          "title": "Nate & Jeremiah by Design",
+          "season": 3,
+          "seasonYear": 2019
+        },
+        {
+          "seriesId": "tt12011572",
+          "title": "Nate & Jeremiah Save My House",
+          "season": 1,
+          "seasonYear": 2020
+        },
+        {
+          "seriesId": "tt12011572",
+          "title": "Nate & Jeremiah Save My House",
+          "season": 3,
+          "seasonYear": 2021
+        },
+        {
+          "seriesId": "tt24948828",
+          "title": "Outdoor Boys",
+          "season": 1,
+          "seasonYear": 2020
+        }
+      ],
+      "ratingSwings": [
+        {
+          "seriesId": "tt18970320",
+          "title": "Slip",
+          "season": 1,
+          "from": 7.16,
+          "to": 5.4,
+          "delta": -1.76
+        },
+        {
+          "seriesId": "tt2177491",
+          "title": "Ben and Kate",
+          "season": 1,
+          "from": 7.64,
+          "to": 5.9,
+          "delta": -1.74
+        },
+        {
+          "seriesId": "tt15716624",
+          "title": "Vilangu",
+          "season": 1,
+          "from": 7.27,
+          "to": 8.46,
+          "delta": 1.19
+        },
+        {
+          "seriesId": "tt0090496",
+          "title": "Our House",
+          "season": 2,
+          "from": 8.03,
+          "to": 6.93,
+          "delta": -1.1
+        },
+        {
+          "seriesId": "tt34063491",
+          "title": "Uzak Şehir",
+          "season": 3,
+          "from": 7.83,
+          "to": 8.67,
+          "delta": 0.84
+        },
+        {
+          "seriesId": "tt0090496",
+          "title": "Our House",
+          "season": 1,
+          "from": 7.86,
+          "to": 7.26,
+          "delta": -0.6
+        },
+        {
+          "seriesId": "tt31843251",
+          "title": "Snakes and Ladders",
+          "season": 1,
+          "from": 5.57,
+          "to": 6.14,
+          "delta": 0.57
+        },
+        {
+          "seriesId": "tt1281973",
+          "title": "Bigg Boss",
+          "season": 20,
+          "from": 6.44,
+          "to": 5.93,
+          "delta": -0.51
+        },
+        {
+          "seriesId": "tt43732092",
+          "title": "Dar-e-Nijaat",
+          "season": 1,
+          "from": 8.8,
+          "to": 9.3,
+          "delta": 0.5
+        },
+        {
+          "seriesId": "tt7639726",
+          "title": "King Shakir",
+          "season": 3,
+          "from": 7.85,
+          "to": 7.39,
+          "delta": -0.46
+        }
+      ],
+      "modifiedCounts": {
+        "seriesVotes": 20798,
+        "avgRating": 1125,
+        "shapes": 183,
+        "seriesRating": 309,
+        "episodeCount": 64,
+        "providers": 4,
+        "poster": 2,
+        "overview": 2
+      }
+    },
+    {
       "builtAt": "2026-10-02T15:15:14.857Z",
       "totals": {
         "seasons": 66987,
@@ -9395,275 +9641,6 @@
         "poster": 5,
         "overview": 4,
         "providers": 3
-      }
-    },
-    {
-      "builtAt": "2026-08-14T07:27:52.281Z",
-      "totals": {
-        "seasons": 66264,
-        "delta": 15
-      },
-      "shapeCounts": {
-        "mid-peak": 4642,
-        "rebound": 10086,
-        "rising": 2907,
-        "slow-burn": 4378,
-        "big-finale": 12139,
-        "u-shaped": 3098,
-        "rollercoaster": 14066,
-        "saved-best-for-last": 1548,
-        "front-loaded": 3473,
-        "declining": 1876,
-        "bad-finale": 4681,
-        "consistent": 2628,
-        "shape-drift": 1644
-      },
-      "shapeDeltas": {
-        "mid-peak": -1,
-        "rebound": -1,
-        "rising": -4,
-        "slow-burn": 3,
-        "big-finale": 14,
-        "u-shaped": 6,
-        "rollercoaster": 7,
-        "saved-best-for-last": 5,
-        "bad-finale": 5,
-        "consistent": -3,
-        "shape-drift": 3
-      },
-      "added": [
-        {
-          "seriesId": "tt9288030",
-          "title": "Reacher",
-          "season": 4,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt43673968",
-          "title": "Mourinho",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt27543562",
-          "title": "The Shards",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt22640400",
-          "title": "The Traitors Australia",
-          "season": 3,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt27982433",
-          "title": "Diarra from Detroit",
-          "season": 2,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt43725623",
-          "title": "Conversations with a Killer: The Charles Manson Tapes",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt1711420",
-          "title": "The Great Food Truck Race",
-          "season": 19,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt1236429",
-          "title": "Sid the Science Kid",
-          "season": 2,
-          "seasonYear": 2010
-        },
-        {
-          "seriesId": "tt0211606",
-          "title": "Saber Marionette J to X",
-          "season": 1,
-          "seasonYear": 1998
-        },
-        {
-          "seriesId": "tt12606560",
-          "title": "Are You the One?",
-          "season": 1,
-          "seasonYear": 2020
-        },
-        {
-          "seriesId": "tt1294009",
-          "title": "Only Connect",
-          "season": 22,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt1720607",
-          "title": "Top Chef: Just Desserts",
-          "season": 2,
-          "seasonYear": 2011
-        },
-        {
-          "seriesId": "tt21058238",
-          "title": "Wicked City",
-          "season": 3,
-          "seasonYear": 2024
-        },
-        {
-          "seriesId": "tt3214736",
-          "title": "Flesh for the Beast: Tsukiko's Curse",
-          "season": 1,
-          "seasonYear": 2015
-        },
-        {
-          "seriesId": "tt32552623",
-          "title": "Dette er humor",
-          "season": 2,
-          "seasonYear": 2025
-        },
-        {
-          "seriesId": "tt34577272",
-          "title": "Bovensloters",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt3823972",
-          "title": "Southern Justice",
-          "season": 1,
-          "seasonYear": 2014
-        },
-        {
-          "seriesId": "tt42543368",
-          "title": "Chopped Castaways",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt43619278",
-          "title": "25 Years of You",
-          "season": 1,
-          "seasonYear": 2026
-        }
-      ],
-      "removed": [
-        {
-          "seriesId": "tt3121876",
-          "title": "Animal Face Off",
-          "season": 1,
-          "seasonYear": 2004
-        },
-        {
-          "seriesId": "tt0877508",
-          "title": "Jigoku sensei Nube",
-          "season": 1,
-          "seasonYear": 1996
-        },
-        {
-          "seriesId": "tt0447579",
-          "title": "Ashita No Nadja",
-          "season": 1,
-          "seasonYear": 2003
-        },
-        {
-          "seriesId": "tt0178148",
-          "title": "M.U.S.C.L.E.",
-          "season": 1,
-          "seasonYear": 1983
-        }
-      ],
-      "ratingSwings": [
-        {
-          "seriesId": "tt0061261",
-          "title": "He & She",
-          "season": 1,
-          "from": 7.04,
-          "to": 6.02,
-          "delta": -1.02
-        },
-        {
-          "seriesId": "tt33035777",
-          "title": "PD True",
-          "season": 1,
-          "from": 6.73,
-          "to": 6.05,
-          "delta": -0.68
-        },
-        {
-          "seriesId": "tt36742714",
-          "title": "Santita",
-          "season": 1,
-          "from": 4.43,
-          "to": 5.09,
-          "delta": 0.66
-        },
-        {
-          "seriesId": "tt31501409",
-          "title": "Solo las más",
-          "season": 2,
-          "from": 5.36,
-          "to": 4.84,
-          "delta": -0.52
-        },
-        {
-          "seriesId": "tt2010634",
-          "title": "Secret Mountain Fort Awesome",
-          "season": 2,
-          "from": 7.69,
-          "to": 7.17,
-          "delta": -0.52
-        },
-        {
-          "seriesId": "tt7414406",
-          "title": "All American",
-          "season": 8,
-          "from": 7.98,
-          "to": 7.47,
-          "delta": -0.51
-        },
-        {
-          "seriesId": "tt38718126",
-          "title": "Drag Race México: Latina Royale",
-          "season": 1,
-          "from": 8.23,
-          "to": 7.73,
-          "delta": -0.5
-        },
-        {
-          "seriesId": "tt43648966",
-          "title": "My Bias, My Boss",
-          "season": 1,
-          "from": 6.83,
-          "to": 7.3,
-          "delta": 0.47
-        },
-        {
-          "seriesId": "tt38990474",
-          "title": "Treasure & Dirt",
-          "season": 1,
-          "from": 7.24,
-          "to": 7.7,
-          "delta": 0.46
-        },
-        {
-          "seriesId": "tt32552623",
-          "title": "Dette er humor",
-          "season": 1,
-          "from": 6.7,
-          "to": 7.15,
-          "delta": 0.45
-        }
-      ],
-      "modifiedCounts": {
-        "seriesVotes": 24648,
-        "avgRating": 1609,
-        "shapes": 254,
-        "episodeCount": 115,
-        "seriesRating": 392,
-        "poster": 21,
-        "overview": 16,
-        "providers": 15
       }
     }
   ]
