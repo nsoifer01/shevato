@@ -1,6 +1,292 @@
 {
   "updates": [
     {
+      "builtAt": "2026-10-04T12:31:59.615Z",
+      "totals": {
+        "seasons": 67020,
+        "delta": 26
+      },
+      "shapeCounts": {
+        "rebound": 10210,
+        "rising": 2639,
+        "slow-burn": 4447,
+        "big-finale": 12230,
+        "u-shaped": 3083,
+        "rollercoaster": 14213,
+        "saved-best-for-last": 1480,
+        "shape-drift": 1587,
+        "mid-peak": 4627,
+        "front-loaded": 3515,
+        "declining": 1908,
+        "bad-finale": 4683,
+        "consistent": 2645
+      },
+      "shapeDeltas": {
+        "rebound": 4,
+        "rising": 7,
+        "slow-burn": 10,
+        "big-finale": 10,
+        "u-shaped": -1,
+        "rollercoaster": 4,
+        "saved-best-for-last": -3,
+        "shape-drift": 4,
+        "front-loaded": 1,
+        "bad-finale": 12,
+        "consistent": 9
+      },
+      "added": [
+        {
+          "seriesId": "tt38268282",
+          "title": "Steel Ball Run: JoJo's Bizarre Adventure",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt31510819",
+          "title": "MobLand",
+          "season": 2,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt15245094",
+          "title": "Drag Race Philippines",
+          "season": 4,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt18332852",
+          "title": "Outlander: Blood of My Blood",
+          "season": 2,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt36064406",
+          "title": "Coven Academy",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt35726020",
+          "title": "Kill Jackie",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt2954586",
+          "title": "Secrets d'histoire",
+          "season": 12,
+          "seasonYear": 2018
+        },
+        {
+          "seriesId": "tt37187505",
+          "title": "Tall Tales & Murder",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt34321268",
+          "title": "Bob the Builder: Mini Adventures",
+          "season": 1,
+          "seasonYear": 2001
+        },
+        {
+          "seriesId": "tt0305102",
+          "title": "Der Schwammerlkönig",
+          "season": 1,
+          "seasonYear": 1988
+        },
+        {
+          "seriesId": "tt6297952",
+          "title": "CoryxKenshin",
+          "season": 1,
+          "seasonYear": 2009
+        },
+        {
+          "seriesId": "tt35836959",
+          "title": "Medusa",
+          "season": 2,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt37599841",
+          "title": "Skibidi Toilet Multiverse",
+          "season": 3,
+          "seasonYear": 2023
+        },
+        {
+          "seriesId": "tt37594662",
+          "title": "Bakaiti",
+          "season": 2,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt38987259",
+          "title": "You Are the One I Love",
+          "season": 2,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt40068581",
+          "title": "Mitti De Baway",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt0081860",
+          "title": "A Case for Two",
+          "season": 44,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt1746428",
+          "title": "Sidekick",
+          "season": 2,
+          "seasonYear": 2011
+        },
+        {
+          "seriesId": "tt20883126",
+          "title": "Red Queen",
+          "season": 2,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt2342748",
+          "title": "Sasami-san@Ganbaranai",
+          "season": 1,
+          "seasonYear": 2013
+        },
+        {
+          "seriesId": "tt27813193",
+          "title": "Klara",
+          "season": 2,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt38707896",
+          "title": "Hotellet",
+          "season": 1,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt38946694",
+          "title": "Tomei na Yoru ni Kakeru Kimi to, Me ni Mienai Koi wo Shita",
+          "season": 1,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt32603995",
+          "title": "Adventure Time: Side Quests",
+          "season": 2,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt42871832",
+          "title": "Baddies USA Chapter Two",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt45083950",
+          "title": "Bite Size Terror",
+          "season": 1,
+          "seasonYear": 2026
+        }
+      ],
+      "removed": [],
+      "ratingSwings": [
+        {
+          "seriesId": "tt43696866",
+          "title": "Clone",
+          "season": 1,
+          "from": 6.43,
+          "to": 7.5,
+          "delta": 1.07
+        },
+        {
+          "seriesId": "tt38268282",
+          "title": "Steel Ball Run: JoJo's Bizarre Adventure",
+          "season": 2,
+          "from": 7.63,
+          "to": 8.68,
+          "delta": 1.05
+        },
+        {
+          "seriesId": "tt38282411",
+          "title": "A.B.I.",
+          "season": 2,
+          "from": 5.67,
+          "to": 6.65,
+          "delta": 0.98
+        },
+        {
+          "seriesId": "tt18970320",
+          "title": "Slip",
+          "season": 1,
+          "from": 5.4,
+          "to": 4.47,
+          "delta": -0.93
+        },
+        {
+          "seriesId": "tt31925820",
+          "title": "Dupahiya",
+          "season": 2,
+          "from": 8.07,
+          "to": 8.86,
+          "delta": 0.79
+        },
+        {
+          "seriesId": "tt9148452",
+          "title": "I'll Get This",
+          "season": 1,
+          "from": 7,
+          "to": 6.33,
+          "delta": -0.67
+        },
+        {
+          "seriesId": "tt31924802",
+          "title": "The Revolutionaries",
+          "season": 1,
+          "from": 8.55,
+          "to": 7.9,
+          "delta": -0.65
+        },
+        {
+          "seriesId": "tt0448275",
+          "title": "Besik Kertmesi",
+          "season": 1,
+          "from": 6.2,
+          "to": 6.77,
+          "delta": 0.57
+        },
+        {
+          "seriesId": "tt12872884",
+          "title": "An Anatolian Tale",
+          "season": 7,
+          "from": 3.93,
+          "to": 4.47,
+          "delta": 0.54
+        },
+        {
+          "seriesId": "tt27757845",
+          "title": "Siyaah Series",
+          "season": 1,
+          "from": 7.95,
+          "to": 7.43,
+          "delta": -0.52
+        }
+      ],
+      "modifiedCounts": {
+        "seriesVotes": 22652,
+        "avgRating": 1117,
+        "shapes": 209,
+        "seriesRating": 331,
+        "poster": 13,
+        "overview": 13,
+        "episodeCount": 74,
+        "providers": 1
+      }
+    },
+    {
       "builtAt": "2026-10-03T11:41:34.324Z",
       "totals": {
         "seasons": 66994,
@@ -9370,277 +9656,6 @@
         "seriesRating": 228,
         "poster": 5,
         "overview": 5
-      }
-    },
-    {
-      "builtAt": "2026-08-15T06:45:04.746Z",
-      "totals": {
-        "seasons": 66283,
-        "delta": 19
-      },
-      "shapeCounts": {
-        "mid-peak": 4649,
-        "rebound": 10099,
-        "rising": 2915,
-        "slow-burn": 4383,
-        "big-finale": 12152,
-        "u-shaped": 3099,
-        "rollercoaster": 14067,
-        "saved-best-for-last": 1549,
-        "front-loaded": 3479,
-        "declining": 1873,
-        "bad-finale": 4685,
-        "consistent": 2618,
-        "shape-drift": 1641
-      },
-      "shapeDeltas": {
-        "mid-peak": 7,
-        "rebound": 13,
-        "rising": 8,
-        "slow-burn": 5,
-        "big-finale": 13,
-        "u-shaped": 1,
-        "rollercoaster": 1,
-        "saved-best-for-last": 1,
-        "front-loaded": 6,
-        "declining": -3,
-        "bad-finale": 4,
-        "consistent": -10,
-        "shape-drift": -3
-      },
-      "added": [
-        {
-          "seriesId": "tt31491435",
-          "title": "Tires",
-          "season": 3,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt0176095",
-          "title": "The Challenge",
-          "season": 42,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt37352716",
-          "title": "My Brilliant Career",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt17371078",
-          "title": "The Ark",
-          "season": 3,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt34883857",
-          "title": "Possession",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt13321232",
-          "title": "Karma's World",
-          "season": 2,
-          "seasonYear": 2022
-        },
-        {
-          "seriesId": "tt33347879",
-          "title": "The Traitors",
-          "season": 2,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt38683025",
-          "title": "Benidorm Is Murder",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt6417924",
-          "title": "Stephen Hawking's Favorite Places",
-          "season": 1,
-          "seasonYear": 2016
-        },
-        {
-          "seriesId": "tt0219457",
-          "title": "Stingers",
-          "season": 1,
-          "seasonYear": 1998
-        },
-        {
-          "seriesId": "tt6440422",
-          "title": "The Zoo",
-          "season": 5,
-          "seasonYear": 2021
-        },
-        {
-          "seriesId": "tt4353976",
-          "title": "Antiques Road Trip",
-          "season": 15,
-          "seasonYear": 2017
-        },
-        {
-          "seriesId": "tt3121876",
-          "title": "Animal Face Off",
-          "season": 1,
-          "seasonYear": 2004
-        },
-        {
-          "seriesId": "tt1632065",
-          "title": "Mother",
-          "season": 1,
-          "seasonYear": 2010
-        },
-        {
-          "seriesId": "tt5605138",
-          "title": "Medieval Murder Mysteries",
-          "season": 1,
-          "seasonYear": 2015
-        },
-        {
-          "seriesId": "tt18648594",
-          "title": "Pitbull",
-          "season": 1,
-          "seasonYear": 2022
-        },
-        {
-          "seriesId": "tt21194812",
-          "title": "Galaktyczne lektury",
-          "season": 1,
-          "seasonYear": 2013
-        },
-        {
-          "seriesId": "tt28305763",
-          "title": "Hip Hop India",
-          "season": 1,
-          "seasonYear": 2023
-        },
-        {
-          "seriesId": "tt29472571",
-          "title": "Temptation Island: Brazil",
-          "season": 1,
-          "seasonYear": 2024
-        },
-        {
-          "seriesId": "tt42815500",
-          "title": "Little Singles",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt2662790",
-          "title": "A Town Where You Live",
-          "season": 1,
-          "seasonYear": 2013
-        }
-      ],
-      "removed": [
-        {
-          "seriesId": "tt0463827",
-          "title": "Mock the Week",
-          "season": 23,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt2074166",
-          "title": "Ro-Kyu-Bu!",
-          "season": 1,
-          "seasonYear": 2011
-        }
-      ],
-      "ratingSwings": [
-        {
-          "seriesId": "tt0320037",
-          "title": "Jimmy Kimmel Live!",
-          "season": 5,
-          "from": 7.07,
-          "to": 5.89,
-          "delta": -1.18
-        },
-        {
-          "seriesId": "tt0268789",
-          "title": "The Chris Isaak Show",
-          "season": 2,
-          "from": 8.33,
-          "to": 7.15,
-          "delta": -1.18
-        },
-        {
-          "seriesId": "tt0268789",
-          "title": "The Chris Isaak Show",
-          "season": 3,
-          "from": 8.38,
-          "to": 7.37,
-          "delta": -1.01
-        },
-        {
-          "seriesId": "tt0320037",
-          "title": "Jimmy Kimmel Live!",
-          "season": 12,
-          "from": 7.9,
-          "to": 6.98,
-          "delta": -0.92
-        },
-        {
-          "seriesId": "tt0320037",
-          "title": "Jimmy Kimmel Live!",
-          "season": 7,
-          "from": 6.55,
-          "to": 5.83,
-          "delta": -0.72
-        },
-        {
-          "seriesId": "tt4219148",
-          "title": "Isuca",
-          "season": 1,
-          "from": 5.21,
-          "to": 5.9,
-          "delta": 0.69
-        },
-        {
-          "seriesId": "tt0320037",
-          "title": "Jimmy Kimmel Live!",
-          "season": 6,
-          "from": 7.37,
-          "to": 6.74,
-          "delta": -0.63
-        },
-        {
-          "seriesId": "tt32034812",
-          "title": "I'm Living with an Otaku NEET Kunoichi!?",
-          "season": 1,
-          "from": 7.57,
-          "to": 8.2,
-          "delta": 0.63
-        },
-        {
-          "seriesId": "tt14113682",
-          "title": "DNA Family Secrets",
-          "season": 2,
-          "from": 8.18,
-          "to": 7.57,
-          "delta": -0.61
-        },
-        {
-          "seriesId": "tt0268789",
-          "title": "The Chris Isaak Show",
-          "season": 1,
-          "from": 7.43,
-          "to": 6.83,
-          "delta": -0.6
-        }
-      ],
-      "modifiedCounts": {
-        "seriesVotes": 24347,
-        "avgRating": 1621,
-        "shapes": 297,
-        "seriesRating": 317,
-        "episodeCount": 107,
-        "poster": 5,
-        "overview": 4,
-        "providers": 3
       }
     }
   ]
