@@ -1,6 +1,255 @@
 {
   "updates": [
     {
+      "builtAt": "2026-10-05T14:34:47.413Z",
+      "totals": {
+        "seasons": 67040,
+        "delta": 20
+      },
+      "shapeCounts": {
+        "rebound": 10215,
+        "rising": 2644,
+        "slow-burn": 4446,
+        "big-finale": 12243,
+        "u-shaped": 3087,
+        "rollercoaster": 14215,
+        "saved-best-for-last": 1477,
+        "shape-drift": 1588,
+        "mid-peak": 4627,
+        "front-loaded": 3511,
+        "declining": 1907,
+        "bad-finale": 4678,
+        "consistent": 2645
+      },
+      "shapeDeltas": {
+        "rebound": 5,
+        "rising": 5,
+        "slow-burn": -1,
+        "big-finale": 13,
+        "u-shaped": 4,
+        "rollercoaster": 2,
+        "saved-best-for-last": -3,
+        "shape-drift": 1,
+        "front-loaded": -4,
+        "declining": -1,
+        "bad-finale": -5
+      },
+      "added": [
+        {
+          "seriesId": "tt48055802",
+          "title": "Solo für Schwarz",
+          "season": 1,
+          "seasonYear": 2003
+        },
+        {
+          "seriesId": "tt2555320",
+          "title": "Pesadilla en la cocina",
+          "season": 5,
+          "seasonYear": 2016
+        },
+        {
+          "seriesId": "tt39328073",
+          "title": "Distance and Timing",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt43706317",
+          "title": "Unmasking a Monster: Aileen Wuornos",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt41359588",
+          "title": "Oops! Mysterious Sounds",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt0221740",
+          "title": "Crime Stories",
+          "season": 3,
+          "seasonYear": 2006
+        },
+        {
+          "seriesId": "tt2182427",
+          "title": "Bering Sea Gold",
+          "season": 19,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt0902735",
+          "title": "On the Track",
+          "season": 37,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt6136416",
+          "title": "Indetectables",
+          "season": 5,
+          "seasonYear": 2023
+        },
+        {
+          "seriesId": "tt2555320",
+          "title": "Pesadilla en la cocina",
+          "season": 7,
+          "seasonYear": 2019
+        },
+        {
+          "seriesId": "tt2555320",
+          "title": "Pesadilla en la cocina",
+          "season": 4,
+          "seasonYear": 2015
+        },
+        {
+          "seriesId": "tt44933696",
+          "title": "The Center Seat II: 60 Years of Star Trek",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt15156682",
+          "title": "SuperMarioLogan",
+          "season": 8,
+          "seasonYear": 2014
+        },
+        {
+          "seriesId": "tt19818812",
+          "title": "Fallen",
+          "season": 2,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt36955280",
+          "title": "Inside CDU",
+          "season": 1,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt14348758",
+          "title": "The Sisters Grimm",
+          "season": 2,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt38674953",
+          "title": "#Love",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt0983200",
+          "title": "Media Watch",
+          "season": 36,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt40182966",
+          "title": "Days That Shocked the World",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt4566846",
+          "title": "Blue Building Detectives",
+          "season": 9,
+          "seasonYear": 2017
+        }
+      ],
+      "removed": [],
+      "ratingSwings": [
+        {
+          "seriesId": "tt0293725",
+          "title": "Butt-Ugly Martians",
+          "season": 1,
+          "from": 8.27,
+          "to": 6.75,
+          "delta": -1.52
+        },
+        {
+          "seriesId": "tt37187505",
+          "title": "Tall Tales & Murder",
+          "season": 1,
+          "from": 4.9,
+          "to": 6.33,
+          "delta": 1.43
+        },
+        {
+          "seriesId": "tt4255166",
+          "title": "American Horror Story FreakShow: Extra-Ordinary-Artists",
+          "season": 1,
+          "from": 8.54,
+          "to": 7.52,
+          "delta": -1.02
+        },
+        {
+          "seriesId": "tt35932166",
+          "title": "Mr. Fanboy",
+          "season": 1,
+          "from": 6.2,
+          "to": 6.87,
+          "delta": 0.67
+        },
+        {
+          "seriesId": "tt29794599",
+          "title": "Bolo Sezoni",
+          "season": 1,
+          "from": 8.86,
+          "to": 9.38,
+          "delta": 0.52
+        },
+        {
+          "seriesId": "tt20883126",
+          "title": "Red Queen",
+          "season": 2,
+          "from": 7.1,
+          "to": 6.58,
+          "delta": -0.52
+        },
+        {
+          "seriesId": "tt43736405",
+          "title": "A Love Other Than Yours",
+          "season": 1,
+          "from": 7.13,
+          "to": 6.62,
+          "delta": -0.51
+        },
+        {
+          "seriesId": "tt32321928",
+          "title": "Betty La Fea: The Story Continues",
+          "season": 3,
+          "from": 4.96,
+          "to": 4.5,
+          "delta": -0.46
+        },
+        {
+          "seriesId": "tt43587102",
+          "title": "Mebius Dust",
+          "season": 1,
+          "from": 6.8,
+          "to": 7.26,
+          "delta": 0.46
+        },
+        {
+          "seriesId": "tt16116866",
+          "title": "Trivial Pursuit",
+          "season": 2,
+          "from": 7.15,
+          "to": 6.7,
+          "delta": -0.45
+        }
+      ],
+      "modifiedCounts": {
+        "seriesVotes": 22647,
+        "avgRating": 1185,
+        "shapes": 200,
+        "seriesRating": 398,
+        "episodeCount": 93,
+        "providers": 2,
+        "poster": 1
+      }
+    },
+    {
       "builtAt": "2026-10-04T12:31:59.615Z",
       "totals": {
         "seasons": 67020,
@@ -9478,184 +9727,6 @@
         "episodeCount": 65,
         "seriesRating": 224,
         "overview": 1
-      }
-    },
-    {
-      "builtAt": "2026-08-16T06:43:26.599Z",
-      "totals": {
-        "seasons": 66291,
-        "delta": 8
-      },
-      "shapeCounts": {
-        "mid-peak": 4650,
-        "rebound": 10096,
-        "rising": 2916,
-        "slow-burn": 4388,
-        "big-finale": 12149,
-        "u-shaped": 3099,
-        "rollercoaster": 14068,
-        "saved-best-for-last": 1552,
-        "front-loaded": 3483,
-        "declining": 1874,
-        "bad-finale": 4687,
-        "consistent": 2619,
-        "shape-drift": 1645
-      },
-      "shapeDeltas": {
-        "mid-peak": 1,
-        "rebound": -3,
-        "rising": 1,
-        "slow-burn": 5,
-        "big-finale": -3,
-        "rollercoaster": 1,
-        "saved-best-for-last": 3,
-        "front-loaded": 4,
-        "declining": 1,
-        "bad-finale": 2,
-        "consistent": 1,
-        "shape-drift": 4
-      },
-      "added": [
-        {
-          "seriesId": "tt24512262",
-          "title": "Fightland",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt0083422",
-          "title": "Gilligan's Planet",
-          "season": 1,
-          "seasonYear": 1982
-        },
-        {
-          "seriesId": "tt3781380",
-          "title": "Americanah",
-          "season": 1,
-          "seasonYear": 2021
-        },
-        {
-          "seriesId": "tt11381236",
-          "title": "Aldri voksen",
-          "season": 3,
-          "seasonYear": 2022
-        },
-        {
-          "seriesId": "tt9747398",
-          "title": "My 600-lb Life: Where Are They Now?",
-          "season": 6,
-          "seasonYear": 2020
-        },
-        {
-          "seriesId": "tt35067773",
-          "title": "Holy Sh!t",
-          "season": 1,
-          "seasonYear": 2025
-        },
-        {
-          "seriesId": "tt37913531",
-          "title": "Sveriges dummaste",
-          "season": 1,
-          "seasonYear": 2025
-        },
-        {
-          "seriesId": "tt41559147",
-          "title": "Moria",
-          "season": 1,
-          "seasonYear": 2026
-        }
-      ],
-      "removed": [],
-      "ratingSwings": [
-        {
-          "seriesId": "tt1479978",
-          "title": "Wingin' It",
-          "season": 1,
-          "from": 8.42,
-          "to": 7.71,
-          "delta": -0.71
-        },
-        {
-          "seriesId": "tt7216288",
-          "title": "Robot Trains",
-          "season": 1,
-          "from": 8.93,
-          "to": 8.23,
-          "delta": -0.7
-        },
-        {
-          "seriesId": "tt14883574",
-          "title": "Harmony and Horror",
-          "season": 1,
-          "from": 7.1,
-          "to": 7.8,
-          "delta": 0.7
-        },
-        {
-          "seriesId": "tt38718126",
-          "title": "Drag Race México: Latina Royale",
-          "season": 1,
-          "from": 7.2,
-          "to": 7.73,
-          "delta": 0.53
-        },
-        {
-          "seriesId": "tt37352716",
-          "title": "My Brilliant Career",
-          "season": 1,
-          "from": 6.25,
-          "to": 6.77,
-          "delta": 0.52
-        },
-        {
-          "seriesId": "tt22640400",
-          "title": "The Traitors Australia",
-          "season": 3,
-          "from": 7.35,
-          "to": 6.9,
-          "delta": -0.45
-        },
-        {
-          "seriesId": "tt0437741",
-          "title": "Project Runway",
-          "season": 22,
-          "from": 3.82,
-          "to": 4.27,
-          "delta": 0.45
-        },
-        {
-          "seriesId": "tt43599829",
-          "title": "Kakuseihunter Omegahorn",
-          "season": 1,
-          "from": 8.63,
-          "to": 8.23,
-          "delta": -0.4
-        },
-        {
-          "seriesId": "tt12504122",
-          "title": "Into the Ring",
-          "season": 1,
-          "from": 7.98,
-          "to": 7.59,
-          "delta": -0.39
-        },
-        {
-          "seriesId": "tt17678832",
-          "title": "Hakim",
-          "season": 1,
-          "from": 6.9,
-          "to": 7.28,
-          "delta": 0.38
-        }
-      ],
-      "modifiedCounts": {
-        "seriesVotes": 20745,
-        "avgRating": 1036,
-        "shapes": 189,
-        "episodeCount": 76,
-        "seriesRating": 228,
-        "poster": 5,
-        "overview": 5
       }
     }
   ]
