@@ -30,7 +30,7 @@ has the mechanics; this is why, and what bites.
   dead end: it reads the `tt<digits>` id off the path and `location.replace`s
   to `/apps/rising-shows/#show=<id>`, which opens the same show's modal.
   Crawlers never render a 410 body, so this costs nothing in search.
-- **One selector, two builders.** `selectShowPageIds` (render-sitemap.js)
+- **One selector, two builders.** `selectShowPageIds` (show-pages.js, dependency-free so split-data does not load the page renderer)
   decides the set from data.json's flat matches, and BOTH build-show-pages.js
   (which pages to write) and split-data.js (`page: true` on the shows-index
   row, which gates the modal's Permalink and the share URL) call it. Two

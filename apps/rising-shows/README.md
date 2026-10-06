@@ -179,7 +179,7 @@ hub), and `sitemap-shows.xml`.
 These are gitignored build artifacts, derived from `data.json` (which the build downloads from the `rising-shows-data` release first).
 
 `sitemap-shows.xml` lists exactly the shows that have a page: the top 2,000
-series by IMDb vote count (`SHOW_PAGE_LIMIT` in `render-sitemap.js`, selected by
+series by IMDb vote count (`SHOW_PAGE_LIMIT` in `scripts/show-pages.js`, selected by
 `selectShowPageIds`), plus the A-Z index, its 83 paginated per-letter pages
 (`/shows/letter/<x>/<n>/`, 500 rows each) and the 14 hubs: 2,098 URLs in total.
 
