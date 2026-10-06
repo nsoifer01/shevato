@@ -1,6 +1,288 @@
 {
   "updates": [
     {
+      "builtAt": "2026-10-06T13:35:05.354Z",
+      "totals": {
+        "seasons": 67061,
+        "delta": 21
+      },
+      "shapeCounts": {
+        "rebound": 10224,
+        "rising": 2638,
+        "slow-burn": 4447,
+        "big-finale": 12237,
+        "u-shaped": 3083,
+        "rollercoaster": 14221,
+        "saved-best-for-last": 1479,
+        "shape-drift": 1587,
+        "mid-peak": 4631,
+        "front-loaded": 3512,
+        "declining": 1910,
+        "bad-finale": 4681,
+        "consistent": 2646
+      },
+      "shapeDeltas": {
+        "rebound": 9,
+        "rising": -6,
+        "slow-burn": 1,
+        "big-finale": -6,
+        "u-shaped": -4,
+        "rollercoaster": 6,
+        "saved-best-for-last": 2,
+        "shape-drift": -1,
+        "mid-peak": 4,
+        "front-loaded": 1,
+        "declining": 3,
+        "bad-finale": 3,
+        "consistent": 1
+      },
+      "added": [
+        {
+          "seriesId": "tt13606528",
+          "title": "Drag Race España",
+          "season": 6,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt13820128",
+          "title": "Good Grief",
+          "season": 2,
+          "seasonYear": 2022
+        },
+        {
+          "seriesId": "tt33096993",
+          "title": "Have I Got News for You",
+          "season": 5,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt0092336",
+          "title": "The Days and Nights of Molly Dodd",
+          "season": 3,
+          "seasonYear": 1989
+        },
+        {
+          "seriesId": "tt19873092",
+          "title": "Eureka!",
+          "season": 1,
+          "seasonYear": 2022
+        },
+        {
+          "seriesId": "tt27126939",
+          "title": "Impact x Nightline",
+          "season": 3,
+          "seasonYear": 2024
+        },
+        {
+          "seriesId": "tt37195835",
+          "title": "Slo Pitch",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt0224884",
+          "title": "Heritage Minutes",
+          "season": 4,
+          "seasonYear": 1993
+        },
+        {
+          "seriesId": "tt0181240",
+          "title": "The Man in Room 17",
+          "season": 2,
+          "seasonYear": 1966
+        },
+        {
+          "seriesId": "tt7131118",
+          "title": "Go Fighting",
+          "season": 1,
+          "seasonYear": 2015
+        },
+        {
+          "seriesId": "tt19638434",
+          "title": "FRO Thizzle Reviews",
+          "season": 5,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt43064461",
+          "title": "Tito - Der Mann, der Jugoslawien war",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt45114223",
+          "title": "Thoi Rak Kham Luang",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt45124639",
+          "title": "Chilean Mine Rescue: Race Against Time",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt43088191",
+          "title": "Dive Into You",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt31841438",
+          "title": "Prefiero la Muerte",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt0224884",
+          "title": "Heritage Minutes",
+          "season": 14,
+          "seasonYear": 2016
+        },
+        {
+          "seriesId": "tt4320944",
+          "title": "Red Rock",
+          "season": 6,
+          "seasonYear": 2019
+        },
+        {
+          "seriesId": "tt7331194",
+          "title": "GW:s mord",
+          "season": 5,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt14283008",
+          "title": "Devushki s Makarovym",
+          "season": 5,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt14797338",
+          "title": "Freshy Kanal Rap Battles",
+          "season": 6,
+          "seasonYear": 2023
+        },
+        {
+          "seriesId": "tt29362982",
+          "title": "Fangs of Fortune",
+          "season": 1,
+          "seasonYear": 2024
+        },
+        {
+          "seriesId": "tt38234547",
+          "title": "The Arena",
+          "season": 1,
+          "seasonYear": 2026
+        }
+      ],
+      "removed": [
+        {
+          "seriesId": "tt4397866",
+          "title": "Storyville",
+          "season": 30,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt10642382",
+          "title": "Chinese Dreams",
+          "season": 1,
+          "seasonYear": 2019
+        }
+      ],
+      "ratingSwings": [
+        {
+          "seriesId": "tt4255166",
+          "title": "American Horror Story FreakShow: Extra-Ordinary-Artists",
+          "season": 1,
+          "from": 7.52,
+          "to": 8.64,
+          "delta": 1.12
+        },
+        {
+          "seriesId": "tt2456000",
+          "title": "Vain elämää",
+          "season": 16,
+          "from": 7.67,
+          "to": 6.93,
+          "delta": -0.74
+        },
+        {
+          "seriesId": "tt31975566",
+          "title": "Adv. Achinta Aich",
+          "season": 2,
+          "from": 7.13,
+          "to": 6.44,
+          "delta": -0.69
+        },
+        {
+          "seriesId": "tt0112118",
+          "title": "Partners",
+          "season": 1,
+          "from": 4.63,
+          "to": 5.3,
+          "delta": 0.67
+        },
+        {
+          "seriesId": "tt13028308",
+          "title": "I Want You to Show Me Your Panties with a Disgusted Face",
+          "season": 4,
+          "from": 5.92,
+          "to": 6.57,
+          "delta": 0.65
+        },
+        {
+          "seriesId": "tt44877899",
+          "title": "Outside",
+          "season": 1,
+          "from": 7.16,
+          "to": 7.7,
+          "delta": 0.54
+        },
+        {
+          "seriesId": "tt43632572",
+          "title": "Gurthukosthunnayi",
+          "season": 1,
+          "from": 6.6,
+          "to": 6.09,
+          "delta": -0.51
+        },
+        {
+          "seriesId": "tt35932159",
+          "title": "Your Third",
+          "season": 1,
+          "from": 5.21,
+          "to": 5.72,
+          "delta": 0.51
+        },
+        {
+          "seriesId": "tt31975566",
+          "title": "Adv. Achinta Aich",
+          "season": 3,
+          "from": 7.6,
+          "to": 7.1,
+          "delta": -0.5
+        },
+        {
+          "seriesId": "tt38987259",
+          "title": "You Are the One I Love",
+          "season": 2,
+          "from": 9.73,
+          "to": 9.23,
+          "delta": -0.5
+        }
+      ],
+      "modifiedCounts": {
+        "seriesVotes": 20832,
+        "avgRating": 1196,
+        "seriesRating": 415,
+        "shapes": 197,
+        "episodeCount": 66,
+        "poster": 7,
+        "providers": 2
+      }
+    },
+    {
       "builtAt": "2026-10-05T14:34:47.413Z",
       "totals": {
         "seasons": 67040,
@@ -9526,207 +9808,6 @@
         "episodeCount": 97,
         "seriesRating": 391,
         "poster": 2
-      }
-    },
-    {
-      "builtAt": "2026-08-17T06:50:55.203Z",
-      "totals": {
-        "seasons": 66303,
-        "delta": 12
-      },
-      "shapeCounts": {
-        "mid-peak": 4657,
-        "rebound": 10098,
-        "rising": 2917,
-        "slow-burn": 4395,
-        "big-finale": 12150,
-        "u-shaped": 3107,
-        "rollercoaster": 14070,
-        "saved-best-for-last": 1552,
-        "front-loaded": 3482,
-        "declining": 1872,
-        "bad-finale": 4691,
-        "consistent": 2620,
-        "shape-drift": 1646
-      },
-      "shapeDeltas": {
-        "mid-peak": 7,
-        "rebound": 2,
-        "rising": 1,
-        "slow-burn": 7,
-        "big-finale": 1,
-        "u-shaped": 8,
-        "rollercoaster": 2,
-        "front-loaded": -1,
-        "declining": -2,
-        "bad-finale": 4,
-        "consistent": 1,
-        "shape-drift": 1
-      },
-      "added": [
-        {
-          "seriesId": "tt0166900",
-          "title": "Belle et Sébastien",
-          "season": 1,
-          "seasonYear": 1965
-        },
-        {
-          "seriesId": "tt23470982",
-          "title": "Hell on Earth",
-          "season": 1,
-          "seasonYear": 2022
-        },
-        {
-          "seriesId": "tt0953931",
-          "title": "Doctors",
-          "season": 2,
-          "seasonYear": 2007
-        },
-        {
-          "seriesId": "tt0872306",
-          "title": "Kurau: Phantom Memory",
-          "season": 1,
-          "seasonYear": 2004
-        },
-        {
-          "seriesId": "tt7702924",
-          "title": "Calls",
-          "season": 3,
-          "seasonYear": 2020
-        },
-        {
-          "seriesId": "tt7901366",
-          "title": "Flunk",
-          "season": 1,
-          "seasonYear": 2018
-        },
-        {
-          "seriesId": "tt7256504",
-          "title": "Tokyo Girl",
-          "season": 1,
-          "seasonYear": 2016
-        },
-        {
-          "seriesId": "tt26685762",
-          "title": "Die Verräter",
-          "season": 4,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt35801873",
-          "title": "Badly in Love",
-          "season": 2,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt43641418",
-          "title": "The Vampire Lestat: After Dark",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt43711139",
-          "title": "Craft 1979",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt37610423",
-          "title": "Let's Marry Harry",
-          "season": 1,
-          "seasonYear": 2026
-        }
-      ],
-      "removed": [],
-      "ratingSwings": [
-        {
-          "seriesId": "tt0149460",
-          "title": "Futurama",
-          "season": 14,
-          "from": 7.07,
-          "to": 7.75,
-          "delta": 0.68
-        },
-        {
-          "seriesId": "tt36836504",
-          "title": "The All-devouring Whale: Homecoming",
-          "season": 1,
-          "from": 7.02,
-          "to": 6.47,
-          "delta": -0.55
-        },
-        {
-          "seriesId": "tt13084120",
-          "title": "Azur Lane: Slow Ahead!",
-          "season": 1,
-          "from": 6.57,
-          "to": 6.07,
-          "delta": -0.5
-        },
-        {
-          "seriesId": "tt1245687",
-          "title": "30 Days of Night: Dust to Dust",
-          "season": 1,
-          "from": 5.28,
-          "to": 5.77,
-          "delta": 0.49
-        },
-        {
-          "seriesId": "tt4719662",
-          "title": "Acri Creature Feature",
-          "season": 3,
-          "from": 6.17,
-          "to": 6.63,
-          "delta": 0.46
-        },
-        {
-          "seriesId": "tt20737440",
-          "title": "Sam and Colby: The Paranormal",
-          "season": 4,
-          "from": 8.43,
-          "to": 7.99,
-          "delta": -0.44
-        },
-        {
-          "seriesId": "tt20737440",
-          "title": "Sam and Colby: The Paranormal",
-          "season": 3,
-          "from": 8.6,
-          "to": 8.17,
-          "delta": -0.43
-        },
-        {
-          "seriesId": "tt11755260",
-          "title": "The Daily Life of the Immortal King",
-          "season": 5,
-          "from": 8.59,
-          "to": 8.21,
-          "delta": -0.38
-        },
-        {
-          "seriesId": "tt41785451",
-          "title": "Affairs Not the Only Secret",
-          "season": 1,
-          "from": 8.43,
-          "to": 8.78,
-          "delta": 0.35
-        },
-        {
-          "seriesId": "tt11755260",
-          "title": "The Daily Life of the Immortal King",
-          "season": 4,
-          "from": 8.35,
-          "to": 8.03,
-          "delta": -0.32
-        }
-      ],
-      "modifiedCounts": {
-        "seriesVotes": 19001,
-        "avgRating": 1009,
-        "shapes": 187,
-        "episodeCount": 65,
-        "seriesRating": 224,
-        "overview": 1
       }
     }
   ]
