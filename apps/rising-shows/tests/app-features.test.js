@@ -673,14 +673,35 @@ const SHARE_SEASON = {
   episodes: [{ rating: 8.1 }, { rating: 9.9 }],
 };
 
+// Only a show whose shows-index row carries `page: true` has a static page;
+// every other /shows/<slug>/ URL answers 410 (netlify.toml).
+function withShowRows(rows, fn) {
+  ctx.__rows = rows;
+  vm.runInContext('showAggBySeries = new Map(__rows.map((r) => [r.seriesId, r]));', ctx);
+  try { return fn(); } finally {
+    vm.runInContext('showAggBySeries = new Map();', ctx);
+    delete ctx.__rows;
+  }
+}
+
 test('buildSeasonShareText: title, shapes, stats, permalink - one per line', () => {
-  const lines = helpers.buildSeasonShareText(SHARE_SEASON).split('\n');
+  const lines = withShowRows([{ seriesId: 'tt0903747', page: true }],
+    () => helpers.buildSeasonShareText(SHARE_SEASON).split('\n'));
   assert.equal(lines.length, 4);
   assert.equal(lines[0], 'Breaking Bad - Season 5 (2013)');
   assert.equal(lines[1], 'Rising · Big finale');
   assert.equal(lines[2], 'Avg 9.0 · Climb 8.1 → 9.9 (+1.8) · 2 eps');
   // The static page, not the SPA hash: only that URL carries og:image.
   assert.equal(lines[3], 'http://localhost/apps/rising-shows/shows/breaking-bad-tt0903747/');
+});
+
+test('buildSeasonShareText: a show with no static page shares its app deep link, never a 410 URL', () => {
+  const unpaged = withShowRows([{ seriesId: 'tt0903747' }],
+    () => helpers.buildSeasonShareText(SHARE_SEASON).split('\n'));
+  assert.equal(unpaged[3], 'http://localhost/apps/rising-shows/#show=tt0903747');
+  // A show missing from the index entirely is treated the same way.
+  const unknown = withShowRows([], () => helpers.buildSeasonShareText(SHARE_SEASON).split('\n'));
+  assert.equal(unknown[3], 'http://localhost/apps/rising-shows/#show=tt0903747');
 });
 
 test('buildSeasonShareText: seasonYear beats the show year, and a missing one drops the parens', () => {

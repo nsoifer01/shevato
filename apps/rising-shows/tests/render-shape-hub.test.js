@@ -529,3 +529,30 @@ test('a show whose finale collapses lands on the bad-finale hub, not front-loade
   assert.ok(html.includes('Narrow Collapse'));
   assert.ok(html.includes('(2)'), 'the hub states its own count');
 });
+
+// Since 2026-10 only the curated shows have a page; any other show URL is a
+// 410. A hub row for such a show opens it in the app, and the ItemList (a
+// claim that a document lives at each url) leaves it out.
+test('renderShapeHub links a show without a page into the app and keeps it out of the ItemList', () => {
+  const shows = selectHubShows(SERIES, 'slow-burn').map((s) => ({ ...s, hasPage: s.seriesId !== 'tt0001' }));
+  const html = renderShapeHub('slow-burn', shows, '2026-05-18T00:00:00.000Z');
+  assert.ok(html.includes('href="/apps/rising-shows/#show=tt0001"'));
+  assert.ok(!html.includes('/apps/rising-shows/shows/slow-one-tt0001/'), 'no link or ListItem may point at a 410 URL');
+  assert.ok(html.includes('href="/apps/rising-shows/shows/slow-two-tt0002/"'));
+  const ld = [...html.matchAll(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/g)]
+    .map((m) => JSON.parse(m[1])).find((j) => j['@type'] === 'CollectionPage');
+  assert.deepEqual(ld.mainEntity.itemListElement.map((i) => i.url),
+    ['https://shevato.com/apps/rising-shows/shows/slow-two-tt0002/']);
+  assert.equal(ld.mainEntity.itemListElement[0].position, 1);
+});
+
+test('computeRelatedShows never recommends a show without a page', () => {
+  const { computeRelatedShows, buildShapeIndex } = require('../scripts/build-show-pages.js');
+  const series = [
+    makeShow('tt0101', 'Anchor', 500, ['slow-burn']),
+    { ...makeShow('tt0102', 'Big But Unpaged', 400, ['slow-burn']), hasPage: false },
+    { ...makeShow('tt0103', 'Paged', 300, ['slow-burn']), hasPage: true },
+  ];
+  const related = computeRelatedShows(series[0], 'slow-burn', buildShapeIndex(series), 4);
+  assert.deepEqual(related.map((s) => s.seriesId), ['tt0103']);
+});

@@ -160,7 +160,7 @@ without them). The Kometa and MDBList exports are unchanged.
 | Degraded detail          | The per-show detail fetch can fail (offline, a 404, a half-deployed build). The modal then keeps every index-level number - season count, rated episodes, averages, shapes, providers, links - says in plain language that the episode-by-episode data could not be loaded, and offers a **Retry** that really refetches. It used to render "0 episodes", empty charts and a "NaN votes per episode" line with no explanation. |
 | More shows like this     | The show modal lists up to 10 shows that share a genre, a compatible original language (English suggests English; other languages match within broad family groups - Romance, European, Asian, Middle Eastern), and a similar popularity (votes/episode within 10x). Ranked by **shared show-shape first**, with the gap between IMDb rating and average episode rating as the tiebreaker inside each tier, so a show that trends the same way outranks a same-genre show that merely has a closer gap. Each row names the shared shape in its meta line. Shows sharing no shape are not excluded, they fill the remaining slots up to the 10-result cap; a show carrying no shape at all falls back to the older genre/language/popularity/gap ranking. The first 4 show; an "N more" toggle expands the rest; click one to open that show. |
 | "Watch on" row           | The show modal's provider chips ARE the links: one per mainstream service, each into that streamer's own search for the title, under a "Watch on" label and a plain-language note that a link opens a search rather than promising the title is playable. This replaced a stack of up to five separate "Watch on X" buttons that duplicated the badge row and pushed the show's own content below two screens on a phone. Hidden when no known provider matches. |
-| Permalink + outbound links | The show modal links to that show's static SEO page ("Permalink", `/apps/rising-shows/shows/<slug>-<seriesId>/`), to IMDb, and to TVDB when a TVDB ID is known. The season modal links to the season on IMDb and to the season (or the series, as a fallback) on TVDB. |
+| Permalink + outbound links | The show modal links to that show's static SEO page ("Permalink", `/apps/rising-shows/shows/<slug>-<seriesId>/`), to IMDb, and to TVDB when a TVDB ID is known. The Permalink shows only for the curated top 2,000 shows, the ones with a page (`page: true` on their `shows-index.json` row); every other show URL answers 410, so the button is hidden and Share card shares the app deep link (`#show=<id>`) instead. The season modal links to the season on IMDb and to the season (or the series, as a fallback) on TVDB. |
 | Modal action row         | Each modal has **one** action row, in the heading beside the poster, split by verb: line one is what the modal *does* (the primary in indigo - "+ Add to compare" on the show modal, "Mark as watched" on the season modal - then Share card and Share chart image), line two is where it *goes* (Permalink, then the outbound links). Buttons are the site's standard 40 px control, filled one surface step above the panel with a hairline border and a lighter top edge, at least 44 px tall on a phone. **IMDb and TVDB are compact chips, not buttons**: pill-shaped and smaller, each in its source's brand colour (IMDb gold, TVDB green), so they read as references rather than a fifth and sixth equal choice. That is why the primary action is indigo and not gold - `--accent` *is* IMDb's yellow, and one colour cannot mean both "the action here" and "IMDb"; FINDINGS.md has the audit of which hue was still free. A chip shows only the site name, so what it points at ("Season 1 on IMDb", "This series on TVDB") is its accessible name and tooltip, always containing the visible word. Every rule is scoped to `.modal-primary-actions` / `.outbound-tag`, never to the shared `.btn` primitives. Between 2026-08-23 and 2026-09-07 the utilities lived in a separate row after the content instead, which put them ~1,900 px down a scrolling panel on desktop and at the very bottom of a ~2,500 px sheet on a phone; see FINDINGS.md for that and for the design rationale. |
 | Copy link                | A "Copy link" button in the active-filter bar copies the current filtered-view URL to the clipboard whenever any filter is active. |
 | Share card               | A "Share card" button in both the show modal and the season detail modal copies a shareable text summary (title, shapes, ratings) to the clipboard. |
@@ -173,26 +173,39 @@ without them). The Kometa and MDBList exports are unchanged.
 
 `scripts/build-show-pages.js` (run via `npm run build:rising-shows:pages`, and on
 every Netlify deploy through `npm run build:site`) renders one static HTML page per
-series under `apps/rising-shows/shows/` plus an A-Z index, 14 hub pages (13 per-shape
-plus one gap-ranked "Outshines its reputation" hub), and `sitemap-shows.xml`.
+curated series (the top 2,000 by IMDb votes) under `apps/rising-shows/shows/` plus an
+A-Z index, 14 hub pages (13 per-shape plus one gap-ranked "Outshines its reputation"
+hub), and `sitemap-shows.xml`.
 These are gitignored build artifacts, derived from `data.json` (which the build downloads from the `rising-shows-data` release first).
 
-`sitemap-shows.xml` is deliberately curated: it lists only the top 2,000 series by
-IMDb vote count (`SITEMAP_LIMIT` in `build-show-pages.js`), not all ~34k, plus the
-A-Z index, its 83 paginated per-letter pages (`/shows/letter/<x>/<n>/`, 500 rows
-each) and the 14 hubs: 2,098 URLs in total. The letter pages are listed because
-they ARE the crawl path to the ~32,500 shows the sitemap omits: `/shows/` alone
-links only to the letter roots. Every page is still built
-and reachable through the A-Z index for app users, but since 2026-08 the
-non-curated pages carry `noindex, follow`: the 2026-05 full-catalogue launch put
-~34k templated pages in front of Google, which crawled them and then declined to
-index nearly all of them (GSC "Crawled - currently not indexed" ~60k by 2026-08,
-with the site's search traffic collapsing overnight on 2026-05-29 under the
-sitewide quality drag: impressions fell from 3,350 to 331 a day and average
-position from 17 to 57, and 28-day clicks went from 264 to single digits by
-July). Curating the sitemap alone did not shrink that backlog because the pages
-still self-identified as indexable; the explicit noindex drains it while the
-`follow` keeps internal link equity flowing to the curated pages. After the page builders run,
+`sitemap-shows.xml` lists exactly the shows that have a page: the top 2,000
+series by IMDb vote count (`SHOW_PAGE_LIMIT` in `scripts/show-pages.js`, selected by
+`selectShowPageIds`), plus the A-Z index, its 83 paginated per-letter pages
+(`/shows/letter/<x>/<n>/`, 500 rows each) and the 14 hubs: 2,098 URLs in total.
+
+**The long tail has no page and answers 410 Gone (since 2026-10).** The 2026-05
+full-catalogue launch put ~34k templated pages in front of Google, which crawled
+them and then declined to index nearly all of them (GSC "Crawled - currently not
+indexed" ~60k by 2026-08, 61k by 2026-10), with the site's search traffic
+collapsing overnight on 2026-05-29 under the sitewide quality drag: impressions
+fell from 3,350 to 331 a day and average position from 17 to 57, and 28-day
+clicks went from 264 to single digits by July. A curated sitemap did not shrink
+that backlog, and two months of `noindex, follow` on the tail (2026-08 to 2026-10)
+got about 3% of it reprocessed. So the builder now writes only the curated pages,
+and an UNFORCED `netlify.toml` rule answers every other
+`/apps/rising-shows/shows/*` path with 410 and the body of `show-gone.html`
+(unforced means it only fires where no file exists, so built pages, the A-Z index
+and the hubs are untouched). That body forwards a person to the same show in the
+app (`/apps/rising-shows/#show=<id>`, the id read off the URL's `tt<digits>`
+suffix): tail pages were still getting about as many real visitors as curated
+ones (GA4, 30 days to 2026-10-05: 71 views from 60 non-China users), mostly with
+no referrer. Every show stays on its A-Z letter page; a show without a page links
+to its app deep link (`showHref` in `slugify.js`), hub rows do the same and the
+hub `ItemList` JSON-LD omits it, and "Shows like this" cards only recommend shows
+that have a page. The set moves a little with each daily refresh as vote counts
+shift around the 2,000th place: a show that drops out answers 410 from the next
+deploy, one that climbs in gets its page back.
+After the page builders run,
 `scripts/stamp-sitemap-index.mjs` (repo root) re-derives the root `sitemap.xml`
 index's `<lastmod>` entries from the sub-sitemaps and stamps `sitemap-pages.xml`
 from git history. `sitemap-shows.xml` itself carries NO `<lastmod>`: the only

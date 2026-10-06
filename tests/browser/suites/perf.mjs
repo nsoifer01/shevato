@@ -221,10 +221,11 @@ function buildRisingShowsFixture() {
     writeFileSync(path.join(dir, 'data', 'show-modal-extras.json'), JSON.stringify(extras));
     // split-data.js requires the three dual-exposed libs (it folds the show
     // index with the same buildShowAgg / detectShapes / normalizeProviders the
-    // browser uses), so the temp scripts/ dir needs them beside it. Copying the
+    // browser uses) plus show-pages.js (which shows get a static page), so
+    // the temp scripts/ dir needs them beside it. Copying the
     // REAL files is the point: a fixture built by a stubbed splitter would not
     // be the artifact the deploy produces.
-    for (const f of ['split-data.js', 'finder-lib.js', 'match.js', 'providers-lib.js']) {
+    for (const f of ['split-data.js', 'finder-lib.js', 'match.js', 'providers-lib.js', 'show-pages.js']) {
       copyFileSync(path.join(REPO, 'apps', 'rising-shows', 'scripts', f), path.join(dir, 'scripts', f));
     }
     execFileSync(process.execPath, [path.join(dir, 'scripts', 'split-data.js')], { stdio: 'pipe' });

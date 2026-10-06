@@ -1,6 +1,6 @@
 'use strict';
 
-const { showPath } = require('./slugify.js');
+const { showPath, showHref } = require('./slugify.js');
 const {
   escapeHtml,
   SITE,
@@ -270,7 +270,7 @@ function renderGapHub(shows, builtAt, minVotes = GAP_MIN_VOTES, minEpisodeVotes 
 
 function rankRow(s, i, stats) {
   return `<li>
-        <a class="rank-row" href="/apps/rising-shows/shows/${showPath(s.title, s.seriesId)}/">
+        <a class="rank-row" href="${showHref(s)}">
           <span class="rank-num">${i + 1}</span>
           <span class="rank-title">${escapeHtml(s.title)}${s.year ? ` <span class="muted">(${s.year})</span>` : ''}</span>
           <span class="rank-stats">${escapeHtml(stats)}</span>
@@ -430,7 +430,9 @@ function buildCollectionSchema(name, canonical, description, shows) {
     mainEntity: {
       '@type': 'ItemList',
       numberOfItems: shows.length,
-      itemListElement: shows.slice(0, HUB_SCHEMA_LIMIT).map((s, i) => ({
+      // Only shows with a page of their own: a ListItem url is a claim that a
+      // document lives there, and every other show URL answers 410.
+      itemListElement: shows.filter((s) => s.hasPage !== false).slice(0, HUB_SCHEMA_LIMIT).map((s, i) => ({
         '@type': 'ListItem',
         position: i + 1,
         name: s.title,

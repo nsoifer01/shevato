@@ -58,9 +58,14 @@ test('no app directory contains a stray non-index *.html entry alongside index.h
     // so the URL stays short (`/apps/arena/success.html`) and the page
     // can reuse the app's CSS. It is `noindex` so it never competes for
     // the canonical app URL in search.
+    //
+    // rising-shows/show-gone.html is the body netlify.toml serves with HTTP
+    // 410 for every show URL that has no generated page. It is `noindex` and
+    // only ever reached through that rule; it forwards to the app.
     const apps = listDirs(APPS_DIR);
     const allowedExtras = {
-        'arena': new Set(['success.html'])
+        'arena': new Set(['success.html']),
+        'rising-shows': new Set(['show-gone.html'])
     };
     const offenders = [];
     for (const app of apps) {

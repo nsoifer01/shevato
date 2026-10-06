@@ -69,6 +69,8 @@ const EXPECTED = [
   ['/apps/gym-tracker/exercises/:slug/index.html', '/apps/gym-tracker/exercises/:slug/'],
   ['/apps/:app/index.html', '/apps/:app/'],
   ['/apps/rising-shows/shows/index.html', '/apps/rising-shows/shows/'],
+  // The one UNFORCED rule: it must only answer where no built page exists.
+  ['/apps/rising-shows/shows/*', '/apps/rising-shows/show-gone.html', 410, false],
   ['/apps/gym-tracker/exercises/index.html', '/apps/gym-tracker/exercises/'],
   ['/apps/rising-shows/kometa/index.html', '/apps/rising-shows/kometa/'],
   ['/product.html', '/work'],
@@ -96,13 +98,15 @@ test('netlify.toml parses into the expected number of redirect rules', () => {
   }
 });
 
-for (const [from, to, status = 301] of EXPECTED) {
-  test(`redirect ${from} -> ${to} is a forced ${status}`, () => {
+for (const [from, to, status = 301, force = true] of EXPECTED) {
+  test(`redirect ${from} -> ${to} is a${force ? ' forced' : 'n unforced'} ${status}`, () => {
     const rule = RULES.find((r) => r.from === from);
     assert.ok(rule, `no [[redirects]] block with from = "${from}"`);
     assert.equal(rule.to, to, `from = "${from}" must redirect to "${to}"`);
     assert.equal(rule.status, status, `from = "${from}" must use status ${status}`);
-    assert.equal(rule.force, true, `from = "${from}" needs force = true or the physical file wins`);
+    assert.equal(rule.force, force, force
+      ? `from = "${from}" needs force = true or the physical file wins`
+      : `from = "${from}" must NOT be forced: forcing it would answer 410 for every built show page, the A-Z index and the shape hubs too`);
   });
 }
 

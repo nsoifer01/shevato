@@ -2,18 +2,16 @@
 
 const { showPath } = require('./slugify.js');
 const { SITE } = require('./render-show-page.js');
+const { selectSitemapSeries, selectShowPageIds, SHOW_PAGE_LIMIT } = require('./show-pages.js');
 
 // Emit a single sitemap.xml referencing the curated top show pages plus
-// the /shows/ browse index. Every show page is still built and served;
-// the sitemap deliberately lists only the most-voted subset so Google
-// spends its crawl budget on shows people actually search for instead
-// of parking 30k+ long-tail pages in "Discovered - currently not
-// indexed" (GSC, 2026-07). The rest stay reachable via the A-Z index.
+// the /shows/ browse index. Only the curated shows have a page at all: the
+// full-catalogue launch parked ~60k long-tail URLs in "Crawled - currently
+// not indexed" (GSC, 2026-07 to 2026-10), and neither a curated sitemap nor
+// `noindex, follow` drained it, so the tail is served 410 since 2026-10.
 //
-// `browsePaths` are the per-letter browse pages. They are listed because they
-// ARE the crawl path to the ~32,500 shows the sitemap omits: /shows/ alone only
-// links to the letter roots, so without these the later pages of each letter
-// would sit two hops from anything a crawler is told about.
+// `browsePaths` are the per-letter browse pages. Every show is still listed on
+// one of them; a show without a page links into the app instead.
 //
 // No <lastmod>: the only date the builder has is the build time, and the
 // build runs daily, so every URL used to claim it changed today (2,098 URLs,
@@ -57,14 +55,4 @@ ${urls.join('\n')}
 `;
 }
 
-// Pick the `limit` series with the most IMDb votes (ties broken by
-// title so output is deterministic). Series without a vote count sort
-// last. Callers pass the full grouped-series list; the returned subset
-// is what goes into the sitemap.
-function selectSitemapSeries(series, limit) {
-  return [...series]
-    .sort((a, b) => (b.seriesVotes || 0) - (a.seriesVotes || 0) || a.title.localeCompare(b.title))
-    .slice(0, limit);
-}
-
-module.exports = { renderShowsSitemap, selectSitemapSeries };
+module.exports = { renderShowsSitemap, selectSitemapSeries, selectShowPageIds, SHOW_PAGE_LIMIT };

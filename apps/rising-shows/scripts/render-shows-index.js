@@ -1,6 +1,6 @@
 'use strict';
 
-const { showPath } = require('./slugify.js');
+const { showHref } = require('./slugify.js');
 const { escapeHtml, SITE } = require('./render-show-page.js');
 const { renderHubNav } = require('./render-shape-hub.js');
 const { renderMoreFooter } = require('./render-footer.js');
@@ -189,7 +189,7 @@ function renderShowsIndex(series, builtAt) {
 
     <header class="index-hero">
       <h1>All shows</h1>
-      <p class="lede">Every series in Rising Shows (${total.toLocaleString()} shows), grouped by first letter. Each links to an episode-by-episode rating page with season-shape analysis.</p>
+      <p class="lede">Every series in Rising Shows (${total.toLocaleString()} shows), grouped by first letter. Each opens its episode-by-episode ratings and season-shape analysis: the most-watched on a page of their own, the rest in the Rising Shows app.</p>
     </header>
 
     <nav class="shape-nav" aria-label="Browse by shape">
@@ -253,7 +253,7 @@ function renderShowsLetterPage({ letter, items, pageNum, totalPages, letterTotal
 
     <header class="index-hero">
       <h1>Shows starting with ${escapeHtml(letter)}${pageSuffix}</h1>
-      <p class="lede">${letterTotal.toLocaleString()} series. Each links to an episode-by-episode rating page with season-shape analysis.</p>
+      <p class="lede">${letterTotal.toLocaleString()} series. Each opens its episode-by-episode ratings and season-shape analysis: the most-watched on a page of their own, the rest in the Rising Shows app.</p>
     </header>
 
     ${alphaNav(groups, letter)}
@@ -263,8 +263,7 @@ function renderShowsLetterPage({ letter, items, pageNum, totalPages, letterTotal
     <ul class="shows-list">
       ${items
     .map((s) => {
-      const slug = showPath(s.title, s.seriesId);
-      return `<li><a href="/apps/rising-shows/shows/${slug}/">${escapeHtml(s.title)}${s.year ? ` <span class="muted">(${s.year})</span>` : ''}</a></li>`;
+      return `<li><a href="${showHref(s)}">${escapeHtml(s.title)}${s.year ? ` <span class="muted">(${s.year})</span>` : ''}</a></li>`;
     })
     .join('\n      ')}
     </ul>
