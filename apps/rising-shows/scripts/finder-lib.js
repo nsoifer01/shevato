@@ -307,9 +307,10 @@ function buildShowAgg(matches, detectShapes) {
     // shown with blanks. On the 2026-08-22 catalogue that is exactly 77 of
     // 34,692 series (0.2%), which is why the Finder says "34,615 shows": every
     // one of them is a title IMDb itself has no series-level score for. They
-    // are NOT lost: build-show-pages.js still renders each one a static page
-    // (which omits aggregateRating rather than inventing one), the A-Z index
-    // still links them, and a #show= deep link still opens the modal.
+    // are NOT lost from the A-Z index: since 2026-10 only the curated top
+    // 2,000 shows have a static page, and these never make that cut, so their
+    // letter-page row links to the title on IMDb (showHref in slugify.js), the
+    // one place that still describes them.
     if (typeof s.showRating !== 'number' || typeof s.votes !== 'number') continue;
     // Integer tenths, not float multiply-then-round. IMDb ratings carry one
     // decimal, so the sum is exactly a multiple of 0.1 and `sum * 10` is an

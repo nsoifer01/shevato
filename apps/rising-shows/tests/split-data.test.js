@@ -400,6 +400,32 @@ const AIRING_SPLIT = runSplit({
   })),
 });
 
+// Only the curated top shows have a static page; every other show URL answers
+// 410 Gone, so the app must know which is which. split-data stamps `page: true`
+// from the SAME selector build-show-pages.js writes pages from.
+test('split-data: page: true marks exactly the shows that get a static page', () => {
+  const { selectShowPageIds, SHOW_PAGE_LIMIT } = require('../scripts/render-sitemap.js');
+  const base = DATA.matches.find((m) => m.seriesId === 'tt0000011');
+  const extra = 3;
+  const matches = Array.from({ length: SHOW_PAGE_LIMIT + extra }, (_, i) => ({
+    ...base,
+    seriesId: `tt9${String(i).padStart(6, '0')}`,
+    title: `Show ${i}`,
+    // Votes rise with i, so the `extra` lowest-voted shows fall outside.
+    seriesVotes: 1000 + i,
+  }));
+  const { appDir } = runSplit({ ...DATA, matches });
+  const shows = JSON.parse(fs.readFileSync(path.join(appDir, 'shows-index.json'), 'utf8')).shows;
+  const paged = shows.filter((s) => s.page === true).map((s) => s.seriesId).sort();
+  assert.equal(paged.length, SHOW_PAGE_LIMIT);
+  assert.deepEqual(paged, [...selectShowPageIds(matches)].sort());
+  for (let i = 0; i < extra; i++) {
+    const row = shows.find((s) => s.seriesId === `tt9${String(i).padStart(6, '0')}`);
+    assert.ok(row, `show ${i} must still be in the index`);
+    assert.equal('page' in row, false, `show ${i} has no page, so the flag is absent rather than false`);
+  }
+});
+
 test('split-data: contentHash reaches the index so the refresh gate can read it', () => {
   assert.equal(SPLIT.index.contentHash, '0123456789abcdef');
   assert.equal(AIRING_SPLIT.index.contentHash, 'fedcba9876543210');

@@ -473,6 +473,8 @@ curl -X DELETE -H "Authorization: Bearer $TOKEN" -H 'x-goog-user-project: shevat
 
 `https://shevato.com/sitemap.xml` on the canonical and domain properties is now the only registration, and `https://www.shevato.com/` deliberately has none: every URL on that host 301s to the apex, which the canonical property already covers. Registrations are per property, so list all three before concluding a sitemap is gone.
 
+Rising Shows serves only its curated top 2,000 show pages; since 2026-10 every other `/apps/rising-shows/shows/*` URL answers `410 Gone` from an unforced rule in `netlify.toml`, after two months of `noindex` on that tail left Search Console's "Crawled - currently not indexed" still growing (61k). The reasoning and the traps are in `apps/rising-shows/FINDINGS.md`.
+
 Requesting indexing for a specific URL is UI-only. The Search Console API has no method for it (`urlInspection.index.inspect` is read-only), and the separate Indexing API is documented as `JobPosting` / `BroadcastEvent` only, so it does nothing for these pages. Use URL Inspection in the UI after a structural change.
 
 The one rule that has actually bitten: **never `Disallow` a path the pages themselves load.** Google's renderer obeys robots.txt for subresources, so a `Disallow` on something a page fetches deletes that content from the DOM Google indexes rather than merely hiding a file. `/partials/`, `/sync-system/`, `/firebase-config.js` and four dual-exposed Rising Shows scripts were all blocked that way until 2026-09-04, which cost every page its header and footer navigation in the index. `tests/static/robots-references.test.mjs` now fails on any recurrence.

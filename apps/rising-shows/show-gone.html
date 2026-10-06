@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex">
+  <title>Show page retired | Rising Shows</title>
+  <!--
+    Served with HTTP 410 Gone for every /apps/rising-shows/shows/<slug>/ URL
+    that has no generated page (netlify.toml). Since 2026-10 only the curated
+    top ~2,000 shows get a static page; the rest of the catalogue lives in the
+    app. The status is for search engines, which drop a 410 and never render
+    its body. This body is for people who followed an old link: it opens the
+    same show in the app, whose #show=<id> deep link opens the show modal.
+    The id is the tt<digits> suffix every show slug ends in. No analytics here
+    on purpose: the app records the visit it forwards to.
+  -->
+  <style>
+    :root { color-scheme: dark; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      padding: 16px;
+      box-sizing: border-box;
+      background: #0e1117;
+      color: #e6e8ee;
+      font: 16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    }
+    main { max-width: 32rem; text-align: center; }
+    h1 { font-size: 1.4rem; margin: 0 0 0.5rem; }
+    p { margin: 0 0 1rem; color: #b4b9c6; }
+    a { color: #f5c518; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>This show now lives in the app</h1>
+    <p>Rising Shows keeps a page of its own only for its most-watched shows. Every other show, with its episode ratings and season shapes, is in the app.</p>
+    <p><a id="open-in-app" href="/apps/rising-shows/">Open Rising Shows</a></p>
+  </main>
+  <script>
+    (function () {
+      var m = /-(tt\d+)\/?$/.exec(location.pathname);
+      if (!m) return;
+      var to = '/apps/rising-shows/#show=' + m[1];
+      document.getElementById('open-in-app').href = to;
+      location.replace(to);
+    })();
+  </script>
+</body>
+</html>

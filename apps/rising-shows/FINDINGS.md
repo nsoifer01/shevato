@@ -3,6 +3,50 @@
 A living document: best current understanding, not a diary. See the
 repo-root `CLAUDE.md` for the convention.
 
+## The long tail answers 410 Gone, not noindex (2026-10-06)
+
+Only the curated top 2,000 shows (by IMDb votes) get a static page now; every
+other `/apps/rising-shows/shows/*` path answers **410 Gone** from an UNFORCED
+`netlify.toml` rule with `show-gone.html` as the body. README "Static show pages"
+has the mechanics; this is why, and what bites.
+
+- **Why 410 and not more waiting.** `noindex, follow` on the tail shipped
+  2026-08-05 (PR #335) and was verified 8/8 correct on prod twice, but Google
+  barely recrawled the tail: by the 2026-09-20 coverage snapshot it had
+  reprocessed ~1,085 of ~32,500 pages (3%), "Crawled - currently not indexed"
+  had grown 60,899 -> 61,325, and all 8 core pages (/apps, /work, /about, the
+  app pages) were crawled on a manual request on 2026-09-27 and declined. A
+  sampled tail page was last crawled 2026-07-06, before the noindex existed.
+  At that pace the tail would take over a year. The owner chose 410 on
+  2026-10-06 knowing it is effectively irreversible for those URLs.
+- **The rule must stay unforced.** Netlify applies an unforced rule only where
+  no file exists, which is what makes one splat safe: built pages, `/shows/`,
+  the letter pages and the hubs are files and are served normally. Forcing it
+  would 410 the whole directory. `tests/static/netlify-redirects.test.mjs`
+  pins `force = false` for exactly this rule.
+- **People still land on tail URLs.** GA4, 2026-09-06..10-05, excluding the
+  Chrome 99 scraper and the owner: 71 views from 60 users on tail pages vs 77
+  from 69 on curated ones, mostly with no referrer. So the 410 body is not a
+  dead end: it reads the `tt<digits>` id off the path and `location.replace`s
+  to `/apps/rising-shows/#show=<id>`, which opens the same show's modal.
+  Crawlers never render a 410 body, so this costs nothing in search.
+- **One selector, two builders.** `selectShowPageIds` (render-sitemap.js)
+  decides the set from data.json's flat matches, and BOTH build-show-pages.js
+  (which pages to write) and split-data.js (`page: true` on the shows-index
+  row, which gates the modal's Permalink and the share URL) call it. Two
+  derivations would drift at the 2,000th place; the vote sort now breaks
+  ties by title AND id so input order cannot matter.
+- **Every link goes through `showHref`** (slugify.js): page if `hasPage`, app
+  deep link otherwise, and IMDb for the ~77 shows the Finder drops (no series
+  rating or no rated episode), whose deep link would open nothing. Hub
+  `ItemList` JSON-LD omits pageless shows, and "Shows like this" only picks
+  shows with a page.
+- **The set moves daily.** Vote counts shift around the cut, so a show can lose
+  its page (410 from the next deploy) or gain one. Expected churn, not a bug.
+- **Watch next:** GSC "Crawled - currently not indexed" should start falling
+  and "Not found (404)"/410 rows rise by tens of thousands; the read is in the
+  owner's monthly Search Console check.
+
 ## One-season cards drew a dot for 25 days: a renamed field nobody read (2026-10-03)
 
 From PR #509 (merged 2026-09-08 UTC, `1ad7d000`) to 2026-10-03, every
@@ -886,15 +930,16 @@ and running `computeShowRelated` over the real `data-index.json`.
 ## Two legitimate series counts (2026-08-23)
 
 34,692 and 34,615 both describe the same build and neither is stale. 34,692 is
-the number of distinct series in `data.json` / `data-index.json`, and the number
-of static pages generated. 34,615 is what the Finder lists, because
+the number of distinct series in `data.json` / `data-index.json` (and, until
+2026-10, of static pages generated; now only the top 2,000 get one). 34,615 is what the Finder lists, because
 `buildShowAgg` (finder-lib.js) drops a series with no numeric `seriesRating`.
 Verified on the 2026-08-22 build: exactly 77 series, and the cause is the same
 for all 77 (no season record carries a `seriesRating`; none of them is missing
 votes or episodes instead). They are not lost anywhere else: 20 of 20 sampled
-have their static page on disk, the A-Z letter pages link them, their pages
-carry `noindex, follow` like every other non-curated page and correctly OMIT
-the `aggregateRating` from the TVSeries JSON-LD rather than emitting a null.
+had their static page on disk and correctly omitted the `aggregateRating`
+from the TVSeries JSON-LD rather than emitting a null. Since 2026-10 none of
+them has a page (they never make the curated cut); their A-Z row links to the
+title on IMDb, because an app deep link would open nothing.
 
 Keeping them out of the grid is deliberate: the gap (`avgEpisode - showRating`)
 is the Finder's headline metric and the show-rating filter, the gap-direction

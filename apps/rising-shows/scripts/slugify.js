@@ -21,4 +21,18 @@ function showPath(title, seriesId) {
   return `${slugify(title)}-${seriesId}`;
 }
 
-module.exports = { slugify, showPath };
+// Where a link to a show should point. Only the curated shows have a static
+// page; every other /shows/<slug>/ URL answers 410 Gone (netlify.toml), so a
+// show without one links into the app, whose `#show=<id>` deep link opens it
+// in the show modal. build-show-pages.js stamps `hasPage` on every series it
+// renders from; a record without the flag is treated as having a page.
+// `inApp === false` marks a show the Finder drops (no IMDb series rating or no
+// rated episode, see buildShowAgg), whose deep link would open nothing; with
+// no page either, the title on IMDb is the only place left that describes it.
+function showHref(s) {
+  if (s.hasPage !== false) return `/apps/rising-shows/shows/${showPath(s.title, s.seriesId)}/`;
+  if (s.inApp === false) return `https://www.imdb.com/title/${s.seriesId}/`;
+  return `/apps/rising-shows/#show=${s.seriesId}`;
+}
+
+module.exports = { slugify, showPath, showHref };

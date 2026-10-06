@@ -3,7 +3,10 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { renderShowsSitemap, selectSitemapSeries } = require('../scripts/render-sitemap.js');
+const {
+  renderShowsSitemap, selectSitemapSeries, selectShowPageIds, SHOW_PAGE_LIMIT,
+} = require('../scripts/render-sitemap.js');
+const { showHref } = require('../scripts/slugify.js');
 const {
   renderShowsIndex, renderShowsLetterPage, groupByLetter, letterPages, letterPath,
   sortTitle, firstLetter, PER_PAGE,
@@ -290,4 +293,68 @@ test('A-Z pages share the show pages og-card and a twitter card', () => {
     assert.ok(html.includes('<meta name="twitter:image" content="https://shevato.com/images/og-card.png">'));
     assert.ok(/<meta property="og:image:alt" content="[^"]+"/.test(html));
   }
+});
+
+// --- the curated page set (2026-10: everything else answers 410) -----------
+
+test('selectShowPageIds: the top SHOW_PAGE_LIMIT series by votes, from flat season matches', () => {
+  assert.equal(SHOW_PAGE_LIMIT, 2000);
+  const matches = [
+    { seriesId: 'tt1', title: 'A', season: 1, seriesVotes: 10 },
+    { seriesId: 'tt1', title: 'A', season: 2, seriesVotes: 10 },
+    { seriesId: 'tt2', title: 'B', season: 1, seriesVotes: 30 },
+    { seriesId: 'tt3', title: 'C', season: 1, seriesVotes: 20 },
+  ];
+  assert.deepEqual([...selectShowPageIds(matches, 2)].sort(), ['tt2', 'tt3']);
+});
+
+test('selectShowPageIds: seriesVotes fills from a later season the way groupBySeries does', () => {
+  const matches = [
+    { seriesId: 'tt1', title: 'A', season: 1, seriesVotes: null },
+    { seriesId: 'tt1', title: 'A', season: 2, seriesVotes: 99 },
+    { seriesId: 'tt2', title: 'B', season: 1, seriesVotes: 50 },
+  ];
+  assert.deepEqual([...selectShowPageIds(matches, 1)], ['tt1']);
+});
+
+test('selectShowPageIds agrees with selectSitemapSeries over grouped series, in any input order', () => {
+  const { groupBySeries } = require('../scripts/build-show-pages.js');
+  // Equal votes AND equal titles at the cut: only the id tiebreak decides,
+  // and the two builders must decide it the same way whatever the order.
+  const matches = [
+    { seriesId: 'tt7', title: 'Same', season: 1, seriesVotes: 5, episodes: [] },
+    { seriesId: 'tt3', title: 'Same', season: 1, seriesVotes: 5, episodes: [] },
+    { seriesId: 'tt9', title: 'Top', season: 1, seriesVotes: 9, episodes: [] },
+  ];
+  for (const order of [matches, [...matches].reverse()]) {
+    const viaGroups = selectSitemapSeries(groupBySeries(order), 2).map((s) => s.seriesId).sort();
+    assert.deepEqual([...selectShowPageIds(order, 2)].sort(), viaGroups);
+    assert.deepEqual(viaGroups, ['tt3', 'tt9']);
+  }
+});
+
+test('showHref: a show with a page links to it, a show without one links into the app', () => {
+  assert.equal(showHref({ seriesId: 'tt0903747', title: 'Breaking Bad', hasPage: true }),
+    '/apps/rising-shows/shows/breaking-bad-tt0903747/');
+  assert.equal(showHref({ seriesId: 'tt0903747', title: 'Breaking Bad', hasPage: false }),
+    '/apps/rising-shows/#show=tt0903747');
+  // A show the Finder drops (no series rating) would open nothing in the app.
+  assert.equal(showHref({ seriesId: 'tt0000077', title: 'Unrated', hasPage: false, inApp: false }),
+    'https://www.imdb.com/title/tt0000077/');
+  // Unflagged records (fixtures, older callers) keep the page link.
+  assert.equal(showHref({ seriesId: 'tt0903747', title: 'Breaking Bad' }),
+    '/apps/rising-shows/shows/breaking-bad-tt0903747/');
+});
+
+test('letter pages link a show without a page into the app, never to a 410 URL', () => {
+  const entries = [
+    { seriesId: 'tt0000001', title: 'Curated', year: 2000, hasPage: true },
+    { seriesId: 'tt0000002', title: 'Cutoff', year: 2001, hasPage: false },
+  ];
+  const groups = groupByLetter(entries);
+  const page = letterPages(groups).find((p) => p.letter === 'C');
+  const html = renderShowsLetterPage({ ...page, groups, builtAt: null });
+  assert.ok(html.includes('href="/apps/rising-shows/shows/curated-tt0000001/"'));
+  assert.ok(html.includes('href="/apps/rising-shows/#show=tt0000002"'));
+  assert.ok(!html.includes('/shows/cutoff-tt0000002/'));
 });

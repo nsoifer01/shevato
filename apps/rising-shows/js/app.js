@@ -3679,7 +3679,14 @@ async function openShowModal(seriesId, opts = {}) {
 
   els.showModalImdb.href = `https://www.imdb.com/title/${seriesId}/`;
   if (els.showModalPermalink) {
-    els.showModalPermalink.href = `/apps/rising-shows/shows/${showSlug(meta.title)}-${seriesId}/`;
+    // Only the curated shows have a static page; any other show URL is a 410.
+    if (hasShowPage(seriesId)) {
+      els.showModalPermalink.href = `/apps/rising-shows/shows/${showSlug(meta.title)}-${seriesId}/`;
+      els.showModalPermalink.hidden = false;
+    } else {
+      els.showModalPermalink.removeAttribute('href');
+      els.showModalPermalink.hidden = true;
+    }
   }
   if (meta.tvdbId) {
     els.showModalTvdb.href = `https://thetvdb.com/dereferrer/series/${meta.tvdbId}`;
@@ -6308,11 +6315,22 @@ function buildShowShareText(seasons) {
   return lines.join('\n');
 }
 
+// Only the curated top ~2,000 shows have a static page (split-data.js stamps
+// `page: true` on their shows-index row); every other /shows/<slug>/ URL
+// answers 410 Gone (netlify.toml).
+function hasShowPage(seriesId) {
+  const row = showAggBySeries.get(seriesId);
+  return !!(row && row.page);
+}
+
 // URL of the show's static page on the current origin. Static pages
 // carry og:image/og:title/og:description tags (see render-show-page.js)
-// so chat apps unfurl them into thumbnails.
+// so chat apps unfurl them into thumbnails. A show without a page shares
+// its app deep link, which opens the same show in the modal.
 function showPageUrl(m) {
-  return `${location.origin}/apps/rising-shows/shows/${showSlug(m.title)}-${m.seriesId}/`;
+  return hasShowPage(m.seriesId)
+    ? `${location.origin}/apps/rising-shows/shows/${showSlug(m.title)}-${m.seriesId}/`
+    : `${location.origin}/apps/rising-shows/#show=${m.seriesId}`;
 }
 
 // --- shareable chart image -------------------------------------------------

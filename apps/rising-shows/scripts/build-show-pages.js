@@ -10,6 +10,7 @@ const fs = require('fs');
 const path = require('path');
 
 const { showPath } = require('./slugify.js');
+const { buildShowAgg } = require('./finder-lib.js');
 const { renderShowPage, computeDominantShape } = require('./render-show-page.js');
 const {
   renderShowsIndex, renderShowsLetterPage, groupByLetter, letterPages,
@@ -23,18 +24,15 @@ const {
   HUB_SLUGS,
   GAP_HUB_SLUG,
 } = require('./render-shape-hub.js');
-const { renderShowsSitemap, selectSitemapSeries } = require('./render-sitemap.js');
+const {
+  renderShowsSitemap, selectSitemapSeries, selectShowPageIds, SHOW_PAGE_LIMIT,
+} = require('./render-sitemap.js');
 
 const ROOT = path.join(__dirname, '..');
 const DATA_FILE = path.join(ROOT, 'data.json');
 const EXTRAS_FILE = path.join(ROOT, 'data', 'show-modal-extras.json');
 const SHOWS_DIR = path.join(ROOT, 'shows');
 const SITEMAP_FILE = path.join(ROOT, 'sitemap-shows.xml');
-
-// Only the most-voted shows go into the sitemap (all pages are still
-// built). At 2,000 the cutoff sits around 15k IMDb votes, i.e. shows
-// with real search demand. See renderShowsSitemap for the rationale.
-const SITEMAP_LIMIT = 2000;
 
 // `only` (a series id) renders exactly one show page, byte-identical to what
 // the full build writes for it, and touches nothing else: no wipe of shows/,
@@ -64,15 +62,25 @@ function main({ only = null } = {}) {
   // Build shape → series lookup for recommendations panel.
   const shapeIndex = buildShapeIndex(series);
 
-  // The curated set is decided BEFORE rendering: pages outside it are
-  // rendered with a noindex,follow robots meta. The May 2026 full-catalogue
-  // launch put ~34k templated pages in front of Google, which crawled the
-  // lot and then declined to index nearly all of it (GSC "Crawled -
-  // currently not indexed" ~60k by August), dragging sitewide quality
-  // signals down with it. The long tail stays generated and linked for app
-  // users and for link equity, but only the curated pages ask to be indexed.
-  const sitemapSeries = selectSitemapSeries(series, SITEMAP_LIMIT);
-  const curatedIds = new Set(sitemapSeries.map((s) => s.seriesId));
+  // The curated set is decided BEFORE rendering, and since 2026-10 it is the
+  // only set that gets a page at all. The May 2026 full-catalogue launch put
+  // ~34k templated pages in front of Google, which crawled the lot and then
+  // declined to index nearly all of it (GSC "Crawled - currently not indexed"
+  // ~60k by August, 61k in October), dragging sitewide quality signals down
+  // with it. Two months of `noindex, follow` on the tail reprocessed about 3%
+  // of it, so the tail is no longer written: its URLs answer 410 Gone
+  // (netlify.toml) and every link to a tail show points into the app.
+  // `hasPage` is what the renderers read to decide where a link goes.
+  const pageIds = selectShowPageIds(data.matches, SHOW_PAGE_LIMIT);
+  // Whether the app's Finder lists the show at all, so a show without a page
+  // links to a deep link that opens something (showHref). Same function the
+  // browser builds its grid with; shapes do not affect membership.
+  const inAppIds = new Set(buildShowAgg(data.matches, null).map((s) => s.seriesId));
+  for (const s of series) {
+    s.hasPage = pageIds.has(s.seriesId);
+    s.inApp = inAppIds.has(s.seriesId);
+  }
+  const sitemapSeries = selectSitemapSeries(series.filter((s) => s.hasPage), SHOW_PAGE_LIMIT);
 
   // Decided before rendering too: only the shows that make the gap hub link
   // out to it from their recommendations block.
@@ -100,7 +108,7 @@ function main({ only = null } = {}) {
         }
       }
     }
-    const html = renderShowPage({ ...s, cast, builtAt: data.builtAt, dominantShape, dominantShapeSlug, relatedShows, inSitemap: curatedIds.has(s.seriesId), inGapHub: gapHubIds.has(s.seriesId) });
+    const html = renderShowPage({ ...s, cast, builtAt: data.builtAt, dominantShape, dominantShapeSlug, relatedShows, inSitemap: s.hasPage, inGapHub: gapHubIds.has(s.seriesId) });
     fs.writeFileSync(path.join(dir, 'index.html'), html);
     return dir;
   };
@@ -119,17 +127,17 @@ function main({ only = null } = {}) {
   let pageCount = 0;
   const start = Date.now();
   for (const s of series) {
+    if (!s.hasPage) continue;
     writeShowPage(s);
     pageCount++;
     if (pageCount % 1000 === 0) {
-      console.log(`[build-show-pages] ${pageCount}/${series.length}…`);
+      console.log(`[build-show-pages] ${pageCount}/${pageIds.size}…`);
     }
   }
 
   // The browse index: a small /shows/ hub plus paginated per-letter pages.
-  // Every show appears on exactly one letter page, which matters because the
-  // sitemap lists only the curated top ~2,000 and these pages are the sole
-  // crawl path to the other ~32,500.
+  // Every show appears on exactly one letter page: a curated one links to its
+  // page, any other show to its app deep link (showHref).
   const indexEntries = series.map(toIndexEntry);
   fs.writeFileSync(
     path.join(SHOWS_DIR, 'index.html'),
@@ -152,7 +160,7 @@ function main({ only = null } = {}) {
     listedShows += page.items.length;
   }
   // Guard the property that matters: a split that silently drops shows would
-  // orphan them from every crawl path, and nothing else here would notice.
+  // hide them from the A-Z, and nothing else here would notice.
   if (listedShows !== indexEntries.length) {
     throw new Error(`browse pages list ${listedShows} shows but there are ${indexEntries.length}; every show must stay reachable`);
   }
@@ -179,7 +187,7 @@ function main({ only = null } = {}) {
     sitemapSeries.map(toIndexEntry), data.builtAt, HUB_SLUGS,
     browsePages.map((p) => p.path),
   ));
-  console.log(`[build-show-pages] sitemap curated to top ${sitemapSeries.length} of ${series.length} series by votes; the rest stay reachable for app users but carry noindex,follow`);
+  console.log(`[build-show-pages] pages + sitemap curated to top ${sitemapSeries.length} of ${series.length} series by votes; the rest have no page (410) and link into the app`);
 
   const elapsed = ((Date.now() - start) / 1000).toFixed(1);
   console.log(`[build-show-pages] wrote ${pageCount} show pages (${castCount} with cast) + index + sitemap in ${elapsed}s`);
@@ -242,7 +250,7 @@ function fillIfEmpty(target, src, keys) {
 }
 
 function toIndexEntry(s) {
-  return { seriesId: s.seriesId, title: s.title, year: s.year };
+  return { seriesId: s.seriesId, title: s.title, year: s.year, hasPage: s.hasPage, inApp: s.inApp };
 }
 
 // Build an inverted index: shape slug → array of series objects sorted by
@@ -266,13 +274,14 @@ function buildShapeIndex(series) {
 }
 
 // Return up to `limit` other shows that share the dominant shape, ordered
-// by seriesVotes descending. Excludes the show itself.
+// by seriesVotes descending. Excludes the show itself, and any show without a
+// page of its own (`hasPage === false`): the cards are page-to-page links.
 function computeRelatedShows(show, dominantShape, shapeIndex, limit) {
   if (!dominantShape) return [];
   const candidates = shapeIndex.get(dominantShape) || [];
   const result = [];
   for (const s of candidates) {
-    if (s.seriesId === show.seriesId) continue;
+    if (s.seriesId === show.seriesId || s.hasPage === false) continue;
     const { dominantShape: rShape, dominantShapeSlug: rSlug } = computeDominantShape(s);
     result.push({
       seriesId: s.seriesId,
@@ -294,7 +303,7 @@ function computeRelatedShows(show, dominantShape, shapeIndex, limit) {
 // `--help` (2026-08-22 audit, D6).
 const USAGE = `Usage: node build-show-pages.js [--only=<seriesId>]
 
-Deletes and regenerates ../shows/ (one page per show, A-Z index, shape hubs)
+Deletes and regenerates ../shows/ (one page per curated show, A-Z index, shape hubs)
 and ../sitemap-shows.xml from ../data.json.
 Run via \`npm run build:rising-shows:pages\`.
 

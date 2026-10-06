@@ -192,6 +192,19 @@
   status = 301
   force = true
 
+# Rising Shows long tail: 410 Gone. Since 2026-10 build-show-pages.js writes
+# a page only for the curated top ~2,000 shows; the other ~32,700 had carried
+# `noindex, follow` for two months and Google had reprocessed about 3% of them
+# while "Crawled - currently not indexed" kept growing (61k). A 410 tells it to
+# drop them. NOT forced: Netlify only applies an unforced rule when no file
+# exists at the path, so every built page, the A-Z index, the letter pages and
+# the shape hubs are served as normal and only a path with no file answers
+# 410. show-gone.html forwards a person to the same show in the app.
+[[redirects]]
+  from = "/apps/rising-shows/shows/*"
+  to = "/apps/rising-shows/show-gone.html"
+  status = 410
+
 # The Kometa builder sits one level deeper than the rule above reaches.
 [[redirects]]
   from = "/apps/rising-shows/kometa/index.html"

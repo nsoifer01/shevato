@@ -69,6 +69,7 @@ const path = require('path');
 const Finder = require('./finder-lib.js');
 const Match = require('./match.js');
 const Providers = require('./providers-lib.js');
+const { selectShowPageIds } = require('./render-sitemap.js');
 
 const APP_DIR = path.join(__dirname, '..');
 
@@ -123,6 +124,10 @@ function paths(appDir) {
  */
 function buildShowsIndex(slimMatches, aboveImdb) {
   const shows = Finder.buildShowAgg(slimMatches, Match.detectShapes);
+  // The shows that have a static page. Every other /shows/<slug>/ URL answers
+  // 410 Gone, so the app offers a Permalink (and shares a page URL) only for
+  // these. Same function, same input as build-show-pages.js.
+  const pageIds = selectShowPageIds(slimMatches);
 
   // The handful of show-level facts the browser used to derive by scanning
   // every season record at boot. Each is folded here in one pass.
@@ -210,6 +215,7 @@ function buildShowsIndex(slimMatches, aboveImdb) {
     if (s.episodeSeries) o.epRatings = s.episodeSeries.map((x) => x.rating);
     if (e && e.provider) o.provider = e.provider;
     if (above.has(s.seriesId)) o.aboveImdb = true;
+    if (pageIds.has(s.seriesId)) o.page = true;
     if (e && e.adult) o.adult = true;
     // Only a show with a genuine contest gets the badges - two seasons, and a
     // best that is not also the worst. Same gate as buildBestSeasonMap.
