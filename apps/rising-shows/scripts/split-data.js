@@ -69,7 +69,7 @@ const path = require('path');
 const Finder = require('./finder-lib.js');
 const Match = require('./match.js');
 const Providers = require('./providers-lib.js');
-const { selectShowPageIds } = require('./render-sitemap.js');
+const { selectShowPageIds } = require('./show-pages.js');
 
 const APP_DIR = path.join(__dirname, '..');
 
