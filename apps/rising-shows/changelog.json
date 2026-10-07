@@ -1,6 +1,246 @@
 {
   "updates": [
     {
+      "builtAt": "2026-10-07T13:20:11.216Z",
+      "totals": {
+        "seasons": 67077,
+        "delta": 16
+      },
+      "shapeCounts": {
+        "rebound": 10233,
+        "rising": 2635,
+        "slow-burn": 4446,
+        "big-finale": 12234,
+        "u-shaped": 3079,
+        "rollercoaster": 14218,
+        "saved-best-for-last": 1475,
+        "shape-drift": 1587,
+        "mid-peak": 4629,
+        "front-loaded": 3523,
+        "declining": 1909,
+        "bad-finale": 4684,
+        "consistent": 2649
+      },
+      "shapeDeltas": {
+        "rebound": 9,
+        "rising": -3,
+        "slow-burn": -1,
+        "big-finale": -3,
+        "u-shaped": -4,
+        "rollercoaster": -3,
+        "saved-best-for-last": -4,
+        "mid-peak": -2,
+        "front-loaded": 11,
+        "declining": -1,
+        "bad-finale": 3,
+        "consistent": 3
+      },
+      "added": [
+        {
+          "seriesId": "tt27416748",
+          "title": "Billionaire Island",
+          "season": 1,
+          "seasonYear": 2024
+        },
+        {
+          "seriesId": "tt39365612",
+          "title": "Line of Fire",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt37357034",
+          "title": "Shadow Punisher",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt0123366",
+          "title": "The View",
+          "season": 30,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt0045397",
+          "title": "I Led 3 Lives",
+          "season": 3,
+          "seasonYear": 1955
+        },
+        {
+          "seriesId": "tt0421099",
+          "title": "Grand Designs",
+          "season": 28,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt3330720",
+          "title": "The Last Leg",
+          "season": 20,
+          "seasonYear": 2020
+        },
+        {
+          "seriesId": "tt7316998",
+          "title": "Richard Osman's House of Games",
+          "season": 10,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt38483587",
+          "title": "Gènesi",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt44123117",
+          "title": "Criminal Persian Style",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt0123338",
+          "title": "60 Minutes",
+          "season": 59,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt9280252",
+          "title": "Tozkoparan",
+          "season": 3,
+          "seasonYear": 2019
+        },
+        {
+          "seriesId": "tt4397866",
+          "title": "Storyville",
+          "season": 30,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt12368998",
+          "title": "Marriage of Inconvenience",
+          "season": 1,
+          "seasonYear": 2023
+        },
+        {
+          "seriesId": "tt30422469",
+          "title": "Pickle Storm",
+          "season": 1,
+          "seasonYear": 2024
+        },
+        {
+          "seriesId": "tt32495765",
+          "title": "The Face Doctors",
+          "season": 1,
+          "seasonYear": 2024
+        },
+        {
+          "seriesId": "tt27957332",
+          "title": "Himlands",
+          "season": 3,
+          "seasonYear": 2021
+        }
+      ],
+      "removed": [
+        {
+          "seriesId": "tt29306091",
+          "title": "Billionaire Island",
+          "season": 1,
+          "seasonYear": 2024
+        }
+      ],
+      "ratingSwings": [
+        {
+          "seriesId": "tt0112066",
+          "title": "Maybe This Time",
+          "season": 1,
+          "from": 2.87,
+          "to": 4.43,
+          "delta": 1.56
+        },
+        {
+          "seriesId": "tt0174388",
+          "title": "The Famous Jett Jackson",
+          "season": 3,
+          "from": 6.6,
+          "to": 5.83,
+          "delta": -0.77
+        },
+        {
+          "seriesId": "tt0174388",
+          "title": "The Famous Jett Jackson",
+          "season": 2,
+          "from": 6.02,
+          "to": 5.3,
+          "delta": -0.72
+        },
+        {
+          "seriesId": "tt31841438",
+          "title": "Prefiero la Muerte",
+          "season": 1,
+          "from": 6.91,
+          "to": 6.21,
+          "delta": -0.7
+        },
+        {
+          "seriesId": "tt31975566",
+          "title": "Adv. Achinta Aich",
+          "season": 3,
+          "from": 7.1,
+          "to": 6.41,
+          "delta": -0.69
+        },
+        {
+          "seriesId": "tt33096993",
+          "title": "Have I Got News for You",
+          "season": 5,
+          "from": 7.67,
+          "to": 7,
+          "delta": -0.67
+        },
+        {
+          "seriesId": "tt35990713",
+          "title": "Sneak Me in Your Closet My Prince",
+          "season": 1,
+          "from": 8.54,
+          "to": 7.87,
+          "delta": -0.67
+        },
+        {
+          "seriesId": "tt0174388",
+          "title": "The Famous Jett Jackson",
+          "season": 1,
+          "from": 6.4,
+          "to": 5.76,
+          "delta": -0.64
+        },
+        {
+          "seriesId": "tt10590066",
+          "title": "All Creatures Great & Small",
+          "season": 7,
+          "from": 5.87,
+          "to": 6.47,
+          "delta": 0.6
+        },
+        {
+          "seriesId": "tt0418387",
+          "title": "Epta thanasimes petheres",
+          "season": 2,
+          "from": 6.8,
+          "to": 7.3,
+          "delta": 0.5
+        }
+      ],
+      "modifiedCounts": {
+        "seriesVotes": 20443,
+        "avgRating": 1065,
+        "poster": 13,
+        "providers": 15,
+        "overview": 14,
+        "shapes": 169,
+        "seriesRating": 290,
+        "episodeCount": 72
+      }
+    },
+    {
       "builtAt": "2026-10-06T13:35:05.354Z",
       "totals": {
         "seasons": 67061,
@@ -9563,251 +9803,6 @@
         "poster": 3,
         "overview": 1,
         "providers": 1
-      }
-    },
-    {
-      "builtAt": "2026-08-18T06:45:01.574Z",
-      "totals": {
-        "seasons": 66320,
-        "delta": 17
-      },
-      "shapeCounts": {
-        "mid-peak": 4650,
-        "rebound": 10100,
-        "rising": 2914,
-        "slow-burn": 4396,
-        "big-finale": 12167,
-        "u-shaped": 3113,
-        "rollercoaster": 14083,
-        "saved-best-for-last": 1550,
-        "front-loaded": 3479,
-        "declining": 1877,
-        "bad-finale": 4687,
-        "consistent": 2622,
-        "shape-drift": 1648
-      },
-      "shapeDeltas": {
-        "mid-peak": -7,
-        "rebound": 2,
-        "rising": -3,
-        "slow-burn": 1,
-        "big-finale": 17,
-        "u-shaped": 6,
-        "rollercoaster": 13,
-        "saved-best-for-last": -2,
-        "front-loaded": -3,
-        "declining": 5,
-        "bad-finale": -4,
-        "consistent": 2,
-        "shape-drift": 2
-      },
-      "added": [
-        {
-          "seriesId": "tt13111078",
-          "title": "Lioness",
-          "season": 3,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt0077076",
-          "title": "SOKO 5113",
-          "season": 2,
-          "seasonYear": 1980
-        },
-        {
-          "seriesId": "tt0426765",
-          "title": "Old Bear Stories",
-          "season": 2,
-          "seasonYear": 1994
-        },
-        {
-          "seriesId": "tt12847802",
-          "title": "Adam",
-          "season": 1,
-          "seasonYear": 2011
-        },
-        {
-          "seriesId": "tt18470970",
-          "title": "Ancient Superstructures",
-          "season": 3,
-          "seasonYear": 2023
-        },
-        {
-          "seriesId": "tt21445928",
-          "title": "Like a Loser",
-          "season": 2,
-          "seasonYear": 2025
-        },
-        {
-          "seriesId": "tt30413181",
-          "title": "Flex x Cop",
-          "season": 2,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt37962221",
-          "title": "Imprints",
-          "season": 1,
-          "seasonYear": 2025
-        },
-        {
-          "seriesId": "tt0078670",
-          "title": "Potter",
-          "season": 3,
-          "seasonYear": 1983
-        },
-        {
-          "seriesId": "tt1678635",
-          "title": "Revenge Office",
-          "season": 2,
-          "seasonYear": 2009
-        },
-        {
-          "seriesId": "tt1678635",
-          "title": "Revenge Office",
-          "season": 4,
-          "seasonYear": 2010
-        },
-        {
-          "seriesId": "tt1678635",
-          "title": "Revenge Office",
-          "season": 5,
-          "seasonYear": 2011
-        },
-        {
-          "seriesId": "tt1945805",
-          "title": "Marvel Anime",
-          "season": 1,
-          "seasonYear": 2010
-        },
-        {
-          "seriesId": "tt2357837",
-          "title": "Evil, I",
-          "season": 2,
-          "seasonYear": 2013
-        },
-        {
-          "seriesId": "tt29494110",
-          "title": "Love Is Blind: Argentina",
-          "season": 2,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt33471826",
-          "title": "Hein",
-          "season": 1,
-          "seasonYear": 2024
-        },
-        {
-          "seriesId": "tt37610248",
-          "title": "Das Manko",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt43707370",
-          "title": "Game Day Murders",
-          "season": 1,
-          "seasonYear": 2026
-        }
-      ],
-      "removed": [
-        {
-          "seriesId": "tt12363156",
-          "title": "Immortality",
-          "season": 1,
-          "seasonYear": 2021
-        }
-      ],
-      "ratingSwings": [
-        {
-          "seriesId": "tt36231255",
-          "title": "Lost in the Woods",
-          "season": 1,
-          "from": 5.78,
-          "to": 6.66,
-          "delta": 0.88
-        },
-        {
-          "seriesId": "tt0457246",
-          "title": "Kappa Mikey",
-          "season": 2,
-          "from": 8.67,
-          "to": 7.85,
-          "delta": -0.82
-        },
-        {
-          "seriesId": "tt29344040",
-          "title": "Exposure",
-          "season": 1,
-          "from": 7.5,
-          "to": 6.78,
-          "delta": -0.72
-        },
-        {
-          "seriesId": "tt0077076",
-          "title": "SOKO 5113",
-          "season": 42,
-          "from": 7.02,
-          "to": 6.35,
-          "delta": -0.67
-        },
-        {
-          "seriesId": "tt43609776",
-          "title": "Crowned in a Hundred Days",
-          "season": 1,
-          "from": 8.42,
-          "to": 7.79,
-          "delta": -0.63
-        },
-        {
-          "seriesId": "tt2777882",
-          "title": "The Lord of the Skies",
-          "season": 6,
-          "from": 8.2,
-          "to": 7.6,
-          "delta": -0.6
-        },
-        {
-          "seriesId": "tt38990474",
-          "title": "Treasure & Dirt",
-          "season": 1,
-          "from": 7.92,
-          "to": 7.35,
-          "delta": -0.57
-        },
-        {
-          "seriesId": "tt38646055",
-          "title": "Dark Moon: The Blood Altar",
-          "season": 1,
-          "from": 8.38,
-          "to": 7.83,
-          "delta": -0.55
-        },
-        {
-          "seriesId": "tt0856138",
-          "title": "Lascars",
-          "season": 1,
-          "from": 6.32,
-          "to": 6.87,
-          "delta": 0.55
-        },
-        {
-          "seriesId": "tt0149460",
-          "title": "Futurama",
-          "season": 14,
-          "from": 7.75,
-          "to": 7.25,
-          "delta": -0.5
-        }
-      ],
-      "modifiedCounts": {
-        "seriesVotes": 26058,
-        "avgRating": 1649,
-        "shapes": 264,
-        "episodeCount": 97,
-        "seriesRating": 391,
-        "poster": 2
       }
     }
   ]
