@@ -163,7 +163,7 @@ test('the accounting a plan reports is internally consistent at every bank level
 
 // ------------------------------------------------------------------- chips
 
-test('a wildcard week is free and unlimited, keeps the bank, and the usual +1 still arrives', () => {
+test('a wildcard week is free and unlimited, keeps the bank, and uses up that week\'s +1', () => {
   const two = { phase: 'season', gw: 6, banked: 2 };
   const acct = transferAccounting({ state: two, transfersMade: 11, chipPlayed: 'wildcard', rules });
 
@@ -171,12 +171,12 @@ test('a wildcard week is free and unlimited, keeps the bank, and the usual +1 st
   assert.equal(acct.hitCostPoints, 0, 'and free');
   assert.equal(acct.freeTransfersUsed, 0, 'a wildcard spends no banked transfer');
   assert.equal(acct.freeTransfersAfter, 2, 'the bank is preserved');
-  assert.equal(acct.freeTransfersNextGw, 3, 'and the usual one arrives on top of it');
+  assert.equal(acct.freeTransfersNextGw, 2, 'and no new one arrives for the chip week');
 
   const next = advance(two, { gw: 6, transfersMade: 11, chipPlayed: 'wildcard', rules });
-  assert.equal(freeTransfersFor(next), 3);
+  assert.equal(freeTransfersFor(next), 2);
   // The week after that behaves normally again.
-  assert.equal(freeTransfersFor(advance(next, { gw: 7, transfersMade: 1, rules })), 3);
+  assert.equal(freeTransfersFor(advance(next, { gw: 7, transfersMade: 1, rules })), 2);
 });
 
 test('a free hit week is treated the same, and the squad reverting does not change the allowance', () => {
@@ -186,13 +186,13 @@ test('a free hit week is treated the same, and the squad reverting does not chan
   assert.equal(acct.hitCostPoints, 0);
   assert.equal(acct.freeTransfersUsed, 0);
   assert.equal(acct.freeTransfersAfter, 3);
-  assert.equal(acct.freeTransfersNextGw, 4);
+  assert.equal(acct.freeTransfersNextGw, 3);
 
   // The rented squad is handed back, so the 9 transfers are not carried into
-  // the next gameweek's arithmetic in any form.
+  // the next gameweek's arithmetic in any form, and the chip used the week's +1.
   const next = advance(three, { gw: 18, transfersMade: 9, chipPlayed: 'freehit', rules });
-  assert.equal(freeTransfersFor(next), 4);
-  assert.equal(freeTransfersFor(advance(next, { gw: 19, transfersMade: 0, rules })), 5);
+  assert.equal(freeTransfersFor(next), 3);
+  assert.equal(freeTransfersFor(advance(next, { gw: 19, transfersMade: 0, rules })), 4);
 });
 
 test('a bench boost or triple captain week is an ordinary transfer week', () => {
@@ -229,15 +229,15 @@ test('a season of real behaviour walks the exact sequence, gameweek by gameweek'
     2,         // GW3
     3,         // GW4, two spent
     2,         // GW5
-    3,         // GW6, wildcard, nothing spent
-    4,         // GW7, one spent
-    4,         // GW8, three spent against 4
-    2,         // GW9
-    3,         // GW10
+    3,         // GW6, wildcard, nothing spent and no +1 for the week
+    3,         // GW7, one spent
+    3,         // GW8, three spent against 3
+    1,         // GW9
+    2,         // GW10
   ]);
 
-  // And the one hit in that season is the eighth gameweek, charged once.
-  assert.equal(hitCost({ phase: 'season', gw: 8, banked: 4 }, 3, rules), 0);
+  // And that season has no hit: the eighth gameweek's three are all covered.
+  assert.equal(hitCost({ phase: 'season', gw: 8, banked: 3 }, 3, rules), 0);
   assert.equal(hitCost({ phase: 'season', gw: 8, banked: 2 }, 3, rules), rules.hitCost);
 });
 
@@ -333,11 +333,11 @@ test('a wildcard inside the replayed history preserves the bank across it', () =
 
   // Into GW4 the manager has 3 banked either way.
   assert.equal(freeTransfersFor(replayTransferState({ history: withChip, rules, upToGw: 4 })), 3);
-  // The wildcard keeps all three and adds one; without it, twelve transfers
+  // The wildcard keeps all three and adds none; without it, twelve transfers
   // empty the bank and only the arriving one is left.
-  assert.equal(freeTransfersFor(replayTransferState({ history: withChip, rules, upToGw: 5 })), 4);
+  assert.equal(freeTransfersFor(replayTransferState({ history: withChip, rules, upToGw: 5 })), 3);
   assert.equal(freeTransfersFor(replayTransferState({ history: withoutChip, rules, upToGw: 5 })), 1);
-  assert.equal(freeTransfersFor(replayTransferState({ history: withChip, rules, upToGw: 6 })), 5);
+  assert.equal(freeTransfersFor(replayTransferState({ history: withChip, rules, upToGw: 6 })), 4);
 });
 
 // ------------------------------------------------------------------ adapters
@@ -411,7 +411,7 @@ test('before 2024-25 a chip week could not bank: the next week starts at one', (
   modern = advance(modern, { gw: 1, transfersMade: 0, rules });
   modern = advance(modern, { gw: 2, transfersMade: 0, rules });
   modern = advance(modern, { gw: 3, transfersMade: 4, chipPlayed: 'wildcard', rules });
-  assert.equal(freeTransfersFor(modern), Math.min(rules.maxFreeTransfers, 2 + 1));
+  assert.equal(freeTransfersFor(modern), 2, 'the modern rule keeps the two banked, with no +1 for the chip week');
 });
 
 test('an unlimited event mid-season: unlimited that week, exactly one after', () => {
@@ -439,4 +439,82 @@ test('a rules object that has never heard of the era flags is the live game', ()
   let state = initialTransferState({ gw: 1 });
   for (let gw = 1; gw <= 6; gw++) state = advance(state, { gw, transfersMade: 0, rules });
   assert.equal(freeTransfersFor(state), Math.min(rules.maxFreeTransfers, 6));
+});
+
+// ------------------------------------------- entry 3855835, GW6 2026-27
+
+// The reported discrepancy, on the manager's real `entry/{id}/history` payload
+// as FPL served it on 2026-10-09 (trimmed to the fields the replay reads).
+// FPL showed 1 free transfer for GW6; the planner showed 2, because it granted
+// a +1 for the GW4 Wildcard week on top of the two that were banked.
+const AM_I_BAD = {
+  current: [
+    { event: 1, event_transfers: 0, event_transfers_cost: 0 },
+    { event: 2, event_transfers: 1, event_transfers_cost: 0 },
+    { event: 3, event_transfers: 0, event_transfers_cost: 0 },
+    { event: 4, event_transfers: 0, event_transfers_cost: 0 },
+    { event: 5, event_transfers: 2, event_transfers_cost: 0 },
+  ],
+  chips: [{ name: 'wildcard', event: 4 }, { name: 'bboost', event: 5 }],
+};
+
+test('entry 3855835: one free transfer for GW6 after a GW4 Wildcard, as FPL says, never two', () => {
+  const seen = [2, 3, 4, 5, 6].map(gw => freeTransfersFor(replayTransferState({ history: AM_I_BAD, rules, upToGw: gw })));
+  // GW2 one; GW2 spent it, GW3 one; GW3 rolled, GW4 two; the GW4 Wildcard
+  // keeps the two and adds none, GW5 two; GW5 spent both, GW6 one.
+  assert.deepEqual(seen, [1, 1, 2, 2, 1]);
+});
+
+test('entry 3855835: a two-transfer GW6 plan is charged one hit, and one transfer is free', () => {
+  const gw6 = replayTransferState({ history: AM_I_BAD, rules, upToGw: 6 });
+  const two = transferAccounting({ state: gw6, transfersMade: 2, rules });
+  assert.equal(two.freeTransfersUsed, 1);
+  assert.equal(two.hits, 1);
+  assert.equal(two.hitCostPoints, rules.hitCost);
+  assert.equal(two.freeTransfersNextGw, 1);
+
+  const one = transferAccounting({ state: gw6, transfersMade: 1, rules });
+  assert.equal(one.hits, 0);
+  assert.equal(one.freeTransfersNextGw, 1);
+
+  const roll = transferAccounting({ state: gw6, transfersMade: 0, rules });
+  assert.equal(roll.freeTransfersNextGw, 2);
+});
+
+test('the replay agrees with the hit FPL charged in every gameweek of a history', () => {
+  // FPL's own `event_transfers_cost` is the authoritative check on the
+  // replayed count: a gameweek charged nothing for N transfers had at least N
+  // free, and one charged 4k had exactly N - k. Under the old chip-week +1,
+  // a manager who wildcarded with 2 banked and then made 3 transfers was
+  // replayed as owing nothing where FPL charged 4.
+  const wildcardThenThree = {
+    current: [
+      { event: 1, event_transfers: 0, event_transfers_cost: 0 },
+      { event: 2, event_transfers: 0, event_transfers_cost: 0 },
+      { event: 3, event_transfers: 0, event_transfers_cost: 0 },
+      { event: 4, event_transfers: 3, event_transfers_cost: 4 },
+    ],
+    chips: [{ name: 'wildcard', event: 3 }],
+  };
+  for (const history of [AM_I_BAD, wildcardThenThree]) {
+    const chipByEvent = new Map(history.chips.map(c => [c.event, c.name]));
+    for (const row of history.current) {
+      const state = replayTransferState({ history, rules, upToGw: row.event });
+      assert.equal(
+        hitCost(state, row.event_transfers, rules, chipByEvent.get(row.event) || null),
+        row.event_transfers_cost,
+        `GW${row.event}: ${row.event_transfers} transfers against ${freeTransfersFor(state)} free`,
+      );
+    }
+  }
+});
+
+test('a free hit with a full bank of five stays at five, and a chip never pushes past the cap', () => {
+  const five = { phase: 'season', gw: 20, banked: 5 };
+  for (const chipPlayed of ['wildcard', 'freehit']) {
+    assert.equal(freeTransfersFor(advance(five, { gw: 20, transfersMade: 15, chipPlayed, rules })), 5);
+  }
+  const one = { phase: 'season', gw: 20, banked: 1 };
+  assert.equal(freeTransfersFor(advance(one, { gw: 20, transfersMade: 6, chipPlayed: 'freehit', rules })), 1,
+    'a chip played with one banked leaves one, not two');
 });

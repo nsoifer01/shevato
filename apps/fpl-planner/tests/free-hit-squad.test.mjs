@@ -22,7 +22,7 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { buildGameState } from '../js/engine/normalize.js';
 import {
-  buildSquadState, reconstructPurchasePrices, freeHitGameweeks, freeHitPicksInfo,
+  buildSquadState, reconstructPurchasePrices, freeHitGameweeks, freeHitPicksInfo, computeFreeTransfers,
 } from '../js/engine/squad.js';
 import { assessReadiness } from '../js/engine/readiness.js';
 import { buildPlan } from '../js/engine/planner.js';
@@ -286,19 +286,18 @@ test('a wildcard is not reverted: that squad is the one the manager keeps', () =
 
 test('the free-transfer arithmetic still treats the Free Hit week as free', () => {
   // replayTransferState already reads history.chips, so the revert must not
-  // disturb it: a Free Hit consumes no free transfer and the manager arrives at
-  // the next gameweek with what he banked.
+  // disturb it: a Free Hit spends nothing that was banked, and the manager
+  // arrives at the next gameweek with exactly what he banked going into the
+  // chip week. The chip IS that week's +1, so no new one arrives for it.
   const fh = rentedPicks();
   const reverted = buildSquadState({
     entry, history: historyWithFreeHit, transfers,
     picks: fh, revertPicks: priorPicks(), gameState, gw: PLAN_GW,
   });
-  const withoutChip = buildSquadState({
-    entry, history: baseHistory, transfers, picks: priorPicks(), gameState, gw: PLAN_GW,
-  });
+  const bankedBefore = computeFreeTransfers({ history: baseHistory, rules: gameState.rules, upToGw: FH_GW });
   assert.equal(
-    reverted.freeTransfers, withoutChip.freeTransfers,
-    'playing a Free Hit must not cost a free transfer'
+    reverted.freeTransfers, bankedBefore,
+    'playing a Free Hit must not cost a banked free transfer, nor add one'
   );
   assert.ok(reverted.chipsUsed.some(c => c.name === 'freehit' && c.event === FH_GW));
   assert.ok(!reverted.chipsAvailable.includes('freehit'),

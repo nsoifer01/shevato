@@ -591,10 +591,15 @@ test('a replayed season carries the free transfer allowance forward one gameweek
     const here = rows[i];
     const next = rows[i + 1];
     const chipFree = here.chip === 'wildcard' || here.chip === 'freehit';
-    const kept = chipFree ? here.freeTransfers : Math.max(0, here.freeTransfers - here.transfers);
+    // A wildcard or free hit week keeps the bank and IS that week's +1, so the
+    // next week starts with exactly what was banked; any other week spends,
+    // then one arrives.
+    const expected = chipFree
+      ? here.freeTransfers
+      : Math.min(RULES.maxFreeTransfers, Math.max(0, here.freeTransfers - here.transfers) + 1);
     assert.equal(
       next.freeTransfers,
-      Math.min(RULES.maxFreeTransfers, kept + 1),
+      expected,
       `gameweek ${here.gw} to ${next.gw}: ${here.freeTransfers} banked, ${here.transfers} made, chip ${here.chip}`,
     );
     assert.ok(next.freeTransfers >= 0 && next.freeTransfers <= RULES.maxFreeTransfers);

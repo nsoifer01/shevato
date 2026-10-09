@@ -14,6 +14,64 @@ tables.
 
 ---
 
+## A Wildcard or Free Hit week granted a free transfer it does not earn (found and FIXED 2026-10-09)
+
+Entry 3855835 ("Am I bad") read **2 free transfers for GW6 2026-27; FPL said
+1**. The planner duly recommended two moves (Isak to Gonzalo, Rúben to Gabriel)
+with no hit, and reported "Plan unchanged" on every sync, because the input was
+wrong the same way each time and the plan agreed with itself.
+
+**Root cause: one line in `advance()` (`js/engine/transfer-state.js`).** A
+wildcard or free hit week kept the bank (right) and then added the usual +1
+(wrong). Under the current rules the chip USES that week's free transfer: the
+following gameweek starts with exactly what was banked going into the chip
+week. premierleague.com's wording: "if you had three saved transfers before
+using the Wildcard, you still have three saved transfers afterwards".
+
+The manager's real `entry/3855835/history`, replayed:
+
+| Into | Old rule | FPL | Why |
+| --- | --- | --- | --- |
+| GW2 | 1 | 1 | first deadline |
+| GW3 | 1 | 1 | GW2 spent one |
+| GW4 | 2 | 2 | GW3 rolled |
+| GW5 | **3** | 2 | GW4 Wildcard: bank kept, no +1 |
+| GW6 | **2** | 1 | GW5 made 2 (Bench Boost week, `event_transfers_cost: 0`) |
+
+**How the rule was settled, not assumed.** FPL publishes no free-transfer count
+outside the authenticated `my-team`, but it does publish
+`event_transfers_cost`, which is a check on the count every gameweek. Over the
+68 managers in the top 240 of the overall league who had played a Wildcard or
+Free Hit by GW5 2026-27, replaying each history and pricing every non-chip
+week's transfers: the old rule disagreed with the hit FPL actually charged for
+**11** of them (it saw free moves FPL charged 4 for); the corrected rule
+disagreed for **0**. Only "bank kept, no +1" explains entry 3855835's own data
+too: "bank reset" (the pre-2024-25 rule) would have charged GW5's two
+transfers a hit, and FPL charged nothing.
+
+**Why 1,259 tests never caught it.** `tests/transfer-state.test.mjs` walked
+seasons, exactly as "The verification lesson" asks, but the walks ENCODED the
+wrong rule ("the usual +1 still arrives" was a test name). Sequence tests check
+the code against its author's reading of the rules; they cannot check the
+reading. The new pin is `the replay agrees with the hit FPL charged in every
+gameweek of a history`, which checks the replay against FPL's own
+`event_transfers_cost`, an independent witness, plus the entry-3855835 walk
+itself.
+
+**Blast radius.** Every manager who has played a Wildcard or Free Hit this
+season (or since 2024-25 in replays) read one free transfer too many, and
+the error persisted from week to week until the two counts converged at the
+cap of 5 or at 0 after a hit. Plans for them could recommend a "free" move that cost 4
+points. Multi-gameweek plans that schedule a future Wildcard also projected
+the extra transfer into later weeks. All of it flows through `advance`, so the
+one-line fix covers live squads, the horizon (`projectedSquadState`), the
+backtest (`applyDecision`) and the UI copy alike. The plan fingerprint already
+carries `ft:`, so a stored plan built on the old count is invalidated on the
+next load and the "Plan updated" card says "You have 1 free transfer now, down
+from 2". Replay totals in `experiments/registry.md` measured before this date
+for 2024-25 onward ran chip-week managers one transfer rich; none of those
+entries was re-run as part of this fix.
+
 ## The replay knew every double gameweek from the first deadline (found and FIXED 2026-09-17)
 
 The production-regime replay rebuilt every deadline's fixtures payload from the
@@ -523,6 +581,7 @@ inherit it.
 | Bug | What tests checked | What nobody checked |
 | --- | --- | --- |
 | Free transfers showed 5 pre-season, off-by-one all season | plan legal given the state | whether the STATE was right |
+| A Wildcard week added a free transfer (2 shown, FPL said 1) | the season walk the author wrote down | whether FPL's own `event_transfers_cost` agreed with the replay |
 | Counterfactual "beat" the recommended squad | each optimizer returns a legal squad | that two paths answering one question AGREE |
 | Cross-season join on `element` ids | the join produced rows | that the rows were the SAME PLAYER |
 | pStart pinned at 1.000 for most of every replayed season | 0 <= pStart <= pAppear <= 1, exhaustively | that the number was ever anything but 1 |
@@ -664,7 +723,9 @@ Raw test count is not evidence of correctness. Do not report it as if it were.
 - **Free transfers**: unlimited before the GW1 deadline (a state, not a
   number), then 1 per gameweek, roll to a cap of 5, hits 4 points each.
   Wildcard and free-hit weeks make that week's transfers free WITHOUT spending
-  the banked count. `js/engine/transfer-state.js` is the single owner of this
+  the banked count, and they consume that week's +1: the next gameweek starts
+  with exactly what was banked before the chip (verified 2026-10-09 against
+  FPL's charged hits, see the section at the top). `js/engine/transfer-state.js` is the single owner of this
   arithmetic; the off-by-one that lived in scattered copies (seeded ft=1
   BEFORE gameweek 1) contaminated every replay until 2026-08-11, and the
   pre-season branch returned the CAP (5) as if it were a current value.
@@ -751,8 +812,10 @@ What follows, because this app only ever reads those endpoints:
   post-transfer squad rather than the frozen one.
 - **The reachable case, a chip played in the CURRENT gameweek, is handled.**
   Checked on real payloads the same day, GW4 in play, planning GW5 exactly as
-  `loadWorld` and `loadTeam` do: entry 895045 (Wildcard in GW4) reads 2 free
-  transfers, no hit, and only the Free Hit still offered; entry 1068212 (Free
+  `loadWorld` and `loadTeam` do: entry 895045 (Wildcard in GW4) read 2 free
+  transfers, no hit, and only the Free Hit still offered (that count was the
+  planner's own replay, made under the chip-week +1 that was wrong until
+  2026-10-09, not a figure FPL published); entry 1068212 (Free
   Hit in GW4) reverts to its GW3 squad with 3 free transfers and no first-half
   chip left. FPL records both chip weeks as `event_transfers: 0` and
   `event_transfers_cost: 0`, and `transfer-state.js` treats the week as
