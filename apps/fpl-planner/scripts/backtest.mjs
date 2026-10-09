@@ -251,6 +251,12 @@ export async function runBacktest({
     ...(poolSize ? { poolSize } : {}),
     ...(planOptions ? { planOptions } : {}),
   };
+  // Bookmaker prices for an odds arm are loaded here, not by the engine
+  // (js/engine/backtest.js ships with the app and cannot import scripts/).
+  if (planOptions && planOptions.modelOptions && planOptions.modelOptions.odds) {
+    const { loadReplayOdds } = await import('./lib/odds-football-data.mjs');
+    opts.oddsRows = loadReplayOdds(dataset, season);
+  }
 
   const reports = [];
   for (const strategy of strategies) {

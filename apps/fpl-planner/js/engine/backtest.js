@@ -2250,9 +2250,14 @@ export async function replaySeason({ dataset, season, strategy, rules, opts = {}
   // Loaded only when an arm switches the blend on; a missing file throws there.
   // Each deadline sees the decided gameweek's pre-closing prices collected
   // before it and nothing else (odds.js fixtureOddsAtDeadline).
-  const oddsRows = opts.planOptions && opts.planOptions.modelOptions && opts.planOptions.modelOptions.odds
-    ? (opts.oddsRows || (await import('../../scripts/lib/odds-football-data.mjs')).loadReplayOdds(dataset, season || dataset.season))
-    : null;
+  // The rows are loaded by the script running the replay
+  // (scripts/lib/odds-football-data.mjs loadReplayOdds), never from here: this
+  // file ships with the app, and shipped JS may not import from scripts/.
+  const wantsOdds = !!(opts.planOptions && opts.planOptions.modelOptions && opts.planOptions.modelOptions.odds);
+  if (wantsOdds && !opts.oddsRows) {
+    throw new Error('replaySeason: an odds arm needs opts.oddsRows (load them with scripts/lib/odds-football-data.mjs loadReplayOdds)');
+  }
+  const oddsRows = wantsOdds ? opts.oddsRows : null;
 
   const featureHook = opts.featureHook || suspensionHook(dataset, opts.syntheticSuspensions);
 

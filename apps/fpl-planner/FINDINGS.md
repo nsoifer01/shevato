@@ -3599,6 +3599,28 @@ One nuance the tags cannot carry: the engine only ever SUBTRACTS confidence. A
 
 ## Open questions / next highest-value work
 
+**Ranked 2026-10-09, after the backend audit round (registry 35-45):**
+
+1. **Let the deadline archive accumulate, then re-test on 2026-27.** Every
+   verdict of the round rests on three seasons, and several mechanisms
+   (ruled-out return dates, the 0.75 return-week availability, the captain's
+   tilts, loan clauses) cannot be replayed from the community archive at all.
+   The archive (`scripts/archive-snapshot.mjs`) starts producing a fourth,
+   flag-bearing production season the day it merges; the scorecard reads it.
+2. **The banked-transfer value table (entry 38)**: +7.0 a window, t 1.76,
+   positive in every season. First in line when a fourth season exists.
+3. **Recency without the churn (entry 37)**: the best prediction gain ever
+   measured here lost on points through twice the hits. Try it on who is
+   bought and fielded only, or with the hit margin re-measured under it.
+4. **Defensive actions by fixture (entry 40)** was accepted on one season;
+   re-test on 2026-27.
+5. The search proxy prices a spent transfer at `ftValuePoints` 1.2 and a hit
+   at 1.5 while the planner uses 0.6 and 2.0; the shortlist protection makes
+   it harmless today, and aligning them is a model change for the registry.
+6. Blob keys per manager and gameweek accumulate without cleanup.
+
+The ranking below is the 2026-08-12 one, kept for its closed items.
+
 Ranked 2026-08-12, evening, after 2025-26 qualified (entry 15), bonus closed
 (entry 16), the defcon denominator landed (entry 17) and the prior-weight sweep
 read out (entry 18).
