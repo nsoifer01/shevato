@@ -49,7 +49,20 @@ const BASE_URL = 'https://raw.githubusercontent.com/vaastav/Fantasy-Premier-Leag
 // bootstrap-static currently serves (so it is what live projections are built
 // from), and it is the only season ever played under defensive-contribution
 // scoring. It is the held-out test block for exactly that reason.
-const DEFAULT_SEASONS = ['2022-23', '2023-24', '2024-25', '2025-26'];
+//
+// 2021-22 IS DOWNLOADED AS A PREDECESSOR ONLY. It is never trained on and never
+// replayed. Production always has the previous season (the shipped opening
+// baseline), so a replay of 2022-23 in the production evidence regime needs
+// 2021-22's end-of-season totals, and without it 2022-23 could only be
+// replayed with no previous season at all. Its missing columns are handled at
+// load exactly as 2022-23's first fifteen gameweeks are: starts are
+// reconstructed (every gameweek), and its minutes are excluded from the xG/xA
+// denominators, so the prior carries minutes, starts and points but NO
+// expected-goals evidence. validate-history.mjs reports that as a WARN for a
+// season listed here and as a FAIL anywhere else.
+export const PRIOR_ONLY_SEASONS = ['2021-22'];
+
+const DEFAULT_SEASONS = [...PRIOR_ONLY_SEASONS, '2022-23', '2023-24', '2024-25', '2025-26'];
 
 const MIN_PLAUSIBLE_BYTES = 100_000;
 

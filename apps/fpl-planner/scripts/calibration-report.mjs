@@ -22,6 +22,32 @@
 //   node apps/fpl-planner/scripts/calibration-report.mjs --seasons 2024-25,2025-26 --gw 1-12
 //   node apps/fpl-planner/scripts/calibration-report.mjs --json out.json
 //   node apps/fpl-planner/scripts/calibration-report.mjs --check
+//   node apps/fpl-planner/scripts/calibration-report.mjs --model-options '{"someKnob":1}'
+//   node apps/fpl-planner/scripts/calibration-report.mjs --no-reference
+//
+// REFERENCE BASELINES (printed after the calibration sections, on by default,
+// `--no-reference` drops them). The same rows the engine is scored on are also
+// predicted by three naive rules that read only gameweeks before the deadline:
+// points per club match (season-to-date points over the club fixtures the
+// player was registered for, falling back to last season's per-match rate at
+// gameweek 1 or for a player with no rows yet), season points per appearance,
+// and the last five appearances' points per appearance. Each is scored with
+// bias, MAE, RMSE, MAE and bias over rows with 60+ minutes, Spearman per
+// gameweek, the mean actual points of the top 20 by prediction, and captain
+// points (the top prediction, and the top prediction among players priced
+// 7.0m+), overall, per season, per bucket, per position and per segment (new
+// signings, returning players, low-minutes players, regulars, double-gameweek
+// rows), followed by per-deadline paired differences of the engine against
+// each baseline with standard errors and win/loss/tie counts. Promoted from
+// the 2026-10-09 backend audit's probe: points per club match is the strongest
+// naive rule, and an engine that does not beat it on a ranking question has
+// nothing to show there.
+//
+// --model-options <json> is handed to buildStrength and buildProjections as an
+// extra `modelOptions` property, so a projection-model candidate can be scored
+// here without editing the script. The engine ignores options it does not read.
+// `{"odds": ...}` also attaches each deadline's bookmaker prices to the
+// GameState the way the replay does (needs the season's odds file).
 //
 // --check applies the calibration bands (scripts/lib/calibration-guard.mjs, the
 // same bands tests/xp-calibration-guard.test.mjs holds the captured 2026/27
@@ -38,6 +64,17 @@
 //
 // Seasons without a downloaded predecessor are skipped: production always has
 // one (the shipped opening baseline), so a replay without it is not production.
+//
+// Gameweeks with no fixtures (2022-23 gameweek 7, the round postponed after the
+// Queen's death) are not deadlines anything can be scored on and are skipped:
+// scored, they read as a deadline that projected 0 players.
+//
+// A bucket whose deadlines saw NO expected-goals data at all is printed and not
+// gated. That is 2022-23 up to gameweek 16: the archive's expected_* columns
+// start at its gameweek 16 and its predecessor, 2021-22, has none, so every
+// xG-based rate and the strength model fall back to their priors and the
+// league projects flat. That is a fact about the archive, not a calibration
+// defect a change could repair, and a gate on it would fail every run.
 
 import fs from 'node:fs';
 import { loadSeason, loadRules, previousSeason, KNOWN_SEASONS } from './backtest.mjs';
@@ -53,7 +90,7 @@ const POSITION = { 1: 'GK', 2: 'DEF', 3: 'MID', 4: 'FWD' };
 const BUCKETS = [[1, 1], [2, 3], [4, 8], [9, 19], [20, 38]];
 
 function parseArgs(argv) {
-  const out = { seasons: null, gwFrom: 1, gwTo: 38, json: null, check: false };
+  const out = { seasons: null, gwFrom: 1, gwTo: 38, json: null, check: false, modelOptions: null, reference: true };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--seasons') out.seasons = argv[++i].split(',');
@@ -63,6 +100,8 @@ function parseArgs(argv) {
       out.gwTo = to || from;
     } else if (a === '--json') out.json = argv[++i];
     else if (a === '--check') out.check = true;
+    else if (a === '--model-options') out.modelOptions = JSON.parse(argv[++i]);
+    else if (a === '--no-reference') out.reference = false;
     else throw new Error(`unknown argument ${a}`);
   }
   return out;
@@ -250,7 +289,220 @@ export function summarize(rows, xiList) {
   };
 }
 
-export function runSeason(season, { gwFrom = 1, gwTo = 38 } = {}) {
+// ---------------------------------------------------------------------------
+// Reference baselines
+// ---------------------------------------------------------------------------
+
+export const REFERENCE_METHODS = ['ptsPerClubMatch', 'ppgSeason', 'ppgLast5'];
+const METHODS = ['engine', ...REFERENCE_METHODS];
+const PREMIUM_TENTHS = 70;
+
+/**
+ * Naive predictions for one season, built ONLY from gameweeks already absorbed.
+ * The caller predicts gameweek g, then absorbs g, exactly as the replay's own
+ * accumulator does, so a baseline can never read the gameweek it predicts.
+ *
+ * `prior` is the previous season's dataset (or null): its per-player points
+ * per row, joined on the permanent `code`, are the fallback for a player with
+ * no rows yet this season. A player with no prior row by code is a new signing.
+ */
+export function createReferenceTracker(dataset, prior = null) {
+  const priorByCode = new Map();
+  if (prior) {
+    for (const [, gwMap] of prior.byGw) {
+      for (const [pid, list] of gwMap) {
+        const p = prior.players.get(pid);
+        if (!p || p.code === null || p.code === undefined) continue;
+        const e = priorByCode.get(p.code) || { points: 0, rows: 0 };
+        for (const r of list) { e.points += r.totalPoints; e.rows += 1; }
+        priorByCode.set(p.code, e);
+      }
+    }
+  }
+  const hist = new Map();
+  const absorbed = new Set();
+  return {
+    absorb(gw) {
+      if (absorbed.has(gw)) return;
+      absorbed.add(gw);
+      for (const [pid, list] of dataset.byGw.get(gw) || []) {
+        const h = hist.get(pid) || { points: 0, rows: 0, minutes: 0, apps: [] };
+        for (const r of list) {
+          h.points += r.totalPoints;
+          h.rows += 1;
+          h.minutes += r.minutes;
+          if (r.minutes > 0) h.apps.push(r.totalPoints);
+        }
+        hist.set(pid, h);
+      }
+    },
+    /** Predictions for a player with `fixtures` matches in the next gameweek. */
+    predict(id, fixtures) {
+      const h = hist.get(id);
+      const p = dataset.players.get(id);
+      const pc = p && p.code !== null && p.code !== undefined ? priorByCode.get(p.code) : undefined;
+      const perMatch = h && h.rows > 0 ? h.points / h.rows : (pc && pc.rows ? pc.points / pc.rows : 0);
+      const apps = h ? h.apps : [];
+      return {
+        ptsPerClubMatch: perMatch * fixtures,
+        ppgSeason: (apps.length ? mean(apps) : 0) * fixtures,
+        ppgLast5: (apps.length ? mean(apps.slice(-5)) : 0) * fixtures,
+        newSigning: !pc,
+        // Season-to-date minutes per club match registered, null before a row.
+        minutesPerMatch: h && h.rows ? h.minutes / h.rows : null,
+      };
+    },
+  };
+}
+
+const predictionOf = (r, m) => (m === 'engine' ? r.xPoints : r.reference ? r.reference[m] : NaN);
+
+function byDeadline(rows) {
+  const out = new Map();
+  for (const r of rows) {
+    const key = `${r.season || ''}|${r.gw}`;
+    if (!out.has(key)) out.set(key, []);
+    out.get(key).push(r);
+  }
+  return out;
+}
+
+// The top n of one deadline by a method's prediction, ties broken by player id
+// so two runs pick the same players.
+const topBy = (set, m, n) => [...set].sort((a, b) => predictionOf(b, m) - predictionOf(a, m) || a.id - b.id).slice(0, n);
+
+/** One deadline's ranking facts for a method: Spearman, top 20, captain. */
+function deadlineFacts(set, m) {
+  const rankable = set.filter(r => r.rankable);
+  const premium = set.filter(r => r.price >= PREMIUM_TENTHS);
+  return {
+    spearman: rankCorrelation(rankable.map(r => predictionOf(r, m)), rankable.map(r => r.points)),
+    top20: mean(topBy(set, m, 20).map(r => r.points)),
+    captain: set.length ? topBy(set, m, 1)[0].points : NaN,
+    captainPremium: premium.length ? topBy(premium, m, 1)[0].points : NaN,
+    top20Premium: premium.length ? mean(topBy(premium, m, 20).map(r => r.points)) : NaN,
+  };
+}
+
+/**
+ * Accuracy and ranking metrics for every method over the same rows. Rows
+ * without a reference prediction (a run with --no-reference) score only the
+ * engine.
+ */
+export function referenceMetrics(rows, methods = METHODS) {
+  const out = {};
+  const deadlines = byDeadline(rows);
+  for (const m of methods) {
+    const scored = rows.filter(r => Number.isFinite(predictionOf(r, m)));
+    const err = scored.map(r => predictionOf(r, m) - r.points);
+    const long = scored.filter(r => r.minutes >= 60);
+    const per = [...deadlines.values()].map(set => deadlineFacts(set.filter(r => Number.isFinite(predictionOf(r, m))), m));
+    const avg = (k) => mean(per.map(d => d[k]).filter(Number.isFinite));
+    out[m] = {
+      n: scored.length,
+      bias: mean(err),
+      mae: mean(err.map(Math.abs)),
+      rmse: Math.sqrt(mean(err.map(e => e * e))),
+      mae60: mean(long.map(r => Math.abs(predictionOf(r, m) - r.points))),
+      bias60: mean(long.map(r => predictionOf(r, m) - r.points)),
+      spearman: avg('spearman'),
+      top20: avg('top20'),
+      captain: avg('captain'),
+      captainPremium: avg('captainPremium'),
+      deadlines: per.length,
+    };
+  }
+  return out;
+}
+
+const standardError = (a) => (a.length > 1
+  ? Math.sqrt(a.reduce((s, x) => s + (x - mean(a)) ** 2, 0) / (a.length - 1) / a.length)
+  : NaN);
+
+function pairedStat(diffs) {
+  const d = diffs.filter(Number.isFinite);
+  return {
+    n: d.length,
+    mean: mean(d),
+    se: standardError(d),
+    wins: d.filter(x => x > 0).length,
+    losses: d.filter(x => x < 0).length,
+    ties: d.filter(x => x === 0).length,
+  };
+}
+
+/**
+ * The engine minus a baseline, deadline by deadline on identical rows: rank
+ * correlation, top-20 actual points, captain points and the top 20 among
+ * players priced 7.0m+. The deadline is the unit, so the standard error is
+ * over deadlines, never over player rows.
+ */
+export function pairedDifferences(rows, baseline, against = 'engine') {
+  const spearman = [];
+  const top20 = [];
+  const captain = [];
+  const top20Premium = [];
+  for (const set of byDeadline(rows).values()) {
+    const usable = set.filter(r => Number.isFinite(predictionOf(r, baseline)) && Number.isFinite(predictionOf(r, against)));
+    if (!usable.length) continue;
+    const a = deadlineFacts(usable, against);
+    const b = deadlineFacts(usable, baseline);
+    spearman.push(a.spearman - b.spearman);
+    top20.push(a.top20 - b.top20);
+    captain.push(a.captain - b.captain);
+    top20Premium.push(a.top20Premium - b.top20Premium);
+  }
+  return {
+    against,
+    baseline,
+    spearman: pairedStat(spearman),
+    top20: pairedStat(top20),
+    captain: pairedStat(captain),
+    top20Premium: pairedStat(top20Premium),
+  };
+}
+
+/** The tables the reference section prints, as data, in print order. */
+export function referenceSections(rows, { seasons = [] } = {}) {
+  const after = (g) => rows.filter(r => r.gw >= g);
+  const fromTwo = after(2);
+  const sections = [
+    { key: 'all', title: 'All gameweeks', rows },
+    { key: 'gw2+', title: 'GW 2 on (every baseline has some history)', rows: fromTwo },
+    ...seasons.map(s => ({ key: `season:${s}`, title: `${s}, GW 2 on`, rows: fromTwo.filter(r => r.season === s) })),
+    ...BUCKETS.map(([a, b]) => ({ key: `gw${a}-${b}`, title: `GW ${a}-${b}`, rows: rows.filter(r => r.gw >= a && r.gw <= b) })),
+    ...[1, 2, 3, 4].map(p => ({ key: `position:${POSITION[p]}`, title: `${POSITION[p]}, GW 2 on`, rows: fromTwo.filter(r => r.position === p) })),
+    { key: 'newSignings', title: 'New signings (no previous-season row by code), GW 2 on', rows: fromTwo.filter(r => r.newSigning) },
+    { key: 'returning', title: 'Returning players, GW 2 on', rows: fromTwo.filter(r => r.newSigning === false) },
+    {
+      key: 'lowMinutes',
+      title: 'Low minutes (season to date under 30 per club match), GW 4 on',
+      rows: after(4).filter(r => r.minutesPerMatch !== null && r.minutesPerMatch !== undefined && r.minutesPerMatch < 30),
+    },
+    {
+      key: 'regulars',
+      title: 'Regulars (season to date 60+ per club match), GW 4 on',
+      rows: after(4).filter(r => r.minutesPerMatch !== null && r.minutesPerMatch !== undefined && r.minutesPerMatch >= 60),
+    },
+    { key: 'doubleGameweek', title: 'Double-gameweek rows, every gameweek', rows: rows.filter(r => r.fixtures === 2) },
+  ];
+  return sections.filter(s => s.rows.length);
+}
+
+// Whether the evidence at each deadline carried ANY expected-goals data: the
+// previous season's, or a gameweek of this season's before the deadline.
+function expectedEvidenceFrom(dataset, prior) {
+  const missing = new Set(dataset.expectedDataMissing || []);
+  const priorMissing = new Set((prior && prior.expectedDataMissing) || []);
+  const priorHas = prior ? [...prior.byGw.keys()].some(gw => !priorMissing.has(gw)) : false;
+  if (priorHas) return 1;
+  for (let gw = 1; gw <= dataset.maxGw; gw++) {
+    if (dataset.byGw.has(gw) && !missing.has(gw)) return gw + 1;
+  }
+  return Infinity;
+}
+
+export async function runSeason(season, { gwFrom = 1, gwTo = 38, modelOptions = null, reference = true } = {}) {
   const priorName = previousSeason(season);
   const dataset = loadSeason(season);
   let prior = null;
@@ -260,25 +512,53 @@ export function runSeason(season, { gwFrom = 1, gwTo = 38 } = {}) {
   const accumulator = createAccumulator(dataset, {});
   const preseasonTotals = preseasonTotalsFor(dataset, prior);
   const asset = priorSeasonAsset(dataset, prior, { firstDeadline: eventDeadlines(dataset).get(1) });
+  const tracker = reference ? createReferenceTracker(dataset, prior) : null;
+  // Only handed to the builders when asked for, so a run without the flag
+  // calls them exactly as before.
+  const extra = modelOptions ? { modelOptions } : {};
+  // An odds candidate (`modelOptions.odds`) reads each deadline's bookmaker
+  // prices off the GameState, attached exactly as the replay attaches them
+  // (js/engine/backtest.js plannerDecide). Loaded only when asked for.
+  let attachOdds = null;
+  if (modelOptions && modelOptions.odds) {
+    const { loadReplayOdds } = await import('./lib/odds-football-data.mjs');
+    const { fixtureOddsAtDeadline } = await import('../js/engine/odds.js');
+    const oddsRows = loadReplayOdds(dataset, season);
+    attachOdds = (gameState, gw) => { gameState.fixtureOdds = fixtureOddsAtDeadline(oddsRows, gameState, gw).odds; };
+  }
   const byGw = new Map();
   const last = Math.min(gwTo, dataset.maxGw);
   for (let gw = 1; gw <= last; gw++) {
     if (gw >= gwFrom) {
       const { gameState } = productionGameStateAt(dataset, gw, { rules, accumulator, preseasonTotals, asset });
-      const strength = buildStrength(gameState, { asOfGw: gw });
-      const projections = buildProjections({ gameState, strength, gwFrom: gw, gwTo: gw });
+      if (attachOdds) attachOdds(gameState, gw);
+      const strength = buildStrength(gameState, { asOfGw: gw, ...extra });
+      const projections = buildProjections({ gameState, strength, gwFrom: gw, gwTo: gw, ...extra });
       const rankable = new Set();
       for (const p of dataset.players.values()) {
         const now = accumulator.totalsFor(p.id);
         const last = preseasonTotals.get(p.id);
         if ((now && now.minutes > 0) || (last && last.minutes > 0)) rankable.add(p.id);
       }
-      const rows = scoreDeadline({ dataset, gw, gameState, projections, rankable }).map(r => ({ ...r, season }));
-      byGw.set(gw, { rows, xi: bestEleven(rows) });
+      const actual = dataset.byGw.get(gw) || new Map();
+      const rows = scoreDeadline({ dataset, gw, gameState, projections, rankable }).map((r) => {
+        const out = { ...r, season };
+        if (tracker) {
+          const ref = tracker.predict(r.id, r.fixtures);
+          const own = actual.get(r.id);
+          out.reference = { ptsPerClubMatch: ref.ptsPerClubMatch, ppgSeason: ref.ppgSeason, ppgLast5: ref.ppgLast5 };
+          out.newSigning = ref.newSigning;
+          out.minutesPerMatch = ref.minutesPerMatch;
+          out.price = own && own.length ? own[0].valueTenths : null;
+        }
+        return out;
+      });
+      if (rows.length) byGw.set(gw, { rows, xi: bestEleven(rows) });
     }
     accumulator.absorb(gw);
+    if (tracker) tracker.absorb(gw);
   }
-  return { season, byGw };
+  return { season, byGw, expectedEvidenceFrom: expectedEvidenceFrom(dataset, prior) };
 }
 
 function fmt(v, d = 2) {
@@ -309,21 +589,65 @@ function printSummary(label, s) {
   console.log(`  start calibration: ${s.startCalibration.map(c => `${c.bin} ${fmt(c.predicted)}/${fmt(c.observed)} (${c.n})`).join('; ')}`);
 }
 
+function printReferenceTable(title, rows) {
+  const m = referenceMetrics(rows);
+  console.log(`\n### ${title}  (${rows.length} player-gameweeks)\n`);
+  console.log('| method | n | bias | MAE | RMSE | MAE 60+ | bias 60+ | Spearman/GW | top-20 pts | captain pts | captain 7.0m+ |');
+  console.log('|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|');
+  for (const k of METHODS) {
+    const x = m[k];
+    console.log(`| ${k} | ${x.n} | ${fmt(x.bias, 3)} | ${fmt(x.mae, 3)} | ${fmt(x.rmse, 3)} | ${fmt(x.mae60, 3)} | ${fmt(x.bias60, 3)} | `
+      + `${fmt(x.spearman, 3)} | ${fmt(x.top20)} | ${fmt(x.captain)} | ${fmt(x.captainPremium)} |`);
+  }
+  return m;
+}
+
+const pairedCell = (p) => `${fmt(p.mean, 3)} (${fmt(p.se, 3)}) ${p.wins}/${p.losses}/${p.ties}`;
+
+/** Every season's buckets against the calibration bands, as data. */
+export function checkSeasons(results) {
+  const out = [];
+  for (const run of results) {
+    for (const [from, to] of BUCKETS) {
+      const deadlines = [...run.byGw].filter(([gw]) => gw >= from && gw <= to);
+      if (!deadlines.length) continue;
+      const violations = calibrationViolations(calibrationFacts(deadlines.map(([, v]) => v.rows)));
+      const noExpected = deadlines.some(([gw]) => gw < (run.expectedEvidenceFrom ?? 1));
+      const gated = from >= 2 && !noExpected;
+      out.push({
+        season: run.season, from, to, gated, violations,
+        reason: from < 2 ? 'gameweek 1' : (noExpected ? 'no expected-goals data in the evidence' : null),
+      });
+    }
+  }
+  return out;
+}
+
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   const seasons = args.seasons || KNOWN_SEASONS;
   const results = [];
+  const timings = {};
   for (const season of seasons) {
     const t0 = Date.now();
-    const run = runSeason(season, { gwFrom: args.gwFrom, gwTo: args.gwTo });
+    const run = await runSeason(season, {
+      gwFrom: args.gwFrom, gwTo: args.gwTo, modelOptions: args.modelOptions, reference: args.reference,
+    });
     if (!run) {
       console.log(`${season}: skipped, no downloaded predecessor (production always has one)`);
       continue;
     }
     results.push(run);
+    timings[season] = Date.now() - t0;
     console.log(`${season}: replayed in ${((Date.now() - t0) / 1000).toFixed(1)} s`);
   }
-  const out = { generatedAt: new Date().toISOString(), buckets: {} };
+  const out = {
+    generatedAt: new Date().toISOString(),
+    seasons: results.map(r => r.season),
+    modelOptions: args.modelOptions,
+    timingsMs: timings,
+    buckets: {},
+  };
   for (const [from, to] of BUCKETS) {
     if (to < args.gwFrom || from > args.gwTo) continue;
     const rows = [];
@@ -340,26 +664,52 @@ async function main() {
     out.buckets[`gw${from}-${to}`] = s;
     printSummary(`GW ${from}-${to}, seasons ${results.map(r => r.season).join(', ')}`, s);
   }
-  if (args.json) fs.writeFileSync(args.json, `${JSON.stringify(out, null, 1)}\n`);
 
   if (args.check) {
     // Per season, never pooled across seasons: a band a season breaks is a
     // finding, and pooling would let two seasons' errors cancel.
     let broken = 0;
     console.log('\ncalibration bands (scripts/lib/calibration-guard.mjs):');
-    for (const run of results) {
-      for (const [from, to] of BUCKETS) {
-        const deadlines = [...run.byGw].filter(([gw]) => gw >= from && gw <= to).map(([, v]) => v.rows);
-        if (!deadlines.length) continue;
-        const violations = calibrationViolations(calibrationFacts(deadlines));
-        const gated = from >= 2;
-        if (gated) broken += violations.length;
-        console.log(`  ${run.season} GW ${from}-${to}: ${violations.length ? 'BREAKS' : 'ok'}${gated ? '' : ' (not gated: see the header)'}`);
-        for (const v of violations) console.log(`    ${v.code}: ${v.message}`);
-      }
+    const checks = checkSeasons(results);
+    for (const c of checks) {
+      if (c.gated) broken += c.violations.length;
+      const note = c.gated ? '' : (c.reason === 'gameweek 1'
+        ? ' (not gated: see the header)'
+        : ' (not gated: no expected-goals data in the evidence, see the header)');
+      console.log(`  ${c.season} GW ${c.from}-${c.to}: ${c.violations.length ? 'BREAKS' : 'ok'}${note}`);
+      for (const v of c.violations) console.log(`    ${v.code}: ${v.message}`);
     }
+    out.check = { broken, buckets: checks };
     if (broken) process.exitCode = 1;
   }
+
+  if (args.reference) {
+    const rows = [];
+    for (const run of results) for (const [, v] of run.byGw) rows.push(...v.rows);
+    console.log('\n## Reference baselines: the engine against naive rules on identical rows');
+    console.log('Each baseline for gameweek g reads only gameweeks before g (and last season). Spearman is per deadline over the');
+    console.log('rankable pool, averaged; top-20 and captain are the mean actual points of the top 20 and the top 1 by prediction.');
+    out.reference = { tables: {}, paired: {} };
+    for (const section of referenceSections(rows, { seasons: results.map(r => r.season) })) {
+      out.reference.tables[section.key] = { title: section.title, rows: section.rows.length, metrics: printReferenceTable(section.title, section.rows) };
+    }
+    const fromTwo = rows.filter(r => r.gw >= 2);
+    console.log('\n### Paired per deadline, engine minus baseline, GW 2 on: mean (standard error) wins/losses/ties\n');
+    console.log('| baseline | deadlines | Spearman | top-20 pts | captain pts | top-20 among 7.0m+ |');
+    console.log('|---|---:|---:|---:|---:|---:|');
+    for (const b of REFERENCE_METHODS) {
+      const p = pairedDifferences(fromTwo, b);
+      out.reference.paired[b] = p;
+      console.log(`| ${b} | ${p.top20.n} | ${pairedCell(p.spearman)} | ${pairedCell(p.top20)} | ${pairedCell(p.captain)} | ${pairedCell(p.top20Premium)} |`);
+    }
+    // Per-deadline series, so a reader can see where the engine wins and loses.
+    out.reference.perDeadline = [...byDeadline(rows).entries()].map(([key, set]) => {
+      const [season, gw] = key.split('|');
+      return { season, gw: Number(gw), ...Object.fromEntries(METHODS.map(m => [m, deadlineFacts(set, m)])) };
+    });
+  }
+
+  if (args.json) fs.writeFileSync(args.json, `${JSON.stringify(out, null, 1)}\n`);
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {

@@ -26,6 +26,7 @@
 //   node apps/fpl-planner/scripts/backtest.mjs --season 2024-25 --gw-from 1 --gw-to 10
 //   node apps/fpl-planner/scripts/backtest.mjs --strategies planner,hold --horizon 3
 //   node apps/fpl-planner/scripts/backtest.mjs --risk aggressive --seed 7 --no-prior
+//   node apps/fpl-planner/scripts/backtest.mjs --plan-options '{"transferOptions":{"hitMargin":2}}' --no-chips
 //
 // Exits non-zero with the exact download command when the data is missing.
 
@@ -198,8 +199,15 @@ export async function runBacktest({
   onProgress = null,
   modelPath = null,
   evidenceRegime = EVIDENCE_REGIMES.PRODUCTION,
+  // Planner option overrides (`opts.planOptions` in the replay, the same
+  // passthrough experiment arms use). Absent on every normal run.
+  planOptions = null,
+  // false removes every chip from the season's rules, the way the deciding
+  // instruments replay (experiment.mjs `chips: false`).
+  chips = true,
 } = {}) {
-  const R = rules || loadRules(season);
+  const seasonRules = rules || loadRules(season);
+  const R = chips ? seasonRules : { ...seasonRules, chips: [] };
   const dataset = loadSeason(season);
 
   // Optional, and refused unless it is provably leakage-free.
@@ -241,6 +249,7 @@ export async function runBacktest({
     model,
     evidenceRegime,
     ...(poolSize ? { poolSize } : {}),
+    ...(planOptions ? { planOptions } : {}),
   };
 
   const reports = [];
@@ -272,7 +281,11 @@ export async function runBacktest({
       gameweeks: dataset.maxGw,
     },
     window: { gwFrom, gwTo: lastGw },
-    settings: { horizon, risk, seed, poolSize: primary.opts.poolSize, strategies },
+    settings: {
+      horizon, risk, seed, poolSize: primary.opts.poolSize, strategies,
+      ...(planOptions ? { planOptions } : {}),
+      ...(chips ? {} : { chips: false }),
+    },
     comparison: baselines.length ? compareStrategies({ primary, baselines }) : null,
     strategies: reports.map(report => ({
       strategy: report.strategy,
@@ -282,7 +295,10 @@ export async function runBacktest({
       totals: report.totals,
     })),
     // The primary run keeps its per-gameweek detail, because "how" matters as
-    // much as "how many" when a season goes wrong somewhere specific.
+    // much as "how many" when a season goes wrong somewhere specific. Each row
+    // carries `decision` (squad, eleven, bench order, captain and vice,
+    // transfers, free transfers after), which scripts/decision-report.mjs
+    // --report reads.
     gameweeks: primary.gws,
   };
 }
@@ -351,6 +367,8 @@ function parseArgs(argv) {
     usePrior: true,
     evidenceRegime: EVIDENCE_REGIMES.PRODUCTION,
     outDir: DEFAULT_REPORT_DIR,
+    planOptions: null,
+    chips: true,
   };
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
@@ -366,6 +384,8 @@ function parseArgs(argv) {
     else if (arg === '--regime') out.evidenceRegime = argv[++i];
     else if (arg === '--out') out.outDir = path.resolve(argv[++i]);
     else if (arg === '--model') out.modelPath = path.resolve(argv[++i]);
+    else if (arg === '--plan-options') out.planOptions = JSON.parse(argv[++i]);
+    else if (arg === '--no-chips') out.chips = false;
     else throw new Error(`Unknown argument "${arg}". Known seasons: ${KNOWN_SEASONS.join(', ')}`);
   }
   return out;
@@ -379,7 +399,8 @@ async function main(argv) {
 
   console.log(`Season:     ${args.season}   (from ${DATA_DIR})`);
   console.log(`Window:     gameweeks ${args.gwFrom} to ${args.gwTo || 'the end of the season'}`);
-  console.log(`Settings:   horizon ${args.horizon}, risk ${args.risk}, seed ${args.seed}, evidence regime ${args.evidenceRegime}`);
+  console.log(`Settings:   horizon ${args.horizon}, risk ${args.risk}, seed ${args.seed}, evidence regime ${args.evidenceRegime}`
+    + `${args.chips ? '' : ', chips off'}${args.planOptions ? `, plan options ${JSON.stringify(args.planOptions)}` : ''}`);
   console.log(`Strategies: ${args.strategies.join(', ')}`);
   console.log(`Model:      ${args.modelPath ? path.basename(args.modelPath) : 'none (analytic projections, the leakage-free default)'}`);
   console.log('');

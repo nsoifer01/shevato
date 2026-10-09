@@ -43,6 +43,7 @@ import { optimizeLineup } from './lineup.js';
 import { chooseCaptain } from './captain.js';
 import { buildPlan, PLANNER_PARAMS } from './planner.js';
 import { fixturesForTeam } from './fixtures.js';
+import { fixtureOddsAtDeadline } from './odds.js';
 import { normalizeName, resolveSeasonPair } from './player-identity.js';
 import { buildGameState } from './normalize.js';
 import { OPENING_BASELINE_KIND, SNAPSHOT_VERSION } from './baseline.js';
@@ -1657,12 +1658,111 @@ export function productionGameStateAt(dataset, gw, {
       if (Math.abs(t.dcMinutes - t.minutes) > 1e-9) player.dcMinutes = t.dcMinutes;
     }
   }
+  attachRecentForm(gameState, dataset, gw);
   if (featureHook) {
     for (const [id, player] of gameState.players) {
       gameState.players.set(id, featureHook(player, { gw, dataset }) || player);
     }
   }
   return { gameState, resolution, bootstrap, fixtures };
+}
+
+// SYNTHETIC SUSPENSIONS (experiments/configs/suspensions.mjs). The archive has
+// no injury or suspension flags, so the replay sees every player as fit and the
+// minutes model's handling of `s` has never been measured. A red card is in the
+// archive, though, and the ban it carries is known at the next deadline, so a
+// suspension can be rebuilt without leakage: a player sent off is banned from
+// his club's next fixture (one match, the shortest ban, because the archive
+// cannot tell a second yellow from a straight red), and at every deadline
+// before that fixture he carries
+//
+//   'dated'   status 's', chance 0, news "Suspended until <day of the fixture
+//             after the ban>" added at the red card's kickoff: what FPL serves
+//             and what minutes.js now reads;
+//   'legacy'  status 'u', which every version of minutes.js projects at zero
+//             for the whole horizon: exactly how an `s` was projected before
+//             2026-10-09, so the two arms are old and new treatment of the same
+//             suspensions on the same trajectories.
+//
+// Anything else (the default) attaches nothing.
+const MONTH_ABBR = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+export function suspensionHook(dataset, mode) {
+  if (mode !== 'dated' && mode !== 'legacy') return null;
+  const deadlines = eventDeadlines(dataset);
+  const clubFixtures = new Map();
+  for (const f of dataset.fixtures) {
+    if (!f.kickoff) continue;
+    for (const t of [f.teamH, f.teamA]) {
+      if (!clubFixtures.has(t)) clubFixtures.set(t, []);
+      clubFixtures.get(t).push(Date.parse(f.kickoff));
+    }
+  }
+  for (const list of clubFixtures.values()) list.sort((a, b) => a - b);
+  // Per player, every red card's kickoff.
+  const reds = new Map();
+  for (const r of dataset.rows) {
+    if (!(r.redCards > 0) || !r.kickoff) continue;
+    if (!reds.has(r.playerId)) reds.set(r.playerId, []);
+    reds.get(r.playerId).push(Date.parse(r.kickoff));
+  }
+  return (player, { gw }) => {
+    const cards = reds.get(player.id);
+    if (!cards) return player;
+    const deadline = deadlines.get(gw);
+    const at = deadline ? Date.parse(deadline) : NaN;
+    if (!Number.isFinite(at)) return player;
+    const kicks = clubFixtures.get(player.teamId) || [];
+    for (const red of cards) {
+      if (red >= at) continue;
+      const after = kicks.filter(t => t > red + 3600 * 1000);
+      const banned = after[0];
+      const back = after[1];
+      if (banned === undefined || banned < at) continue;
+      if (mode === 'legacy') return { ...player, status: 'u', chanceNext: 0 };
+      if (back === undefined) return { ...player, status: 's', chanceNext: 0, news: 'Suspended', newsAdded: new Date(red).toISOString() };
+      const d = new Date(back);
+      return {
+        ...player, status: 's', chanceNext: 0,
+        news: `Suspended until ${d.getUTCDate()} ${MONTH_ABBR[d.getUTCMonth()]}`,
+        newsAdded: new Date(red).toISOString(),
+      };
+    }
+    return player;
+  };
+}
+
+// How many of a player's most recent gameweeks are carried as recent form.
+export const RECENT_FORM_GAMEWEEKS = 3;
+
+/**
+ * Each player's last RECENT_FORM_GAMEWEEKS gameweeks with his club in action,
+ * most recent first, as `player.recentGws = [{ gw, fixtures, starts, minutes }]`.
+ *
+ * Strictly before the deadline being replayed: only gameweeks below `gw` are
+ * read, and a gameweek in which he has no archive row (not yet registered, or
+ * his club blanked) is skipped rather than counted as a match he missed. The
+ * shape is per GAMEWEEK, not per match, because that is what production can
+ * rebuild from FPL's public `event/{gw}/live` (stats.starts and stats.minutes
+ * are per gameweek), so the replay and the app read the same quantity.
+ * minutes.js reads it only under `modelOptions.recency`.
+ */
+export function attachRecentForm(gameState, dataset, gw) {
+  if (!(gw > 1)) return;
+  for (const player of gameState.players.values()) {
+    const out = [];
+    for (let g = gw - 1; g >= 1 && out.length < RECENT_FORM_GAMEWEEKS; g--) {
+      const rows = actualRows(dataset, g, player.id);
+      if (!rows.length) continue;
+      out.push({
+        gw: g,
+        fixtures: rows.length,
+        starts: rows.reduce((s, r) => s + (r.starts || 0), 0),
+        minutes: rows.reduce((s, r) => s + (r.minutes || 0), 0),
+      });
+    }
+    player.recentGws = out;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -1954,7 +2054,9 @@ function candidatePool(gameState, dataset, gw, held, size) {
 async function plannerDecide({ gameState, squadState, rules, gw, opts, dataset, horizon, projectionsKind, risk }) {
   const held = squadState.picks.map(p => p.playerId);
   const pool = candidatePool(gameState, dataset, gw, held, opts.poolSize || DEFAULT_POOL_SIZE);
-  const strength = buildStrength(gameState, { asOfGw: gw });
+  // An experiment arm's fixture-model switches (strength.js resolveModelOptions);
+  // absent on every normal replay, which builds the identical Strength.
+  const strength = buildStrength(gameState, { asOfGw: gw, modelOptions: opts.planOptions && opts.planOptions.modelOptions });
   const gwTo = Math.min(dataset.maxGw, gw + horizon - 1);
 
   // NO `model` HERE, AND THIS IS NOT AN OVERSIGHT.
@@ -1978,7 +2080,7 @@ async function plannerDecide({ gameState, squadState, rules, gw, opts, dataset, 
   // configuration in which measuring the trained model is honest.
   const projections = projectionsKind === 'naive'
     ? naiveProjections({ gameState, strength, gwFrom: gw, gwTo, playerIds: pool })
-    : buildProjections({ gameState, strength, gwFrom: gw, gwTo, playerIds: pool, model: opts.model || null });
+    : buildProjections({ gameState, strength, gwFrom: gw, gwTo, playerIds: pool, model: opts.model || null, modelOptions: opts.planOptions && opts.planOptions.modelOptions });
 
   const bundle = await buildPlan({
     gameState,
@@ -2144,15 +2246,26 @@ export async function replaySeason({ dataset, season, strategy, rules, opts = {}
   const startedAt = Date.now();
   let modelVersion = null;
 
+  // BOOKMAKER ODDS, offline experiment only (experiments/configs/odds-blend.mjs).
+  // Loaded only when an arm switches the blend on; a missing file throws there.
+  // Each deadline sees the decided gameweek's pre-closing prices collected
+  // before it and nothing else (odds.js fixtureOddsAtDeadline).
+  const oddsRows = opts.planOptions && opts.planOptions.modelOptions && opts.planOptions.modelOptions.odds
+    ? (opts.oddsRows || (await import('../../scripts/lib/odds-football-data.mjs')).loadReplayOdds(dataset, season || dataset.season))
+    : null;
+
+  const featureHook = opts.featureHook || suspensionHook(dataset, opts.syntheticSuspensions);
+
   for (let gw = gwFrom; gw <= gwTo; gw++) {
     const gameState = production
       ? productionGameStateAt(dataset, gw, {
-        rules, accumulator, preseasonTotals, asset, availability, featureHook: opts.featureHook || null,
+        rules, accumulator, preseasonTotals, asset, availability, featureHook,
         fixtureLead: opts.fixtureLead === undefined ? FIXTURE_ANNOUNCE_LEAD : opts.fixtureLead,
       }).gameState
       : gameStateAt(dataset, gw, {
-        rules, accumulator, featureHook: opts.featureHook || null, availability,
+        rules, accumulator, featureHook, availability,
       });
+    if (oddsRows) gameState.fixtureOdds = fixtureOddsAtDeadline(oddsRows, gameState, gw).odds;
     const squadState = toSquadState(squad, { gw, gameState, rules, label: strat.label });
 
     let plan;
@@ -2202,6 +2315,28 @@ export async function replaySeason({ dataset, season, strategy, rules, opts = {}
     });
 
     applyDecision(squad, plan, { gameState, rules });
+
+    // WHAT WAS DECIDED, as player ids, so decision quality (captain hit rate,
+    // the realized gain of each transfer, free transfers lost at the cap) can
+    // be computed from the report after the fact (scripts/decision-report.mjs)
+    // instead of by re-running the replay with a wrapper. Recorded after the
+    // decision was applied and read from the plan and the transfer state only:
+    // nothing here feeds the next deadline. `squad` is the fifteen that played
+    // this gameweek (a free hit's rented squad on its week); `captain` on the
+    // row above is the armband after vice succession, `decision.captain` is the
+    // one the plan named. Chip, hits and the free transfers before the deadline
+    // are already on the row.
+    const ftAfter = freeTransfersFor(squad.transferState);
+    gws[gws.length - 1].decision = {
+      squad: (plan.squad || []).slice(),
+      startingXI: (plan.startingXI || []).slice(),
+      bench: plan.bench ? [plan.bench.gk, ...plan.bench.order] : [],
+      captain: plan.captain === undefined ? null : plan.captain,
+      viceCaptain: plan.viceCaptain === undefined ? null : plan.viceCaptain,
+      transfersIn: (plan.transfersIn || []).slice(),
+      transfersOut: (plan.transfersOut || []).slice(),
+      freeTransfersAfter: Number.isFinite(ftAfter) ? ftAfter : null,
+    };
     accumulator.absorb(gw);
   }
 

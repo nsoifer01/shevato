@@ -610,6 +610,43 @@ test('a replayed season carries the free transfer allowance forward one gameweek
   }
 });
 
+test('every gameweek records the decision as ids, enough to rebuild the season from the report', async () => {
+  // scripts/decision-report.mjs computes captain hit rate and per-transfer gain
+  // from these after the fact, so they have to describe the squad that actually
+  // played, chain from one gameweek to the next, and agree with the free
+  // transfer bank the replay carried forward.
+  for (const strategy of ['planner', 'hold']) {
+    const report = await replay(strategy);
+    const rows = report.gws;
+    let held = null;
+    for (let i = 0; i < rows.length; i++) {
+      const g = rows[i];
+      const d = g.decision;
+      const where = `${strategy} gameweek ${g.gw}`;
+      assert.ok(d, `${where} has a decision block`);
+      assert.equal(d.squad.length, RULES.squadSize, `${where}: fifteen ids`);
+      assert.equal(new Set(d.squad).size, d.squad.length, `${where}: no player twice`);
+      assert.equal(d.startingXI.length, RULES.starters);
+      assert.ok(d.startingXI.every(id => d.squad.includes(id)), `${where}: the eleven comes from the squad`);
+      assert.equal(d.bench.length, RULES.squadSize - RULES.starters);
+      assert.deepEqual([...d.startingXI, ...d.bench].sort((a, b) => a - b), [...d.squad].sort((a, b) => a - b), `${where}: eleven plus bench is the squad`);
+      assert.equal(DATASET.players.get(d.bench[0]).position, 1, `${where}: the bench order starts with the goalkeeper`);
+      assert.ok(d.startingXI.includes(d.captain) && d.startingXI.includes(d.viceCaptain) && d.captain !== d.viceCaptain);
+      assert.equal(d.transfersIn.length, d.transfersOut.length);
+      assert.equal(d.transfersIn.length, g.transfers, `${where}: the ids are the transfers the row counts`);
+      assert.ok(d.transfersIn.every(id => d.squad.includes(id)) && d.transfersOut.every(id => !d.squad.includes(id)));
+      if (held && g.chip !== 'freehit' && g.chip !== 'wildcard') {
+        const rebuilt = held.filter(id => !d.transfersOut.includes(id)).concat(d.transfersIn);
+        assert.deepEqual([...rebuilt].sort((a, b) => a - b), [...d.squad].sort((a, b) => a - b), `${where}: last week's squad, minus out, plus in`);
+      }
+      if (g.chip !== 'freehit') held = d.squad;
+      // The bank after this deadline is the bank the next deadline started with.
+      if (i + 1 < rows.length) assert.equal(d.freeTransfersAfter, rows[i + 1].freeTransfers, `${where}: free transfers after`);
+    }
+    assert.ok(JSON.stringify(rows).length < 40 * 1024 * rows.length / 6, 'ids only: the report stays small');
+  }
+});
+
 test('the three baselines are implemented, run, and are scored the same way', async () => {
   assert.deepEqual(Object.keys(STRATEGIES).sort(), ['fdr', 'greedy-xp', 'hold', 'planner']);
 
