@@ -1,0 +1,52 @@
+name: FPL health probe
+
+# Runs the FPL Planner's health probe (apps/fpl-planner/scripts/evidence-probe.mjs)
+# against FPL itself every six hours, so a broken pipeline is noticed within a
+# quarter of a day and, around a deadline, before it rather than after. Every
+# six hours rather than a deadline gate: it is one 1.7 MB read and a few
+# seconds of engine, and a schedule that also covers the days between
+# deadlines catches a payload FPL changes on a Tuesday.
+#
+# The probe judges NAMED INVARIANTS (payload shape, freshness, the season the
+# totals describe, start-rate spread, projections for every player, rank
+# agreement with FPL's ep_next, a plan that passes validatePlan, ...) and exits
+# non-zero naming the one that broke. A failed scheduled run is emailed by
+# GitHub to whoever last edited the cron line below: that is the alert, at no
+# cost. `--direct` because the site's proxy refuses every origin but
+# shevato.com, which a runner is not. The change-detection invariant (`--record`
+# baseline) does not apply here: a runner has no previous reading.
+#
+# Scheduled workflows run only from the default branch, so this starts after
+# it merges to master. It commits nothing and never triggers a Netlify build.
+
+on:
+  schedule:
+    - cron: '41 */6 * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: fpl-health
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          # The engine, the shipped baseline and the probe; not the whole site.
+          sparse-checkout: apps/fpl-planner
+          persist-credentials: false
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version-file: '.nvmrc'
+
+      - name: Probe the live payload
+        run: node apps/fpl-planner/scripts/evidence-probe.mjs --direct

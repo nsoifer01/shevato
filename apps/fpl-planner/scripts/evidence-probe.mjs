@@ -18,9 +18,16 @@
 //   node apps/fpl-planner/scripts/evidence-probe.mjs --bootstrap FILE --fixtures FILE
 //   node apps/fpl-planner/scripts/evidence-probe.mjs --record        # save this reading
 //   node apps/fpl-planner/scripts/evidence-probe.mjs --json          # machine readable
+//   node apps/fpl-planner/scripts/evidence-probe.mjs --direct        # FPL itself, not the proxy (CI)
+//   node apps/fpl-planner/scripts/evidence-probe.mjs --now ISO       # judge freshness at this time
 //
 // With no arguments it reads the live proxy. With files it reads a captured
 // pair, which is how a payload saved during a gameweek is diagnosed afterwards.
+// `--direct` reads fantasy.premierleague.com with a polite User-Agent, because
+// the proxy refuses any origin but shevato.com, which is every GitHub runner
+// (.github/workflows/fpl-health.yml runs it that way). Freshness is judged
+// against the wall clock for a live read and against `--now` for files (and
+// skipped for files without it: a captured pair is old by definition).
 // `--record` writes the reading to .data/probe-baseline.json so the next run
 // can compare against it.
 //
@@ -43,6 +50,9 @@ import { seasonEvidence } from '../js/engine/minutes.js';
 import { goalkeeperPositionId } from '../js/engine/validate.js';
 import { gameweekLifecycle } from '../js/engine/lifecycle.js';
 import { assessBaseline } from '../js/engine/baseline.js';
+import { validatePlan } from '../js/engine/validate.js';
+import { assertShape, USER_AGENT, FPL_API } from './lib/archive.mjs';
+import { spearman } from './lib/archive-scorecard.mjs';
 import {
   assessReadiness, projectionVitals, MIN_EVER_PRESENT_START_MEDIAN, MAX_APPEARANCE_INVERSION_SHARE,
   MIN_GROUP_FOR_MINUTES_CHECKS,
@@ -54,14 +64,31 @@ const arg = (name) => {
   return i > 0 ? process.argv[i + 1] : null;
 };
 
+const DIRECT = process.argv.includes('--direct');
+const responses = {};
 async function read(name, file) {
   if (file) return JSON.parse(readFileSync(file, 'utf8'));
-  const res = await fetch(PROXY + encodeURIComponent(name), {
-    headers: { Origin: 'https://shevato.com', Accept: 'application/json' },
-  });
+  const res = DIRECT
+    ? await fetch(`${FPL_API}${name}/`, { headers: { 'User-Agent': USER_AGENT, Accept: 'application/json' } })
+    : await fetch(PROXY + encodeURIComponent(name), { headers: { Origin: 'https://shevato.com', Accept: 'application/json' } });
   if (!res.ok) throw new Error(`${name}: HTTP ${res.status}`);
+  responses[name] = res.headers;
   return res.json();
 }
+const SOURCE = arg('bootstrap') ? 'files' : DIRECT ? 'fpl' : 'proxy';
+// One minute past a deadline FPL still names that gameweek as next; it flips
+// within minutes. A next deadline more than this far in the past is stale.
+const DEADLINE_GRACE_HOURS = 3;
+// Spearman between the engine's gameweek projection and FPL's own ep_next over
+// every player with a fixture. Measured 0.835 over all 667 players (0.764 over
+// the 421 with minutes) on the live payload before the 2026/27 GW6 deadline
+// (2026-10-09, 12h out). Scrambling the projection of a random 10% of the pool
+// read 0.765, 25% read 0.603, half 0.377, all of it -0.008. The floor is a
+// tripwire for a pipeline that has lost track of WHO is good (a mis-joined id,
+// a shuffled column, a minutes model gone wrong), not a quality bar. It cannot
+// see a level fault: an order-preserving compression keeps every rank, which
+// is what the best-eleven and top-median invariants above are for.
+const MIN_EP_NEXT_SPEARMAN = 0.6;
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const BASELINE_FILE = join(HERE, '..', '.data', 'probe-baseline.json');
@@ -76,6 +103,23 @@ const prev = existsSync(BASELINE_FILE)
 const bootstrap = await read('bootstrap-static', arg('bootstrap'));
 const fixtures = await read('fixtures', arg('fixtures'));
 const fetchedAt = new Date().toISOString();
+
+// Shape first: everything below assumes it, and a payload without these arrays
+// is an error page in disguise, which must fail as itself rather than as a
+// TypeError three functions deep.
+const shapeFailures = [];
+for (const [name, body] of [['bootstrap', bootstrap], ['fixtures', fixtures]]) {
+  try { assertShape(name, body); } catch (err) { shapeFailures.push(err.message); }
+}
+if (shapeFailures.length) {
+  if (process.argv.includes('--json')) {
+    console.log(JSON.stringify({ checks: [{ name: 'the payloads have the shape the app reads', ok: false, saw: shapeFailures, expected: 'bootstrap and fixtures arrays' }] }, null, 2));
+    process.exit(1);
+  }
+  console.log(`FAIL  the payloads have the shape the app reads\n        ${shapeFailures.join('\n        ')}`);
+  console.log(`\nPROBLEM: ${shapeFailures.length} payload shape failure${shapeFailures.length === 1 ? '' : 's'}`);
+  process.exit(1);
+}
 const first = buildGameState(bootstrap, fixtures, { fetchedAt });
 const shipped = openingBaselineApplies(first)
   ? JSON.parse(readFileSync(join(HERE, '..', 'data', 'opening-baseline.json'), 'utf8'))
@@ -116,9 +160,48 @@ let captainPosition = null;
 let medianStart = null;
 let pinnedHigh = null;
 
+let projectionError = null;
+let unprojected = null;
+let epSpearman = null;
+let epCompared = 0;
+let planVerdict = null;
+let planSeconds = null;
+let projections = null;
+
 if (evidence.usable) {
-  const strength = buildStrength(gameState, { asOfGw: gw });
-  const projections = buildProjections({ gameState, strength, gwFrom: gw, gwTo: gw });
+  try {
+    const strength = buildStrength(gameState, { asOfGw: gw });
+    projections = buildProjections({ gameState, strength, gwFrom: gw, gwTo: gw });
+  } catch (err) {
+    projectionError = err && err.message ? err.message : String(err);
+  }
+  if (projections) {
+    // Every player in the pool gets a row, finite and non-negative, blank
+    // gameweeks included (a blank is 0, not a missing row).
+    unprojected = [];
+    for (const p of gameState.players.values()) {
+      const row = projections.get(p.id, gw);
+      if (!row || !Number.isFinite(row.xPoints) || row.xPoints < 0) unprojected.push(p.webName || p.id);
+    }
+    // FPL's ep_next is for its own next event; compare only when that is the
+    // gameweek being planned.
+    const nextId = (bootstrap.events.find((e) => e.is_next) || {}).id;
+    if (nextId === gw) {
+      const ep = new Map(bootstrap.elements.map((e) => [e.id, Number(e.ep_next)]));
+      const xs = []; const ys = [];
+      for (const [id, list] of projections.byPlayer) {
+        const r = list.find((x) => x.gw === gw);
+        if (!r || !r.fixtures.length || !Number.isFinite(ep.get(id))) continue;
+        xs.push(r.xPoints); ys.push(ep.get(id));
+      }
+      epCompared = xs.length;
+      epSpearman = spearman(xs, ys);
+    }
+  }
+}
+reading.epNextSpearman = epSpearman;
+
+if (evidence.usable && projections) {
   vitals = projectionVitals(projectionRowsFor(projections, gw, gameState));
 
   const owned = [...gameState.players.values()]
@@ -134,7 +217,10 @@ if (evidence.usable) {
   pinnedHigh = ps.filter(v => v >= 0.9999).length;
 
   const squadState = buildSquadState({ entry: null, history: null, transfers: null, picks: null, gameState, gw });
+  const t0 = process.hrtime.bigint();
   const plan = await buildPlan({ gameState, squadState, options: { horizon: 3 } });
+  planSeconds = Number(process.hrtime.bigint() - t0) / 1e9;
+  planVerdict = validatePlan(plan.current, squadState, gameState, rules);
   const captain = gameState.players.get(plan.current.captain);
   captainPosition = captain ? captain.position : null;
   reading.planXp = plan.current.xPointsGw;
@@ -249,6 +335,56 @@ if (evidence.usable) {
   }
 }
 
+/* ------------------------------------------- freshness and the pipeline */
+
+const nowIso = arg('now') || (SOURCE === 'files' ? null : fetchedAt);
+const nextEvent = bootstrap.events.find((e) => e.is_next) || null;
+if (nowIso) {
+  const lagHours = nextEvent ? (Date.parse(nowIso) - Date.parse(nextEvent.deadline_time)) / 3600e3 : null;
+  check('the next deadline is in the future',
+    !nextEvent ? bootstrap.events.every((e) => e.finished) : lagHours < DEADLINE_GRACE_HOURS,
+    nextEvent ? `GW${nextEvent.id} deadline ${nextEvent.deadline_time}` : 'no next event',
+    `after ${nowIso}, or under ${DEADLINE_GRACE_HOURS}h past it while FPL rolls over`);
+}
+// A postponed match leaves its gameweek with event null, so it never appears
+// here; anything that does is a fixture list older than the bootstrap.
+const finishedIds = new Set(bootstrap.events.filter((e) => e.finished).map((e) => e.id));
+const unplayed = fixtures.filter((f) => finishedIds.has(f.event) && !f.finished && !f.finished_provisional);
+check('every fixture of a finished gameweek has been played',
+  unplayed.length === 0,
+  unplayed.length ? `${unplayed.length} unplayed, first ${unplayed[0].id} in GW${unplayed[0].event}` : 'all played',
+  'the fixture list agrees with the events (postponed matches carry no gameweek)');
+
+if (evidence.usable) {
+  check('projections build for every player',
+    !projectionError && unprojected && unprojected.length === 0,
+    projectionError ? `threw: ${projectionError}` : `${unprojected.length} without a finite row${unprojected.length ? ` (${unprojected.slice(0, 5).join(', ')})` : ''}`,
+    `a finite, non-negative GW${gw} projection for all ${reading.pool}`);
+  check("the projections rank-correlate with FPL's ep_next",
+    epSpearman === null || epSpearman >= MIN_EP_NEXT_SPEARMAN,
+    epSpearman === null ? 'n/a' : `Spearman ${epSpearman.toFixed(3)} over ${epCompared}`,
+    `at least ${MIN_EP_NEXT_SPEARMAN}`, { skip: epSpearman === null });
+  if (planVerdict) {
+    check('the plan for a built squad passes validatePlan',
+      planVerdict.ok,
+      planVerdict.ok ? `valid, built in ${planSeconds.toFixed(1)}s` : planVerdict.violations.map((v) => v.code).join(', '),
+      'no violations');
+  }
+}
+
+// The proxy's own promises (README, "The data layer"): browsers never cache
+// it, a stale copy says so, and a fresh copy is minutes old, not hours.
+if (SOURCE === 'proxy') {
+  for (const [name, h] of Object.entries(responses)) {
+    const age = Number(h.get('x-fpl-age-seconds')) + (Number(h.get('age')) || 0);
+    const cc = String(h.get('cache-control') || '');
+    check(`the proxy serves ${name} fresh and uncached by browsers`,
+      cc.includes('no-store') && h.get('x-fpl-stale') !== 'true' && Number.isFinite(age) && age < 3600,
+      `cache-control "${cc}", stale ${h.get('x-fpl-stale')}, age ${age}s`,
+      'no-store, not stale, under an hour old');
+  }
+}
+
 check('the readiness ladder agrees with the evidence',
   !(readiness.allow.chips && !evidence.usable),
   `${readiness.level}`, 'a chip is never licensed on unusable evidence');
@@ -267,7 +403,8 @@ if (flag('json')) {
   console.log(`readiness       ${readiness.level}   display=${readiness.allow.display} lineup=${readiness.allow.lineup} transfers=${readiness.allow.transfers} chips=${readiness.allow.chips}`);
   for (const b of readiness.blocked) console.log(`                blocked ${b.code} (ceiling ${b.ceiling})`);
   if (evidence.usable) {
-    console.log(`plan            ${reading.planXp.toFixed(1)} xP for GW${gw}   captain ${reading.captain}   chip ${reading.chip}   transfers ${reading.transfers}`);
+    console.log(`plan            ${reading.planXp.toFixed(1)} xP for GW${gw}   captain ${reading.captain}   chip ${reading.chip}   transfers ${reading.transfers}   built in ${planSeconds.toFixed(1)}s`);
+    if (epSpearman !== null) console.log(`ep_next         Spearman ${epSpearman.toFixed(3)} over ${epCompared} players with a GW${gw} fixture`);
     console.log(`pool            best-11 ${reading.best11.toFixed(1)}   top-median gap ${reading.topMedianGap.toFixed(2)}   median start ${medianStart.toFixed(3)}   pinned ${pinnedHigh}`);
     if (reading.everPresent) {
       const share = reading.appearanceInversionShare;

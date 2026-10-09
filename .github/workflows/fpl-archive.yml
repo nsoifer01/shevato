@@ -1,0 +1,100 @@
+name: FPL deadline archive
+
+# Captures FPL's public payloads around every deadline of the live season into
+# a GitHub release, so the season can be scored afterwards without leakage
+# (apps/fpl-planner/scripts/scorecard.mjs). A deadline that is not captured
+# before it passes is lost for good: the public endpoints only show the present,
+# and FPL's own ep_next is only an honest baseline when it predates the
+# gameweek.
+#
+# Hourly, and almost always a no-op that exits in seconds. The gate lives in
+# apps/fpl-planner/scripts/lib/archive.mjs (decideCaptures) and reads the
+# bootstrap and the release's manifest:
+#   pre .... the next deadline is within 26 hours, and no pre capture exists for
+#            it, or the newest is 6 hours old, or we are inside the final 2
+#            hours and none was taken there. That lands at about T-25h, T-19h,
+#            T-13h, T-7h and on both runs of the final two hours.
+#   post ... once, within 3 hours after a deadline.
+#   live ... once, for event/{gw}/live of the newest gameweek FPL has marked
+#            finished and data_checked.
+#
+# Storage: one release per season, tagged fpl-archive-<season> (2026-27), a
+# prerelease created with --latest=false so it never becomes the repository's
+# latest release. Snapshot assets are uploaded WITHOUT --clobber, so an asset
+# that already exists fails the upload instead of being replaced; only
+# manifest.json, the append-only index, is replaced, after a check that the new
+# one keeps every entry of the old. Nothing is committed, so this workflow
+# never triggers a Netlify build. About 1 MB of gzip per gameweek, ~40 MB a
+# season (measured 2026-10-09: bootstrap 166 KB, fixtures 17 KB, live 16 KB).
+#
+# Scheduled workflows run only from the default branch, so this starts on the
+# first hour after it merges to master. The repository is public, so the
+# minutes are free; each run is still kept to seconds. GitHub emails a failed
+# scheduled run to whoever last edited this cron line.
+#
+# Exit 75 from the script means FPL answered "the game is being updated": that
+# is a warning, not a failure, because the next hourly run is the retry.
+
+on:
+  schedule:
+    # :17, off the top of the hour, where GitHub's scheduler is busiest and
+    # drops or delays the most runs.
+    - cron: '17 * * * *'
+  workflow_dispatch:
+    inputs:
+      phase:
+        description: 'auto (gate decides), pre, post, live or adhoc'
+        required: false
+        type: choice
+        default: auto
+        options: [auto, pre, post, live, adhoc]
+      gw:
+        description: 'Gameweek, for live (required) or adhoc (optional)'
+        required: false
+        type: string
+        default: ''
+
+concurrency:
+  # Two overlapping runs would both read the same manifest and the second
+  # upload of it would drop the first one's entries.
+  group: fpl-archive
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  capture:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          # The capture needs only its own scripts, not the 35k-file site.
+          sparse-checkout: apps/fpl-planner/scripts
+          persist-credentials: false
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version-file: '.nvmrc'
+
+      - name: Capture and upload
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          # Through the environment, never interpolated into the script.
+          PHASE: ${{ inputs.phase || 'auto' }}
+          GW: ${{ inputs.gw || '' }}
+        run: |
+          set -u
+          args=(--release --out "$RUNNER_TEMP/fpl-archive" --phase "$PHASE")
+          if [ -n "$GW" ]; then
+            case "$GW" in *[!0-9]*) echo "::error::gw must be a number"; exit 1;; esac
+            args+=(--gw "$GW")
+          fi
+          rc=0
+          node apps/fpl-planner/scripts/archive-snapshot.mjs "${args[@]}" || rc=$?
+          if [ "$rc" = 75 ]; then exit 0; fi
+          exit "$rc"
