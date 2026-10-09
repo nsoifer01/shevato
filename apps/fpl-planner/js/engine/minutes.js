@@ -83,7 +83,7 @@
 // decides how fast "still on zero after m matches" overtakes it.
 
 import { assessBaseline, baselineIsSuperseded } from './baseline.js';
-import { matchesPlayedByClub, matchesKickedOffByClub } from './lifecycle.js';
+import { matchesPlayedByClub, matchesKickedOffByClub, fixtureHasKickedOff } from './lifecycle.js';
 
 const UNAVAILABLE_STATUSES = new Set(['i', 's', 'u', 'n']);
 const DOUBTFUL_STATUS = 'd';
@@ -701,6 +701,133 @@ export function availabilityCeiling(player, { steps = 0 } = {}) {
   return { availability, reason };
 }
 
+// --- A ruled-out player over the horizon (2026-10-09) -----------------------
+//
+// THE DEFECT. `i` (injured) and `s` (suspended) used to return zero minutes for
+// every gameweek of the horizon, before the horizon recovery above was ever
+// applied, while a `d` player on a 0% chance recovered by the measured 0.92 a
+// gameweek. So the same "will not play this week" read as a five-week absence
+// when FPL encoded it as `i`, and a premium serving a one-match ban lost about
+// 13 discounted horizon points, enough to clear the hit bar for a sale and a
+// later buy-back. FPL's own news carries the date he is back ("Suspended until
+// 19 Oct", "Hamstring injury - Expected back 10 Oct") and nothing read it.
+//
+// WHAT IT DOES NOW, per gameweek:
+//   - `u` (left the club) and `n` (not eligible): zero, as before.
+//   - A loanee FPL lists as ineligible against his parent club in this
+//     gameweek (`scout_risks`, normalize.js `ineligibleGws`): zero.
+//   - `s` with a date: zero while every one of his club's fixtures in the
+//     gameweek kicks off before the date, fully available from the first
+//     gameweek with a fixture on or after it. "Until D" means eligible FROM D:
+//     on the 2026-10-09 payload Disasi (a red on 12 Sep, until 25 Oct) misses
+//     exactly three league matches, a straight red's ban, and Fatawu (a second
+//     yellow on 19 Sep, until 17 Oct) exactly one; the two whose dates cover
+//     fewer league matches than a red's ban had a cup tie inside it, and
+//     domestic bans count cup ties. A ban is the FA's ruling, not a fitness
+//     estimate, so the return week is not discounted.
+//   - `i` with a date: zero before it, then RETURN_WEEK_AVAILABILITY in the
+//     first gameweek on or after it, recovering by HORIZON_DOUBT_DECAY a week
+//     after that. An expected return date is a medical estimate and returns
+//     slip, so the return week is a doubt, not a certainty.
+//   - `i` or `s` with no date ("Unknown return date"), or with a date that
+//     has already passed while the flag is still up (the return slipped): zero in the gameweek
+//     being decided, then the same geometric recovery as a 0% doubt, which is
+//     the population HORIZON_DOUBT_DECAY was measured on (players who missed
+//     their club's last match).
+// The gameweek being decided is never relaxed: a ruled-out player is zero in
+// it whatever the news says, because the news is about later fixtures.
+const RULED_OUT_STATUSES = new Set(['i', 's']);
+const RETURN_WEEK_AVAILABILITY = 0.75;
+
+const MONTHS = Object.freeze({
+  jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5, jul: 6, aug: 7, sep: 8, oct: 9, nov: 10, dec: 11,
+});
+
+// The date in a news line, as a UTC midnight timestamp, or null. FPL writes
+// "until 19 Oct" and "Expected back 10 Oct" with no year, so the year is the
+// one that puts the date closest after the news was added (a December note
+// about "3 Jan" means next January).
+export function newsReturnDate(news, newsAdded) {
+  if (typeof news !== 'string' || !news) return null;
+  const m = /(?:until|expected back)\s+(\d{1,2})\s+([A-Za-z]{3})[a-z]*/i.exec(news);
+  if (!m) return null;
+  const day = Number(m[1]);
+  const month = MONTHS[m[2].toLowerCase()];
+  if (month === undefined || !(day >= 1 && day <= 31)) return null;
+  const added = newsAdded ? Date.parse(newsAdded) : NaN;
+  const anchor = Number.isFinite(added) ? new Date(added) : null;
+  let year = anchor ? anchor.getUTCFullYear() : new Date().getUTCFullYear();
+  let at = Date.UTC(year, month, day);
+  // More than two months before the note was written can only be next year.
+  if (anchor && at < anchor.getTime() - 60 * 24 * 3600 * 1000) at = Date.UTC(++year, month, day);
+  return at;
+}
+
+function clubFixtureKickoffs(gameState, teamId, gw) {
+  const out = [];
+  for (const f of gameState.fixtures || []) {
+    if (f.event !== gw || (f.teamH !== teamId && f.teamA !== teamId)) continue;
+    const t = f.kickoff ? Date.parse(f.kickoff) : NaN;
+    out.push(t);
+  }
+  return out;
+}
+
+// The first gameweek, at or after `from`, in which his club has a fixture
+// kicking off on or after `at`. Null when the calendar cannot say (no dated
+// fixture that late in the loaded list).
+function firstGameweekFrom(gameState, teamId, at, from) {
+  let best = null;
+  for (const f of gameState.fixtures || []) {
+    if (f.teamH !== teamId && f.teamA !== teamId) continue;
+    if (!Number.isFinite(f.event) || f.event < from) continue;
+    const t = f.kickoff ? Date.parse(f.kickoff) : NaN;
+    if (!Number.isFinite(t) || t < at) continue;
+    if (best === null || f.event < best) best = f.event;
+  }
+  return best;
+}
+
+// Availability for one gameweek from the player's status, news and FPL's
+// eligibility list, or null when the ordinary chance-of-playing ceiling
+// (availabilityCeiling) applies. See the note above.
+export function ruledOutAvailability(player, { gameState, gw }) {
+  if (Array.isArray(player.ineligibleGws) && player.ineligibleGws.includes(gw)) {
+    return { availability: 0, reason: 'loan-ineligible' };
+  }
+  if (!RULED_OUT_STATUSES.has(player.status)) return null;
+  const from = gameState && Number.isFinite(gameState.nextEvent) ? gameState.nextEvent : gw;
+  const steps = Number.isFinite(gw) ? Math.max(0, gw - from) : 0;
+  if (steps === 0) return { availability: 0, reason: `status-${player.status}` };
+
+  // A date that has already passed while the flag is still up is a return that
+  // slipped, and says nothing about when he is back: read it as no date.
+  const next = (gameState.events || []).find(e => e.id === from);
+  const deadline = next && next.deadline ? Date.parse(next.deadline) : NaN;
+  const dated = newsReturnDate(player.news, player.newsAdded);
+  const at = dated !== null && !(Number.isFinite(deadline) && dated <= deadline) ? dated : null;
+  if (at !== null) {
+    const back = firstGameweekFrom(gameState, player.teamId, at, from);
+    if (back !== null) {
+      if (gw < back) return { availability: 0, reason: `status-${player.status}-until-return` };
+      if (player.status === 's') return { availability: 1, reason: 'suspension-served' };
+      const after = gw - back;
+      return {
+        availability: 1 - (1 - RETURN_WEEK_AVAILABILITY) * (HORIZON_DOUBT_DECAY ** after),
+        reason: 'injury-expected-back',
+      };
+    }
+    // A date beyond every dated fixture: out for as far as the calendar goes.
+    if (clubFixtureKickoffs(gameState, player.teamId, gw).every(t => !Number.isFinite(t) || t < at)) {
+      return { availability: 0, reason: `status-${player.status}-until-return` };
+    }
+  }
+  return {
+    availability: 1 - (HORIZON_DOUBT_DECAY ** steps),
+    reason: `status-${player.status}-recovering`,
+  };
+}
+
 // --- How well the minutes are KNOWN, not how high they are -----------------
 //
 // THE DEFECT THIS REPLACES. Confidence used to be three cumulative-minute
@@ -785,7 +912,59 @@ export function minutesConfidence({ startRate, evidenceMatches, availability = 1
   return { score, tier: confidenceTierFor(score), sd, evidenceMatches: n };
 }
 
-export function projectMinutes(player, { gameState, gw, fixtureCount } = {}) {
+// --- Recent form (EXPERIMENT ONLY, `modelOptions.recency`) ------------------
+//
+// The start model reads season starts over club matches and nothing about their
+// order, so a regular who has just lost his place keeps his season rate. This
+// candidate corrects the shipped start probability with the player's last
+// three gameweeks (`player.recentGws`, attached by the replay from the archive
+// and in the app from `event/{gw}/live`):
+//
+//   logit(p) = a + b * logit(base) + c * (recentShare - base)
+//              + d * startedLast + e * benchedButUsed
+//
+// Coefficients come from scripts/calibration/calibrate-recency.mjs (fitted on
+// start outcomes, never on planner points) and are passed in by the arm, so
+// nothing here is a number until an experiment supplies one. Off, which is the
+// shipped state, it is not read at all.
+export function recencyFeatures(player, base) {
+  const recent = Array.isArray(player && player.recentGws) ? player.recentGws : [];
+  const used = recent.filter(r => r && r.fixtures > 0);
+  if (!used.length) return null;
+  const fixtures = used.reduce((s, r) => s + r.fixtures, 0);
+  const starts = used.reduce((s, r) => s + Math.min(r.starts || 0, r.fixtures), 0);
+  return {
+    recentFixtures: fixtures,
+    recentStarts: starts,
+    recentShare: fixtures > 0 ? starts / fixtures : base,
+    startedLast: (used[0].starts || 0) > 0 ? 1 : 0,
+    benchedButUsed: used.filter(r => (r.minutes || 0) > 0 && !(r.starts > 0)).length / used.length,
+  };
+}
+
+// A flagged player's absence is already the availability ceiling's job, and
+// his empty recent gameweeks are the same absence, so the correction reads only
+// players FPL lists as available (the archive has no flags, so in the replay
+// that is everyone). `bySeason` lets an experiment arm hand each replayed season
+// the coefficients fitted with that season held out.
+function recencyAdjusted(player, base, recency, gameState) {
+  if (!recency || player.status !== 'a') return base;
+  const label = gameState && gameState.rules && gameState.rules.season
+    ? String(gameState.rules.season).replace('/', '-')
+    : null;
+  const coefficients = (recency.bySeason && label && recency.bySeason[label]) || recency.coefficients;
+  if (!coefficients) return base;
+  const f = recencyFeatures(player, base);
+  if (!f) return base;
+  const { intercept, weights } = coefficients;
+  const q = Math.min(1 - 1e-4, Math.max(1e-4, base));
+  const x = [Math.log(q / (1 - q)), f.recentShare - base, f.startedLast, f.benchedButUsed];
+  let eta = intercept;
+  for (let j = 0; j < weights.length; j++) eta += weights[j] * x[j];
+  return clamp01(1 / (1 + Math.exp(-eta)));
+}
+
+export function projectMinutes(player, { gameState, gw, fixtureCount, modelOptions = null } = {}) {
   const { priors, evidence: season, matchesByTeam, priceBands: bands } = positionPriors(gameState);
   const prior = priors.get(player.position) || { ...FALLBACK_PRIORS };
   const nFixtures = fixtureCount === undefined
@@ -802,14 +981,17 @@ export function projectMinutes(player, { gameState, gw, fixtureCount } = {}) {
 
   // Certainty that he does NOT play is still certainty, so these three score 1.
   if (nFixtures === 0) return { ...zero, confidence: 'high', confidenceScore: 1, reason: 'blank-gameweek' };
-  if (UNAVAILABLE_STATUSES.has(player.status)) {
+  if (UNAVAILABLE_STATUSES.has(player.status) && !RULED_OUT_STATUSES.has(player.status)) {
     return { ...zero, confidence: 'high', confidenceScore: 1, reason: `status-${player.status}` };
   }
 
-  // Availability ceiling. An explicit percentage wins over everything; a
-  // doubtful flag with no percentage falls back to the documented default; and
-  // a doubt about a gameweek further out is a smaller doubt.
-  const ceiling = availabilityCeiling(player, { steps: horizonSteps(gameState, gw) });
+  // Availability ceiling. A player ruled out (injured, suspended, ineligible on
+  // loan) is read from his status and news; otherwise an explicit percentage
+  // wins over everything, a doubtful flag with no percentage falls back to the
+  // documented default, and a doubt about a gameweek further out is a smaller
+  // doubt.
+  const ceiling = ruledOutAvailability(player, { gameState, gw })
+    || availabilityCeiling(player, { steps: horizonSteps(gameState, gw) });
   const availability = ceiling.availability;
   let reason = ceiling.reason;
   if (availability === 0) return { ...zero, confidence: 'high', confidenceScore: 1, reason };
@@ -820,9 +1002,10 @@ export function projectMinutes(player, { gameState, gw, fixtureCount } = {}) {
   const view = evidenceView(gameState);
   const lastSeason = view.priorOf(player);
   const current = view.currentOf(player);
-  const m = view.matchesOf(player);
-  const s = current ? Math.min(Math.max(0, current.starts || 0), m) : 0;
+  const clubMatches = view.matchesOf(player);
   const minutesNow = current ? Math.max(0, current.minutes || 0) : 0;
+  const m = current ? matchesSinceJoining(gameState, player, clubMatches, minutesNow) : clubMatches;
+  const s = current ? Math.min(Math.max(0, current.starts || 0), m) : 0;
   const model = startModelFor(gameState);
   const position = player.position;
 
@@ -844,12 +1027,17 @@ export function projectMinutes(player, { gameState, gw, fixtureCount } = {}) {
     if (reason === 'historical' && minutesNow <= 0) reason = m > 0 ? 'no-history-unplayed' : 'no-history-prior';
   }
   let baseStart = (s + K * mu) / (m + K);
+  if (modelOptions && modelOptions.recency && current) {
+    baseStart = recencyAdjusted(player, clamp01(baseStart), modelOptions.recency, gameState);
+  }
 
   // Starter and substitute minutes, from the payload's own totals (this
   // season's, or last season's before it starts): the estimator the hour
   // curves above were fitted on. Sub appearances are not published, so they
   // are inferred as the minutes the starts cannot account for.
-  const evidence = evidenceMatchesFor(player, defaultEvidenceMatches(season, player.teamId));
+  const evidence = m < clubMatches
+    ? m
+    : evidenceMatchesFor(player, defaultEvidenceMatches(season, player.teamId));
   let meanStarterMinutes = prior.starterMinutes;
   let meanSubMinutes = prior.subMinutes;
   if (player.minutes > 0 && evidence > 0) {
@@ -955,6 +1143,49 @@ export function projectMinutes(player, { gameState, gw, fixtureCount } = {}) {
     confidenceScore,
     reason,
   };
+}
+
+// A MID-SEASON SIGNING IS READ OVER HIS NEW CLUB'S MATCHES SINCE HE JOINED.
+//
+// The start rate's denominator is his club's matches this season, but a player
+// who arrived in January was never available for the first twenty of them, so
+// four straight starts from match 20 read (4 + K * mu) / (24 + K), about 0.20,
+// and he was projected as a fringe player for weeks: the numerator was his and
+// the denominator was not. `team_join_date` (bootstrap-static) says when he
+// arrived, and the club matches kicked off since then are his opportunities.
+//
+// Two guards keep it to the case it is for. A join date before the club's first
+// match changes nothing (a summer signing), and a player whose minutes this
+// season could not have fitted into his matches since joining (more than 90 a
+// match) played them for another Premier League club, so his totals span the
+// whole season and the whole season stays his denominator.
+const joinCountCache = new WeakMap();
+
+function matchesSinceJoining(gameState, player, clubMatches, minutesNow) {
+  const joinAt = player.teamJoinDate ? Date.parse(player.teamJoinDate) : NaN;
+  if (!Number.isFinite(joinAt) || !(clubMatches > 0)) return clubMatches;
+  // A join date after the deadline being planned is a later season's fact (a
+  // replayed payload carries the archive's final date), never this player's.
+  const next = (gameState.events || []).find(e => e.id === gameState.nextEvent);
+  const deadline = next && next.deadline ? Date.parse(next.deadline) : NaN;
+  if (Number.isFinite(deadline) && joinAt > deadline) return clubMatches;
+  let perState = joinCountCache.get(gameState);
+  if (!perState) { perState = new Map(); joinCountCache.set(gameState, perState); }
+  const key = `${player.teamId}@${joinAt}`;
+  let since = perState.get(key);
+  if (since === undefined) {
+    since = 0;
+    for (const f of gameState.fixtures || []) {
+      if (f.teamH !== player.teamId && f.teamA !== player.teamId) continue;
+      if (!fixtureHasKickedOff(f)) continue;
+      const t = f.kickoff ? Date.parse(f.kickoff) : NaN;
+      if (Number.isFinite(t) && t >= joinAt) since++;
+    }
+    perState.set(key, since);
+  }
+  if (since >= clubMatches) return clubMatches;
+  if (minutesNow > 90 * since) return clubMatches;
+  return since;
 }
 
 // The pooled start rate and starter minutes of each position, last season and

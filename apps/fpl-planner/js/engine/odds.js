@@ -1,10 +1,12 @@
 // Bookmaker odds as a model input.
 //
-// STATUS: INERT. Nothing imports this module. It exists so that the day an odds
-// account exists the integration is a wiring job rather than a design job, and
-// so the maths can be argued about and tested before any money is spent. Do not
-// import it from the live path until the evaluation in
-// `experiments/odds-evaluation-plan.md` has actually been run and passed.
+// STATUS: OFFLINE EXPERIMENT ONLY. The live path never imports this module and
+// nothing fetches odds at runtime. The offline replay reads football-data.co.uk
+// CSVs downloaded by scripts/fetch-odds.mjs (scripts/lib/odds-football-data.mjs
+// turns them into derived rows with this module), gates them with
+// fixtureOddsAtDeadline below, and attaches them to the replayed GameState for
+// experiments/configs/odds-blend.mjs. Do not import it from the live path until
+// that experiment has been run and passed (experiments/odds-evaluation-plan.md).
 //
 // THE PIPELINE
 //
@@ -655,4 +657,58 @@ export function averageProbabilities(rows) {
   }
   const total = sum(acc);
   return acc.map(v => v / total);
+}
+
+// ---------------------------------------------------------------------------
+// The deadline gate (offline replay)
+//
+// `rows` maps an FPL fixture id to a derived market row carrying `fetchedAt`,
+// the latest moment the prices could have been collected (an ISO timestamp).
+// At the deadline of gameweek `gw` the plan may see odds for:
+//
+//   - fixtures of gameweek `gw` itself, as the GameState knows the calendar at
+//     that deadline, and nothing further ahead: a later round's prices are not
+//     published yet, and a fixture postponed out of `gw` is priced the week it
+//     is actually played, which its `fetchedAt` then shows;
+//   - whose `fetchedAt` is at or before the deadline, which is the first
+//     kickoff of the gameweek minus FPL_DEADLINE_LEAD_MINUTES.
+//
+// A row collected after the deadline is withheld and counted, never used: the
+// fixture falls back to the ratings model. A row with no timestamp is a broken
+// loader and throws.
+// ---------------------------------------------------------------------------
+
+export const FPL_DEADLINE_LEAD_MINUTES = 90;
+
+/** FPL's deadline for `gw`: its first kickoff minus 90 minutes, in ms, or null. */
+export function deadlineMsFor(gameState, gw) {
+  let first = null;
+  for (const f of gameState.fixtures) {
+    if (f.event !== gw || !f.kickoff) continue;
+    const t = Date.parse(f.kickoff);
+    if (Number.isFinite(t) && (first === null || t < first)) first = t;
+  }
+  return first === null ? null : first - FPL_DEADLINE_LEAD_MINUTES * 60 * 1000;
+}
+
+export function fixtureOddsAtDeadline(rows, gameState, gw) {
+  const odds = new Map();
+  const withheld = [];
+  const deadline = deadlineMsFor(gameState, gw);
+  if (deadline === null || !rows) return { odds, withheld, deadline };
+  for (const f of gameState.fixtures) {
+    if (f.event !== gw) continue;
+    const row = rows.get(f.id);
+    if (!row) continue;
+    const at = Date.parse(row.fetchedAt);
+    if (!Number.isFinite(at)) {
+      throw new Error(`odds: fixture ${f.id} has no usable fetchedAt (${JSON.stringify(row.fetchedAt)})`);
+    }
+    if (at > deadline) {
+      withheld.push({ fixtureId: f.id, fetchedAt: row.fetchedAt });
+      continue;
+    }
+    odds.set(f.id, row);
+  }
+  return { odds, withheld, deadline: new Date(deadline).toISOString() };
 }

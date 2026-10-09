@@ -17,7 +17,7 @@ const num = (v) => {
   return Number.isFinite(n) ? n : 0;
 };
 
-export function buildGameState(bootstrap, fixtures, { fetchedAt, baseline = null, standIn = true } = {}) {
+export function buildGameState(bootstrap, fixtures, { fetchedAt, ageSeconds = null, baseline = null, standIn = true } = {}) {
   const rules = buildRules(bootstrap);
 
   const teams = new Map();
@@ -125,6 +125,14 @@ export function buildGameState(bootstrap, fixtures, { fetchedAt, baseline = null
     fixtures: normalizedFixtures,
     events,
     fetchedAt: fetchedAt || new Date().toISOString(),
+    // How old the data was when it reached this device, by the data layer's
+    // own skew-safe measure (api.js ageSeconds), and this device's clock at
+    // that moment. Age later is the receipt age plus local elapsed time, which
+    // a device whose clock is hours wrong reads correctly; subtracting the
+    // server's `fetchedAt` from the device clock does not (planner.js
+    // buildDataStatus). Null when the caller did not say.
+    dataAgeAtReceiptSeconds: Number.isFinite(ageSeconds) ? Math.max(0, ageSeconds) : null,
+    dataReceivedAtMs: Number.isFinite(ageSeconds) ? Date.now() : null,
     currentEvent: current ? current.id : null,
     nextEvent: next ? next.id : null,
     // "Has a ball been kicked yet." Any played, current or past event counts,
@@ -226,6 +234,14 @@ export function normalizePlayer(e) {
       : e.chance_of_playing_next_round / 100,
     news: e.news || '',
     newsAdded: e.news_added || null,
+    // When he joined his current club (ISO date). minutes.js reads a mid-season
+    // signing over his new club's matches since this date rather than over the
+    // whole season (a January signing who started four in a row read 0.20).
+    teamJoinDate: typeof e.team_join_date === 'string' && e.team_join_date ? e.team_join_date : null,
+    // Gameweeks FPL says he cannot play: a loanee is ineligible against his
+    // parent club (`scout_risks` property `loan_ineligible`). Projected at zero
+    // minutes in exactly those gameweeks (minutes.js availabilityForGw).
+    ineligibleGws: ineligibleGameweeks(e.scout_risks),
     selectedByPercent: num(e.selected_by_percent),
 
     // THE EVIDENCE TOTALS the minutes model reads. Normally these ARE the
@@ -292,6 +308,21 @@ export function normalizePlayer(e) {
       cornersOrder: e.corners_and_indirect_freekicks_order ?? null,
     },
   };
+}
+
+// `scout_risks` -> the gameweeks a player is ruled out of by rule rather than by
+// fitness. Only `loan_ineligible` is read: it is the one property FPL publishes
+// with a gameweek attached, and it is certain. Anything malformed is ignored, so
+// a payload without the field (every season before 2026/27) reads as none.
+export function ineligibleGameweeks(risks) {
+  if (!Array.isArray(risks)) return [];
+  const out = new Set();
+  for (const r of risks) {
+    if (!r || r.property !== 'loan_ineligible') continue;
+    const gw = Number(r.gameweek);
+    if (Number.isInteger(gw) && gw > 0) out.add(gw);
+  }
+  return [...out].sort((a, b) => a - b);
 }
 
 // bootstrap-static's price-change fields -> one object, or null.

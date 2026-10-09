@@ -128,6 +128,50 @@ export const STRENGTH_PARAMS = Object.freeze({
   ratingMax: RATING_MAX,
 });
 
+// ---------------------------------------------------------------------------
+// Model options: the experiment switches that ride on the Strength object.
+//
+// `modelOptions` is how an experiment arm (planOptions.modelOptions) changes the
+// fixture model without a code edit. Two keys belong to the fixture model:
+//
+//   odds            truthy, or { weight } with weight in [0, 1] (default 1).
+//                   Fixtures whose bookmaker odds the GameState carries
+//                   (`gameState.fixtureOdds`, attached only by the offline
+//                   replay) blend w * odds + (1 - w) * model expected goals.
+//                   Nothing fetches odds at runtime, so on the live page this
+//                   key is inert by construction.
+//   goalDispersion  nu of a Conway-Maxwell-Poisson goal count with the SAME
+//                   mean as the model's expected goals. nu > 1 is
+//                   underdispersed (fewer blowouts, a different P(0)); nu = 1
+//                   or absent is the shipped Poisson.
+//
+// The resolved options are attached to the Strength object ONLY when one of
+// them is active, so a Strength built with `{}` or with nothing is the object
+// it always was, key for key. fixtures.js and projections.js read them from
+// there, which keeps every existing call signature unchanged.
+// ---------------------------------------------------------------------------
+
+export function resolveModelOptions(modelOptions) {
+  if (!modelOptions || typeof modelOptions !== 'object') return null;
+  const out = {};
+  if (modelOptions.odds) {
+    const raw = typeof modelOptions.odds === 'object' ? modelOptions.odds : {};
+    const weight = raw.weight === undefined ? 1 : raw.weight;
+    if (typeof weight !== 'number' || !Number.isFinite(weight) || weight < 0 || weight > 1) {
+      throw new Error(`strength: modelOptions.odds.weight must be a number in [0, 1], got ${JSON.stringify(raw.weight)}`);
+    }
+    out.odds = { weight };
+  }
+  const nu = modelOptions.goalDispersion;
+  if (nu !== undefined && nu !== null) {
+    if (typeof nu !== 'number' || !Number.isFinite(nu) || nu <= 0) {
+      throw new Error(`strength: modelOptions.goalDispersion must be a positive number, got ${JSON.stringify(nu)}`);
+    }
+    if (nu !== 1) out.goalDispersion = nu;
+  }
+  return Object.keys(out).length ? out : null;
+}
+
 const clampRating = (v) => Math.min(RATING_MAX, Math.max(RATING_MIN, v));
 const clampedLog = (v) => Math.log(Math.min(SQUAD_RELATIVE_MAX, Math.max(SQUAD_RELATIVE_MIN, v)));
 
@@ -379,7 +423,7 @@ export function buildStrength(gameState, opts = {}) {
     });
   }
 
-  return {
+  const strength = {
     asOfGw: gw,
     source: matches.length ? 'fitted' : 'prior',
     leagueMeanGoals: awayLevel,
@@ -388,6 +432,9 @@ export function buildStrength(gameState, opts = {}) {
     teams,
     params: STRENGTH_PARAMS,
   };
+  const modelOptions = resolveModelOptions(opts.modelOptions);
+  if (modelOptions) strength.modelOptions = modelOptions;
+  return strength;
 }
 
 // Before a ball is kicked the payload's own totals are last season's, so the

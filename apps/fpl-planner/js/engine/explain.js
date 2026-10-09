@@ -598,7 +598,9 @@ export function explainPlan(plan, context = {}) {
 
   bullets.push(...captain.reasons.slice(0, 1));
   if (chip.decision === 'hold' && chip.reasons.length) bullets.push(chip.reasons[0]);
-  if (roll) bullets.push(roll.reasons[0]);
+  // The roll's own reasons are not repeated here: "Why this plan?" renders
+  // `rollReason` as its own group directly below these bullets, and the first
+  // of them used to appear twice on the same screen.
 
   return {
     headline,

@@ -15,7 +15,16 @@ import {
   loadOdds,
   theOddsApiAdapter,
   averageProbabilities,
+  fixtureOddsAtDeadline,
+  deadlineMsFor,
 } from '../js/engine/odds.js';
+import {
+  fplTeamFor,
+  collectedBy,
+  londonToUtcMs,
+  parseFootballDataCsv,
+  matchToDataset,
+} from '../scripts/lib/odds-football-data.mjs';
 
 import { projectFixture, MAX_GOALS } from '../js/engine/fixtures.js';
 
@@ -547,4 +556,122 @@ test('a vendor payload becomes fixture-model quantities end to end', () => {
   assert.ok(d.xGH > d.xGA, 'Arsenal were the favourite in this book');
   assert.ok(d.pCSHome > 0 && d.pCSHome < 1);
   assert.ok(close(d.pWinHome + d.pDraw + d.pWinAway, 1, 1e-9));
+});
+
+// ---------------------------------------------------------------------------
+// The replay's deadline gate
+// ---------------------------------------------------------------------------
+
+const GATE_STATE = {
+  nextEvent: 7,
+  fixtures: [
+    { id: 70, event: 7, teamH: 1, teamA: 2, kickoff: '2024-10-05T11:30:00Z' },
+    { id: 71, event: 7, teamH: 3, teamA: 4, kickoff: '2024-10-05T14:00:00Z' },
+    { id: 72, event: 7, teamH: 5, teamA: 6, kickoff: '2024-10-09T18:45:00Z' },
+    { id: 80, event: 8, teamH: 2, teamA: 1, kickoff: '2024-10-19T14:00:00Z' },
+  ],
+};
+const ROW = (fetchedAt) => ({ xGH: 1.5, xGA: 1.1, fetchedAt });
+
+test('the deadline is the first kickoff of the gameweek minus 90 minutes', () => {
+  assert.equal(deadlineMsFor(GATE_STATE, 7), Date.parse('2024-10-05T10:00:00Z'));
+  assert.equal(deadlineMsFor(GATE_STATE, 9), null);
+});
+
+test('LEAKAGE: only the decided gameweek, only prices collected before its deadline', () => {
+  const rows = new Map([
+    [70, ROW('2024-10-04T16:00:00Z')],
+    // The Tuesday collection of a midweek catch-up inside a weekend gameweek
+    // happens after the Saturday deadline: withheld, not used.
+    [72, ROW('2024-10-08T12:00:00Z')],
+    // The next round's prices exist in the file but not at this deadline.
+    [80, ROW('2024-10-18T16:00:00Z')],
+  ]);
+  const { odds, withheld } = fixtureOddsAtDeadline(rows, GATE_STATE, 7);
+  assert.deepEqual([...odds.keys()], [70]);
+  assert.deepEqual(withheld.map(w => w.fixtureId), [72]);
+  assert.equal(odds.has(80), false);
+  // A fetchedAt exactly at the deadline is admissible.
+  assert.equal(fixtureOddsAtDeadline(new Map([[71, ROW('2024-10-05T10:00:00Z')]]), GATE_STATE, 7).odds.has(71), true);
+});
+
+test('a row without a usable timestamp is a broken loader and throws', () => {
+  assert.throws(() => fixtureOddsAtDeadline(new Map([[70, ROW(undefined)]]), GATE_STATE, 7), /fetchedAt/);
+});
+
+// ---------------------------------------------------------------------------
+// football-data.co.uk: names, collection times, parsing
+// ---------------------------------------------------------------------------
+
+test('football-data names map onto FPL names, per season, and an unknown one throws', () => {
+  assert.equal(fplTeamFor('Man United', '2024-25').name, 'Man Utd');
+  assert.equal(fplTeamFor('Tottenham', '2024-25').name, 'Spurs');
+  assert.equal(fplTeamFor('Sheffield United', '2023-24').name, 'Sheffield Utd');
+  assert.equal(fplTeamFor("Nott'm Forest", '2025-26').short, 'NFO');
+  // FPL renamed the promoted clubs to their long names in 2026-27; the
+  // 2024-25 archive calls Ipswich "Ipswich".
+  assert.equal(fplTeamFor('Ipswich', '2024-25').name, 'Ipswich');
+  assert.equal(fplTeamFor('Ipswich', '2026-27').name, 'Ipswich Town');
+  assert.equal(fplTeamFor('Hull', '2026-27').name, 'Hull City');
+  assert.throws(() => fplTeamFor('Wolverhampton Wanderers', '2024-25'), /no FPL mapping/);
+});
+
+test('UK wall-clock time converts through BST and GMT', () => {
+  assert.equal(londonToUtcMs(2024, 8, 16, 20, 0), Date.parse('2024-08-16T19:00:00Z'));
+  assert.equal(londonToUtcMs(2024, 12, 26, 15, 0), Date.parse('2024-12-26T15:00:00Z'));
+});
+
+test('collection bound: weekend fixtures Friday 17:00, midweek Tuesday 13:00, UK time', () => {
+  // Saturday 5 Oct 2024 (BST): the Friday before at 17:00 BST.
+  assert.equal(collectedBy(2024, 10, 5), Date.parse('2024-10-04T16:00:00Z'));
+  // Monday 7 Oct: still that Friday.
+  assert.equal(collectedBy(2024, 10, 7), Date.parse('2024-10-04T16:00:00Z'));
+  // Wednesday 4 Dec 2024 (GMT): Tuesday 13:00.
+  assert.equal(collectedBy(2024, 12, 4), Date.parse('2024-12-03T13:00:00Z'));
+  // A Friday fixture: that Friday.
+  assert.equal(collectedBy(2024, 8, 16), Date.parse('2024-08-16T16:00:00Z'));
+});
+
+// Two rows, the second with CLOSING prices that differ wildly: only the
+// pre-closing market average may be read.
+const FD_CSV = '﻿Div,Date,Time,HomeTeam,AwayTeam,FTHG,FTAG,B365H,B365D,B365A,AvgH,AvgD,AvgA,Avg>2.5,Avg<2.5,AvgCH,AvgCD,AvgCA,AvgC>2.5,AvgC<2.5\r\n'
+  + 'E0,16/08/2024,20:00,Man United,Fulham,1,0,1.6,4.2,5.25,1.62,4.36,5.15,1.66,2.25,9.0,5.0,1.3,1.2,4.0\r\n'
+  + 'E0,17/08/2024,15:00,Tottenham,Ipswich,0,0,,,,,,,,,1.2,7,13,1.5,2.6\r\n';
+
+test('parsing reads the pre-closing market average and never a closing column', () => {
+  const rows = parseFootballDataCsv(FD_CSV, '2024-25');
+  assert.equal(rows.length, 2);
+  assert.deepEqual(rows[0].h2h, { home: 1.62, draw: 4.36, away: 5.15 });
+  assert.deepEqual(rows[0].totals, [{ line: 2.5, over: 1.66, under: 2.25 }]);
+  assert.equal(rows[0].book, 'Avg');
+  assert.equal(rows[0].home.name, 'Man Utd');
+  assert.equal(rows[0].kickoffMs, Date.parse('2024-08-16T19:00:00Z'));
+  assert.equal(rows[0].collectedByMs, Date.parse('2024-08-16T16:00:00Z'));
+  // No pre-closing prices at all: no market, even though closing ones exist.
+  assert.equal(rows[1].h2h, null);
+});
+
+function tinyDataset({ score = [1, 0], kickoff = '2024-08-16T19:00:00Z' } = {}) {
+  return {
+    season: '2024-25',
+    teams: new Map([[14, { id: 14, name: 'Man Utd' }], [8, { id: 8, name: 'Fulham' }], [18, { id: 18, name: 'Spurs' }], [10, { id: 10, name: 'Ipswich' }]]),
+    fixtures: [
+      { id: 1, event: 1, teamH: 14, teamA: 8, kickoff, teamHScore: score[0], teamAScore: score[1] },
+      { id: 2, event: 1, teamH: 18, teamA: 10, kickoff: '2024-08-17T14:00:00Z', teamHScore: 0, teamAScore: 0 },
+    ],
+  };
+}
+
+test('matching joins on clubs, then checks the date and the score, and derives the market', () => {
+  const { rows, stats } = matchToDataset(parseFootballDataCsv(FD_CSV, '2024-25'), tinyDataset());
+  assert.equal(stats.matched, 2);
+  assert.equal(stats.noPrices, 1);
+  assert.deepEqual([...rows.keys()], [1]);
+  const r = rows.get(1);
+  assert.equal(r.fetchedAt, '2024-08-16T16:00:00.000Z');
+  assert.equal(r.source, 'football-data:Avg');
+  assert.ok(r.xGH > r.xGA, 'the home favourite carries the larger expectation');
+  assert.equal(r.totalsSource, 'market');
+  assert.throws(() => matchToDataset(parseFootballDataCsv(FD_CSV, '2024-25'), tinyDataset({ score: [2, 2] })), /scored/);
+  assert.throws(() => matchToDataset(parseFootballDataCsv(FD_CSV, '2024-25'), tinyDataset({ kickoff: '2024-09-14T14:00:00Z' })), /dated/);
 });

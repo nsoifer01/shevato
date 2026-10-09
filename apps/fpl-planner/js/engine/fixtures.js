@@ -16,6 +16,15 @@
 // Truncation: the goal vectors run 0..MAX_GOALS with all remaining mass folded
 // into the last cell, so the marginals sum to exactly 1 and therefore the
 // win/draw/win probabilities do as well. That is asserted in the tests to 1e-9.
+//
+// TWO EXPERIMENT SWITCHES, both read off `strength.modelOptions` (see
+// resolveModelOptions in strength.js) and both inert unless an arm sets them:
+//
+//   goalDispersion  the goal COUNT becomes Conway-Maxwell-Poisson with the
+//                   same mean, so only the shape moves (P(0) and the tail).
+//   odds            the decided gameweek's expected goals blend toward the
+//                   bookmaker-implied ones the offline replay attached to the
+//                   GameState. Per fixture, so it changes ORDER, not just level.
 
 import { poissonVector } from './ml.js';
 import { ratingFor } from './strength.js';
@@ -25,6 +34,165 @@ import { ratingFor } from './strength.js';
 const MAX_GOALS = 10;
 
 export { MAX_GOALS };
+
+// ---------------------------------------------------------------------------
+// Conway-Maxwell-Poisson goal counts
+//
+//   P(k) proportional to rate^k / (k!)^nu
+//
+// nu = 1 is Poisson; nu > 1 is underdispersed (variance below the mean), which
+// is what team goals in the Premier League look like once the expectation is
+// known: AIrsenal fitted nu about 1.17 and gained points MAE and rank
+// correlation. The model hands us a MEAN (expected goals), not a rate, so the
+// rate is solved so that the CMP mean equals that expectation exactly. The
+// expected-goals level is therefore untouched and only the shape changes.
+//
+// The mean is matched on the full distribution (CMP_SUPPORT terms, far past any
+// mass that matters) and the returned vector is truncated at maxK with the tail
+// folded into the last cell, exactly as poissonVector does. At nu = 1 the
+// function returns poissonVector itself, bit for bit, so the shipped path
+// cannot drift.
+// ---------------------------------------------------------------------------
+
+const CMP_SUPPORT = 80;
+const CMP_SOLVER_ITERATIONS = 200;
+const CMP_MEAN_TOLERANCE = 1e-12;
+const LOG_FACTORIALS = (() => {
+  const out = [0];
+  for (let k = 1; k <= CMP_SUPPORT; k++) out[k] = out[k - 1] + Math.log(k);
+  return out;
+})();
+
+// Normalised CMP probabilities over 0..CMP_SUPPORT for log(rate) = t.
+function cmpProbabilities(t, nu) {
+  const logs = new Array(CMP_SUPPORT + 1);
+  let max = -Infinity;
+  for (let k = 0; k <= CMP_SUPPORT; k++) {
+    logs[k] = k * t - nu * LOG_FACTORIALS[k];
+    if (logs[k] > max) max = logs[k];
+  }
+  let z = 0;
+  for (let k = 0; k <= CMP_SUPPORT; k++) {
+    logs[k] = Math.exp(logs[k] - max);
+    z += logs[k];
+  }
+  for (let k = 0; k <= CMP_SUPPORT; k++) logs[k] /= z;
+  return logs;
+}
+
+function meanOf(p) {
+  let m = 0;
+  for (let k = 1; k < p.length; k++) m += k * p[k];
+  return m;
+}
+
+const cmpCache = new Map();
+const CMP_CACHE_LIMIT = 20000;
+
+// The full CMP distribution (0..CMP_SUPPORT) whose mean is `mean`. The mean is
+// strictly increasing in the log rate, so bisection is safe.
+function cmpForMean(mean, nu) {
+  const key = `${mean}|${nu}`;
+  const hit = cmpCache.get(key);
+  if (hit) return hit;
+  let lo = -60;
+  let hi = 60;
+  let p = null;
+  for (let i = 0; i < CMP_SOLVER_ITERATIONS; i++) {
+    const mid = (lo + hi) / 2;
+    p = cmpProbabilities(mid, nu);
+    const m = meanOf(p);
+    if (Math.abs(m - mean) < CMP_MEAN_TOLERANCE) { lo = mid; hi = mid; break; }
+    if (m < mean) lo = mid;
+    else hi = mid;
+  }
+  const t = (lo + hi) / 2;
+  const out = { logRate: t, probs: cmpProbabilities(t, nu) };
+  if (cmpCache.size >= CMP_CACHE_LIMIT) cmpCache.clear();
+  cmpCache.set(key, out);
+  return out;
+}
+
+/** The CMP rate whose distribution has mean `mean` (equals `mean` at nu = 1). */
+export function cmpRateForMean(mean, nu) {
+  if (!(mean > 0)) return 0;
+  if (nu === 1) return mean;
+  return Math.exp(cmpForMean(mean, nu).logRate);
+}
+
+/**
+ * Goal-count probabilities 0..maxK (tail folded into maxK) for a count with
+ * mean `mean` and dispersion `nu`. nu = 1 (or absent) is poissonVector exactly.
+ */
+export function goalCountVector(mean, nu = 1, maxK = MAX_GOALS) {
+  if (nu === 1 || nu === undefined || nu === null) return poissonVector(mean, maxK);
+  if (!(typeof nu === 'number' && Number.isFinite(nu) && nu > 0)) {
+    throw new Error(`fixtures: goal dispersion must be a positive number, got ${JSON.stringify(nu)}`);
+  }
+  const out = new Array(maxK + 1).fill(0);
+  if (!(mean > 0)) {
+    out[0] = 1;
+    return out;
+  }
+  const { probs } = cmpForMean(mean, nu);
+  let cum = 0;
+  for (let k = 0; k < maxK; k++) {
+    out[k] = probs[k];
+    cum += probs[k];
+  }
+  out[maxK] = Math.max(0, 1 - cum);
+  return out;
+}
+
+/** P(zero goals) for a count with mean `mean`: exp(-mean) at nu = 1. */
+export function pZeroGoals(mean, nu = 1) {
+  if (nu === 1 || nu === undefined || nu === null) return Math.exp(-mean);
+  return goalCountVector(mean, nu, 1)[0];
+}
+
+/** The dispersion an experiment arm set on this Strength, 1 when none. */
+export function goalDispersionOf(strength) {
+  const o = strength && strength.modelOptions;
+  return o && o.goalDispersion ? o.goalDispersion : 1;
+}
+
+// ---------------------------------------------------------------------------
+// Bookmaker odds, offline experiment only
+//
+// `gameState.fixtureOdds` is a Map of FPL fixture id to the derived market
+// expectation ({ xGH, xGA, fetchedAt, ... } from odds.js deriveFromOdds). Only
+// the offline replay attaches it, and only for the fixtures of the gameweek
+// being decided whose odds were collected before that deadline
+// (fixtureOddsAtDeadline in odds.js). The check on `nextEvent` below is the
+// second, structural half of that rule: odds can never reach a later week of
+// the horizon even if a caller attached them.
+// ---------------------------------------------------------------------------
+
+function oddsFor(gameState, strength, fixture) {
+  const o = strength && strength.modelOptions && strength.modelOptions.odds;
+  if (!o || !gameState || !gameState.fixtureOdds) return null;
+  if (fixture.event !== gameState.nextEvent) return null;
+  const row = gameState.fixtureOdds.get(fixture.id);
+  if (!row || !(row.xGH > 0) || !(row.xGA > 0)) return null;
+  return { weight: o.weight, xGH: row.xGH, xGA: row.xGA };
+}
+
+/**
+ * The expected goals the fixture model uses for one fixture: the ratings
+ * model's, blended with the market's when the odds switch is on and the
+ * GameState carries odds for this fixture.
+ */
+export function fixtureExpectedGoals(gameState, strength, fixture) {
+  const model = expectedGoals(strength, fixture.teamH, fixture.teamA);
+  const odds = oddsFor(gameState, strength, fixture);
+  if (!odds) return model;
+  const w = odds.weight;
+  return {
+    xGH: w * odds.xGH + (1 - w) * model.xGH,
+    xGA: w * odds.xGA + (1 - w) * model.xGA,
+    oddsWeight: w,
+  };
+}
 
 export function expectedGoals(strength, homeTeamId, awayTeamId) {
   const home = ratingFor(strength, homeTeamId);
@@ -36,10 +204,14 @@ export function expectedGoals(strength, homeTeamId, awayTeamId) {
   };
 }
 
-export function projectFixture(strength, homeTeamId, awayTeamId) {
-  const { xGH, xGA } = expectedGoals(strength, homeTeamId, awayTeamId);
-  const goalsDistH = poissonVector(xGH, MAX_GOALS);
-  const goalsDistA = poissonVector(xGA, MAX_GOALS);
+// `expected` overrides the ratings model's expected goals for this fixture
+// (the odds blend passes it); the goal distributions are built with the
+// Strength's goal dispersion, which is Poisson unless an arm set it.
+export function projectFixture(strength, homeTeamId, awayTeamId, expected = null) {
+  const { xGH, xGA } = expected || expectedGoals(strength, homeTeamId, awayTeamId);
+  const nu = goalDispersionOf(strength);
+  const goalsDistH = goalCountVector(xGH, nu, MAX_GOALS);
+  const goalsDistA = goalCountVector(xGA, nu, MAX_GOALS);
 
   let pWinHome = 0;
   let pDraw = 0;
@@ -59,7 +231,7 @@ export function projectFixture(strength, homeTeamId, awayTeamId) {
     xGH,
     xGA,
     // A clean sheet for the home team is the away team failing to score, which
-    // in a Poisson model is exactly exp(-xGA).
+    // in a Poisson model is exactly exp(-xGA) (and the CMP P(0) otherwise).
     pCSHome: goalsDistA[0],
     pCSAway: goalsDistH[0],
     pWinHome,
@@ -88,7 +260,7 @@ export function fixturesForTeam(gameState, teamId, gw) {
 export function fixtureContext(gameState, strength, teamId, gw) {
   return fixturesForTeam(gameState, teamId, gw).map(f => {
     const isHome = f.teamH === teamId;
-    const p = projectFixture(strength, f.teamH, f.teamA);
+    const p = projectFixture(strength, f.teamH, f.teamA, fixtureExpectedGoals(gameState, strength, f));
     return {
       fixtureId: f.id,
       opponentId: isHome ? f.teamA : f.teamH,

@@ -67,5 +67,11 @@ export function resolveGameState(first, { bootstrap, fixtures, fetchedAt = null,
       standIn: resolution.source === 'baseline',
     })
     : first;
+  // The rebuild is the same payload, so it keeps the receipt the data layer
+  // measured rather than restamping it (normalize.js dataAgeAtReceiptSeconds).
+  if (gameState !== first) {
+    gameState.dataAgeAtReceiptSeconds = first.dataAgeAtReceiptSeconds ?? null;
+    gameState.dataReceivedAtMs = first.dataReceivedAtMs ?? null;
+  }
   return { gameState, resolution };
 }

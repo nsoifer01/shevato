@@ -210,7 +210,27 @@ export function resolveOptions(options, rules, gw) {
     // `riskAversion`, `minutesRiskWeight`), passed to every lineup the plan is
     // scored with. Nothing in the app sets them; the replay passes them so an
     // experiment can move them (experiments/configs/lineup-risk.mjs).
-    lineupOptions: options.lineupOptions || {},
+    //
+    // The risk profile travels with them (2026-10-09). lineup.js and captain.js
+    // each carry a table per profile (how much a starter's spread and his
+    // chance of not appearing cost; how much the armband leans on the ceiling
+    // rather than the mean), and until then nothing passed the profile down, so
+    // "aggressive" and "conservative" moved the planner's own ranking knobs
+    // while every eleven and armband was still picked as "balanced". Balanced is
+    // both modules' default, so the default plan is bit-identical; an explicit
+    // `lineupOptions` weight still wins over its profile's.
+    lineupOptions: { risk, ...(options.lineupOptions || {}) },
+    // Switches for projection-model candidates (strength.js, fixtures.js,
+    // minutes.js, projections.js). Empty in the app, so every shipped number is
+    // the default model; the replay passes them so an experiment arm can turn
+    // one candidate on (experiments/configs/*.mjs, `planOptions.modelOptions`).
+    modelOptions: options.modelOptions || {},
+    // EXPERIMENT ONLY: rank this week's leading candidates by the best
+    // two-gameweek PATH they open (see pathObjectives), rather than by this
+    // week's squad over the horizon plus a fixed value per banked transfer.
+    // `{ width }` is how many of this week's candidates get a follow-up
+    // search. Off in the app (experiments/configs/transfer-paths.mjs).
+    pathPlanning: options.pathPlanning || null,
   };
 }
 
@@ -219,8 +239,38 @@ export function resolveOptions(options, rules, gw) {
 // chip weeks and the pre-season transition are applied once: the marginal value
 // of the last one at the cap is correctly zero, because a transfer you cannot
 // bank is worth nothing.
+//
+// `rollBonus` is a number (every banked transfer worth the same, the shipped
+// profiles) or, for an experiment arm, a table of what the first, second, ...
+// banked transfer is worth (experiments/configs/ft-value.mjs): the value of
+// carrying n transfers is the sum of the table's first n entries, the last
+// entry repeating past its end.
+function bankedValueOf(count, rollBonus) {
+  const n = Math.max(0, count || 0);
+  if (!Array.isArray(rollBonus)) return rollBonus * n;
+  let v = 0;
+  for (let i = 0; i < n; i++) v += rollBonus[Math.min(i, rollBonus.length - 1)] || 0;
+  return v;
+}
+
 function bankedTransferValue(acct, rollBonus) {
-  return rollBonus * acct.freeTransfersNextGw;
+  return bankedValueOf(acct.freeTransfersNextGw, rollBonus);
+}
+
+// What ROLLING is worth against spending one transfer: the one number the roll
+// decision actually turns on. `bankedTransferValue` is linear in the transfers
+// carried, so every term of it cancels between "roll" and "make one move"
+// except the one transfer the roll keeps, and that one is worth nothing at the
+// cap. The explanation used to quote `bankedTransferValue` itself (1.2 points
+// with two banked, 1.8 with three) beside a best move that had gained 0.16 and
+// lost to a threshold of 0.6, so the sentence named a bar the decision never
+// used.
+function rollMarginValue(squadState, rules, rollBonus) {
+  const state = transferStateOf(squadState, rules);
+  if (isUnlimited(state)) return 0;
+  const keep = transferAccounting({ state, transfersMade: 0, chipPlayed: null, rules });
+  const spend = transferAccounting({ state, transfersMade: 1, chipPlayed: null, rules });
+  return Math.max(0, bankedValueOf(keep.freeTransfersNextGw, rollBonus) - bankedValueOf(spend.freeTransfersNextGw, rollBonus));
 }
 
 function emit(onProgress, key) {
@@ -294,6 +344,43 @@ function candidateMoney(candidate, { squadState, gameState }) {
 // Scoring one candidate over the horizon
 // ---------------------------------------------------------------------------
 
+// The squad a candidate fields in each gameweek of the horizon.
+//
+// A FREE HIT IS RENTED FOR ONE GAMEWEEK. FPL hands back the squad owned at the
+// start of the chip week at the next deadline, so only the first gameweek is
+// played by the rented fifteen; every later gameweek is played by the squad the
+// manager keeps, exactly as `projectedSquadState` reverts it for a Free Hit the
+// future plan recommends. Until 2026-10-09 the rented squad was scored across
+// the whole horizon, which credited a one-week rental with five weeks of
+// points: on the sample with three blanked clubs a Free Hit read 178.9 against
+// a true 125.0 and beat a 124.8 transfer plan by "54 points".
+function candidateTrajectory({ candidate, chip, squadState, projections, gameState, rules, cfg, gw }) {
+  const opts = { seed: cfg.seed, ...cfg.lineupOptions };
+  if (chip !== 'freehit' || cfg.horizon <= 1) {
+    return squadTrajectory({
+      squadIds: candidate.squad, projections, gameState, rules,
+      gwFrom: gw, horizon: cfg.horizon, discount: cfg.discount, opts,
+    });
+  }
+  const rented = squadTrajectory({
+    squadIds: candidate.squad, projections, gameState, rules,
+    gwFrom: gw, horizon: 1, discount: cfg.discount, opts,
+  });
+  const kept = squadTrajectory({
+    squadIds: currentSquadIds(squadState), projections, gameState, rules,
+    gwFrom: gw + 1, horizon: cfg.horizon - 1, discount: cfg.discount, opts,
+  });
+  // `kept` starts its own weights at 1; in the plan's horizon it starts one
+  // gameweek out, so every weight moves down by one discount step.
+  const keptRows = kept.gws.map(row => ({ ...row, weight: row.weight * cfg.discount, squad: 'kept' }));
+  return {
+    total: rented.total + cfg.discount * kept.total,
+    gws: [rented.gws[0], ...keptRows],
+    discount: cfg.discount,
+    horizon: cfg.horizon,
+  };
+}
+
 // Exported for counterfactual.js: one scorer for the plan and for every
 // scenario it is compared against, so hits, chip points and the value of a
 // rolled transfer are counted once, here, and never re-derived.
@@ -309,13 +396,8 @@ export function scoreCandidate({
   });
   if (acct.hits > cfg.maxHits) return null;
 
-  const trajectory = squadTrajectory({
-    squadIds: candidate.squad,
-    projections, gameState, rules,
-    gwFrom: gw,
-    horizon: cfg.horizon,
-    discount: cfg.discount,
-    opts: { seed: cfg.seed, ...cfg.lineupOptions },
+  const trajectory = candidateTrajectory({
+    candidate, chip, squadState, projections, gameState, rules, cfg, gw,
   });
 
   const first = trajectory.gws[0];
@@ -458,7 +540,8 @@ function planFromScored(scored, { squadState, gameState, rules, cfg, gw, certain
 // `plan` is the built primary plan the numbers are reported against;
 // `primaryScored` is the scored candidate it was built from, which carries the
 // objective the two were ranked on.
-function alternativeFrom(scored, plan, primaryScored, gameState, hitMarginPoints = 0) {
+function alternativeFrom(scored, plan, primaryScored, gameState, hitMarginPoints = 0, rollMarginPoints = 0) {
+  const deltaHorizon = scored.xPointsHorizon - plan.xPointsHorizon;
   return {
     chip: scored.chip,
     transfersOut: scored.candidate.transfersOut.slice(),
@@ -469,7 +552,13 @@ function alternativeFrom(scored, plan, primaryScored, gameState, hitMarginPoints
     bankAfterTenths: scored.money.bankAfterTenths,
     xPointsGw: scored.xPointsGw,
     xPointsHorizon: scored.xPointsHorizon,
-    deltaHorizon: scored.xPointsHorizon - plan.xPointsHorizon,
+    deltaHorizon,
+    // The gap on the number the planner RANKED on (projected points, plus the
+    // value of the transfers each plan carries into next week, the chip's net
+    // value and the risk profile's variance term). Never positive for an
+    // alternative the hit rule did not overrule. confidence.js reads this, so
+    // "how close was the runner-up" is the decision's own margin.
+    deltaObjective: scored.objective - primaryScored.objective,
     // When the two plans differ in the chip they play, the projected points
     // alone overstate the gap: a plan that keeps a Bench Boost gives up this
     // week's bench but keeps the chip for later. This is the same comparison
@@ -480,6 +569,17 @@ function alternativeFrom(scored, plan, primaryScored, gameState, hitMarginPoints
     // The card must say so rather than claim nothing scored higher.
     belowHitMargin: scored.acct.hits > 0 && scored.objective > primaryScored.objective,
     hitMarginPoints,
+    // Projects MORE than the recommendation, takes no hit, plays the same chip,
+    // and still ranks below it: it spends a free transfer the recommendation
+    // keeps, and the transfer kept is worth more than the points it would buy.
+    // The card must say so rather than claim nothing scored higher (the hit
+    // case above, by the risk profile's roll value instead of its hit bar).
+    // "More" means more by at least what the card prints as +0.1, the same
+    // line confidence.js draws between a lead and a tie.
+    belowRollValue: scored.acct.hits === 0 && scored.chip === primaryScored.chip
+      && deltaHorizon >= 0.05 && scored.objective <= primaryScored.objective
+      && scored.acct.freeTransfersNextGw < primaryScored.acct.freeTransfersNextGw,
+    rollMarginPoints,
     headline: alternativeHeadline(scored, gameState),
   };
 }
@@ -629,13 +729,13 @@ export async function buildPlan({ gameState, squadState, options = {}, onProgres
   await yieldToHost();
 
   emit(onProgress, 'analyze-players');
-  const strength = cfg.strength || buildStrength(gameState, { asOfGw: gw });
+  const strength = cfg.strength || buildStrength(gameState, { asOfGw: gw, modelOptions: cfg.modelOptions });
   await yieldToHost();
 
   emit(onProgress, 'project-fixtures');
   const gwTo = gw + cfg.horizon - 1;
   const projections = cfg.projections || buildProjections({
-    gameState, strength, gwFrom: gw, gwTo, model: cfg.model,
+    gameState, strength, gwFrom: gw, gwTo, model: cfg.model, modelOptions: cfg.modelOptions,
   });
   cfg.projectionModelVersion = projections.modelVersion;
   await yieldToHost();
@@ -743,13 +843,20 @@ export async function buildPlan({ gameState, squadState, options = {}, onProgres
 
     scoredList.sort((a, b) => b.objective - a.objective);
 
+    // The key this week's choice is ranked on: the objective, or under the path
+    // experiment the best two-gameweek path a candidate opens.
+    const rankOf = cfg.pathPlanning && readiness.allow.transfers
+      ? pathObjectives({ scoredList, squadState: workingSquad, projections, gameState, rules, cfg, gw })
+      : (s) => s.objective;
+    if (cfg.pathPlanning && readiness.allow.transfers) scoredList.sort((a, b) => rankOf(b) - rankOf(a));
+
     // Hits must clear the free plan by the profile's margin ON TOP of the four
     // points they already cost, so a marginal upgrade cannot buy its way in.
     const bestFree = scoredList.find(s => s.acct.hits === 0);
     primary = scoredList.find(s => {
       if (s.acct.hits === 0) return true;
       if (!bestFree) return true;
-      return s.objective >= bestFree.objective + cfg.hitMarginPoints;
+      return rankOf(s) >= rankOf(bestFree) + cfg.hitMarginPoints;
     }) || scoredList[0];
 
     alternatives = scoredList
@@ -763,7 +870,8 @@ export async function buildPlan({ gameState, squadState, options = {}, onProgres
   emit(onProgress, 'build-plan');
 
   const plan = planFromScored(primary, { squadState: workingSquad, gameState, rules, cfg, gw, certainty: 'current' });
-  plan.alternatives = alternatives.map(s => alternativeFrom(s, plan, primary, gameState, cfg.hitMarginPoints));
+  const rollMargin = isDraft ? 0 : rollMarginValue(workingSquad, rules, cfg.rollBonus);
+  plan.alternatives = alternatives.map(s => alternativeFrom(s, plan, primary, gameState, cfg.hitMarginPoints, rollMargin));
 
   const explainContext = {
     squadState: workingSquad,
@@ -786,7 +894,7 @@ export async function buildPlan({ gameState, squadState, options = {}, onProgres
     // restored squad came to be told to "Roll your transfer" while the header
     // said transfers were unlimited.
     isDraft: isDraft || squadState.source === 'manual',
-    rollValue: bankedTransferValue(primary.acct, cfg.rollBonus),
+    rollValue: rollMargin,
   };
   plan.explanation = explainPlan(plan, explainContext);
 
@@ -856,6 +964,65 @@ function scoreWithTimingChip(base, chip, decision, { squadState, rules, cfg }) {
       + bankedTransferValue(acct, cfg.rollBonus)
       + cfg.variancePreference * first.sd,
   };
+}
+
+// TWO-GAMEWEEK PATHS (experiment). The shipped ranking scores each candidate
+// as if its squad were held for the whole horizon, and stands in for every
+// later move with a flat value per transfer carried into next week. A path
+// says what the carried transfers are for: for each of this week's leading
+// non-chip candidates, next week's state is projected exactly as the future
+// plan projects it (`projectedSquadState`), next week's moves are searched and
+// scored by the same `scoreCandidate` over the rest of the same horizon, and
+// the candidate is credited with
+//
+//   this week's points - this week's hits + discount * (best objective next week)
+//
+// where next week's objective already holds its own banked-transfer value and
+// hits. Both arms cover the same gameweeks, so the only thing that changes is
+// whether a transfer kept is valued by a constant or by what it can actually
+// buy next week. Candidates outside the width keep their own objective minus
+// the largest path gain found, so they can never overtake on a value nobody
+// computed for them.
+function pathObjectives({ scoredList, squadState, projections, gameState, rules, cfg, gw }) {
+  const width = Math.max(1, (cfg.pathPlanning && cfg.pathPlanning.width) || 6);
+  const value = new Map();
+  if (cfg.horizon <= 1) return (s) => s.objective;
+  const lead = scoredList.filter(s => !s.chip).slice(0, width);
+  const roll = scoredList.find(s => !s.chip && s.transferCount === 0);
+  if (roll && !lead.includes(roll)) lead.push(roll);
+  const nextCfg = { ...cfg, horizon: cfg.horizon - 1 };
+  for (const s of lead) {
+    const plan = {
+      gw, chip: null, squad: s.candidate.squad, bankAfterTenths: s.money.bankAfterTenths,
+      transferCount: s.transferCount,
+    };
+    const state = projectedSquadState(plan, squadState, rules, gw + 1, null, gameState);
+    const held = currentSquadIds(state);
+    const candidates = [{ transfersOut: [], transfersIn: [], squad: held }];
+    const raw = searchTransfers({
+      squadState: state, projections, gameState, rules,
+      horizon: nextCfg.horizon,
+      opts: {
+        discount: cfg.discount, maxHits: cfg.maxHits, maxCandidates: cfg.maxCandidates, seed: cfg.seed,
+        ...cfg.lineupOptions, ...cfg.transferOptions,
+      },
+    }) || [];
+    for (const r of raw) {
+      const c = normalizeCandidate(r, { squadState: state, rules });
+      if (!c || !c.transfersIn.length || c.transfersIn.length !== c.transfersOut.length) continue;
+      candidates.push(c);
+    }
+    let best = -Infinity;
+    for (const c of candidates) {
+      const next = scoreCandidate({ candidate: c, chip: null, squadState: state, projections, gameState, rules, cfg: nextCfg, gw: gw + 1 });
+      if (next && next.objective > best) best = next.objective;
+    }
+    const first = s.trajectory.gws[0];
+    value.set(s, first.xPoints - s.acct.hitCostPoints + cfg.discount * best + cfg.variancePreference * first.sd);
+  }
+  let maxGain = 0;
+  for (const [s, v] of value) maxGain = Math.max(maxGain, v - s.objective);
+  return (s) => (value.has(s) ? value.get(s) : s.objective - maxGain);
 }
 
 function benchRepairCandidates({ chipEvaluation, scoredList, squadState, projections, gameState, rules, cfg, gw }) {
@@ -1053,7 +1220,7 @@ function buildFuturePlans({ plan, squadState, projections, gameState, rules, cfg
       scoredList: scored,
       isDraft: false,
       projected: true,
-      rollValue: bankedTransferValue(best.acct, cfg.rollBonus),
+      rollValue: rollMarginValue(state, rules, cfg.rollBonus),
     });
 
     future.push({ plan: futurePlan, squadState: state });
@@ -1064,9 +1231,22 @@ function buildFuturePlans({ plan, squadState, projections, gameState, rules, cfg
   return future;
 }
 
+// The data's age now. Read from the receipt age the data layer measured plus
+// the local time since, both on this device's clock, so a device whose clock is
+// hours fast or slow neither calls fresh data stale nor stale data fresh. A
+// game state built without a receipt age (a test, a replay) falls back to the
+// server timestamp against the clock, which is what this always did.
+function dataAgeMs(gameState) {
+  if (Number.isFinite(gameState.dataAgeAtReceiptSeconds) && Number.isFinite(gameState.dataReceivedAtMs)) {
+    return Math.max(0, gameState.dataAgeAtReceiptSeconds * 1000 + (Date.now() - gameState.dataReceivedAtMs));
+  }
+  const fetchedAt = gameState.fetchedAt || null;
+  return fetchedAt ? Date.now() - Date.parse(fetchedAt) : 0;
+}
+
 function buildDataStatus({ gameState, squadState, cfg, projections, durationMs }) {
   const fetchedAt = gameState.fetchedAt || null;
-  const ageMs = fetchedAt ? Date.now() - Date.parse(fetchedAt) : 0;
+  const ageMs = dataAgeMs(gameState);
   // Staleness is about the AGE OF THE DATA and nothing else.
   //
   // Squad warnings used to be folded in here, so a reconstruction disagreeing
@@ -1156,4 +1336,4 @@ function buildDataStatus({ gameState, squadState, cfg, projections, durationMs }
 
 // Exported for the backtest harness and the explanation layer, which both need
 // to weigh a horizon exactly the way the planner did.
-export { discountWeights, bankedTransferValue, xpOf };
+export { discountWeights, bankedTransferValue, bankedValueOf, rollMarginValue, scoreWithTimingChip, xpOf };
