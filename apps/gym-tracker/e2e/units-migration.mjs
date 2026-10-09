@@ -266,13 +266,25 @@ export async function run({ base, cdpPort }) {
     await boot(s, legacyProfile('lb', 65));
     const baseline = await storedWeight(s);
 
+    // Waits on the app's own state, never a fixed sleep: under a loaded
+    // parallel run the Settings view could take longer than 900 ms to wire its
+    // button, the click then did nothing, and the scan read as empty
+    // (2026-10-09, shard 3, while the same suite passed alone and on CI).
     const runRecheck = () => evaluate(s, `(async () => {
+      const until = async (ok, ms = 15000) => {
+        const end = Date.now() + ms;
+        while (!ok()) { if (Date.now() > end) return false; await new Promise(r => setTimeout(r, 100)); }
+        return true;
+      };
       const nav = document.querySelector('[data-view="settings"]');
       if (nav) nav.click();
-      await new Promise(r => setTimeout(r, 900));
-      document.getElementById('recheck-units-btn').click();
-      await new Promise(r => setTimeout(r, 700));
-      return document.getElementById('recheck-units-result').textContent;
+      const btn = () => document.getElementById('recheck-units-btn');
+      if (!await until(() => btn() && btn().dataset.wired === '1')) return 'recheck button never wired';
+      const out = document.getElementById('recheck-units-result');
+      out.textContent = '';
+      btn().click();
+      await until(() => !out.hidden && out.textContent.trim() !== '');
+      return out.textContent;
     })()`);
 
     const first = await runRecheck();
