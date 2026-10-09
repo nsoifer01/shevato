@@ -517,7 +517,7 @@ test('buildProjections returns the ProjectionSet contract shape', () => {
   assert.equal(set.gwTo, 3);
   assert.ok(set.byPlayer instanceof Map);
   assert.equal(set.byPlayer.get(7).length, 3);
-  assert.equal(set.modelVersion, 'analytic-2');
+  assert.equal(set.modelVersion, 'analytic-3');
   assert.equal(set.dataFetchedAt, '2026-08-10T00:00:00.000Z');
   assert.ok(!Number.isNaN(Date.parse(set.generatedAt)));
 

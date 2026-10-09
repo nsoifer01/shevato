@@ -124,6 +124,11 @@ better on expected points cannot be displaced. The roll (zero transfers) is
 adjusted by exactly zero, so the signal can never talk a manager into a transfer.
 Locked and calibrating players contribute nothing to a decision even while they
 still display. Full reasoning is in the header of `js/engine/transfers.js`.
+One limit on that, measured 2026-10-09: `sortScore` exists only inside the
+transfer search. `buildPlan` re-scores the search's shortlist and ranks it on
+the objective alone, so the price signal can decide which near-equal candidates
+reach the shortlist and break an exact tie (the sort is stable), but it never
+reorders the final ranking.
 
 **The horizon is three days, not five gameweeks.** FPL projects offsets 0, 1 and
 2 and no further, and nothing invents a price beyond them. The future-plan copy
@@ -203,7 +208,9 @@ apps/fpl-planner/
       strength.js        team attack and defence ratings (last season's squad
                          xG by current club, this season's, goals lightly)
       fixtures.js        Poisson fixture model
-      minutes.js         pStart / pAppear / p60 / xMins, with last season as a prior
+      minutes.js         pStart / pAppear / p60 / xMins, with last season as a prior;
+                         ruled-out players (injured, suspended, loan-ineligible)
+                         over the horizon from FPL's news dates
       projections.js     position-specific expected points, carried rates
       ml.js              ridge / poisson / logistic regression, calibration, metrics
       lineup.js          optimal XI and bench order
@@ -230,7 +237,8 @@ auto-substitutions nor vice succession; see the note in `gameweekPoints`.
                          equivalent plus four BOUNDED tilts (duty, fixture,
                          confidence), with the vice discounted by a MEASURED
                          same-club appearance correlation
-      transfers.js       transfer search, hits, roll value
+      transfers.js       transfer search up to the free transfers held (max 5)
+                         by a beam, budget enablers, hits, roll value
       squad-builder.js   full 15-man build (wildcard, free hit, pre-season)
       chips.js           when each chip is played: window, bar, hold margin,
                          last week, and the net value a chip plan is credited
@@ -260,13 +268,21 @@ auto-substitutions nor vice succession; see the note in `gameweekPoints`.
                          derive-gw4-fixtures and derive-calibration-fixtures
                          (sanitized fixtures from captured payloads),
                          calibration-report (projections scored against what
-                         happened, --check for the bands), calibration/
-                         calibrate-chips (every deadline's chip facts and how
-                         each timing rule would have done)
-    calibration/         the fits behind the minutes, rates and strength
-                         parameters (outputs in .data/calibration/, gitignored)
+                         happened beside naive reference baselines, --check
+                         for the bands), decision-report (captain hit rate,
+                         per-transfer gain, banked-transfer use), fetch-odds
+                         (football-data.co.uk, offline experiments only),
+                         archive-snapshot and scorecard (the live-season
+                         deadline archive and its accuracy scorecard),
+                         calibration/ calibrate-chips (every deadline's chip
+                         facts and how each timing rule would have done)
+    calibration/         the fits behind the minutes, rates, strength, goal
+                         model, recency and defensive-contribution parameters
+                         (outputs in .data/calibration/, gitignored)
     lib/calibration-guard.mjs  the calibration bands, shared by the report
                          and tests/xp-calibration-guard.test.mjs
+    lib/archive*.mjs     archive naming, gating, manifest and scorecard metrics
+    lib/odds-football-data.mjs  football-data.co.uk team-name map and loader
   e2e/                   browser suites (raw CDP): the interactive scenario
                          workflow and the gameweek lifecycle boundaries
   GW1-RUNBOOK.md         the live checks to run around the opening deadline
@@ -287,14 +303,18 @@ Every module under `js/engine/` is a pure ES module with no DOM access, so `node
 
 ## The data layer
 
-`netlify/functions/fpl.mjs` fronts an anchored allowlist of read-only endpoints (`bootstrap-static`, `fixtures`, `entry/<id>`, `entry/<id>/history`, `entry/<id>/transfers`, `entry/<id>/event/<gw>/picks`, `element-summary/<id>`, `event/<gw>/live`). Anything else is refused with 400 before it can reach upstream, and requests from an origin other than shevato.com or local dev are refused with 403.
+`netlify/functions/fpl.mjs` fronts an anchored allowlist of read-only endpoints (`bootstrap-static`, `fixtures`, `event-status`, `entry/<id>`, `entry/<id>/history`, `entry/<id>/transfers`, `entry/<id>/event/<gw>/picks`, `element-summary/<id>`, `event/<gw>/live`). Anything else is refused with 400 before it can reach upstream, and requests from an origin other than shevato.com or local dev are refused with 403.
 
-Responses are cached in Netlify Blobs, so a thousand visitors cost roughly one upstream fetch per TTL window: 10 minutes for the bootstrap, 30 for fixtures, 5 for entry endpoints, 15 for a player summary and 1 for live scores. Inside the six hours before a deadline every TTL collapses to 2 minutes, because that is when prices and injury news move. If upstream fails, the last cached copy is served with `x-fpl-stale: true` and its age in seconds; only when there is no cached copy at all does the function return 503. An unknown team id passes through as a 404 and is never cached. The CDN in front of the function may repeat a fresh answer, but only for that answer's remaining TTL (collapsed near a deadline in the same way), and a stale answer, an error or a 429 is never edge-cached. Because the edge replays `x-fpl-age-seconds` unchanged, the client adds the response `Age` header to it, so a repeated copy never reads as younger than it is.
+Responses are cached in Netlify Blobs, so a thousand visitors cost roughly one upstream fetch per TTL window: 10 minutes for the bootstrap, 30 for fixtures, 5 for entry endpoints, 15 for a player summary, 1 for live scores and `event-status`, and a day for the picks of a gameweek before the current one (they can no longer change). Inside the six hours before a deadline AND the hour after the most recent one every TTL collapses to 2 minutes: before, because that is when prices and injury news move; after, because that is when FPL moves the gameweek on, and until 2026-10-09 a copy fetched just before the deadline was served as fresh for up to ten minutes after it (thirty for fixtures). A 200 whose body is not the shape its endpoint serves (bootstrap without `elements`/`events`/`teams` arrays, fixtures that are not an array, and so on) is never cached: the last good copy is served as stale, or the client gets `502 upstream_malformed`. If upstream fails, the last cached copy is served with `x-fpl-stale: true` and its age in seconds; only when there is no cached copy at all does the function return 503. An unknown team id passes through as a 404 and is never cached. The CDN in front of the function may repeat a fresh answer, but only for that answer's remaining TTL (collapsed near a deadline in the same way), and a stale answer, an error or a 429 is never edge-cached. Because the edge replays `x-fpl-age-seconds` unchanged, the client adds the response `Age` header to it, so a repeated copy never reads as younger than it is.
 
 `js/data/api.js` wraps that with a memory and `localStorage` cache under the `fpl-planner:cache:` prefix, per-endpoint TTLs, and single-flight de-duplication so a dashboard asking four components for the bootstrap downloads it once. Those cache keys are deliberately **not** in the app's sync namespace: they are large, identical for every user and fully derivable.
 
-The browser cache mirrors the proxy's deadline policy: inside the six hours
-before a deadline its TTLs collapse to two minutes as well, read from the
+The browser cache mirrors the proxy's deadline policy, and
+`tests/api-server-parity.test.mjs` holds the two tables equal: inside the six
+hours before a deadline and the hour after one its TTLs collapse to two minutes
+as well, a copy the proxy marked stale lives twenty seconds rather than a full
+TTL, and while FPL still names the locked gameweek as next after a deadline the
+page re-reads every 75 seconds for that hour, read from the
 deadline in the bootstrap it already holds (on a cold page load a stored copy
 old enough for the collapse to expire waits for the bootstrap already on its
 way), so a stale local copy cannot mask a fresher shared one in the hour that
@@ -309,6 +329,22 @@ bootstrap is held in memory only, because at 2.6 MB it is over half the
 origin's localStorage budget and every other app on the domain
 shares it; when a write does fail, the oldest cached endpoint is evicted rather
 than the whole cache.
+
+The data's age is carried into the engine skew-safe: `api.js` returns
+`ageSeconds` measured from local receipt times, `buildGameState` records it with
+the device clock at that moment, and the plan's `dataStatus` reads receipt age
+plus local elapsed time, so a device whose clock is hours wrong cannot flag fresh
+data as stale.
+
+The planner runs in a Web Worker with a watchdog: sixty seconds without a
+message (a hung worker, a phone's out-of-memory kill, an undeliverable reply)
+terminates it and the computation falls back to the inline path once; a "why
+not" after a worker death rebuilds the lost plan from its inputs. The FPL
+planner's JS is served `max-age=0, must-revalidate`, because its modules are
+imported unversioned and a cached mix of an old `app.js` with new engine
+modules is a dead page; Netlify answers a compressed revalidation with the full
+body rather than a 304, so this costs the whole JS tree (about 348 KB brotli) per
+page load, measured 2026-10-09.
 
 ## The trained model, and why nothing from it is used
 
@@ -383,9 +419,19 @@ The points model was never consumed either, for a different reason recorded in
 baseline rather than against this engine's component-built projection, so
 clearing that bar is not evidence it would improve anything here.
 
+The trained start calibrator has a second defect beyond its lost points: it was
+fitted on the LOGISTIC start model's own outputs (`scripts/train-model.mjs`,
+`winner.predictValidation`) and is applied to the ANALYTIC `pStart`, a different
+model with a different distribution, and its clamp to `pAppear` moves any
+reduction into "came off the bench" rather than "did not play". A re-test has to
+refit the calibrator on analytic-2's own `pStart` first; re-running the recipe
+above as written measures a mis-specified arm. `models/index.json` now carries
+each artifact's `engineConsumes` list, and an empty one means the app reads the
+index alone and never downloads the artifact.
+
 A missing, unreachable or malformed artifact is not an error either. The model
 and data status panel reports the version that actually produced the plan
-(`planner-1+analytic-2` today; `analytic-1` was the model before the 2026-09-16 calibration repair) and, on the "Trained model" row, which of three
+(`planner-1+analytic-3` today; `analytic-2` was the model before the 2026-10-09 audit fixes and `analytic-1` before the 2026-09-16 calibration repair) and, on the "Trained model" row, which of three
 states it is in: loaded and used, loaded and deliberately not used, or not loaded
 with the reason why.
 
@@ -599,6 +645,35 @@ Data species are kept apart: `starts`/`minutes` and `seasonStarts`/
 previous season's. Conflating them is what once let the player drawer label one
 match of a new season "Last season".
 
+## Injured, suspended and ineligible players over the horizon
+
+FPL publishes when a ruled-out player is back, in the news line
+("Suspended until 19 Oct", "Hamstring injury - Expected back 10 Oct"), and
+`minutes.js` reads it per gameweek (`ruledOutAvailability`):
+
+- a suspension is zero until the first gameweek with a fixture on or after the
+  date, then fully available (a ban is a ruling, and "until D" means eligible
+  from D, checked against the 2026-10-09 payload's bans);
+- an injury with an expected date is zero before it, 0.75 in its first
+  gameweek, recovering by the measured 0.92 a week after that;
+- an injury or ban with no date, or with a date that has already passed while
+  the flag is still up, is zero this gameweek and then recovers exactly like a
+  0% doubt;
+- a loanee FPL lists as ineligible against his parent club (`scout_risks`,
+  `loan_ineligible`) is zero in exactly those gameweeks;
+- `u` (left the club) and `n` (not eligible) stay zero across the horizon.
+
+The gameweek being decided is never relaxed. Until 2026-10-09 every `i` and `s`
+was zero for the whole horizon, so a premium serving a one-match ban lost about
+13 discounted horizon points, enough to clear the hit bar for a sale and a later
+buy-back.
+
+A mid-season signing's start rate is read over his new club's matches since
+`team_join_date`, unless his minutes this season could not fit into them (he
+played for another Premier League club first). Set-piece duty no longer
+multiplies xG and xA: the rates already contain the penalties and corners a
+taker takes, and on the archive takers convert them no faster than anyone else.
+
 ## What the data is good enough to recommend
 
 `evidence.usable` was a single boolean the UI checked at render time, so showing
@@ -692,6 +767,16 @@ below has its evidence in a comment beside the constant.
   Both are above zero exactly when the chip's rule says play. The chip card is
   rewritten to describe the chip the plan actually plays, and an alternative
   that differs in its chip shows the gap "counting what the chip is worth later".
+- **A Free Hit plan is scored as FPL pays it**: the rented squad for its one
+  gameweek, then the squad the manager keeps for the rest of the horizon
+  (`candidateTrajectory` in `planner.js`), exactly as the week after it is
+  planned. Until 2026-10-09 the rented squad was scored over the whole horizon,
+  which credited a one-week rental with five weeks of points (178.9 against a
+  true 125.0 on the audit's sample) and could make it beat a transfer plan it
+  actually trailed.
+- **A double gameweek shares one availability between its fixtures**: a doubt
+  is the same doubt in both matches, so a 50% flag can never read likelier
+  than 50% to appear in a double (it read 0.69 and passed the Bench Boost gate).
 
 `scripts/calibration/calibrate-chips.mjs record --tree <label>` replays the
 planner with chips off in the production regime and records, at every deadline,
@@ -747,6 +832,29 @@ the gameweek being planned is not told about it, and may be recommended a move
 he has already made. The overlay applies in the minutes after a deadline while
 the cached bootstrap still names that gameweek as next.
 
+## How many transfers it looks at
+
+`js/engine/transfers.js` searches single moves, pairs, and, when the manager
+holds more free transfers, deeper combinations up to the free transfers held
+(at most five): a beam of eight is extended one move at a time from the best
+pairs, with budget at selling prices, the club limit and positions checked at
+every step, and the best candidates of every depth are kept so the planner can
+still choose fewer moves or roll. Until 2026-10-09 it stopped at two, so a
+manager banking three to five transfers was recommended the same two moves he
+would make with two. The pair pool also carries budget enablers (the cheapest
+player at each price step per position), so "downgrade one to fund another" is
+found on a tight bank. Deterministic throughout; a full plan costs about one
+second of CPU on a live-sized pool against a ten-second budget.
+
+The roll is valued by the risk profile's `rollBonus` per transfer carried into
+next week, and the explanation quotes the MARGINAL value of the one transfer a
+roll keeps (0.6 balanced, nothing at the cap), which is the number the decision
+turns on. An alternative that projects more but spends a transfer the plan
+keeps, or takes a hit short of the profile's bar, says so on the card, and the
+confidence band never calls such a runner-up a tie. The risk profile
+(balanced, aggressive, conservative) reaches every lineup and armband the plan
+scores, not only the ranking.
+
 ## Answering "why", "why not" and "how sure"
 
 Three layers sit on top of the plan, all fed by engine numbers rather than
@@ -765,8 +873,8 @@ number in the model):
   the one asked about (same seller, same other moves, same transfer count), or,
   when the plan buys nobody in his position, the plan plus one more transfer for
   him, shown as a two-column table of the two players and the two squads; and
-  **(B) the best overall plan containing him** (1-and-2-transfer routes plus the
-  direct swap), with its full route, a "like for like?" line, and the gap split
+  **(B) the best overall plan containing him** (routes as deep as the planner
+  searches for the free transfers held, up to five, plus the direct swap), with its full route, a "like for like?" line, and the gap split
   into "the player swap" and "its other moves". Every scenario is scored by the
   planner's own `scoreCandidate` under the options the plan was built with
   (`bundle.planOptions`), so hits, chip points and the rolled-transfer value are
@@ -775,7 +883,11 @@ number in the model):
   (unavailable, budget-impossible, club limit, unfillable position), never about
   the search. Answers carry a `basis` (`js/engine/plan-basis.js`) and the worker
   holds plans per role (`plan`, `scenario`), so an answer is only ever shown
-  under the plan it was computed against.
+  under the plan it was computed against. Under a Bench Boost or Triple Captain
+  plan each scenario is credited with the chip's NET value only when the chip's
+  own rule says play on that squad, exactly as the planner credits it; under a
+  Wildcard or Free Hit plan the comparison is a full rebuild with the player
+  locked in (2.5 to 4 s of CPU, the cost a pre-season "why not" already pays).
 - **Confidence** (`js/engine/confidence.js`) renders HIGH / MODERATE / LOW with
   the reasons, derived from minutes uncertainty, injury flags, data freshness,
   horizon distance and how close the runner-up plan is. Never an invented
@@ -805,8 +917,9 @@ number in the model):
 a single trajectory forks on one chip decision and diverges by hundreds of
 points. The instrument that decides is **paired trajectories read as windows**
 (five sliding chip-free windows per season, each replayed at three seeds, seeds
-averaged within a window before inference; on the current four replayable
-seasons that is 20 windows and 60 trajectories), and `scripts/experiment.mjs`
+averaged within a window before inference; on the three seasons replayable in
+the production regime, 2023-24 to 2025-26, that is 15 windows and 45
+trajectories), and `scripts/experiment.mjs`
 runs it on eight worker processes in about six minutes for a two-arm
 comparison:
 
@@ -850,6 +963,39 @@ and exits 1 if any breaks. Run it after any change to minutes, rates, strength
 or resolution. Planner points still decide model experiments; a change whose
 objective is calibration pre-registers points as a guard instead (registry
 entry 29).
+
+**Reference baselines and decisions.** The calibration report scores three
+naive baselines on the same rows as the engine (points per club match, season
+points per game, last-five points per game), per position and segment (new
+signings, low-minutes players, regulars, double gameweeks), with paired
+per-deadline differences; `--model-options <json>` scores a projection-model
+candidate and `--no-reference` turns the section off. Measured 2026-10-09 over
+2023-24 to 2025-26: the engine's top twenty score +0.40 points a player a
+gameweek over the strongest naive baseline (70 wins, 37 losses), while its
+overall rank correlation (0.589) sits just under it (0.598) and its captain
+ties it. `scripts/decision-report.mjs` replays the shipped strategy (season
+points equal `backtest.mjs`) and reports captain hit rate, per-transfer gain at
+one, three and five gameweeks, bench points, hits and how banked transfers
+were used; backtest reports now record every gameweek's squad, eleven, armband,
+bench and transfer ids, so these can be computed after the fact.
+
+**Projection-model candidates** are switched by `planOptions.modelOptions` and
+are all off in the app: `odds` (football-data.co.uk prices blended into the
+decided gameweek's expected goals, offline only), `goalDispersion` (a
+Conway-Maxwell-Poisson goals-conceded count), `recency` (the start probability
+corrected by the last three gameweeks, `player.recentGws`), and
+`defconFixtureBeta` (defensive actions scaled by the fixture). The planner side
+has `rollBonus` as a table, `pathPlanning` (rank this week by its best
+two-gameweek path) and the armband's `captainWeights` / `captainTilts`. Each is
+measured by a pre-registered config in `experiments/configs/` and recorded in
+the registry.
+
+**2022-23 and 2021-22.** `fetch-history.mjs` also downloads 2021-22 as a prior,
+which makes 2022-23 replayable in the production regime. It is NOT in the
+deciding instrument: the archive has no expected goals before 2022-23 gameweek
+16 (registry entry 11), so three of its five windows would run on flat
+projections. It is used for calibration (whose buckets with no xG at all are
+printed but not gated) and as a minutes season, where xG does not matter.
 
 A config names the arms; one of them must be called `control`. An arm may carry
 `env` (applied around its own cells), `opts` (merged into the replay options;
@@ -1028,6 +1174,40 @@ every GW4 kickoff window from it (before kickoff, in play, with the fixture list
 lagging the totals, at full time) and asserts that no match being played moves
 the league.
 
+### The live-season archive and scorecard
+
+Nothing archived FPL's payloads as they stood at each deadline, so the live
+season could never be scored, FPL's own `ep_next` could never be used as an
+honest baseline (the community archive's `xP` column contains the result it
+predicts), and injury flags had no history. `scripts/archive-snapshot.mjs`
+fixes that, run hourly by `.github/workflows/fpl-archive.yml` (from the default
+branch only):
+
+| phase | when | what |
+| --- | --- | --- |
+| `pre` | within 26 h of the next deadline, at most every 6 h, always once in the final 2 h | `bootstrap-static`, `fixtures`, `event-status` |
+| `post` | once in the 3 h after a deadline | the same |
+| `live` | once when a gameweek is finished and `data_checked` | `event/{gw}/live` |
+
+Each file is gzipped JSON holding the body exactly as served, its sha256, the
+URL, the capture time and FPL's `Date` header, named
+`<season>/<phase>-gw<NN>-<timestamp>-<kind>.json.gz`, created exclusively and
+never overwritten; an unchanged payload is recorded in the manifest as a
+pointer to the earlier file. Files live as assets of a prerelease per season
+(`fpl-archive-2026-27`), uploaded without `--clobber`; the manifest is the one
+asset replaced, after checking the new one keeps every old entry. About 1.1 MB
+a gameweek, 40 MB a season. "The game is being updated" is refused with exit 75
+and retried by the next hourly run.
+
+`scripts/scorecard.mjs` rebuilds every archived `pre` snapshot exactly as the
+app resolves it, projects that gameweek and scores it against the archived
+`live` stats beside points-per-club-match and FPL's `ep_next` from the same
+snapshot: bias, MAE, RMSE, MAE at 60+ minutes, rank correlation, top-twenty
+points, captain points and start calibration, appended to a cumulative history
+with a drift flag (engine rank correlation under the naive baseline three
+gameweeks running). It refuses a snapshot captured after its deadline.
+`--fixtures` scores the committed 2026 captures as a smoke test.
+
 ### The health probe
 
 ```sh
@@ -1043,7 +1223,17 @@ phase, the evidence classification, the prior in force, the baseline assessment
 and the readiness level, then judges a set of NAMED INVARIANTS and exits
 non-zero if any fails. Two of them are the 2026-09-16 audit's: players who have
 started every match are read as starters, and none of them is less likely to
-play than a substitute. It used to end in a bare "is the projected total
+play than a substitute. Since 2026-10-09 it also checks payload shape first, that the next deadline is
+in the future, that every fixture of a finished gameweek was played, that
+projections build for every player, that the engine's projections
+rank-correlate with FPL's `ep_next` at 0.6 or more (0.835 over 667 players on
+2026-10-09; scrambling a quarter of the projections reads 0.603), and that a
+plan built from the payload passes `validatePlan`. `--direct` reads FPL itself
+(the proxy refuses a CI runner's origin) and `--now` judges freshness for
+saved files. `.github/workflows/fpl-health.yml` runs it every six hours and
+fails loudly, which GitHub emails to the workflow's last editor.
+
+It used to end in a bare "is the projected total
 between 30 and 100", which passed a broken pipeline at 31.5 the same day it
 failed the same pipeline at 14.5. Absolute thresholds cannot separate healthy
 from wrong-by-a-factor, so the invariants include change detection: `--record`

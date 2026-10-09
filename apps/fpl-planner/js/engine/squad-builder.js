@@ -144,8 +144,13 @@ export const SQUAD_BUILDER_DEFAULTS = Object.freeze({
   // first. This is the pass that closes the counterfactual gap. Twelve was
   // where the measured gap stopped moving: at zero the search left 0.23 points
   // on the table for anyone who asked about a premium, at twelve it left 0.014,
-  // and at forty it left the same 0.014 for twice the time.
-  challengers: 24,
+  // and at forty it left the same 0.014 for twice the time. Raised to forty on
+  // 2026-10-09: on analytic-3 projections (defensive actions follow the
+  // fixture, set-piece multipliers gone) the excluded players reorder, and at
+  // 24 the unconstrained build missed a fifteen with Watkins worth 0.16 more
+  // that forcing him in found (tests/optimizer-consistency.test.mjs); at 40 it
+  // finds it, for about 0.4 s more CPU on the sample.
+  challengers: 40,
   // Descent rounds allowed inside a challenge. A challenge starts either from
   // the incumbent with one player swapped in or from a construction built
   // around him, and the second of those is a long way from a local optimum, so

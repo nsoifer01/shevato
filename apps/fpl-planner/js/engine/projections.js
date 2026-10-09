@@ -99,6 +99,20 @@ const RECENCY_HALF_LIFE_GWS = 6;
 // reaches the armband through captain.js, where it is one of the bounded
 // tilts the captaincy experiments measure.
 
+// DEFENSIVE ACTIONS FOLLOW THE FIXTURE (ACCEPT, registry entry 40). A
+// player's clearances, blocks, interceptions, tackles (and, outside defence,
+// recoveries) were projected at his own per-90 rate whatever the opponent. A
+// side expected to face more of the ball makes more of them, so the count's
+// mean is scaled by `defenceScale ^ beta`, the same opponent-goals ratio saves
+// already use. beta was fitted by Poisson likelihood of the actual counts of
+// outfield starters at each production-regime deadline of 2025-26, the only
+// archived season with the data (scripts/calibration/calibrate-defcon-fixture.mjs):
+// 0.10 on gameweeks 2-19 and 0.10 on the whole season. On the replay it won
+// +15.9 a window (t 2.12, five windows of five, the largest gains in the
+// gameweek 20-38 windows the first-half fit never saw). One season of evidence:
+// re-test when 2026-27 is archived.
+const DEFCON_FIXTURE_BETA = 0.1;
+
 // Bonus points track team performance, but only about half as strongly as goals
 // do, because bonus is a within-match ranking and a whole team playing well
 // raises everyone's basis for comparison.
@@ -283,6 +297,7 @@ export const PROJECTION_PARAMS = Object.freeze({
   concededPerPenalty: CONCEDED_PER_PENALTY,
   recencyHalfLifeGws: RECENCY_HALF_LIFE_GWS,
   bonusFixtureSensitivity: BONUS_FIXTURE_SENSITIVITY,
+  defconFixtureBeta: DEFCON_FIXTURE_BETA,
   ceilingQuantile: CEILING_QUANTILE,
   priorNinetiesMax: PRIOR_NINETIES_MAX,
   priorNineties: PRIOR_NINETIES,
@@ -293,8 +308,11 @@ export const PROJECTION_PARAMS = Object.freeze({
 // from "it did not" without matching a string in two places.
 // analytic-2 since 2026-09-16: the xP calibration repair (registry entry 29)
 // replaced the minutes, rates and strength models, so a plan stored under
-// analytic-1 was produced by a different model and says so.
-export const DEFAULT_MODEL_VERSION = 'analytic-2';
+// analytic-1 was produced by a different model and says so. analytic-3 since
+// 2026-10-09: ruled-out players recover over the horizon from FPL's news,
+// doubles share one availability, set-piece multipliers are gone, and
+// defensive actions follow the fixture (registry entries 35-45).
+export const DEFAULT_MODEL_VERSION = 'analytic-3';
 
 const clamp = (v, lo, hi) => (v < lo ? lo : v > hi ? hi : v);
 
@@ -883,12 +901,13 @@ function projectFixtureForPlayer({ player, rules, rates, mins, fx, strength, bon
   const assistConversion = Number.isFinite(rates.assistConversion) ? rates.assistConversion : 1;
 
   const nu = goalDispersionOf(strength);
-  // EXPERIMENT ONLY (`modelOptions.defconFixtureBeta`): a side expected to
-  // face more of the opponent makes more defensive actions, so the count's
-  // mean is scaled by defenceScale ^ beta. Fitted on 2025-26, the only season
-  // with the data (scripts/calibration/calibrate-defcon-fixture.mjs); shipped
-  // as 0, which leaves the count exactly as it was.
-  const defConBeta = modelOptions && Number.isFinite(modelOptions.defconFixtureBeta) ? modelOptions.defconFixtureBeta : 0;
+  // A side expected to face more of the opponent makes more defensive
+  // actions, so the count's mean is scaled by defenceScale ^ DEFCON_FIXTURE_BETA
+  // (registry entry 40). `modelOptions.defconFixtureBeta` overrides it for an
+  // experiment arm; 0 is the model before 2026-10-09.
+  const defConBeta = modelOptions && Number.isFinite(modelOptions.defconFixtureBeta)
+    ? modelOptions.defconFixtureBeta
+    : DEFCON_FIXTURE_BETA;
   const defConScale = defConBeta ? defenceScale ** defConBeta : 1;
   const branches = minuteBranches(mins);
   const parts = [];

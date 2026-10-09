@@ -223,3 +223,17 @@ test('B6: a double gameweek shares one availability between its two fixtures', (
   const blank = { ...gameState, fixtures: gameState.fixtures.filter(f => !(f.event === 4 && (f.teamH === p.teamId || f.teamA === p.teamId))) };
   assert.equal(projectPlayerGw(p, { gameState: blank, strength, gw: 4 }).pAppear, 0);
 });
+
+test('defensive actions follow the fixture by the shipped exponent, and 0 restores the old count', () => {
+  const { gameState, strength } = world();
+  let defender = null;
+  for (const p of gameState.players.values()) {
+    if (p.position === 2 && p.status === 'a' && (p.defCon || 0) > 20 && (p.minutes || 0) > 200) { defender = p; break; }
+  }
+  assert.ok(defender, 'a regular defender with defensive actions on the board');
+  const shipped = projectPlayerGw(defender, { gameState, strength, gw: 4 });
+  const flat = projectPlayerGw(defender, { gameState, strength, gw: 4, modelOptions: { defconFixtureBeta: 0 } });
+  const explicit = projectPlayerGw(defender, { gameState, strength, gw: 4, modelOptions: { defconFixtureBeta: 0.1 } });
+  assert.equal(shipped.xPoints, explicit.xPoints, 'the shipped default is beta 0.10');
+  assert.notEqual(shipped.components.xDefCon, flat.components.xDefCon, 'the fixture moves the award chance');
+});
