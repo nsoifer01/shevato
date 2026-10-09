@@ -176,7 +176,10 @@ const nowMs = () => (typeof performance !== 'undefined' && performance.now ? per
 
 // ---------------------------------------------------------------------------
 
-function resolveOptions(options, rules, gw) {
+// Exported for the "why not this player?" comparison (counterfactual.js), which
+// scores every scenario it shows through `scoreCandidate` with these same
+// options, so a number it prints for the recommended plan is the plan's own.
+export function resolveOptions(options, rules, gw) {
   const risk = RISK_PROFILES[options.risk] ? options.risk : 'balanced';
   const profile = RISK_PROFILES[risk];
   const requested = options.horizon || DEFAULT_HORIZON;
@@ -291,7 +294,10 @@ function candidateMoney(candidate, { squadState, gameState }) {
 // Scoring one candidate over the horizon
 // ---------------------------------------------------------------------------
 
-function scoreCandidate({
+// Exported for counterfactual.js: one scorer for the plan and for every
+// scenario it is compared against, so hits, chip points and the value of a
+// rolled transfer are counted once, here, and never re-derived.
+export function scoreCandidate({
   candidate, chip, squadState, projections, gameState, rules, cfg, gw,
 }) {
   const money = candidateMoney(candidate, { squadState, gameState });
@@ -452,7 +458,7 @@ function planFromScored(scored, { squadState, gameState, rules, cfg, gw, certain
 // `plan` is the built primary plan the numbers are reported against;
 // `primaryScored` is the scored candidate it was built from, which carries the
 // objective the two were ranked on.
-function alternativeFrom(scored, plan, primaryScored, gameState) {
+function alternativeFrom(scored, plan, primaryScored, gameState, hitMarginPoints = 0) {
   return {
     chip: scored.chip,
     transfersOut: scored.candidate.transfersOut.slice(),
@@ -469,6 +475,11 @@ function alternativeFrom(scored, plan, primaryScored, gameState) {
     // week's bench but keeps the chip for later. This is the same comparison
     // the planner ranked them on, which counts what keeping the chip is worth.
     deltaWithChipValue: scored.chip !== primaryScored.chip ? scored.objective - primaryScored.objective : null,
+    // Ranked ABOVE the recommendation and still not chosen: it takes a hit and
+    // does not clear the risk profile's margin over the best plan without one.
+    // The card must say so rather than claim nothing scored higher.
+    belowHitMargin: scored.acct.hits > 0 && scored.objective > primaryScored.objective,
+    hitMarginPoints,
     headline: alternativeHeadline(scored, gameState),
   };
 }
@@ -752,7 +763,7 @@ export async function buildPlan({ gameState, squadState, options = {}, onProgres
   emit(onProgress, 'build-plan');
 
   const plan = planFromScored(primary, { squadState: workingSquad, gameState, rules, cfg, gw, certainty: 'current' });
-  plan.alternatives = alternatives.map(s => alternativeFrom(s, plan, primary, gameState));
+  plan.alternatives = alternatives.map(s => alternativeFrom(s, plan, primary, gameState, cfg.hitMarginPoints));
 
   const explainContext = {
     squadState: workingSquad,
@@ -807,6 +818,11 @@ export async function buildPlan({ gameState, squadState, options = {}, onProgres
     chipEvaluation,
     dataStatus: buildDataStatus({ gameState, squadState: workingSquad, cfg, projections, durationMs }),
     validation: { ok: true, violations: [] },
+    // The options this plan was built with, so a comparison against it (the
+    // "why not" answer, run later in the same worker) scores its scenarios
+    // under the same risk profile, horizon, discount and seed. Not sent to the
+    // page: toWireBundle lists its fields.
+    planOptions: options,
   };
 }
 

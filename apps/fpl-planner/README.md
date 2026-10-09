@@ -759,10 +759,23 @@ number in the model):
   with identical options, because a stored squad compared against a fresh search
   once produced the contradiction "best squad 131.9" above "best squad with
   Haaland 134.1". `tests/optimizer-consistency.test.mjs` now asserts a forced
-  build can never beat the unconstrained one. In season it evaluates the best
-  1-and-2-transfer routes instead. "Cannot fit" is only ever a claim about the
-  game (unavailable, budget-impossible, club limit, unfillable position), never
-  about the search.
+  build can never beat the unconstrained one. In season the answer has two
+  sections that are never merged: **(A) the direct comparison**, the
+  recommended plan with only its incoming player in that position swapped for
+  the one asked about (same seller, same other moves, same transfer count), or,
+  when the plan buys nobody in his position, the plan plus one more transfer for
+  him, shown as a two-column table of the two players and the two squads; and
+  **(B) the best overall plan containing him** (1-and-2-transfer routes plus the
+  direct swap), with its full route, a "like for like?" line, and the gap split
+  into "the player swap" and "its other moves". Every scenario is scored by the
+  planner's own `scoreCandidate` under the options the plan was built with
+  (`bundle.planOptions`), so hits, chip points and the rolled-transfer value are
+  counted once, and the verdict follows the planner's rule, including the risk
+  profile's hit margin. "Cannot fit" is only ever a claim about the game
+  (unavailable, budget-impossible, club limit, unfillable position), never about
+  the search. Answers carry a `basis` (`js/engine/plan-basis.js`) and the worker
+  holds plans per role (`plan`, `scenario`), so an answer is only ever shown
+  under the plan it was computed against.
 - **Confidence** (`js/engine/confidence.js`) renders HIGH / MODERATE / LOW with
   the reasons, derived from minutes uncertainty, injury flags, data freshness,
   horizon distance and how close the runner-up plan is. Never an invented

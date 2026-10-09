@@ -1317,6 +1317,89 @@ body.fpl-page {
 .fpl-planner-app .fpl-whynot-alts .fpl-alt-title { flex: 1 1 220px; min-width: 0; }
 .fpl-planner-app .fpl-whynot-alts .fpl-alt-delta { white-space: normal; min-width: 0; }
 
+/* "Why not him?" in season: the one-line preference, then two sections kept
+   visibly apart (the direct swap, then the best overall plan), each with a
+   heading and a sentence saying what it compares. */
+.fpl-planner-app .fpl-whynot-pref {
+  margin: 0 0 14px;
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--text-dim);
+}
+.fpl-planner-app .fpl-whynot-pref strong { color: var(--text); font-weight: 680; }
+.fpl-planner-app .fpl-whynot-section { margin-top: 16px; }
+.fpl-planner-app .fpl-whynot-section:first-of-type { margin-top: 4px; }
+.fpl-planner-app .fpl-whynot-h {
+  margin: 0 0 4px;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.4;
+  color: var(--text);
+}
+.fpl-planner-app .fpl-whynot-sub {
+  margin: 0 0 10px;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--text-faint);
+}
+.fpl-planner-app .fpl-whynot-sub.is-blocked { color: var(--amber); }
+.fpl-planner-app .fpl-whynot-table-wrap { max-width: 100%; }
+.fpl-planner-app .fpl-whynot-table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+  font-size: 13px;
+  line-height: 1.45;
+}
+/* The app-wide table rules are for the squad table: nowrap cells and a sticky
+   header row. Here a cell is a sentence (a five-fixture list) and the table sits
+   inside a card, so both are undone; nowrap ran the two fixture lists into each
+   other and off a 1280px page. */
+.fpl-planner-app .fpl-whynot-table th,
+.fpl-planner-app .fpl-whynot-table td {
+  padding: 7px 10px 7px 0;
+  text-align: left;
+  vertical-align: top;
+  border-top: 1px solid var(--border-soft);
+  border-bottom: 0;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  background: none;
+  position: static;
+}
+.fpl-planner-app .fpl-whynot-table thead th {
+  border-top: 0;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text);
+}
+.fpl-planner-app .fpl-whynot-table tbody th {
+  width: 32%;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+  padding-top: 9px;
+}
+.fpl-planner-app .fpl-whynot-table td { color: var(--text-dim); font-weight: 500; }
+.fpl-planner-app .fpl-whynot-table td .fpl-em { color: var(--text); font-weight: 680; }
+.fpl-planner-app .fpl-whynot-table tr.is-squad_horizon td,
+.fpl-planner-app .fpl-whynot-table tr.is-squad_gw td { color: var(--text); font-weight: 650; }
+.fpl-planner-app .fpl-whynot-tag {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  vertical-align: 1px;
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
 /* ----------------------------------------------------------- combobox */
 
 /* A searchable player picker. The popup is absolutely positioned so opening it
@@ -2296,6 +2379,33 @@ body.fpl-page {
   .fpl-planner-app .fpl-whynot-rows { grid-template-columns: minmax(0, 1fr); gap: 3px; }
   .fpl-planner-app .fpl-whynot-rows dt { padding-top: 10px; }
   .fpl-planner-app .fpl-whynot-rows dt:first-child { padding-top: 0; }
+  /* The comparison table stacks: the metric on its own line, then the two
+     values side by side, each labelled with its column, so nothing is three
+     narrow columns at 390px. */
+  .fpl-planner-app .fpl-whynot-table,
+  .fpl-planner-app .fpl-whynot-table tbody { display: block; }
+  .fpl-planner-app .fpl-whynot-table thead { display: none; }
+  .fpl-planner-app .fpl-whynot-table tr {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 2px 12px;
+    padding: 8px 0;
+    border-top: 1px solid var(--border-soft);
+  }
+  .fpl-planner-app .fpl-whynot-table tbody th {
+    grid-column: 1 / -1;
+    width: auto;
+    padding: 0;
+    border: 0;
+  }
+  .fpl-planner-app .fpl-whynot-table td { padding: 0; border: 0; }
+  .fpl-planner-app .fpl-whynot-table td::before {
+    content: attr(data-col);
+    display: block;
+    font-size: 10.5px;
+    font-weight: 650;
+    color: var(--text-faint);
+  }
 
   /* Verdict rows: the tag drops under its sentence, still tied by the dot. */
   .fpl-planner-app .fpl-reasons.is-verdicts li.fpl-conf-row { grid-template-columns: 8px minmax(0, 1fr); }

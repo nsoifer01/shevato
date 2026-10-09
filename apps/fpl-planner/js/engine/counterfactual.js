@@ -53,6 +53,8 @@
 import { buildSquad } from './squad-builder.js';
 import { squadTrajectory, discountWeights, fmtValue } from './chips.js';
 import { canCompareSquads } from './readiness.js';
+import { scoreCandidate, resolveOptions } from './planner.js';
+import { planBasis } from './plan-basis.js';
 
 // Statuses the game will not let anyone buy: gone from the league, or not
 // registered in a Premier League squad. Mirrors squad-builder.js.
@@ -132,6 +134,7 @@ function makeContext(playerId, { planBundle, gameState, rules, opts = {} }) {
   return {
     playerId,
     plan,
+    planBundle,
     squadState: planBundle.squadState,
     projections: planBundle.projections,
     gameState,
@@ -937,11 +940,6 @@ function heldState(ctx) {
   return { ids, selling, bank: ctx.squadState.bankTenths || 0 };
 }
 
-function hitPointsFor(ctx, transfers) {
-  const free = ctx.squadState.freeTransfers || 0;
-  return Math.max(0, transfers - free) * ctx.rules.hitCost;
-}
-
 function legalSquad(ctx, ids) {
   if (ids.length !== ctx.rules.squadSize) return false;
   for (const [, n] of clubCounts(ctx, ids)) if (n > ctx.rules.clubLimit) return false;
@@ -1049,27 +1047,626 @@ function enumerateRoutes(ctx) {
   return { routes, bestShortfall, clubBlocked, sameClubHeld };
 }
 
-function routeAnswer(ctx) {
-  const unavailable = unavailableBlocker(ctx);
-  if (unavailable) return impossible(ctx, [unavailable], { mode: 'transfer' });
+/* ------------------------------------------- in season: one scorer for all */
 
-  const { routes, bestShortfall, clubBlocked, sameClubHeld } = enumerateRoutes(ctx);
+// Every in-season scenario is scored by the planner's OWN `scoreCandidate`,
+// under the options the plan was built with. That is what makes two columns
+// comparable: hits, chip points and the value of a rolled transfer are counted
+// by the code that chose the recommendation, not re-derived here. Until
+// 2026-10-09 the alternative was `squadTrajectory - hit` and the baseline was
+// the plan's stored total, which only agreed while nothing else differed.
+function planCfg(ctx) {
+  if (ctx.cfg) return ctx.cfg;
+  const base = (ctx.planBundle && ctx.planBundle.planOptions) || {};
+  const cfg = resolveOptions({ ...base, horizon: ctx.horizon, discount: ctx.discount, seed: ctx.seed }, ctx.rules, ctx.gw);
+  // `maxHits` is how many hits the planner is willing to TAKE. A question about
+  // a route is answered with its price rather than refused, so it is lifted.
+  ctx.cfg = { ...cfg, horizon: ctx.horizon, maxHits: Infinity };
+  return ctx.cfg;
+}
 
-  if (!routes.length) {
-    const blockers = [];
-    if (clubBlocked || sameClubHeld.length >= ctx.rules.clubLimit) {
+const heldIdsOf = ctx => (ctx.squadState.picks || []).map(p => p.playerId);
+const priceNow = (ctx, id) => (ctx.gameState.players.get(id) || { nowCost: 0 }).nowCost;
+const squadKey = ids => ids.slice().sort((a, b) => a - b).join(',');
+
+// One way the gameweek could go: these transfers out of the squad held today.
+function scenarioOf(ctx, { transfersOut, transfersIn }) {
+  const outs = new Set(transfersOut);
+  const squad = heldIdsOf(ctx).filter(id => !outs.has(id)).concat(transfersIn);
+  const { selling, bank } = heldState(ctx);
+  const bankAfter = bank
+    + transfersOut.reduce((s, id) => s + (selling.get(id) || 0), 0)
+    - transfersIn.reduce((s, id) => s + priceNow(ctx, id), 0);
+  const base = {
+    transfersOut: transfersOut.slice(),
+    transfersIn: transfersIn.slice(),
+    squad,
+    transfers: transfersIn.length,
+    bankAfter,
+    legal: legalSquad(ctx, squad),
+    affordable: bankAfter >= 0,
+    scored: false,
+  };
+  if (!base.legal || !base.affordable) return base;
+  const scored = scoreCandidate({
+    candidate: { transfersOut, transfersIn, squad },
+    chip: ctx.plan.chip || null,
+    squadState: ctx.squadState,
+    projections: ctx.projections,
+    gameState: ctx.gameState,
+    rules: ctx.rules,
+    cfg: planCfg(ctx),
+    gw: ctx.gw,
+  });
+  if (!scored) return base;
+  return {
+    ...base,
+    scored: true,
+    traj: scored.trajectory,
+    // What the hero card calls "this gameweek": the canonical expected score.
+    gwPoints: scored.xPointsGw,
+    // Net of hits, chip points included: the plan's own xPointsHorizon.
+    points: scored.xPointsHorizon,
+    objective: scored.objective,
+    hits: scored.acct.hits,
+    hitPoints: scored.acct.hitCostPoints,
+    freeTransfersUsed: scored.acct.freeTransfersUsed,
+    freeTransfersNextGw: scored.acct.freeTransfersNextGw,
+  };
+}
+
+function movesOf(scen) {
+  return scen.transfersOut.map((out, i) => ({ out, in: scen.transfersIn[i] }));
+}
+
+function movesText(ctx, scen) {
+  const moves = movesOf(scen);
+  if (!moves.length) return 'No transfers';
+  return listAnd(moves.map(m => `${nameOf(ctx.gameState, m.out)} to ${nameOf(ctx.gameState, m.in)}`));
+}
+
+function costText(ctx, scen) {
+  const free = ctx.squadState.freeTransfers;
+  const freeText = Number.isFinite(free) ? `${free} free` : 'unlimited free';
+  const n = `${scen.transfers} ${scen.transfers === 1 ? 'transfer' : 'transfers'}`;
+  if (ctx.plan.chip === 'wildcard' || ctx.plan.chip === 'freehit') return `${n}, free under the chip`;
+  return scen.hitPoints > 0 ? `${n} with ${freeText}: -${scen.hitPoints} points` : `${n} with ${freeText}: no hit`;
+}
+
+function routeSummary(ctx, scen) {
+  return {
+    moves: movesOf(scen),
+    text: movesText(ctx, scen),
+    transfers: scen.transfers,
+    freeTransfers: ctx.squadState.freeTransfers,
+    hits: scen.hits,
+    hitPoints: scen.hitPoints,
+    costText: costText(ctx, scen),
+    bankAfterTenths: scen.bankAfter,
+    gwPoints: scen.gwPoints,
+    points: scen.points,
+    freeTransfersNextGw: scen.freeTransfersNextGw,
+    squad: scen.squad,
+  };
+}
+
+/* ----------------------------------------------------- one player's facts */
+
+function availabilityText(p) {
+  const hard = { i: 'Injured', s: 'Suspended', u: 'Unavailable', n: 'Not in squad' };
+  if (hard[p.status]) return p.news ? `${hard[p.status]}: ${p.news}` : hard[p.status];
+  if (p.status === 'd') {
+    const pct = Number.isFinite(p.chanceNext) ? `${Math.round(p.chanceNext * 100)}% to play` : 'a doubt';
+    return p.news ? `Doubtful, ${pct}: ${p.news}` : `Doubtful, ${pct}`;
+  }
+  return 'Available';
+}
+
+function playerFacts(ctx, id) {
+  const p = ctx.gameState.players.get(id);
+  const first = projRow(ctx.projections, id, ctx.gw);
+  const fixtures = [];
+  let raw = 0;
+  for (let k = 0; k < ctx.horizon; k++) {
+    const gw = ctx.gw + k;
+    const r = projRow(ctx.projections, id, gw);
+    if (r && Number.isFinite(r.xPoints)) raw += r.xPoints;
+    const list = (r && r.fixtures) || [];
+    if (!list.length) fixtures.push({ gw, blank: true });
+    for (const f of list) {
+      const t = ctx.gameState.teams.get(f.opponentId);
+      fixtures.push({ gw, opponent: t ? t.shortName : String(f.opponentId), home: !!f.isHome, fdr: f.fdr });
+    }
+  }
+  const fx = fixtureProfile(ctx, id);
+  return {
+    id,
+    name: nameOf(ctx.gameState, id),
+    club: clubOf(ctx.gameState, id),
+    priceTenths: p ? p.nowCost : 0,
+    availability: p ? availabilityText(p) : 'Unknown',
+    gwXp: first && Number.isFinite(first.xPoints) ? first.xPoints : 0,
+    gwSd: first && Number.isFinite(first.sd) ? first.sd : null,
+    pStart: first && Number.isFinite(first.pStart) ? first.pStart : null,
+    // Weighted exactly as the squad totals are, so the player gap and the squad
+    // gap are measured in the same unit.
+    horizonXp: horizonXp(ctx, id),
+    horizonXpRaw: raw,
+    minutes: horizonMinutes(ctx, id),
+    fixtures,
+    meanFdr: fx.meanFdr,
+  };
+}
+
+function fixturesText(facts) {
+  const parts = facts.fixtures.map(f => (f.blank ? `GW${f.gw} blank` : `${f.opponent} (${f.home ? 'H' : 'A'}) ${f.fdr}`));
+  return `${parts.join(', ')}; average difficulty ${(Math.round(facts.meanFdr * 10) / 10).toFixed(1)}`;
+}
+
+/* ------------------------------------------ A. the direct, like-for-like swap */
+
+// The recommended plan's own moves, paired the way the plan lists them.
+function recommendedMoves(ctx) {
+  const outs = ctx.plan.transfersOut || [];
+  const ins = ctx.plan.transfersIn || [];
+  return outs.map((out, i) => ({ out, in: ins[i] }));
+}
+
+// "Why not him?" first means: why not him INSTEAD of the player the plan buys
+// for that place. So the comparison is the recommended plan with exactly one
+// change, the recommended incoming player swapped for the one asked about:
+// same seller, same other moves, same number of transfers and so the same hit.
+// Whatever separates the two columns is that one swap and nothing else.
+//
+// When the plan buys nobody in his position, the like-for-like question is
+// "the plan as it stands" against "the plan plus selling one of yours for him",
+// which costs one more transfer and is priced as such.
+function directComparison(ctx, rec) {
+  const position = ctx.target.position;
+  const recMoves = recommendedMoves(ctx);
+  const replace = recMoves.filter(m => {
+    const p = ctx.gameState.players.get(m.in);
+    return p && p.position === position;
+  });
+
+  const options = [];
+  if (replace.length) {
+    for (const m of replace) {
+      const transfersIn = ctx.plan.transfersIn.map(id => (id === m.in ? ctx.playerId : id));
+      options.push({
+        kind: 'replace',
+        outId: m.out,
+        comparatorId: m.in,
+        alt: scenarioOf(ctx, { transfersOut: ctx.plan.transfersOut.slice(), transfersIn }),
+      });
+    }
+  } else {
+    const held = new Set(heldIdsOf(ctx));
+    for (const id of ctx.plan.squad) {
+      const p = ctx.gameState.players.get(id);
+      if (!held.has(id) || !p || p.position !== position) continue;
+      options.push({
+        kind: 'add',
+        outId: id,
+        comparatorId: id,
+        alt: scenarioOf(ctx, {
+          transfersOut: [...(ctx.plan.transfersOut || []), id],
+          transfersIn: [...(ctx.plan.transfersIn || []), ctx.playerId],
+        }),
+      });
+    }
+  }
+  if (!options.length) return null;
+
+  const scored = options.filter(o => o.alt.scored)
+    .sort((a, b) => b.alt.points - a.alt.points || a.outId - b.outId);
+  // When none is possible, explain the one that comes closest on money.
+  const chosen = scored[0] || options.slice().sort((a, b) => b.alt.bankAfter - a.alt.bankAfter)[0];
+  const available = chosen.alt.scored;
+
+  const comparator = playerFacts(ctx, chosen.comparatorId);
+  const target = playerFacts(ctx, ctx.playerId);
+  const out = playerFacts(ctx, chosen.outId);
+
+  const blockers = [];
+  if (!available) {
+    if (!chosen.alt.affordable) {
       blockers.push(reason(
-        'club_limit',
-        `You already hold {v} players from ${clubOf(ctx.gameState, ctx.playerId)}, which is the limit, and no legal move inside ${COUNTERFACTUAL_PARAMS.maxRouteTransfers} transfers frees a place.`,
-        sameClubHeld.length,
+        'direct_budget',
+        chosen.kind === 'replace'
+          ? `Buying ${target.name} instead of ${comparator.name} leaves the bank {v} short.`
+          : `Selling ${out.name} for ${target.name} leaves the bank {v} short.`,
+        -chosen.alt.bankAfter,
+        'tenths',
+      ));
+    }
+    if (!chosen.alt.legal) {
+      const club = ctx.gameState.players.get(ctx.playerId).teamId;
+      const mates = chosen.alt.squad.filter(id => id !== ctx.playerId && ctx.gameState.players.get(id).teamId === club);
+      blockers.push(reason(
+        'direct_club_limit',
+        `It would be ${clubOf(ctx.gameState, ctx.playerId)} player number {v}, over the limit of ${ctx.rules.clubLimit}, alongside ${listAnd(mates.map(id => nameOf(ctx.gameState, id)))}.`,
+        mates.length + 1,
         'count',
       ));
     }
-    if (Number.isFinite(bestShortfall)) {
+  }
+
+  const delta = available ? {
+    gwPoints: chosen.alt.gwPoints - rec.gwPoints,
+    points: chosen.alt.points - rec.points,
+    objective: chosen.alt.objective - rec.objective,
+  } : null;
+  const playerDelta = {
+    gw: target.gwXp - comparator.gwXp,
+    horizon: target.horizonXp - comparator.horizonXp,
+  };
+  // What the squad gap is beyond the two players' own gap: benching, the
+  // armband, and any hit the extra move costs. Zero when he would simply play
+  // every week in the other man's place.
+  const lineupEffect = available
+    ? (delta.points + (chosen.alt.hitPoints - rec.hitPoints)) - playerDelta.horizon
+    : null;
+
+  return {
+    kind: chosen.kind,
+    available,
+    outId: chosen.outId,
+    comparatorId: chosen.comparatorId,
+    targetId: ctx.playerId,
+    rec,
+    alt: chosen.alt,
+    players: { comparator, target, out },
+    delta,
+    playerDelta,
+    lineupEffect,
+    blockers,
+  };
+}
+
+// The table a manager reads first. Cells are engine-formatted text; `values`
+// carry the numbers they were formatted from so a test can hold them equal.
+function directTable(ctx, d) {
+  const { comparator, target, out } = d.players;
+  const cells = (code, label, a, b, values = null, unit = 'points') => ({ code, label, cells: [a, b], values, unit });
+  const xpCell = v => `${fmt(v)} xP`;
+  const horizonCell = f => `${fmt(f.horizonXpRaw)} xP (${fmt(f.horizonXp)} weighted)`;
+  const minutesCell = f => (f.pStart === null
+    ? `${Math.round(f.minutes)}`
+    : `${Math.round(f.minutes)}, ${Math.round(f.pStart * 100)}% to start GW${ctx.gw}`);
+  const rec = d.rec;
+  const alt = d.alt;
+  const altMove = `${out.name} to ${target.name}`;
+  const rows = [
+    cells('move', 'Transfer',
+      d.kind === 'replace' ? `${out.name} to ${comparator.name}` : `Keep ${out.name}`,
+      altMove, null, 'text'),
+    cells('price', 'Price', fmt(comparator.priceTenths, 'tenths'), fmt(target.priceTenths, 'tenths'),
+      [comparator.priceTenths, target.priceTenths], 'tenths'),
+    cells('availability', 'Availability', comparator.availability, target.availability, null, 'text'),
+    cells('gw_xp', `His xP, GW${ctx.gw}`, xpCell(comparator.gwXp), xpCell(target.gwXp), [comparator.gwXp, target.gwXp]),
+    cells('horizon_xp', `His xP, next ${ctx.horizon} GWs`, horizonCell(comparator), horizonCell(target),
+      [comparator.horizonXp, target.horizonXp]),
+    cells('minutes', `Expected minutes, ${ctx.horizon} GWs`, minutesCell(comparator), minutesCell(target),
+      [comparator.minutes, target.minutes], 'count'),
+    cells('fixtures', 'Fixtures (difficulty)', fixturesText(comparator), fixturesText(target), [comparator.meanFdr, target.meanFdr]),
+    cells('bank_after', 'Money left after transfers', fmt(rec.bankAfter, 'tenths'),
+      d.available || alt.bankAfter >= 0 ? fmt(alt.bankAfter, 'tenths') : `short by ${fmt(-alt.bankAfter, 'tenths')}`,
+      [rec.bankAfter, alt.bankAfter], 'tenths'),
+  ];
+  if (d.available) {
+    rows.push(
+      cells('transfer_cost', 'Transfers and points cost', costText(ctx, rec), costText(ctx, alt),
+        [rec.hitPoints, alt.hitPoints]),
+      cells('squad_gw', `Squad xP, GW${ctx.gw}`, xpCell(rec.gwPoints), xpCell(alt.gwPoints), [rec.gwPoints, alt.gwPoints]),
+      cells('squad_horizon', `Squad xP, ${ctx.horizon} GWs after hits`, xpCell(rec.points), xpCell(alt.points),
+        [rec.points, alt.points]),
+    );
+  }
+  return {
+    columns: [
+      { playerId: comparator.id, label: d.kind === 'replace' ? comparator.name : `${out.name} (kept)`, recommended: true },
+      { playerId: target.id, label: target.name, recommended: false },
+    ],
+    rows,
+  };
+}
+
+// Is the money a cheaper buy leaves worth anything THIS week? Measured, not
+// asserted: the best single extra move on top of each column, priced by the
+// same scorer, hit included.
+function bestExtraMove(ctx, scen) {
+  if (!scen || !scen.scored) return null;
+  const { selling } = heldState(ctx);
+  const bought = new Set(scen.transfersIn);
+  const inSquad = new Set(scen.squad);
+  let best = null;
+  for (const id of scen.squad) {
+    if (bought.has(id)) continue;
+    const p = ctx.gameState.players.get(id);
+    if (!p) continue;
+    const budget = scen.bankAfter + (selling.get(id) || 0);
+    for (const cand of replacementPool(ctx, p.position, inSquad, budget)) {
+      const next = scenarioOf(ctx, {
+        transfersOut: [...scen.transfersOut, id],
+        transfersIn: [...scen.transfersIn, cand.id],
+      });
+      if (!next.scored) continue;
+      const gain = next.points - scen.points;
+      if (!best || gain > best.gain + 1e-12) {
+        best = { out: id, in: cand.id, gain, hitPoints: next.hitPoints - scen.hitPoints };
+      }
+    }
+  }
+  return best;
+}
+
+function flexibilityReason(ctx, d) {
+  // Only meaningful like for like: with the same transfers on both sides, the
+  // one thing the cheaper buy leaves behind is money.
+  if (!d.available || d.kind !== 'replace' || d.alt.bankAfter === d.rec.bankAfter) return null;
+  const recRicher = d.rec.bankAfter > d.alt.bankAfter;
+  const richName = recRicher ? d.players.comparator.name : d.players.target.name;
+  const poorName = recRicher ? d.players.target.name : d.players.comparator.name;
+  const rich = bestExtraMove(ctx, recRicher ? d.rec : d.alt);
+  const poor = bestExtraMove(ctx, recRicher ? d.alt : d.rec);
+  const gap = Math.abs(d.rec.bankAfter - d.alt.bankAfter);
+  const describe = m => `${nameOf(ctx.gameState, m.out)} to ${nameOf(ctx.gameState, m.in)}`;
+  const margin = planCfg(ctx).hitMarginPoints;
+  // What a move is worth to the PLANNER: a hit move below the bar is worth
+  // nothing this week, because the planner would not make it.
+  const usable = m => !!m && m.gain > 0 && (m.hitPoints === 0 || m.gain >= margin);
+  const flex = (usable(rich) ? rich.gain : 0) - (usable(poor) ? poor.gain : 0);
+
+  let text;
+  if (!rich || rich.gain <= 0) {
+    text = `${richName} leaves {v} more in the bank, but no extra move this week pays with it.`;
+  } else if (!usable(rich)) {
+    text = `${richName} leaves {v} more in the bank. The best extra move it funds, ${describe(rich)}, is worth ${fmt(rich.gain, 'signed')} after its ${rich.hitPoints}-point hit, short of the ${fmt(margin)}-point bar a hit must clear, so it changes nothing this week; the money is there for later weeks.`;
+  } else if (usable(poor) && poor.in === rich.in && poor.out === rich.out) {
+    text = `${richName} leaves {v} more in the bank, but the best extra move, ${describe(rich)}, is affordable either way, so the money changes nothing this week.`;
+  } else {
+    text = `${richName} leaves {v} more in the bank, enough for ${describe(rich)} (${fmt(rich.gain, 'signed')}${rich.hitPoints ? ` after its ${rich.hitPoints}-point hit` : ''})${usable(poor) ? `, against ${describe(poor)} (${fmt(poor.gain, 'signed')}) with ${poorName}'s money` : `, which ${poorName}'s money does not fund`}. That flexibility is worth ${fmt(flex, 'signed')} xP this week.`;
+  }
+  return { ...reason('money_flexibility', text, gap, 'tenths'), flexibilityPoints: flex };
+}
+
+// Reasons that come from the direct comparison, every one about the two
+// players who actually trade places: the recommended buy and the one asked
+// about. The player both columns SELL is never the comparator.
+function directReasons(ctx, d) {
+  const { comparator, target } = d.players;
+  const out = [];
+  const recLabel = d.kind === 'replace' ? `with ${comparator.name}` : `keeping ${comparator.name}`;
+  const altLabel = d.kind === 'replace' ? `with ${target.name}` : `with ${target.name} for ${comparator.name}`;
+  if (d.available) {
+    const gw = d.delta.gwPoints;
+    out.push(reason(
+      'direct_gw',
+      Math.abs(gw) < 0.05
+        ? `In Gameweek ${ctx.gw} the squad scores the same either way, within {v} xP.`
+        : gw < 0
+          ? `In Gameweek ${ctx.gw} the squad ${recLabel} projects {v} xP more than ${altLabel}.`
+          : `In Gameweek ${ctx.gw} the squad ${altLabel} projects {v} xP more than ${recLabel}.`,
+      Math.abs(gw),
+    ));
+    const h = d.delta.points;
+    out.push(reason(
+      'direct_horizon',
+      Math.abs(h) < 0.05
+        ? `Over ${ctx.horizon} gameweeks the two squads are level, within {v} xP.`
+        : h < 0
+          ? `Over ${ctx.horizon} gameweeks, after any hits, the squad ${recLabel} projects {v} xP more.`
+          : `Over ${ctx.horizon} gameweeks, after any hits, the squad ${altLabel} projects {v} xP more.`,
+      Math.abs(h),
+    ));
+  }
+
+  // The two players on their own, in the same weighted unit as the squads.
+  const gap = d.playerDelta.horizon;
+  out.push(reason(
+    'individual_gap',
+    gap >= 0
+      ? `On his own ${target.name} projects {v} xP more than ${comparator.name} over the ${ctx.horizon} gameweeks.`
+      : `On his own ${target.name} projects {v} xP fewer than ${comparator.name} over the ${ctx.horizon} gameweeks.`,
+    Math.abs(gap),
+  ));
+
+  if (d.available && Math.abs(d.lineupEffect) >= 0.05) {
+    const benched = d.alt.traj.gws.filter(g => !g.startingXI.includes(ctx.playerId)).length;
+    // The comparator is in the recommended squad either way: bought there in
+    // 'replace', kept there in 'add'. His bench weeks count just as much.
+    const recBenched = d.rec.traj.gws.filter(g => !g.startingXI.includes(comparator.id)).length;
+    const why = [];
+    if (benched) why.push(`${target.name} would start on your bench in ${benched} of the ${ctx.horizon} gameweeks`);
+    if (recBenched) why.push(`${comparator.name} would start on your bench in ${recBenched}`);
+    out.push(reason(
+      'lineup_effect',
+      why.length
+        ? `The squad gap is {v} xP away from the player gap because ${listAnd(why)}.`
+        : 'The squad gap is {v} xP away from the player gap because the best eleven and the armband change around him.',
+      Math.abs(d.lineupEffect),
+    ));
+  }
+
+  if (d.available && d.alt.hitPoints !== d.rec.hitPoints) {
+    out.push(reason(
+      'direct_hit',
+      `Bringing in ${target.name} as well as the recommended moves is one more transfer than you have free, a {v}-point hit, and the squad figures above are after it.`,
+      d.alt.hitPoints - d.rec.hitPoints,
+      'count',
+    ));
+  }
+
+  out.push(...swapReasons(ctx, comparator.id, target.id));
+
+  // How much of the gap is minutes? A rough scaling, labelled as one: his
+  // projection with the other man's expected minutes. It answers "is this
+  // just about whether he starts?" without changing what the model projects.
+  // Only when the gap is a matter of degree: scaling a player who barely plays
+  // up to a regular's minutes multiplies noise, not evidence.
+  if (comparator.minutes - target.minutes >= COUNTERFACTUAL_PARAMS.minutesTolerance
+    && target.minutes > 0 && comparator.minutes <= 2 * target.minutes) {
+    let scaled = 0;
+    for (let k = 0; k < ctx.horizon; k++) {
+      const a = projRow(ctx.projections, ctx.playerId, ctx.gw + k);
+      const b = projRow(ctx.projections, comparator.id, ctx.gw + k);
+      if (!a || !Number.isFinite(a.xPoints) || !(a.xMins > 0)) continue;
+      const ratio = b && Number.isFinite(b.xMins) ? b.xMins / a.xMins : 1;
+      scaled += ctx.weights[k] * a.xPoints * ratio;
+    }
+    const after = scaled - comparator.horizonXp;
+    out.push(reason(
+      'minutes_sensitivity',
+      after < 0
+        ? `Minutes are not the whole story: given ${comparator.name}'s expected minutes, ${target.name} would project about ${fmt(scaled)} xP, still {v} behind.`
+        : `Minutes decide it: given ${comparator.name}'s expected minutes, ${target.name} would project about ${fmt(scaled)} xP, {v} ahead.`,
+      Math.abs(after),
+    ));
+  }
+
+  // Honest about size: a gap smaller than one gameweek's typical swing for
+  // either player is a lean, not a certainty.
+  if (d.available) {
+    const sds = [comparator.gwSd, target.gwSd].filter(Number.isFinite);
+    const swing = sds.length ? Math.max(...sds) : null;
+    const size = Math.abs(d.delta.points);
+    if (swing !== null && size > COUNTERFACTUAL_PARAMS.tieTolerance && size < swing) {
+      out.push(reason(
+        'close_call',
+        `This is a small edge: ${fmt(size)} xP over ${ctx.horizon} gameweeks is less than one gameweek's typical swing for either player (about {v} points), so it is a lean, not a certainty.`,
+        swing,
+      ));
+    }
+  }
+
+  const flex = flexibilityReason(ctx, d);
+  if (flex) out.push(flex);
+  return out;
+}
+
+/* -------------------------------- B. the best plan of all that contains him */
+
+function overallComparison(ctx, rec, d) {
+  const seen = new Set();
+  const candidates = [];
+  const add = s => {
+    if (!s || !s.scored) return;
+    const key = squadKey(s.squad);
+    if (seen.has(key)) return;
+    seen.add(key);
+    candidates.push(s);
+  };
+  const { routes, bestShortfall, clubBlocked, sameClubHeld } = enumerateRoutes(ctx);
+  for (const r of routes) add(scenarioOf(ctx, { transfersOut: r.out, transfersIn: r.in }));
+  if (d && d.available) add(d.alt);
+  candidates.sort((a, b) => b.points - a.points || a.transfers - b.transfers);
+  if (!candidates.length) return { best: null, candidates, bestShortfall, clubBlocked, sameClubHeld };
+
+  const best = candidates[0];
+  const sameAsDirect = !!(d && d.available && squadKey(best.squad) === squadKey(d.alt.squad));
+  const recKey = new Set(rec.squad);
+  const bestKey = new Set(best.squad);
+  const onlyInBest = best.squad.filter(id => !recKey.has(id));
+  const onlyInRec = rec.squad.filter(id => !bestKey.has(id));
+  const applesToApples = best.transfers === rec.transfers
+    && best.hitPoints === rec.hitPoints
+    && onlyInBest.length === 1 && onlyInRec.length === 1;
+  const decomposition = d && d.available && !sameAsDirect
+    ? { swap: d.alt.points - rec.points, otherMoves: best.points - d.alt.points }
+    : null;
+  return {
+    best,
+    candidates,
+    sameAsDirect,
+    applesToApples,
+    onlyInBest,
+    onlyInRec,
+    decomposition,
+    delta: { points: best.points - rec.points, gwPoints: best.gwPoints - rec.gwPoints, objective: best.objective - rec.objective },
+  };
+}
+
+function overallReasons(ctx, rec, o) {
+  const out = [];
+  const best = o.best;
+  if (o.sameAsDirect) {
+    out.push({
+      code: 'overall_same',
+      text: `The best plan containing ${ctx.name} is the direct swap above, so the whole difference is that one swap.`,
+      value: null,
+      unit: 'text',
+    });
+  } else if (o.decomposition) {
+    const r1 = v => Math.round(v * 10) / 10;
+    const swap = r1(o.decomposition.swap);
+    const other = r1(o.delta.points) - swap;
+    out.push(reason(
+      'overall_decomposition',
+      `The best plan containing ${ctx.name} is a different route (${movesText(ctx, best)}). Of its ${fmt(o.delta.points, 'signed')} xP against the recommendation, ${fmt(swap, 'signed')} is the player swap and {v} comes from its other moves.`,
+      other,
+      'signed',
+    ));
+  } else {
+    out.push({
+      code: 'overall_route',
+      text: `There is no like-for-like swap, so the comparison is between whole routes: ${movesText(ctx, best)} against ${movesText(ctx, rec)}.`,
+      value: null,
+      unit: 'text',
+    });
+  }
+  if (best.hitPoints > 0) {
+    out.push(reason('hit', 'That route costs a {v}-point hit, because it uses more transfers than you have free.', best.hitPoints, 'count'));
+  }
+  // The planner ranks on more than points: a free transfer carried into next
+  // week has a value under the risk setting. When that, and not points, is
+  // what separates the two, say so, so the answer can never contradict the plan.
+  const pointsAhead = o.delta.points > COUNTERFACTUAL_PARAMS.tieTolerance;
+  const objectiveBehind = o.delta.objective < -COUNTERFACTUAL_PARAMS.tieTolerance;
+  if (pointsAhead && objectiveBehind) {
+    out.push(reason(
+      'roll_value',
+      `It projects more points, but it leaves you ${best.freeTransfersNextGw} free ${best.freeTransfersNextGw === 1 ? 'transfer' : 'transfers'} next week against ${rec.freeTransfersNextGw}, and the planner values the difference at {v} points, which is why it is not the recommendation.`,
+      (rec.objective - rec.points) - (best.objective - best.points),
+    ));
+  }
+  return out;
+}
+
+/* --------------------------------------------------- the in-season answer */
+
+function transferAnswer(ctx) {
+  const unavailable = unavailableBlocker(ctx);
+  if (unavailable) return impossible(ctx, [unavailable], { mode: 'transfer' });
+
+  const rec = scenarioOf(ctx, {
+    transfersOut: (ctx.plan.transfersOut || []).slice(),
+    transfersIn: (ctx.plan.transfersIn || []).slice(),
+  });
+  // The recommended column is RE-SCORED, not read from storage, so both columns
+  // come from one scorer. If that ever disagrees with the plan the page shows,
+  // the plan is not the one this answer is about, and saying so beats quietly
+  // comparing against a different number.
+  const baselineDrift = rec.scored ? rec.points - ctx.plan.xPointsHorizon : null;
+
+  const d = rec.scored ? directComparison(ctx, rec) : null;
+  const o = rec.scored ? overallComparison(ctx, rec, d) : { best: null };
+
+  if (!o.best) {
+    const blockers = d && d.blockers.length ? d.blockers.slice() : [];
+    if (o.clubBlocked || (o.sameClubHeld && o.sameClubHeld.length >= ctx.rules.clubLimit)) {
+      blockers.push(reason(
+        'club_limit',
+        `You already hold {v} players from ${clubOf(ctx.gameState, ctx.playerId)}, which is the limit, and no legal move inside ${COUNTERFACTUAL_PARAMS.maxRouteTransfers} transfers frees a place.`,
+        o.sameClubHeld.length,
+        'count',
+      ));
+    }
+    if (Number.isFinite(o.bestShortfall)) {
       blockers.push(reason(
         'budget',
         `Buying ${ctx.name} needs another {v}, even after selling the two players who raise the most.`,
-        bestShortfall,
+        o.bestShortfall,
         'tenths',
       ));
     }
@@ -1084,105 +1681,195 @@ function routeAnswer(ctx) {
     return impossible(ctx, blockers, { mode: 'transfer' });
   }
 
-  const baselineTraj = scoreSquad(ctx, ctx.plan.squad);
-  const baselineTotal = ctx.plan.xPointsHorizon;
+  const best = o.best;
+  // The verdict follows the planner's own rule, so "he would improve the
+  // recommendation" is only ever said when the planner would agree: on its
+  // objective, and, for a route taking more hits than the plan, only past the
+  // risk profile's margin a hit must clear (planner.js, `hitMarginPoints`).
+  const margin = best.hits > rec.hits ? planCfg(ctx).hitMarginPoints : 0;
+  const shortOfHitBar = margin > 0 && o.delta.objective > COUNTERFACTUAL_PARAMS.tieTolerance
+    && o.delta.objective < margin;
+  const verdict = shortOfHitBar ? 'worse' : verdictOf(o.delta.objective - margin);
+  const headline = shortOfHitBar
+    ? `${ctx.name}'s best route projects slightly more, but not by enough to justify its hit.`
+    : verdict === 'better'
+      ? `${ctx.name} would improve the recommendation.`
+      : verdict === 'level'
+        ? `${ctx.name} is level with the recommendation.`
+        : d && d.available && d.kind === 'replace'
+          ? `${d.players.comparator.name} is the better buy than ${ctx.name} for ${d.players.out.name}'s place.`
+          : `${ctx.name} is a valid option, but the recommended plan projects higher.`;
 
-  const scored = routes.map(route => {
-    const traj = scoreSquad(ctx, route.squad);
-    const hit = hitPointsFor(ctx, route.transfers);
-    return { ...route, traj, hit, total: traj.total - hit };
-  });
-  scored.sort((a, b) => b.total - a.total || a.transfers - b.transfers);
+  const recSummary = routeSummary(ctx, rec);
+  const bestSummary = routeSummary(ctx, best);
 
-  const best = scored[0];
-  // The route's OWN moves, not the difference between two end squads. See
-  // compareSquads.
-  const routePairs = best.out.map((outId, i) => ({
-    position: ctx.gameState.players.get(outId).position,
-    out: outId,
-    in: best.in[i],
-  }));
-  // The one-move version of this route: sell only the player he replaces. It is
-  // scored even when the money does not reach, because that is the case the
-  // knock-on exists to explain.
-  const heldIds = (ctx.squadState.picks || []).map(p => p.playerId);
-  const directSquad = heldIds.filter(id => id !== best.out[0]).concat(ctx.playerId);
-  const comparison = compareSquads(ctx, {
-    baselineTotal,
-    baselineTraj,
-    altSquad: best.squad,
-    altTotal: best.total,
-    altTraj: best.traj,
-    pairs: routePairs,
-    hitPoints: best.hit,
-    directSquad,
-    directHitPoints: hitPointsFor(ctx, 1),
-    directOverBudget: Math.max(0, ctx.target.nowCost - (heldState(ctx).bank + (heldState(ctx).selling.get(best.out[0]) || 0))),
-  });
-
-  const rows = totalsRows(ctx, {
-    baselineTotal,
-    altTotal: best.total,
-    baselineLabel: 'Best current plan',
-    altLabelPrefix: 'Best plan containing',
-  });
-  rows.push(row(
-    'route',
-    'Best route',
-    `${best.transfers} ${best.transfers === 1 ? 'transfer' : 'transfers'}, ${listAnd(routePairs.map(p => pairText(ctx, p)))}`,
-    best.transfers,
-    'count',
-  ));
-  const recommended = (ctx.plan.transfersOut || []).map((outId, i) => ({
-    position: ctx.gameState.players.get(outId).position,
-    out: outId,
-    in: (ctx.plan.transfersIn || [])[i],
-  }));
-  if (recommended.length) {
-    rows.push(row(
-      'instead_of',
-      'Instead of the recommended move',
-      listAnd(recommended.map(p => pairText(ctx, p))),
-      null,
-      'text',
-    ));
+  const rows = [
+    row('baseline_total', 'Recommended plan', `${recSummary.text}: ${fmt(rec.points)} xP over ${ctx.horizon} ${ctx.horizon === 1 ? 'gameweek' : 'gameweeks'}, ${recSummary.costText}`, rec.points),
+    row('alternative_total', `Best plan containing ${ctx.name}`, `${bestSummary.text}: ${fmt(best.points)} xP, ${bestSummary.costText}`, best.points),
+    row('route', 'Its route', `${best.transfers} ${best.transfers === 1 ? 'transfer' : 'transfers'}, ${bestSummary.text}`, best.transfers, 'count'),
+  ];
+  if ((ctx.plan.transfersOut || []).length) {
+    rows.push(row('instead_of', 'Instead of the recommended move', recSummary.text, null, 'text'));
   }
-  rows.push(budgetRow(ctx, comparison.altCost, costOf(ctx, ctx.plan.squad)));
   rows.push(row(
     'bank_after',
     'Bank after',
-    `${fmt(best.bank, 'tenths')} left, against ${fmt(ctx.plan.bankAfterTenths, 'tenths')} in the recommended plan`,
-    best.bank,
+    `${fmt(best.bankAfter, 'tenths')} left, against ${fmt(rec.bankAfter, 'tenths')} in the recommended plan`,
+    best.bankAfter,
     'tenths',
   ));
-  if (comparison.preference) rows.push(comparison.preference);
+  rows.push(row(
+    'like_for_like',
+    'Like for like?',
+    o.applesToApples
+      ? 'Yes: same number of transfers, same hit, one player different.'
+      : `No: ${best.transfers} ${best.transfers === 1 ? 'transfer' : 'transfers'} against ${rec.transfers}, ${o.onlyInBest.length} ${o.onlyInBest.length === 1 ? 'player' : 'players'} different${best.hitPoints !== rec.hitPoints ? `, hits ${best.hitPoints} against ${rec.hitPoints}` : ''}.`,
+    o.applesToApples ? 1 : 0,
+    'count',
+  ));
 
-  const reasons = comparison.reasons.slice();
-  const later = laterGameweekReason(ctx, baselineTraj, best.traj);
+  const preference = preferenceFor(ctx, d, o, rec);
+  const reasons = [];
+  if (shortOfHitBar) {
+    reasons.push(reason(
+      'hit_margin',
+      `It projects ${fmt(o.delta.points)} xP more after its ${best.hitPoints}-point hit, but under the ${planCfg(ctx).risk} risk setting a plan that takes a hit must beat the best plan without one by {v} points before the planner takes it.`,
+      margin,
+    ));
+  }
+  if (d) reasons.push(...(d.available ? [] : d.blockers), ...directReasons(ctx, d));
+  reasons.push(...overallReasons(ctx, rec, o));
+  const later = laterGameweekReason(ctx, rec.traj, best.traj);
   if (later) reasons.push(later);
+  if (baselineDrift !== null && Math.abs(baselineDrift) > 1e-6) {
+    reasons.push(reason(
+      'baseline_drift',
+      'Re-scored now, the recommended plan comes to a different total than the one stored with it, by {v} xP; the comparison uses the re-scored figure for both columns.',
+      Math.abs(baselineDrift),
+    ));
+  }
 
-  const verdict = verdictOf(comparison.delta);
-  const alternatives = alternativeRoutes(ctx, scored, best, baselineTotal);
-
+  const result = transferResult(ctx, { verdict, shortOfHitBar, delta: o.delta });
   return {
     playerId: ctx.playerId,
     name: ctx.name,
     mode: 'transfer',
     verdict,
-    headline: headlineFor(ctx, verdict),
+    headline,
+    preference,
+    direct: d ? {
+      kind: d.kind,
+      available: d.available,
+      outId: d.outId,
+      comparatorId: d.comparatorId,
+      targetId: d.targetId,
+      table: directTable(ctx, d),
+      blockers: d.blockers,
+      delta: d.delta,
+      playerDelta: d.playerDelta,
+      lineupEffect: d.lineupEffect,
+      recommended: routeSummary(ctx, d.rec),
+      alternative: d.available ? routeSummary(ctx, d.alt) : null,
+    } : null,
+    overall: {
+      recommended: recSummary,
+      best: bestSummary,
+      sameAsDirect: o.sameAsDirect,
+      applesToApples: o.applesToApples,
+      decomposition: o.decomposition,
+      delta: o.delta,
+    },
     rows,
     reasons,
-    result: resultLine(ctx, verdict, comparison.delta),
+    result,
     blockers: [],
-    alternatives,
-    deltaHorizon: comparison.delta,
+    alternatives: alternativeRoutes(ctx, o.candidates, best, rec),
+    deltaHorizon: o.delta.points,
     transfers: best.transfers,
-    hitPoints: best.hit,
+    hitPoints: best.hitPoints,
     squad: best.squad,
-    bankTenths: best.bank,
-    text: `${headlineFor(ctx, verdict)} ${resultLine(ctx, verdict, comparison.delta).text}`,
+    bankTenths: best.bankAfter,
+    // What this answer was computed against, so the page can refuse to show it
+    // under a plan it does not describe.
+    text: `${headline} ${result.text}`,
   };
 }
+
+// The closing line, which must agree in DIRECTION with the numbers above it.
+// The verdict follows the planner's objective, which can disagree with points
+// alone when a free transfer is rolled or a hit falls short of its bar; each of
+// those cases gets its own sentence rather than a generic one that would state
+// the points gap backwards.
+function transferResult(ctx, { verdict, shortOfHitBar, delta }) {
+  const pts = delta.points;
+  if (shortOfHitBar) {
+    return reason('result', `Result: the plan containing ${ctx.name} projects {v} points higher only by taking a hit, short of the bar a hit must clear, so the recommendation stands.`, Math.abs(pts));
+  }
+  if (verdict === 'worse' && pts > 0.05) {
+    return reason('result', `Result: the plan containing ${ctx.name} projects {v} points higher but spends a free transfer the planner values more, so the recommendation stands.`, Math.abs(pts));
+  }
+  if (verdict === 'better' && pts < -0.05) {
+    return reason('result', `Result: the plan containing ${ctx.name} projects {v} points fewer but keeps a free transfer the planner values more, so it would be the better plan.`, Math.abs(pts));
+  }
+  return resultLine(ctx, verdict, pts);
+}
+
+// The one-line summary. The winner is always one of the two players who trade
+// places in the direct comparison, never the player both columns sell.
+function preferenceFor(ctx, d, o, rec) {
+  if (d && d.available) {
+    // Same rule as the verdict: an extra hit has to clear the margin.
+    const margin = d.alt.hits > d.rec.hits ? planCfg(ctx).hitMarginPoints : 0;
+    const shortOfBar = margin > 0 && d.delta.objective > COUNTERFACTUAL_PARAMS.tieTolerance && d.delta.objective < margin;
+    if (shortOfBar) {
+      return {
+        code: 'preference',
+        label: `Keeping ${d.players.comparator.name} is preferred because`,
+        text: `bringing in ${d.players.target.name} nets only ${fmt(d.delta.points, 'signed')} squad xP after its ${d.alt.hitPoints - d.rec.hitPoints}-point hit, short of the ${fmt(margin)}-point bar a hit must clear`,
+        value: d.delta.points,
+        unit: 'points',
+        winnerId: d.players.comparator.id,
+      };
+    }
+    const recWins = d.delta.objective - margin < 0;
+    const level = Math.abs(d.delta.objective - margin) <= COUNTERFACTUAL_PARAMS.tieTolerance;
+    const winner = recWins ? d.players.comparator : d.players.target;
+    const loser = recWins ? d.players.target : d.players.comparator;
+    const sign = recWins ? -1 : 1;
+    // Only grounds that favour the winner are listed as reasons; a gameweek
+    // the loser wins is stated as exactly that, never as a negative "reason".
+    const parts = [];
+    const gwFor = sign * d.delta.gwPoints;
+    if (gwFor >= 0.05) parts.push(`${fmt(gwFor, 'signed')} squad xP in Gameweek ${ctx.gw}`);
+    parts.push(`${fmt(sign * d.delta.points, 'signed')} squad xP over ${ctx.horizon} gameweeks${d.alt.hitPoints !== d.rec.hitPoints ? ' after hits' : ''}`);
+    if (winner.minutes - loser.minutes >= COUNTERFACTUAL_PARAMS.minutesTolerance) parts.push('more secure expected minutes');
+    if (loser.meanFdr - winner.meanFdr >= 0.25) parts.push('kinder fixtures');
+    if (winner.priceTenths < loser.priceTenths) parts.push(`${fmt(loser.priceTenths - winner.priceTenths, 'tenths')} cheaper`);
+    const despite = gwFor <= -0.05 ? `, although ${loser.name} is ${fmt(-gwFor)} xP ahead in Gameweek ${ctx.gw}` : '';
+    const winnerLabel = d.kind === 'add' && recWins ? `Keeping ${winner.name}` : winner.name;
+    return {
+      code: 'preference',
+      label: level
+        ? `${d.players.comparator.name} and ${d.players.target.name} are level`
+        : `${winnerLabel} is preferred because`,
+      text: level ? `within ${fmt(Math.abs(d.delta.points))} squad xP over ${ctx.horizon} gameweeks` : `${listAnd(parts)}${despite}`,
+      value: d.delta.points,
+      unit: 'points',
+      winnerId: level ? null : winner.id,
+    };
+  }
+  const recWins = o.delta.points < 0;
+  return {
+    code: 'preference',
+    label: recWins ? 'The recommended plan is preferred because' : `The plan containing ${ctx.name} is preferred because`,
+    text: `${fmt(Math.abs(o.delta.points), 'signed').replace('-', '+')} xP over ${ctx.horizon} gameweeks after hits`,
+    value: o.delta.points,
+    unit: 'points',
+    winnerId: null,
+  };
+}
+
+
 
 // One line about where in the horizon the difference actually sits, because a
 // route that loses this week and wins the next two is a different decision from
@@ -1205,8 +1892,9 @@ function laterGameweekReason(ctx, baselineTraj, altTraj) {
 }
 
 // One primary answer, a short list behind a disclosure. The best route at each
-// transfer count, never every route the search touched.
-function alternativeRoutes(ctx, scored, best, baselineTotal) {
+// transfer count, never every route the search touched. Scenarios come from
+// `scenarioOf`, so each delta is net of its own hit on the plan's own scorer.
+function alternativeRoutes(ctx, scored, best, rec) {
   const out = [];
   const seenCounts = new Set([best.transfers]);
   for (const route of scored) {
@@ -1222,15 +1910,15 @@ function alternativeRoutes(ctx, scored, best, baselineTotal) {
   }
   return out.slice(0, COUNTERFACTUAL_PARAMS.maxAlternatives).map(route => ({
     transfers: route.transfers,
-    hitPoints: route.hit,
-    deltaHorizon: route.total - baselineTotal,
-    label: `${route.transfers} ${route.transfers === 1 ? 'transfer' : 'transfers'}: ${route.out.map((id, i) => `${nameOf(ctx.gameState, id)} to ${nameOf(ctx.gameState, route.in[i])}`).join(', ')}`,
+    hitPoints: route.hitPoints,
+    deltaHorizon: route.points - rec.points,
+    label: `${route.transfers} ${route.transfers === 1 ? 'transfer' : 'transfers'}: ${movesText(ctx, route)}`,
     text: reason(
       'alternative',
-      route.total - baselineTotal >= 0
+      route.points - rec.points >= 0
         ? 'Projects {v} points above the recommended plan.'
         : 'Projects {v} points below the recommended plan.',
-      Math.abs(route.total - baselineTotal),
+      Math.abs(route.points - rec.points),
     ).text,
   }));
 }
@@ -1241,36 +1929,39 @@ function alternativeRoutes(ctx, scored, best, baselineTotal) {
 // keeping him, which is a real question with a real answer, and it is not the
 // same question as buying him.
 function keepAnswer(ctx) {
-  const held = (ctx.squadState.picks || []).map(p => p.playerId);
-  const incoming = (ctx.plan.transfersIn || []).filter(id => {
-    const p = ctx.gameState.players.get(id);
-    return p && p.position === ctx.target.position;
+  const rec = scenarioOf(ctx, {
+    transfersOut: (ctx.plan.transfersOut || []).slice(),
+    transfersIn: (ctx.plan.transfersIn || []).slice(),
   });
+  if (!rec.scored) return null;
 
-  const candidates = [{ squad: held.slice(), transfers: 0, replaced: null }];
-  for (const inId of incoming) {
+  // Keeping him means the recommended plan WITHOUT the move that sells him (so
+  // the player bought for his place never arrives), or keeping the squad as it
+  // is. Both are scored by the plan's own scorer, so transfers, hits and the
+  // value of a rolled transfer are counted exactly as the plan counts them.
+  const outs = ctx.plan.transfersOut || [];
+  const ins = ctx.plan.transfersIn || [];
+  const candidates = [{ scen: scenarioOf(ctx, { transfersOut: [], transfersIn: [] }), replaced: null }];
+  const i = outs.indexOf(ctx.playerId);
+  if (i >= 0) {
     candidates.push({
-      squad: ctx.plan.squad.filter(id => id !== inId).concat(ctx.playerId),
-      transfers: Math.max(0, ctx.plan.transferCount - 1),
-      replaced: inId,
+      scen: scenarioOf(ctx, {
+        transfersOut: outs.filter((_, k) => k !== i),
+        transfersIn: ins.filter((_, k) => k !== i),
+      }),
+      replaced: ins[i],
     });
   }
-
-  const baselineTraj = scoreSquad(ctx, ctx.plan.squad);
-  const scored = candidates
-    .filter(c => legalSquad(ctx, c.squad))
-    .map(c => {
-      const traj = scoreSquad(ctx, c.squad);
-      const hit = hitPointsFor(ctx, c.transfers);
-      return { ...c, traj, hit, total: traj.total - hit };
-    });
+  const scored = candidates.filter(c => c.scen.scored)
+    .map(c => ({ ...c, squad: c.scen.squad, traj: c.scen.traj, hit: c.scen.hitPoints, total: c.scen.points }));
   if (!scored.length) return null;
   scored.sort((a, b) => b.total - a.total);
   const best = scored[0];
+  const baselineTraj = rec.traj;
 
   const { pairs } = diffPairs(ctx, ctx.plan.squad, best.squad);
   const comparison = compareSquads(ctx, {
-    baselineTotal: ctx.plan.xPointsHorizon,
+    baselineTotal: rec.points,
     baselineTraj,
     altSquad: best.squad,
     altTotal: best.total,
@@ -1280,7 +1971,7 @@ function keepAnswer(ctx) {
   });
 
   const rows = totalsRows(ctx, {
-    baselineTotal: ctx.plan.xPointsHorizon,
+    baselineTotal: rec.points,
     altTotal: best.total,
     baselineLabel: 'Best current plan',
     altLabelPrefix: 'Best plan keeping',
@@ -1297,6 +1988,7 @@ function keepAnswer(ctx) {
     name: ctx.name,
     mode: 'keep',
     verdict,
+    preference: comparison.preference,
     headline: `${ctx.name} is in your squad today and the recommendation sells him.`,
     rows,
     reasons: comparison.reasons,
@@ -1312,6 +2004,11 @@ function keepAnswer(ctx) {
 /* -------------------------------------------------------------- entry point */
 
 export function counterfactual(playerId, { planBundle, gameState, rules, opts = {} }) {
+  const answer = answerFor(playerId, { planBundle, gameState, rules, opts });
+  return { ...answer, basis: planBasis(planBundle) };
+}
+
+function answerFor(playerId, { planBundle, gameState, rules, opts = {} }) {
   const R = rules || gameState.rules;
 
   // A counterfactual is a transfer recommendation wearing a question mark:
@@ -1397,5 +2094,5 @@ export function counterfactual(playerId, { planBundle, gameState, rules, opts = 
     if (kept) return kept;
   }
 
-  return routeAnswer(ctx);
+  return transferAnswer(ctx);
 }

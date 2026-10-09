@@ -20,6 +20,7 @@ import { buildRules } from '../js/engine/rules.js';
 import { buildPlan } from '../js/engine/planner.js';
 import { squadTrajectory } from '../js/engine/chips.js';
 import { counterfactual, COUNTERFACTUAL_PARAMS } from '../js/engine/counterfactual.js';
+import { planBasis, sameBasis } from '../js/engine/plan-basis.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const read = (...p) => JSON.parse(readFileSync(join(here, ...p), 'utf8'));
@@ -590,4 +591,321 @@ test('the answer is deterministic: the same question twice gives the same number
   assert.equal(first.deltaHorizon, second.deltaHorizon);
   assert.deepEqual(first.squad, second.squad);
   assert.equal(allText(first), allText(second));
+});
+
+/* ---------------------------------- in season: "why not him INSTEAD of X?" */
+
+// The 2026-10-09 report, rebuilt deterministically. Entry 3855835 heading into
+// GW6 held an injured forward (Isak, 0 xP) with £0.1m in the bank and one free
+// transfer. The plan sold him for a cheap forward (Gonzalo); asking "why not
+// João Pedro?" printed "Isak is preferred because +0.9 xP ..." - naming the
+// player BOTH plans sell - and "João Pedro projects 14.2 more than Isak", a
+// comparison with the wrong man. Here: OUT is the injured forward, G the
+// recommended buy (6.0 xP, cheaper), J the one asked about (5.0 xP, dearer).
+//
+// Every other player outside the squad is priced out of reach, and a held
+// midfielder carries the armband at 9.0 xP in every column, so the only thing
+// that differs between the two squads is G against J. That makes the squad gap
+// computable by hand: (6 - 5) xP a gameweek, weighted 1, 0.85, 0.85^2.
+
+const WEIGHTS = [1, 0.85, 0.85 * 0.85];
+const WEIGHT_SUM = WEIGHTS.reduce((a, b) => a + b, 0);
+
+function inSeasonWorld({ xp = {}, cost = {}, team = {}, status = {}, bank = 1, ft = 1, priceOut = true } = {}) {
+  const base = roster();
+  const held = legalFifteen(makeGameState(base, GW));
+  const fwds = held.filter(id => base.find(p => p.id === id).position === 4);
+  const OUT = fwds[fwds.length - 1];
+  const free = base.filter(p => p.position === 4 && !held.includes(p.id)).map(p => p.id);
+  const [G, J] = free;
+  const captain = held.find(id => base.find(p => p.id === id).position === 3);
+  const sellOut = base.find(p => p.id === OUT).nowCost;
+  const c = { [G]: sellOut + bank - 2, [J]: sellOut + bank, ...cost };
+  const over = new Map();
+  for (const p of base) {
+    if (held.includes(p.id)) continue;
+    // Out of reach unless the scenario prices him.
+    const o = {};
+    if (priceOut) o.nowCost = 150;
+    if (c[p.id] !== undefined) o.nowCost = c[p.id];
+    over.set(p.id, o);
+  }
+  over.set(OUT, { ...(over.get(OUT) || {}), status: 'i' });
+  over.set(G, { ...(over.get(G) || {}), teamId: team[G] ?? 11 });
+  over.set(J, { ...(over.get(J) || {}), teamId: team[J] ?? 12 });
+  for (const [id, t] of Object.entries(team)) over.set(Number(id), { ...(over.get(Number(id)) || {}), teamId: t });
+  for (const [id, st] of Object.entries(status)) over.set(Number(id), { ...(over.get(Number(id)) || {}), status: st });
+  const players = roster(over);
+  const gameState = makeGameState(players, GW);
+  const xpOf = { [G]: 6, [J]: 5, [captain]: 9, ...xp };
+  const projections = makeProjections(gameState, GW, GW + HORIZON + 3, id => (xpOf[id] !== undefined ? xpOf[id] : baseXp(id)), null);
+  const squadState = heldStateFrom(held, gameState, { bankTenths: bank, freeTransfers: ft });
+  return { players, gameState, projections, squadState, held, OUT, G, J, captain };
+}
+
+async function planned(w, options = {}) {
+  const bundle = await buildPlan({
+    gameState: w.gameState,
+    squadState: w.squadState,
+    options: { horizon: HORIZON, seed: 5, projections: w.projections, strength: {}, ...options },
+  });
+  return { ...w, bundle };
+}
+
+const tableValues = (answer, code) => answer.direct.table.rows.find(r => r.code === code).values;
+
+test('regression 2026-10-09: the recommended buy is the comparator, never the player both plans sell', async () => {
+  const w = await planned(inSeasonWorld());
+  const plan = w.bundle.current;
+  assert.deepEqual(plan.transfersOut, [w.OUT], 'the fixture sells the injured forward');
+  assert.deepEqual(plan.transfersIn, [w.G], 'and buys the cheaper, better-projected forward');
+
+  const answer = ask(w.J, w);
+  assert.equal(answer.mode, 'transfer');
+  assert.equal(answer.direct.kind, 'replace');
+  assert.equal(answer.direct.outId, w.OUT, 'the player sold is identified as sold');
+  assert.equal(answer.direct.comparatorId, w.G, 'the recommended incoming player is the comparator');
+  assert.equal(answer.direct.targetId, w.J);
+
+  // The bug: the one-line summary named the outgoing player as preferred.
+  const outName = w.gameState.players.get(w.OUT).webName;
+  const gName = w.gameState.players.get(w.G).webName;
+  assert.equal(answer.preference.winnerId, w.G);
+  assert.match(answer.preference.label, new RegExp(`^${gName} is preferred because`));
+  assert.doesNotMatch(answer.preference.label, new RegExp(outName), 'the player both plans sell is never "preferred"');
+  assert.match(answer.headline, new RegExp(`${gName} is the better buy`));
+  // And the player-versus-player line is about the two buys, not about OUT.
+  const gap = answer.reasons.find(r => r.code === 'individual_gap');
+  assert.match(gap.text, new RegExp(`fewer than ${gName}`));
+  assert.doesNotMatch(gap.text, new RegExp(outName));
+});
+
+test('regression 2026-10-09: every squad figure is the gap between the two named scenarios, checked by hand', async () => {
+  const w = await planned(inSeasonWorld());
+  const answer = ask(w.J, w);
+  const d = answer.direct;
+
+  // Independent arithmetic: one player differs, both start every week, the
+  // armband does not move. So the squad gap is the player gap, weighted.
+  const expected = -(6 - 5) * WEIGHT_SUM;
+  assert.ok(Math.abs(d.delta.points - expected) < 1e-9, `squad gap ${d.delta.points} should be ${expected}`);
+  assert.ok(Math.abs(d.playerDelta.horizon - expected) < 1e-9, 'the player gap, in the same weighted unit');
+  assert.ok(Math.abs(d.lineupEffect) < 1e-9, 'nothing but the swap separates them');
+  assert.ok(Math.abs(d.delta.gwPoints - -1) < 1e-9, 'one point in the first gameweek');
+
+  // What is displayed is what was compared.
+  const [recH, altH] = tableValues(answer, 'squad_horizon');
+  assert.equal(recH, w.bundle.current.xPointsHorizon, 'the recommended column is the plan the hero shows');
+  assert.ok(Math.abs((altH - recH) - d.delta.points) < 1e-12);
+  const [recGw, altGw] = tableValues(answer, 'squad_gw');
+  assert.equal(recGw, w.bundle.current.xPointsGw, 'and its gameweek figure is the hero\'s too');
+  assert.ok(Math.abs((altGw - recGw) - d.delta.gwPoints) < 1e-12);
+  const horizonReason = answer.reasons.find(r => r.code === 'direct_horizon');
+  assert.ok(Math.abs(horizonReason.value - Math.abs(d.delta.points)) < 1e-12);
+  assert.equal(answer.preference.value, d.delta.points);
+  const base = answer.rows.find(r => r.code === 'baseline_total').value;
+  const alt = answer.rows.find(r => r.code === 'alternative_total').value;
+  assert.ok(Math.abs((alt - base) - answer.deltaHorizon) < 1e-12);
+
+  // Money, from selling prices: bank + OUT's sale - each purchase.
+  const sell = w.squadState.picks.find(p => p.playerId === w.OUT).sellingTenths;
+  const price = id => w.gameState.players.get(id).nowCost;
+  assert.deepEqual(tableValues(answer, 'bank_after'), [1 + sell - price(w.G), 1 + sell - price(w.J)]);
+  assert.equal(w.bundle.current.bankAfterTenths, 1 + sell - price(w.G), 'and the plan agrees on its own money');
+});
+
+test('regression 2026-10-09: the direct comparison changes exactly one player and nothing about the transfers', async () => {
+  const w = await planned(inSeasonWorld());
+  const answer = ask(w.J, w);
+  const rec = answer.direct.recommended;
+  const alt = answer.direct.alternative;
+  const onlyRec = rec.squad.filter(id => !alt.squad.includes(id));
+  const onlyAlt = alt.squad.filter(id => !rec.squad.includes(id));
+  assert.deepEqual(onlyRec, [w.G]);
+  assert.deepEqual(onlyAlt, [w.J]);
+  assert.equal(rec.transfers, alt.transfers);
+  assert.equal(rec.hitPoints, alt.hitPoints);
+  assert.equal(rec.freeTransfers, 1, 'one free transfer, as the official site says');
+  assert.equal(answer.overall.sameAsDirect, true, 'here the best plan containing him IS the direct swap');
+  assert.equal(answer.overall.applesToApples, true);
+  assert.ok(answer.reasons.some(r => r.code === 'overall_same'));
+});
+
+test('a better individual projection can still lose at squad level, and the answer says why', async () => {
+  // Two free transfers. The plan sells OUT for G AND upgrades a defender, which
+  // only G's lower price pays for. J projects MORE than G on his own, but J and
+  // the defender together are over budget, so the like-for-like swap is not
+  // available and the best plan containing J has to drop the second move.
+  const probe = inSeasonWorld({ ft: 2 });
+  // Priced off the dearest held defender, so NO defender sale funds J and D
+  // together: the plan's only way to afford D is with G.
+  const heldDefs = probe.held.filter(id => probe.gameState.players.get(id).position === 2);
+  const sellDef = Math.max(...heldDefs.map(id => probe.gameState.players.get(id).nowCost));
+  const D = [...probe.gameState.players.values()].find(p => p.position === 2 && !probe.held.includes(p.id)).id;
+  const sellOut = probe.gameState.players.get(probe.OUT).nowCost;
+  const gCost = sellOut + 1 - 2;
+  const w = await planned(inSeasonWorld({
+    ft: 2,
+    xp: { [probe.J]: 6.5, [D]: 7 },
+    cost: { [D]: 1 + sellOut + sellDef - gCost },
+  }));
+  const plan = w.bundle.current;
+  assert.deepEqual(new Set(plan.transfersIn), new Set([w.G, D]), 'the plan spends both transfers, G and the defender');
+
+  const answer = ask(w.J, w);
+  assert.equal(answer.direct.available, false, 'J for G inside that plan is unaffordable');
+  assert.ok(answer.direct.blockers.some(b => b.code === 'direct_budget' && b.value === 2), 'and the shortfall is named, £0.2m');
+  const gap = answer.reasons.find(r => r.code === 'individual_gap');
+  assert.match(gap.text, /projects [\d.]+ xP more than/, 'J really does project more on his own');
+  assert.ok(Math.abs(gap.value - 0.5 * WEIGHT_SUM) < 1e-9);
+  assert.equal(answer.verdict, 'worse');
+  assert.equal(answer.overall.sameAsDirect, false);
+  assert.equal(answer.overall.applesToApples, false, 'a whole-route comparison is labelled as one');
+  assert.match(answer.rows.find(r => r.code === 'like_for_like').text, /^No:/);
+  assert.ok(answer.reasons.some(r => r.code === 'overall_route'), 'and it compares routes, not two players');
+  assert.match(answer.preference.label, /^The recommended plan is preferred/);
+});
+
+test('a direct swap blocked by the three-per-club limit names the club and the players', async () => {
+  const probe = inSeasonWorld();
+  const counts = new Map();
+  for (const id of probe.held.filter(id => id !== probe.OUT)) {
+    const t = probe.gameState.players.get(id).teamId;
+    counts.set(t, (counts.get(t) || 0) + 1);
+  }
+  const full = [...counts.entries()].find(([, n]) => n === RULES.clubLimit)[0];
+  const w = await planned(inSeasonWorld({ team: { [probe.J]: full } }));
+  const answer = ask(w.J, w);
+  // Everything else is priced out of reach in this world, so no route frees a
+  // place either: the answer is "cannot fit", and the direct swap's reason is
+  // the one it gives.
+  assert.equal(answer.verdict, 'impossible');
+  const block = answer.blockers.find(b => b.code === 'direct_club_limit');
+  assert.ok(block, 'the binding constraint is the club limit');
+  assert.equal(block.value, RULES.clubLimit + 1);
+  assert.match(block.text, new RegExp(`over the limit of ${RULES.clubLimit}`));
+});
+
+test('when the alternative is genuinely better, the answer says so and names him', async () => {
+  // A plan built before J's projection improved: the question is answered on
+  // the projections it is asked with, and an improvement is reported as one.
+  const w = await planned(inSeasonWorld());
+  const boosted = makeProjections(w.gameState, GW, GW + HORIZON + 3,
+    id => ({ [w.G]: 6, [w.J]: 8, [w.captain]: 9 }[id] ?? baseXp(id)), null);
+  const answer = ask(w.J, { ...w, bundle: { ...w.bundle, projections: boosted } });
+  assert.equal(answer.verdict, 'better');
+  assert.match(answer.headline, /would improve the recommendation/);
+  assert.equal(answer.preference.winnerId, w.J);
+  assert.ok(Math.abs(answer.direct.delta.points - 2 * WEIGHT_SUM) < 1e-9);
+  assert.match(answer.result.text, /containing .* projects [\d.]+ points higher/);
+});
+
+test('a tie is reported as a tie, not dressed up as a preference', async () => {
+  const w = await planned(inSeasonWorld({ xp: { 0: 0 } }));
+  const tied = await planned(inSeasonWorld({ xp: { [w.J]: 6 }, cost: { [w.J]: w.gameState.players.get(w.G).nowCost } }));
+  const bought = tied.bundle.current.transfersIn[0];
+  const other = bought === tied.G ? tied.J : tied.G;
+  const answer = ask(other, tied);
+  assert.equal(answer.verdict, 'level');
+  assert.match(answer.preference.label, /are level$/);
+  assert.equal(answer.preference.winnerId, null);
+  assert.ok(Math.abs(answer.direct.delta.points) < 1e-9);
+});
+
+test('a player in another position is compared as one more transfer, with its hit and the hit bar', async () => {
+  // The plan buys a forward. Asking about a midfielder is "the plan as it
+  // stands" against "the plan plus selling a midfielder for him", which is a
+  // second transfer on one free one: a 4-point hit, and under the balanced
+  // profile a hit must clear the best no-hit plan by 2.0 points.
+  const probe = inSeasonWorld();
+  const M = [...probe.gameState.players.values()].find(p => p.position === 3 && !probe.held.includes(p.id)).id;
+  let found = null;
+  for (const v of [5.6, 5.8, 6.0, 6.2, 6.4, 6.6, 6.8, 7.0, 7.2]) {
+    const w = await planned(inSeasonWorld({ xp: { [M]: v }, cost: { [M]: 40 } }));
+    if (w.bundle.current.transfersIn.includes(M)) continue;
+    const answer = ask(M, w);
+    if (answer.direct && answer.direct.available && answer.direct.delta.points > 0.6 && answer.direct.delta.points < 1.9) {
+      found = { w, answer };
+      break;
+    }
+  }
+  assert.ok(found, 'some projection puts the extra move between the tie band and the hit bar');
+  const { w, answer } = found;
+  assert.equal(answer.direct.kind, 'add');
+  assert.equal(answer.direct.alternative.hitPoints - answer.direct.recommended.hitPoints, RULES.hitCost);
+  assert.ok(answer.reasons.some(r => r.code === 'direct_hit' && r.value === RULES.hitCost), 'the hit is a named line');
+  assert.equal(answer.verdict, 'worse', 'the planner would not take it, so the answer does not recommend it');
+  assert.match(answer.headline, /not by enough to justify its hit/);
+  assert.ok(answer.reasons.some(r => r.code === 'hit_margin' && r.value === 2), 'the bar is stated, from the risk profile');
+  assert.match(answer.preference.label, /^Keeping .* is preferred because/);
+  assert.match(answer.result.text, /only by taking a hit/);
+  // The plan's own alternatives card says the same thing about the same kind of route.
+  for (const alt of w.bundle.current.alternatives) {
+    if (alt.hits > 0 && alt.deltaHorizon > 0) assert.equal(alt.belowHitMargin, true);
+  }
+});
+
+test('net points are after hits: a two-transfer route on one free transfer is charged exactly one hit', async () => {
+  const w = await planned(inSeasonWorld());
+  for (const p of w.gameState.players.values()) {
+    if (w.bundle.current.squad.includes(p.id) || w.held.includes(p.id)) continue;
+    const answer = ask(p.id, w);
+    if (answer.mode !== 'transfer' || answer.verdict === 'impossible') continue;
+    const best = answer.overall.best;
+    const traj = squadTrajectory({
+      squadIds: best.squad, projections: w.projections, gameState: w.gameState, rules: RULES,
+      gwFrom: GW, horizon: HORIZON, discount: 0.85, opts: { seed: 5 },
+    });
+    const hit = Math.max(0, best.transfers - 1) * RULES.hitCost;
+    assert.equal(best.hitPoints, hit, `${p.webName}: ${best.transfers} transfers on 1 free`);
+    assert.ok(Math.abs(best.points - (traj.total - hit)) < 1e-9, `${p.webName}: net = trajectory - hit`);
+  }
+});
+
+test('the explanation can never contradict the recommendation it explains', async () => {
+  const w = await planned(inSeasonWorld({ priceOut: false, bank: 30 }));
+  const plan = w.bundle.current;
+  let checked = 0;
+  for (const p of w.gameState.players.values()) {
+    if (plan.squad.includes(p.id) || w.held.includes(p.id)) continue;
+    const answer = ask(p.id, w);
+    if (answer.mode !== 'transfer' || !answer.preference) continue;
+    checked++;
+    if (answer.preference.winnerId !== null) {
+      assert.ok(!plan.transfersOut.includes(answer.preference.winnerId),
+        `${p.webName}: a player the plan sells is never the preferred one`);
+    }
+    if (answer.direct && answer.direct.available && answer.preference.winnerId !== null) {
+      assert.ok([answer.direct.comparatorId, answer.direct.targetId].includes(answer.preference.winnerId),
+        `${p.webName}: the preference is between the two players who trade places`);
+    }
+    if (answer.verdict !== 'better') {
+      assert.doesNotMatch(answer.headline, /would improve/, `${p.webName}: no improvement claimed against the plan`);
+      assert.ok(answer.overall.delta.objective <= COUNTERFACTUAL_PARAMS.tieTolerance + 2,
+        'and nothing beats it on the planner\'s own measure by more than the hit bar');
+    }
+    // The closing line agrees in direction with the number it states.
+    if (answer.overall.delta.points < -0.05 && answer.verdict === 'worse') {
+      assert.match(answer.result.text, /recommended squad projects/);
+    }
+  }
+  assert.ok(checked > 10, 'the fixture asked about a real spread of players');
+});
+
+test('the same in-season question twice gives byte-identical answers', async () => {
+  const w = await planned(inSeasonWorld());
+  const a = ask(w.J, w);
+  const b = ask(w.J, w);
+  assert.equal(JSON.stringify(a), JSON.stringify(b));
+});
+
+test('an answer carries the identity of its plan, and a changed free-transfer count is a different plan', async () => {
+  const one = await planned(inSeasonWorld({ ft: 1 }));
+  const two = await planned(inSeasonWorld({ ft: 2 }));
+  const answer = ask(one.J, one);
+  assert.ok(sameBasis(answer.basis, planBasis(one.bundle)), 'it matches the plan it was asked about');
+  assert.equal(answer.basis.freeTransfers, 1);
+  assert.equal(sameBasis(answer.basis, planBasis(two.bundle)), false, 'and not one built on 2 free transfers');
+  assert.equal(sameBasis(answer.basis, { ...planBasis(one.bundle), xPointsHorizon: one.bundle.current.xPointsHorizon + 0.1 }), false,
+    'nor a recalculation that moved the total');
 });
