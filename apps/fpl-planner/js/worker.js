@@ -26,8 +26,14 @@
 import { buildPlan } from './engine/planner.js';
 import { counterfactual } from './engine/counterfactual.js';
 import { toWireBundle } from './ui/plan-model.js';
+import { STALE_PLAN } from './engine/plan-basis.js';
 
-let last = null;
+// The plans this worker holds, by role: the recommendation the page shows
+// ('plan') and the team sandbox's hypothetical ('scenario'). One slot used to
+// hold whichever ran last, so asking "why not?" after trying a scenario
+// answered against the SCENARIO's plan under the real one. Each slot keeps the
+// id of the run that filled it, and a question names the run it is about.
+const plans = new Map();
 
 self.addEventListener('message', async (event) => {
   const msg = event.data || {};
@@ -40,7 +46,7 @@ self.addEventListener('message', async (event) => {
         options: msg.options || {},
         onProgress: (stage) => self.postMessage({ type: 'progress', id: msg.id, stage }),
       });
-      last = { gameState: msg.gameState, bundle };
+      plans.set(msg.role || 'plan', { runId: msg.id, gameState: msg.gameState, bundle });
       self.postMessage({ type: 'plan', id: msg.id, bundle: toWireBundle(bundle) });
     } catch (err) {
       self.postMessage({ type: 'error', id: msg.id, message: String((err && err.message) || err) });
@@ -50,11 +56,13 @@ self.addEventListener('message', async (event) => {
 
   if (msg.type === 'why-not') {
     try {
-      if (!last) throw new Error('no plan has been computed yet');
+      const held = plans.get(msg.role || 'plan');
+      if (!held) throw new Error('no plan has been computed yet');
+      if (msg.runId !== undefined && msg.runId !== null && msg.runId !== held.runId) throw new Error(STALE_PLAN);
       const result = counterfactual(msg.playerId, {
-        planBundle: last.bundle,
-        gameState: last.gameState,
-        rules: last.gameState.rules,
+        planBundle: held.bundle,
+        gameState: held.gameState,
+        rules: held.gameState.rules,
       });
       self.postMessage({ type: 'why-not', id: msg.id, result });
     } catch (err) {

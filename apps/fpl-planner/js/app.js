@@ -389,6 +389,7 @@ async function computePlan(squadState, { reason }) {
     squadState,
     options: planOptions(),
     onProgress,
+    role: 'plan',
   });
 
   state.bundle = bundle;
@@ -942,7 +943,9 @@ function planView() {
     gameState: state.gameState,
     open: state.disclosures.whyNot,
     onToggle: (open) => { state.disclosures.whyNot = open; },
-    onAsk: (playerId) => runner.whyNot(playerId),
+    // The question names the run of the plan on screen, so it can never be
+    // answered against a sandbox plan or a plan that has since been replaced.
+    onAsk: (playerId) => runner.whyNot(playerId, { runId: bundle.runId ?? null, role: 'plan' }),
   }));
 
   nodes.push(futureCard({ bundle, gameState: state.gameState, sources: fplApi.getDataStatus().sources }));
@@ -1120,6 +1123,7 @@ async function recommendFromScenario() {
       gameState: state.gameState,
       squadState,
       options: planOptions(),
+      role: 'scenario',
     });
     if (state.scenario === asked) state.scenarioBundle = bundle;
   } catch (err) {

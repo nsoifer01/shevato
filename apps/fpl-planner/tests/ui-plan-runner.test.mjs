@@ -14,6 +14,7 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { createPlanRunner } from '../js/ui/plan-runner.js';
+import { planBasis, sameBasis, STALE_PLAN } from '../js/engine/plan-basis.js';
 import { assembleSampleBundle } from '../js/data/sample.js';
 import { buildGameState } from '../js/engine/normalize.js';
 import { buildSquadState } from '../js/engine/squad.js';
@@ -192,6 +193,81 @@ test('whyNot answers inline, from real optimizer output, after an inline plan', 
     const answer = await runner.whyNot(owned);
     assert.ok(typeof answer.text === 'string' && answer.text.length > 0, 'why-not must return real text');
     assert.ok('deltaHorizon' in answer, 'and a real horizon delta from the optimizer');
+    runner.dispose();
+  } finally {
+    if (had) globalThis.Worker = prev;
+  }
+});
+
+/* ------------------------------------- which plan a "why not" is about */
+
+// 2026-10-09. The worker held ONE plan, whichever ran last, and the team
+// sandbox runs plans through the same worker. Asking "why not him?" after
+// trying a scenario answered against the SCENARIO's plan under the real one.
+// Plans are now held per role and every question names the run it is about.
+
+test('a why-not question names the role and the run of the plan on screen', async () => {
+  const seen = [];
+  const { FakeWorker } = stubWorker((msg, emit) => {
+    seen.push({ type: msg.type, role: msg.role, runId: msg.runId, id: msg.id });
+    if (msg.type === 'plan') emit.message({ id: msg.id, type: 'plan', bundle: { current: {} } });
+    else emit.message({ id: msg.id, type: 'result', result: { text: 'ok' } });
+  });
+  await withWorker(FakeWorker, async () => {
+    const runner = createPlanRunner({ workerUrl: 'about:blank' });
+    const main = await runner.run({ gameState: {}, squadState: {}, options: {} });
+    const scenario = await runner.run({ gameState: {}, squadState: {}, options: {}, role: 'scenario' });
+    assert.notEqual(main.runId, scenario.runId, 'every run has its own id');
+    await runner.whyNot(411, { runId: main.runId, role: 'plan' });
+    assert.deepEqual(seen.map(m => m.role), ['plan', 'scenario', 'plan']);
+    assert.equal(seen[0].id, main.runId, 'the bundle carries the id of the run that built it');
+    assert.equal(seen[2].runId, main.runId, 'and the question quotes it');
+    runner.dispose();
+  });
+});
+
+test('inline: a sandbox run does not replace the plan a why-not is answered against', async () => {
+  const had = 'Worker' in globalThis;
+  const prev = globalThis.Worker;
+  delete globalThis.Worker;
+  try {
+    const { gameState, squadState } = realInputs();
+    const runner = createPlanRunner();
+    const main = await runner.run({ gameState, squadState, options: { seed: 7 }, role: 'plan' });
+    // A different hypothetical squad state: more money, so a different plan.
+    const sandbox = await runner.run({
+      gameState, squadState: { ...squadState, bankTenths: squadState.bankTenths + 60 }, options: { seed: 7 }, role: 'scenario',
+    });
+    assert.equal(sameBasis(planBasis(main), planBasis(sandbox)), false, 'the fixture really produces two different plans');
+
+    const outsider = [...gameState.players.values()].find(p => !main.current.squad.includes(p.id) && p.position === 4).id;
+    const answer = await runner.whyNot(outsider, { runId: main.runId, role: 'plan' });
+    assert.ok(sameBasis(answer.basis, planBasis(main)), 'answered against the plan on screen');
+    assert.equal(sameBasis(answer.basis, planBasis(sandbox)), false, 'never against the sandbox plan');
+    runner.dispose();
+  } finally {
+    if (had) globalThis.Worker = prev;
+  }
+});
+
+test('inline: a question about a plan that has since been replaced is refused, not answered about the new one', async () => {
+  const had = 'Worker' in globalThis;
+  const prev = globalThis.Worker;
+  delete globalThis.Worker;
+  try {
+    const { gameState, squadState } = realInputs();
+    const runner = createPlanRunner();
+    const first = await runner.run({ gameState, squadState, options: { seed: 7 } });
+    // A recalculation with a different free-transfer count replaces it.
+    const ft = Number.isFinite(squadState.freeTransfers) ? squadState.freeTransfers : 1;
+    const second = await runner.run({
+      gameState, squadState: { ...squadState, transferState: undefined, freeTransfers: ft === 1 ? 2 : 1 }, options: { seed: 7 },
+    });
+    assert.notEqual(planBasis(first).freeTransfers, planBasis(second).freeTransfers);
+    const outsider = [...gameState.players.values()].find(p => !second.current.squad.includes(p.id) && p.position === 3).id;
+    await assert.rejects(() => runner.whyNot(outsider, { runId: first.runId }), new RegExp(STALE_PLAN));
+    const fresh = await runner.whyNot(outsider, { runId: second.runId });
+    assert.ok(sameBasis(fresh.basis, planBasis(second)));
     runner.dispose();
   } finally {
     if (had) globalThis.Worker = prev;

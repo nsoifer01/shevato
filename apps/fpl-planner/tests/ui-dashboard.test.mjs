@@ -15,7 +15,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { installDom, query, queryAll, textOf, walk, click, buttonWith } from './helpers/mini-dom.mjs';
+import { installDom, query, queryAll, textOf, walk, click, buttonWith, typeInto, pressKey } from './helpers/mini-dom.mjs';
 
 const teardownDom = installDom();
 after(() => teardownDom());
@@ -258,6 +258,72 @@ test('an impossible why-not says it cannot fit, which is a claim about the game'
   const text = nodes.map(n => textOf(n)).join(' ');
   assert.match(text, /Cannot fit/);
   assert.match(text, /Three of his club/);
+});
+
+test('an in-season why-not shows the direct swap and the best overall plan as two labelled sections', async () => {
+  const { counterfactual } = await import('../js/engine/counterfactual.js');
+  const recIn = plan.transfersIn[0];
+  assert.ok(recIn !== undefined, 'the sample plan buys somebody');
+  const position = gameState.players.get(recIn).position;
+  const held = squadState.picks.map(p => p.playerId);
+  const target = [...gameState.players.values()]
+    .filter(p => p.position === position && !plan.squad.includes(p.id) && !held.includes(p.id) && p.status === 'a')
+    .find(p => counterfactual(p.id, { planBundle: bundle, gameState, rules: gameState.rules }).direct?.available);
+  assert.ok(target, 'some player in that position can be swapped in directly');
+  const result = counterfactual(target.id, { planBundle: bundle, gameState, rules: gameState.rules });
+  const nodes = renderWhyNot(result, gameState);
+  const text = nodes.map(n => textOf(n)).join(' ');
+  const recName = gameState.players.get(recIn).webName;
+
+  assert.match(text, /Direct comparison:/);
+  assert.match(text, new RegExp(`Best overall plan containing ${target.webName}`));
+  const table = nodes.flatMap(n => [...walk(n)]).find(n => n.tagName === 'TABLE');
+  assert.ok(table, 'the direct comparison is a table');
+  const heads = [...walk(table)].filter(n => n.tagName === 'TH' && n.getAttribute('scope') === 'col').map(textOf);
+  assert.equal(heads[1], `${recName}Recommended`, 'the recommended buy heads the first column, marked');
+  assert.equal(heads[2], target.webName);
+  const cells = [...walk(table)].filter(n => n.tagName === 'TD');
+  assert.ok(cells.every(c => c.getAttribute('data-col')), 'every cell is labelled for the stacked phone layout');
+  assert.match(text, /Like for like\?/);
+  // The preference names one of the two players who trade places.
+  assert.ok([recName, target.webName].some(n => text.includes(`${n} is preferred because`) || text.includes(' are level')),
+    'the one-line summary is about the two buys');
+});
+
+test('the why-not card refuses an answer computed against a different plan', async () => {
+  const { planBasis } = await import('../js/engine/plan-basis.js');
+  const other = { ...planBasis(bundle), freeTransfers: (planBasis(bundle).freeTransfers ?? 0) + 1 };
+  const node = whyNotCard({
+    bundle,
+    gameState,
+    onAsk: async () => ({ verdict: 'worse', headline: 'SHOULD NOT RENDER', rows: [], reasons: [], basis: other }),
+  });
+  const input = [...walk(node)].find(n => n.tagName === 'INPUT');
+  const someone = [...gameState.players.values()].find(p => !plan.squad.includes(p.id));
+  await typeInto(input, someone.webName);
+  await pressKey(input, 'ArrowDown');
+  await pressKey(input, 'Enter');
+  await click(buttonWith(node, 'Answer'));
+  const text = textOf(node);
+  assert.doesNotMatch(text, /SHOULD NOT RENDER/, 'an answer about another plan is never shown');
+  assert.match(text, /Your plan changed while this was being worked out/);
+});
+
+test('the alternatives card never claims nothing scored higher when a hit plan did', () => {
+  const alt = {
+    chip: null, transfersOut: [1], transfersIn: [2], transferCount: 2, hits: 1, hitCostPoints: 4,
+    xPointsHorizon: plan.xPointsHorizon + 1.1, deltaHorizon: 1.1, deltaWithChipValue: null,
+    belowHitMargin: true, hitMarginPoints: 2, headline: 'Isak to Gonzalo, Rúben to Gabriel (-4)',
+  };
+  const node = alternativesCard({ bundle: { ...bundle, current: { ...plan, alternatives: [alt] } }, open: true });
+  const text = textOf(node);
+  assert.doesNotMatch(text, /none of them scored higher/, 'false whenever a hit plan projects more');
+  assert.match(text, /only chosen when it beats the best plan without one by 2\.0 points/);
+  assert.match(text, /\+1\.1 pts over \d+ gameweeks, costs a 4 point hit, short of the 2\.0-point bar a hit must clear/);
+
+  const lower = { ...alt, deltaHorizon: -0.4, belowHitMargin: false };
+  const plain = textOf(alternativesCard({ bundle: { ...bundle, current: { ...plan, alternatives: [lower] } }, open: true }));
+  assert.match(plain, /none of them scored higher/, 'still true, and still said, when it is');
 });
 
 /* ------------------------------------------------------------------ future */

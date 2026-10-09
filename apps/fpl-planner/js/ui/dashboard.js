@@ -24,6 +24,7 @@ import { openingSquadMoney, picksCarryLineup } from '../engine/squad.js';
 import { assessConfidence } from '../engine/confidence.js';
 import { canQuoteProjections, pausedHeadline } from '../engine/readiness.js';
 import { describeModelStatus } from '../data/model.js';
+import { planBasis, sameBasis, STALE_PLAN } from '../engine/plan-basis.js';
 
 const nameOf = (gameState) => (id) => describePlayer(gameState, id).name;
 
@@ -628,6 +629,8 @@ export function playerPickerItems({ bundle, gameState }) {
   });
 }
 
+const STALE_TEXT = 'Your plan changed while this was being worked out, so the answer would describe an older plan. Ask again to compare against the plan on screen.';
+
 export function whyNotCard({ bundle, gameState, onAsk, open = false, onToggle = null }) {
   const out = el('div', { class: 'fpl-whynot-out', hidden: true });
   const items = playerPickerItems({ bundle, gameState });
@@ -652,9 +655,17 @@ export function whyNotCard({ bundle, gameState, onAsk, open = false, onToggle = 
     out.replaceChildren(el('div', { class: 'fpl-whynot-text', text: 'Re-running the optimization with that player forced in.' }));
     try {
       const result = await onAsk(chosen.id);
+      // Shown only under the plan it was computed against. An answer about any
+      // other plan (a changed free-transfer count, a refresh, a sandbox run)
+      // would put one plan's numbers under another's headline.
+      if (result && result.basis !== undefined && !sameBasis(result.basis, planBasis(bundle))) {
+        out.replaceChildren(el('div', { class: 'fpl-whynot-text', text: STALE_TEXT }));
+        return;
+      }
       out.replaceChildren(...renderWhyNot(result, gameState));
     } catch (err) {
-      out.replaceChildren(el('div', { class: 'fpl-whynot-text', text: `That question could not be answered: ${err.message}` }));
+      const text = String(err && err.message) === STALE_PLAN ? STALE_TEXT : `That question could not be answered: ${err.message}`;
+      out.replaceChildren(el('div', { class: 'fpl-whynot-text', text }));
     } finally {
       ask.disabled = false;
     }
@@ -682,8 +693,17 @@ const VERDICT_LABELS = {
   unknown: 'Unknown',
 };
 
-// The answer is a comparison, so it renders as one: the verdict, the two totals
-// and what changes between them, then the working, then the one-line result.
+// The answer is a comparison, so it renders as one: the verdict and the
+// one-line reason, then in season the two comparisons kept APART, because they
+// answer different questions and a reader must never take one for the other:
+//
+//   A. the direct comparison, the recommended plan with only the incoming
+//      player swapped for the one asked about (same seller, same other moves,
+//      same transfer count), as a table of the two players and the two squads;
+//   B. the best plan of all that contains him, which may change other players,
+//      with a plain statement of whether it is like for like.
+//
+// Then the working, the result, and the other routes behind a disclosure.
 export function renderWhyNot(result, gameState) {
   const nodes = [];
 
@@ -692,11 +712,23 @@ export function renderWhyNot(result, gameState) {
     el('span', { class: 'fpl-whynot-text', text: result.headline }),
   ]));
 
-  if ((result.rows || []).length) {
-    nodes.push(el('dl', { class: 'fpl-whynot-rows' }, result.rows.flatMap(r => [
-      el('dt', { text: r.label }),
-      el('dd', {}, emphasize(r.text)),
-    ])));
+  if (result.direct || result.overall) {
+    if (result.preference) {
+      nodes.push(el('p', { class: 'fpl-whynot-pref' }, [
+        el('strong', { text: `${result.preference.label} ` }),
+        ...emphasize(result.preference.text),
+      ]));
+    }
+    if (result.direct) nodes.push(directSection(result.direct, gameState));
+    if ((result.rows || []).length) {
+      nodes.push(el('section', { class: 'fpl-whynot-section' }, [
+        el('h4', { class: 'fpl-whynot-h', text: `Best overall plan containing ${result.name}` }),
+        el('p', { class: 'fpl-whynot-sub', text: 'The full optimization again, with him forced in. It may change other players too, so it is not a player-for-player comparison unless it says so.' }),
+        whyNotRows(result.rows),
+      ]));
+    }
+  } else if ((result.rows || []).length) {
+    nodes.push(whyNotRows(result.rows));
   }
 
   // The working: supporting evidence under the comparison, visually
@@ -726,6 +758,55 @@ export function renderWhyNot(result, gameState) {
   }
 
   return nodes;
+}
+
+function whyNotRows(rows) {
+  return el('dl', { class: 'fpl-whynot-rows' }, rows.flatMap(r => [
+    el('dt', { text: r.label }),
+    el('dd', {}, emphasize(r.text)),
+  ]));
+}
+
+// A. The like-for-like table. Every cell is engine text; the page only lays it
+// out. The recommended column is marked, so "which one is the plan" is never a
+// question the reader has to answer from context.
+function directSection(direct, gameState) {
+  const name = id => {
+    const p = gameState && gameState.players ? (gameState.players instanceof Map ? gameState.players.get(id) : gameState.players[id]) : null;
+    return p ? p.webName : `player ${id}`;
+  };
+  const title = direct.kind === 'replace'
+    ? `Direct comparison: ${name(direct.outId)} to ${name(direct.comparatorId)}, or ${name(direct.outId)} to ${name(direct.targetId)}`
+    : `Direct comparison: the recommended plan, with or without ${name(direct.outId)} to ${name(direct.targetId)}`;
+  const sub = direct.kind === 'replace'
+    ? 'The recommended plan with one change: the player it buys for this place is swapped for yours. Same player sold, same other moves, same number of transfers.'
+    : 'The recommended plan buys nobody in his position, so this is the plan as it stands against the same plan plus one more transfer for him.';
+  const { columns, rows } = direct.table;
+  const head = el('tr', {}, [
+    el('th', { scope: 'col', text: '' }),
+    ...columns.map(c => el('th', { scope: 'col' }, [
+      el('span', { text: c.label }),
+      c.recommended ? el('span', { class: 'fpl-whynot-tag', text: 'Recommended' }) : null,
+    ].filter(Boolean))),
+  ]);
+  const body = rows.map(r => el('tr', { class: `is-${r.code}` }, [
+    el('th', { scope: 'row', text: r.label }),
+    // The phone layout hides the header row and prints this label above each
+    // value instead, so it carries the "recommended" mark itself.
+    ...r.cells.map((cell, i) => el('td', {
+      'data-col': columns[i].recommended ? `${columns[i].label} (recommended)` : columns[i].label,
+    }, emphasize(cell))),
+  ]));
+  const nodes = [
+    el('h4', { class: 'fpl-whynot-h', text: title }),
+    el('p', { class: 'fpl-whynot-sub', text: sub }),
+  ];
+  if (!direct.available && (direct.blockers || []).length) {
+    nodes.push(el('p', { class: 'fpl-whynot-sub is-blocked', text: `Not possible as a straight swap: ${direct.blockers.map(b => b.text).join(' ')}` }));
+  }
+  nodes.push(el('div', { class: 'fpl-whynot-table-wrap' },
+    el('table', { class: 'fpl-whynot-table' }, [el('thead', {}, head), el('tbody', {}, body)])));
+  return el('section', { class: 'fpl-whynot-section' }, nodes);
 }
 
 /* ------------------------------------------------------------------ future */
@@ -804,15 +885,23 @@ export function alternativesCard({ bundle, open = false, onToggle = null }) {
         ` over ${bundle.current.horizon} gameweeks, counting what the chip is worth later`,
         alt.hits ? `, costs a ${alt.hitCostPoints} point hit` : '',
       ])
-      : el('div', { class: 'fpl-alt-delta' }, [
+      : el('div', { class: alt.belowHitMargin ? 'fpl-alt-delta fpl-alt-delta-sentence' : 'fpl-alt-delta' }, [
         el('b', { text: `${signedXp(alt.deltaHorizon)} pts` }),
         ` over ${bundle.current.horizon} gameweeks`,
         alt.hits ? `, costs a ${alt.hitCostPoints} point hit` : '',
+        alt.belowHitMargin ? `, short of the ${xp(alt.hitMarginPoints)}-point bar a hit must clear` : '',
       ]),
   ]));
+  // A plan with a hit can project MORE than the recommendation and still lose,
+  // because a hit must beat the best plan without one by the risk profile's
+  // margin. "None of them scored higher" was false whenever that happened.
+  const margin = alts.find(a => a.belowHitMargin);
+  const note = margin
+    ? `Ranked against the recommendation over the same horizon. Each one is legal and affordable. A plan that takes a hit is only chosen when it beats the best plan without one by ${xp(margin.hitMarginPoints)} points, so one can project more and still not be recommended.`
+    : 'Ranked against the recommendation over the same horizon. Each one is legal and affordable; none of them scored higher.';
 
   const node = disclosure(`Alternatives considered (${alts.length})`, [
-    el('p', { class: 'fpl-note', style: 'margin-bottom:12px' }, 'Ranked against the recommendation over the same horizon. Each one is legal and affordable; none of them scored higher.'),
+    el('p', { class: 'fpl-note', style: 'margin-bottom:12px' }, note),
     el('div', { class: 'fpl-alts' }, rows),
   ], { open });
   if (onToggle) node.addEventListener('toggle', () => onToggle(node.open));

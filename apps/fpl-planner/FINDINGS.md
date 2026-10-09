@@ -14,6 +14,86 @@ tables.
 
 ---
 
+## "Why not a different player?" named the wrong man and could answer about the wrong plan (found and FIXED 2026-10-09)
+
+Entry 3855835, GW6 2026-27, 1 free transfer, recommendation Isak to Gonzalo.
+Asking "why not João Pedro?" printed **"Isak is preferred because +0.9 xP in
+Gameweek 6 and +3.7 xP over the horizon"** (Isak being the injured player BOTH
+plans sell) and "João Pedro projects 14.2 points more than Isak" (true, and
+irrelevant: Isak is out either way).
+
+**Was the recommendation right? Yes, on the model's own inputs, re-derived
+independently.** Live payload 2026-10-09 17:19 UTC, every legal single transfer
+scored with `squadTrajectory`, plus two-move routes with the hit:
+
+| Strategy | 5-GW xP, net |
+| --- | --- |
+| Isak to Gonzalo (recommended, 1 FT) | 207.43, best single transfer |
+| Isak to Thiago | 206.49 |
+| Isak to João Pedro | 203.70 |
+| Hold | 202.35 |
+| Isak to Gonzalo + Rúben to Gabriel (-4) | 208.5, +1.1, below the 2.0 hit bar |
+
+Gonzalo (FUL, £6.0m) projects 4.94 GW6 and 24.3 over five (18.2 weighted)
+against João Pedro (CHE, £7.7m) 4.02 and 19.1 (14.2). The separation is:
+start probability 0.91 against 0.78 (Gonzalo 5/5 starts; João Pedro missed
+GW5 with a knock, 0 minutes, news since cleared), Gonzalo is Fulham's first
+penalty taker in FPL's own `penalties_order`, and fixtures (IPS, HUL, COV at
+difficulty 2, against an average of 3.0). Underlying per-90 rates are nearly
+equal (xG 0.47 vs 0.50); João Pedro's 33 points are six goal involvements on
+2.36 xG+xA, which the model rightly does not project forward. Scaling João
+Pedro to Gonzalo's minutes still leaves him 1.9 behind, so minutes alone do not
+decide it. **Known model limit, deliberately not changed here:** a missed match
+through injury lowers `pStart` the same way rotation does. Changing that is a
+model experiment and belongs in `experiments/registry.md`, not in a UI fix.
+
+**What was actually wrong, four separate things:**
+
+1. **The comparator.** `preferenceLine` took `direct.out` as the winner, and in
+   season `direct` came from the ROUTE's own moves out of the held squad, so
+   `out` was the player both plans sell. Pre-season and "keep" answers diff
+   recommended squad against alternative squad, where `out` really is the
+   recommended player, which is why only the in-season path was wrong. The same
+   pairing made `individualGapReason` and `swapReasons` compare João Pedro with
+   Isak. Fixed by building an explicit direct comparison whose comparator is the
+   recommended INCOMING player in that position.
+2. **Two scorers.** The alternative was `squadTrajectory - hitPointsFor` while
+   the baseline was the plan's stored `xPointsHorizon`, and `hitPointsFor`
+   ignored chips and the rolled-transfer value the planner ranks on. Every
+   scenario now goes through the planner's exported `scoreCandidate` with
+   `bundle.planOptions`; the recommended column re-scores to exactly the
+   plan's `xPointsHorizon` (asserted), and any drift is reported, not hidden.
+3. **A stale plan.** The worker kept ONE plan (`last`), whichever ran last, and
+   the team sandbox runs plans through the same worker. Asking "why not?" after
+   "Ask the planner from this team" answered against the SANDBOX plan under the
+   real one. The worker now holds plans by role, each question quotes the run
+   id of the plan on screen, and the card refuses an answer whose `basis`
+   (gw, free transfers, bank, squad, moves, total) does not match.
+4. **"None of them scored higher" was false.** The Alternatives card printed
+   "Isak to Gonzalo, Rúben to Gabriel (-4): +1.1 pts" under that sentence. The
+   plan projects 1.1 MORE and is rejected by the balanced profile's
+   `hitMarginPoints` (2.0 on top of the 4-point hit, `planner.js` "Hits must
+   clear the free plan by the profile's margin"). That is policy, not a bug, but
+   the card must say so: alternatives now carry `belowHitMargin`, and the "why
+   not" verdict applies the same margin, so it can never call "better" a route
+   the planner is built to refuse.
+
+**The 3.7 was right all along**: Isak to Gonzalo against Isak to João Pedro,
+same transfer count, same hit, one player different, 207.43 - 203.70. Of it,
+3.96 weighted is the two players' own gap and -0.23 is João Pedro sitting on the
+bench in GW10. The GW6 figure is now the canonical expected score the hero shows
+(57.6, auto-substitutions included), so it reads 0.7 rather than the 0.9 the
+objective's lineup-plus-captain figure gave; both sides use the same basis.
+
+**Pins**: `tests/counterfactual.test.mjs` ("regression 2026-10-09", hand-checked
+weighted arithmetic, a better individual losing on squad level, tie, genuinely
+better, club limit, extra transfer under the hit bar, contradiction sweep, plan
+basis), `tests/ui-plan-runner.test.mjs` (sandbox run and replaced plan),
+`tests/ui-dashboard.test.mjs` (the two sections, stale refusal, the card copy).
+The first regression assertion fails on the pre-fix module with exactly the
+screenshot's sentence ("PlEAE is preferred because", PlEAE being the sold
+player).
+
 ## A Wildcard or Free Hit week granted a free transfer it does not earn (found and FIXED 2026-10-09)
 
 Entry 3855835 ("Am I bad") read **2 free transfers for GW6 2026-27; FPL said

@@ -11,6 +11,7 @@
 // must not behave differently depending on how the plan arrived.
 
 import { toWireBundle } from './plan-model.js';
+import { STALE_PLAN } from '../engine/plan-basis.js';
 
 let nextId = 1;
 
@@ -19,7 +20,9 @@ const WORKER_DEAD = 'fpl-worker-unavailable';
 export function createPlanRunner({ workerUrl } = {}) {
   let worker = null;
   let workerBroken = false;
-  let inline = null;          // { gameState, bundle } for the inline whyNot
+  // role -> { runId, gameState, bundle }, for the inline whyNot. Same shape and
+  // rule as the worker's: one slot per role, a question names its run.
+  const inlinePlans = new Map();
   const pending = new Map();  // id -> { resolve, reject, onProgress }
   let mode = 'unknown';
 
@@ -62,54 +65,62 @@ export function createPlanRunner({ workerUrl } = {}) {
     return worker;
   }
 
-  function post(message, onProgress) {
+  function post(message, onProgress, id = nextId++) {
     const w = ensureWorker();
     if (!w) return Promise.reject(new Error(WORKER_DEAD));
-    const id = nextId++;
     return new Promise((resolve, reject) => {
       pending.set(id, { resolve, reject, onProgress });
       w.postMessage({ ...message, id });
     });
   }
 
-  async function runInline({ gameState, squadState, options, onProgress }) {
+  async function runInline({ gameState, squadState, options, onProgress, role, runId }) {
     const { buildPlan } = await import('../engine/planner.js');
     const bundle = await buildPlan({ gameState, squadState, options, onProgress });
-    inline = { gameState, bundle };
-    return toWireBundle(bundle);
+    inlinePlans.set(role, { runId, gameState, bundle });
+    return { ...toWireBundle(bundle), runId };
   }
 
   return {
     get mode() { return mode; },
 
-    async run({ gameState, squadState, options, onProgress }) {
+    // `role` keeps the recommendation ('plan') and the sandbox ('scenario')
+    // apart; the bundle comes back carrying `runId`, which a "why not"
+    // question about it must quote.
+    async run({ gameState, squadState, options, onProgress, role = 'plan' }) {
+      const runId = nextId++;
       try {
-        const bundle = await post({ type: 'plan', gameState, squadState, options }, onProgress);
+        const bundle = await post({ type: 'plan', gameState, squadState, options, role }, onProgress, runId);
         mode = 'worker';
-        inline = null;
-        return bundle;
+        inlinePlans.delete(role);
+        return { ...bundle, runId };
       } catch (err) {
         if (String(err.message) !== WORKER_DEAD) throw err;
         mode = 'inline';
-        return runInline({ gameState, squadState, options, onProgress });
+        return runInline({ gameState, squadState, options, onProgress, role, runId });
       }
     },
 
-    async whyNot(playerId) {
+    // Answers against the plan of `role`, and only if it is still run `runId`:
+    // a question about a plan that has since been replaced is refused with
+    // STALE_PLAN rather than answered about the replacement.
+    async whyNot(playerId, { runId = null, role = 'plan' } = {}) {
       if (mode === 'worker') {
         try {
-          return await post({ type: 'why-not', playerId });
+          return await post({ type: 'why-not', playerId, role, runId });
         } catch (err) {
           if (String(err.message) !== WORKER_DEAD) throw err;
           mode = 'inline';
         }
       }
-      if (!inline) throw new Error('no plan has been computed yet');
+      const held = inlinePlans.get(role);
+      if (!held) throw new Error('no plan has been computed yet');
+      if (runId !== null && runId !== held.runId) throw new Error(STALE_PLAN);
       const { counterfactual } = await import('../engine/counterfactual.js');
       return counterfactual(playerId, {
-        planBundle: inline.bundle,
-        gameState: inline.gameState,
-        rules: inline.gameState.rules,
+        planBundle: held.bundle,
+        gameState: held.gameState,
+        rules: held.gameState.rules,
       });
     },
 
@@ -119,7 +130,7 @@ export function createPlanRunner({ workerUrl } = {}) {
         worker = null;
       }
       pending.clear();
-      inline = null;
+      inlinePlans.clear();
     },
   };
 }
