@@ -32,6 +32,12 @@
 
 export const MODEL_INDEX_FILE = 'index.json';
 
+// Each of the (at most two) fetches below is bounded. computePlan awaits this
+// before every run, so a request that is opened and never answered used to
+// hold the plan on its progress screen indefinitely, for a model it does not
+// even consume.
+export const MODEL_FETCH_TIMEOUT_MS = 8000;
+
 // The parts of an artifact this engine has a seam for, each with the check its
 // value has to pass. A key an artifact declares that is not here is ignored: a
 // future artifact may offer more than this version of the engine can use.
@@ -97,32 +103,75 @@ export function selectModel(artifact) {
   return { ok: true, model, modelVersion, consumed, reason: null };
 }
 
-export async function loadModel({ basePath, fetchImpl } = {}) {
+// THE INDEX CAN SAY "NOTHING TO CONSUME" ON ITS OWN (2026-10-09 audit B16).
+// The artifact is large and the engine took nothing from it, yet it was
+// downloaded before every first plan. An index entry may now mirror its
+// artifact's `engineConsumes`; when that mirror is an empty list the answer is
+// already known (loaded, consuming nothing) and the artifact is not fetched.
+// An entry without the mirror, or one that lists anything, still fetches and
+// validates the artifact exactly as before, so a retrain that forgets the
+// mirror costs a download, never a wrong answer. tests/model-artifact.test.mjs
+// holds each mirror equal to its artifact.
+export function declaresNothing(entry) {
+  return !!entry
+    && Array.isArray(entry.engineConsumes) && entry.engineConsumes.length === 0
+    && typeof entry.modelVersion === 'string' && entry.modelVersion.trim() !== '';
+}
+
+export async function loadModel({ basePath, fetchImpl, timeoutMs = MODEL_FETCH_TIMEOUT_MS } = {}) {
   const doFetch = fetchImpl || ((...a) => fetch(...a));
   const base = basePath || new URL('../../models/', import.meta.url).href;
+  const getJson = (name) => withTimeout(async (signal) => {
+    const res = await doFetch(`${base}${name}`, signal ? { signal } : undefined);
+    if (!res.ok) return { status: res.status };
+    return { body: await res.json() };
+  }, timeoutMs);
 
   let index;
   try {
-    const res = await doFetch(`${base}${MODEL_INDEX_FILE}`);
-    if (!res.ok) return failure(`models/${MODEL_INDEX_FILE} returned ${res.status}`);
-    index = await res.json();
+    const got = await getJson(MODEL_INDEX_FILE);
+    if (got.status !== undefined) return failure(`models/${MODEL_INDEX_FILE} returned ${got.status}`);
+    index = got.body;
   } catch (err) {
     return failure(`models/${MODEL_INDEX_FILE} could not be read: ${err.message}`);
   }
 
   const entry = currentEntry(index);
   if (!entry) return failure(`models/${MODEL_INDEX_FILE} lists no usable model`);
+  if (declaresNothing(entry)) {
+    return { ok: true, model: null, modelVersion: entry.modelVersion.trim(), consumed: [], reason: null };
+  }
 
   let artifact;
   try {
-    const res = await doFetch(`${base}${entry.file}`);
-    if (!res.ok) return failure(`models/${entry.file} returned ${res.status}`);
-    artifact = await res.json();
+    const got = await getJson(entry.file);
+    if (got.status !== undefined) return failure(`models/${entry.file} returned ${got.status}`);
+    artifact = got.body;
   } catch (err) {
     return failure(`models/${entry.file} could not be read: ${err.message}`);
   }
 
   return selectModel(artifact);
+}
+
+// Runs `work` with an abort signal that fires after `ms`, and rejects with a
+// plain "timed out" if the work has not settled by then, whether or not the
+// fetch honoured the signal. The body read is inside `work`, so a response
+// whose body stalls is bounded too.
+async function withTimeout(work, ms) {
+  const controller = typeof AbortController === 'function' ? new AbortController() : null;
+  let timer;
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(() => {
+      if (controller) controller.abort();
+      reject(new Error(`timed out after ${ms} ms`));
+    }, ms);
+  });
+  try {
+    return await Promise.race([work(controller ? controller.signal : null), timeout]);
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 // What the model and data status panel says, one line per state. The panel has

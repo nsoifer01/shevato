@@ -158,7 +158,7 @@ test('THE POINT: a cache HIT never touches the quota', async () => {
     const slot = await claimUpstreamSlot(store, 'net-a', NOW);
     assert.equal(slot.allowed, true);
     claims += 1;
-    return ok({ url });
+    return ok({ url, elements: [], events: [], teams: [] });
   };
 
   await serveFpl({ path: 'bootstrap-static', store, fetchUpstream: metered, now: NOW });
@@ -287,7 +287,7 @@ test('e2e: an exhausted network gets a 429 and never reaches upstream', opts, as
 test('e2e: a second network is served while the first is exhausted', opts, async () => {
   seedBlobs({ [QUOTA_KEY]: spentUsage(ADDR) });
   const res = await withFetchStub(
-    async () => ok({ n: 1 }),
+    async () => ok({ current: [], n: 1 }),
     () => handler(req('entry/4231987/history', OTHER)),
   );
   assert.equal(res.status, 200);
@@ -327,7 +327,7 @@ test('e2e: distinct attacker-chosen paths are bounded, and the counter moves onc
   });
   let upstreamCalls = 0;
   const statuses = await withFetchStub(
-    async () => { upstreamCalls += 1; return ok({ n: upstreamCalls }); },
+    async () => { upstreamCalls += 1; return ok({ current: [], n: upstreamCalls }); },
     async () => {
       const out = [];
       for (const id of [1, 2, 3]) out.push((await handler(req(`entry/${id}/history`))).status);
@@ -343,7 +343,7 @@ test('e2e: a cache hit costs no quota at the handler level either', opts, async 
   const now = Date.now();
   const net = networkBucket(ADDR, now);
   seedBlobs({});
-  await withFetchStub(async () => ok({ n: 1 }), async () => {
+  await withFetchStub(async () => ok({ elements: [], events: [], teams: [] }), async () => {
     await handler(req('bootstrap-static'));
     const after = peek(QUOTA_KEY).networkHour[net];
     assert.equal(after, 1, 'the miss cost one');
@@ -362,7 +362,7 @@ test('e2e: with no Blobs context at all the proxy still serves everything', opts
   // availability.
   delete globalThis.__tpAssistBlobStub;
   let upstreamCalls = 0;
-  await withFetchStub(async () => { upstreamCalls += 1; return ok({ n: 1 }); }, async () => {
+  await withFetchStub(async () => { upstreamCalls += 1; return ok({ current: [], n: 1 }); }, async () => {
     for (let i = 0; i < 12; i++) {
       const res = await handler(req(`entry/${1000 + i}/history`));
       assert.equal(res.status, 200, `request ${i}`);

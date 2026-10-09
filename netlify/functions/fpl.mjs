@@ -23,7 +23,7 @@
 
 import { originAllowed, json, upstreamSignal } from './lib/tp-http.mjs';
 import {
-  canonicalPath, serveFpl, fplStore, ttlSeconds, USER_AGENT, DEADLINE_WINDOW_MS, DEADLINE_TTL_SECONDS,
+  canonicalPath, serveFpl, fplStore, ttlSeconds, USER_AGENT, DEADLINE_WINDOW_MS,
 } from './lib/fpl-cache.mjs';
 import { checkQuota, resetAtFor, QUOTA_KEY } from './lib/fpl-quota.mjs';
 import { updateUsage } from './lib/blob-cas.mjs';
@@ -166,16 +166,29 @@ export default async function handler(req) {
 // The deadline is the one serveFpl judged the answer against (stored meta, or
 // the bootstrap body it just fetched); with none known the base TTL is also
 // what the function applies, so the two stay in step.
+//
+// AND AFTER IT (2026-10-09 audit B4). ttlSeconds holds the collapse for an
+// hour past the most recent deadline, and this asks it with the same meta, so
+// the edge collapses with it. A TTL only ever GROWS when that hour ends, so the
+// post-deadline window needs no clamp of its own; only the opening of the
+// pre-deadline one does, and only for a path whose TTL actually shrinks there
+// (finished picks do not).
 export function edgeCachePolicy(result, now = Date.now()) {
   if (result.status !== 200 || result.stale) return 'no-store';
   const age = Number(result.ageSeconds) || 0;
-  const nextDeadline = result.nextDeadline || null;
-  let remaining = ttlSeconds(result.path, { now, nextDeadline }) - age;
-  const deadlineMs = Date.parse(nextDeadline);
+  const meta = {
+    nextDeadline: result.nextDeadline || null,
+    lastDeadline: result.lastDeadline || null,
+    currentEvent: Number.isInteger(result.currentEvent) ? result.currentEvent : null,
+  };
+  let remaining = ttlSeconds(result.path, { now, ...meta }) - age;
+  const deadlineMs = Date.parse(meta.nextDeadline);
   if (Number.isFinite(deadlineMs)) {
-    const untilWindow = Math.floor((deadlineMs - DEADLINE_WINDOW_MS - now) / 1000);
+    const opensAt = deadlineMs - DEADLINE_WINDOW_MS;
+    const untilWindow = Math.floor((opensAt - now) / 1000);
+    const ttlInWindow = ttlSeconds(result.path, { ...meta, now: opensAt + 1000 });
     if (untilWindow >= 0 && remaining > untilWindow) {
-      remaining = Math.max(untilWindow, Math.min(remaining, DEADLINE_TTL_SECONDS - age));
+      remaining = Math.max(untilWindow, Math.min(remaining, ttlInWindow - age));
     }
   }
   if (remaining < 5) return 'no-store';

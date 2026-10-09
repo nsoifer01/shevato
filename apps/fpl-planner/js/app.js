@@ -14,7 +14,7 @@
 //    refreshed, the screen says what is missing instead of showing a confident
 //    recommendation built on stale injury news.
 
-import { fplApi, NotFoundError, ProxyUnavailableError } from './data/api.js';
+import { fplApi, NotFoundError, ProxyUnavailableError, deadlineRetryDelayMs } from './data/api.js';
 import { isDemoRequested, loadSampleData } from './data/sample.js';
 import { loadModel } from './data/model.js';
 import { buildGameState } from './engine/normalize.js';
@@ -27,7 +27,7 @@ import { buildLiveStats, scoreLiveSquad } from './engine/live.js';
 import { formatFreeTransfers } from './engine/transfer-state.js';
 import { el, mount, clear, stat } from './ui/dom.js';
 import { relativeTime, dateTime, formatMoney, rank, points } from './ui/format.js';
-import { assessData, inputFingerprint, outdatedReason, noticeKinds } from './ui/plan-model.js';
+import { assessData, inputFingerprint, fingerprintScope, outdatedReason, noticeKinds } from './ui/plan-model.js';
 import { planInputs, diffPlanVersions, actionKey } from './ui/plan-diff.js';
 import * as store from './ui/store.js';
 import { banner, btn, progressView, sampleBanner, sampleTag, freshness, planChangeCard } from './ui/parts.js';
@@ -143,6 +143,8 @@ let landingEl = null;
 let ticker = null;
 let modelPromise = null;
 let drawer = null;
+// The pending post-deadline re-read, if any (see reactToDeadline).
+let deadlineRetry = null;
 
 /* --------------------------------------------------------------- utilities */
 
@@ -194,7 +196,10 @@ async function loadWorld({ force = false } = {}) {
   // Sample data never touches the baseline in either direction: a demo payload
   // must not become the evidence a real season is projected from, and it must
   // not be corrected by a real one either.
-  const first = buildGameState(bootstrap.data, fixtures.data, { fetchedAt: bootstrap.fetchedAt });
+  // ageSeconds is the data layer's skew-safe age of the bootstrap at receipt
+  // (server age plus time held here), so the plan's data age never subtracts a
+  // server timestamp from this device's clock (2026-10-09 audit B14).
+  const first = buildGameState(bootstrap.data, fixtures.data, { fetchedAt: bootstrap.fetchedAt, ageSeconds: bootstrap.ageSeconds });
   if (first.sample) {
     state.gameState = first;
   } else {
@@ -336,7 +341,9 @@ async function loadTeam({ force = false } = {}) {
 // the time a plan is asked for, and awaited before every run so a plan is never
 // computed on the analytic priors while the trained model is still in flight.
 // loadModel never rejects: a failure comes back as ok:false with a reason, and
-// the plan is built without it.
+// the plan is built without it. For an artifact the index marks as consuming
+// nothing (the shipped one) this is only the small index.json, and every
+// fetch inside it is time-bounded, so the wait is short either way.
 function ensureModel() {
   if (!modelPromise) {
     modelPromise = loadModel().then((status) => {
@@ -404,6 +411,7 @@ async function computePlan(squadState, { reason }) {
   state.fingerprint = inputFingerprint(squadState, state.gameState, bundle.current);
   // A fresh plan is a fresh deadline to watch.
   state.deadlineHandled = false;
+  if (deadlineRetry) { clearTimeout(deadlineRetry); deadlineRetry = null; }
 
   // Diff BEFORE persisting, or the new version is the one it compares against.
   // Sample mode never reads the stored history: those versions belong to a real
@@ -545,7 +553,10 @@ async function connectAndPlan({ reason = 'first-calculation' } = {}) {
     // A squad that no longer matches the last plan is not a mistake, it is the
     // new input. The notice says so in neutral words and nothing more.
     const previous = store.latestVersion(store.getPlanHistory(), state.planGw);
-    const nextFingerprint = inputFingerprint(squadState, state.gameState);
+    // Taken over the same scope the stored plan's fingerprint watched (its
+    // recommended moves and its fixtures), so the two compare like for like.
+    const nextFingerprint = inputFingerprint(squadState, state.gameState, null,
+      previous ? fingerprintScope(previous.fingerprint) : null);
     const change = previous ? outdatedReason(previous.fingerprint, nextFingerprint) : null;
     state.notice = change;
 
@@ -665,7 +676,7 @@ async function refreshInputs() {
       picks: state.picks, revertPicks: state.revertPicks,
       gameState: state.gameState, gw: state.planGw,
     });
-    const next = inputFingerprint(squadState, state.gameState);
+    const next = inputFingerprint(squadState, state.gameState, null, fingerprintScope(state.fingerprint));
     state.outdated = outdatedReason(state.fingerprint, next);
     state.pendingSquad = state.outdated ? squadState : null;
     renderApp();
@@ -1391,11 +1402,21 @@ function deadlineHasPassed(now = Date.now()) {
 // existing plan can stand.
 //
 // It runs ONCE per crossing (`deadlineHandled`), so this is a reaction to a
-// lifecycle boundary rather than polling.
-async function reactToDeadline() {
+// lifecycle boundary rather than polling, with one bounded exception: FPL
+// takes a while to move on after a deadline, and until it does the bootstrap
+// it serves still names the locked gameweek as next (2026-10-09 audit B4). A
+// forced reload in that window learns nothing, and marking the crossing
+// handled then left the app on the locked gameweek until a manual check. So
+// while the payload still names this plan's gameweek, and only inside the
+// post-deadline window, the re-read is repeated every DEADLINE_RETRY_MS. Every
+// layer's TTL is collapsed then, so each retry reaches data at most a couple of
+// minutes old. Nothing new is drawn: the screen already says the plan can no
+// longer be acted on, and a retry that finds nothing new does not redraw it.
+async function reactToDeadline({ retry = false } = {}) {
   if (state.busy || state.deadlineHandled) return;
   state.deadlineHandled = true;
   state.busy = true;
+  const outdatedBefore = JSON.stringify(state.outdated);
   try {
     const wasSeasonStarted = state.gameState.seasonStarted;
     const wasPlanGw = state.planGw;
@@ -1428,26 +1449,47 @@ async function reactToDeadline() {
       };
       state.pendingSquad = null;
     } else {
-      // Same gameweek still being planned (the deadline that passed was an
-      // earlier one). Treat it as an ordinary freshness check.
+      // Same gameweek still being planned. Either the deadline that passed was
+      // an earlier one, or FPL has not moved on yet (scheduled below). Treat it
+      // as an ordinary freshness check.
+      scheduleDeadlineRetry();
       const squadState = buildSquadState({
         entry: state.entry, history: state.history, transfers: state.transfers,
         picks: state.picks, revertPicks: state.revertPicks,
         gameState: state.gameState, gw: state.planGw,
       });
-      const next = inputFingerprint(squadState, state.gameState);
+      const next = inputFingerprint(squadState, state.gameState, null, fingerprintScope(state.fingerprint));
       state.outdated = outdatedReason(state.fingerprint, next) || {
         code: 'deadline-passed',
         text: 'The deadline has passed, so this plan can no longer be acted on.',
       };
       state.pendingSquad = squadState;
+      if (retry && JSON.stringify(state.outdated) === outdatedBefore) return;
     }
     renderApp();
   } catch (err) {
+    // A background retry that fails keeps the screen it had (every source
+    // falls back to its cached copy first, so this is rare) and tries again.
+    if (retry) { scheduleDeadlineRetry(); return; }
     handleLoadError(err);
   } finally {
     state.busy = false;
   }
+}
+
+// The plan's own deadline has passed but the bootstrap still names its
+// gameweek as next: FPL has not processed the deadline yet. Re-arm the
+// reaction for one more pass, as long as the post-deadline window lasts.
+function scheduleDeadlineRetry() {
+  if (deadlineRetry || !deadlineHasPassed() || state.gameState.nextEvent !== state.planGw) return;
+  const event = state.gameState.events.find(e => e.id === state.planGw);
+  const delay = event && event.deadline ? deadlineRetryDelayMs(Date.parse(event.deadline)) : null;
+  if (delay === null) return;
+  deadlineRetry = setTimeout(() => {
+    deadlineRetry = null;
+    state.deadlineHandled = false;
+    if (deadlineHasPassed()) reactToDeadline({ retry: true });
+  }, delay);
 }
 
 // A tab that slept through the deadline wakes up on the wrong side of it, and

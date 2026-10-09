@@ -16,14 +16,22 @@ export const DIRECT_BASE = 'https://fantasy.premierleague.com/api/';
 
 // Seconds, mirroring the server policy in netlify/functions/lib/fpl-cache.mjs.
 // The client cache sits in front of the shared one, so these only govern how
-// often a single browser re-asks.
+// often a single browser re-asks. tests/api-server-parity.test.mjs holds the
+// two tables (and every constant below that has a server twin) together.
 export const CLIENT_TTL = {
   bootstrap: 600,
   fixtures: 1800,
   entry: 300,
   'element-summary': 900,
   live: 60,
+  'event-status': 60,
 };
+
+// A manager's picks for a gameweek before the current one are fixed history
+// (they locked at that deadline and the gameweek has been played), so they are
+// kept for a day, exactly as the proxy keeps them. The History tab asks for the
+// last eight on every visit.
+export const FINISHED_PICKS_TTL_SECONDS = 24 * 3600;
 
 // Inside this window before a deadline, every client TTL collapses to
 // DEADLINE_TTL_SECONDS.
@@ -36,6 +44,36 @@ export const CLIENT_TTL = {
 // both sides.
 export const DEADLINE_WINDOW_SECONDS = 6 * 3600;
 export const DEADLINE_TTL_SECONDS = 120;
+
+// And for an hour AFTER the most recent deadline (2026-10-09 audit B4). The
+// collapse used to stop at the deadline, which made the minutes in which the
+// gameweek flips the ones with the longest cache life on every layer. Read out
+// of the bootstrap this client already holds, like the deadline above.
+export const POST_DEADLINE_WINDOW_SECONDS = 3600;
+
+// A copy the proxy marked stale (it was serving its last good copy through an
+// upstream failure, or while another caller refreshed) is kept only this long,
+// whatever its endpoint's TTL (2026-10-09 audit B5). Kept for the full TTL, a
+// stale bootstrap pinned the stale banner and the old numbers on screen for
+// ten minutes after the proxy already had fresh data.
+export const STALE_TTL_SECONDS = 20;
+
+// How often app.js re-reads the world after a deadline while FPL still names
+// the locked gameweek as next. Above the collapsed proxy TTL would waste
+// nothing but would also learn nothing sooner; this is inside it so the
+// second retry is guaranteed a refreshed copy.
+export const DEADLINE_RETRY_MS = 75 * 1000;
+
+// Whether a re-read is still worth scheduling `now`, `deadlineMs` being the
+// deadline that has just passed: the delay to wait, or null once the post-
+// deadline window is over (FPL has had its hour; the plan stays marked as no
+// longer actionable and the next visit or "Check for changes" picks it up).
+export function deadlineRetryDelayMs(deadlineMs, now = Date.now()) {
+  if (!Number.isFinite(deadlineMs)) return null;
+  const since = now - deadlineMs;
+  if (since < 0 || since + DEADLINE_RETRY_MS > POST_DEADLINE_WINDOW_SECONDS * 1000) return null;
+  return DEADLINE_RETRY_MS;
+}
 
 // One retry, for the failures that are worth retrying.
 //
@@ -100,6 +138,7 @@ const SOURCE_LABELS = [
   [/^entry\/\d+\/event\/\d+\/picks$/, 'Your squad'],
   [/^element-summary\/\d+$/, 'Player match history'],
   [/^event\/\d+\/live$/, 'Live scores'],
+  [/^event-status$/, 'Gameweek processing status'],
 ];
 
 export function labelFor(path) {
@@ -112,8 +151,11 @@ function kindOf(path) {
   if (path === 'fixtures') return 'fixtures';
   if (path.startsWith('entry/')) return 'entry';
   if (path.startsWith('element-summary/')) return 'element-summary';
+  if (path === 'event-status') return 'event-status';
   return 'live';
 }
+
+const PICKS_RE = /^entry\/\d+\/event\/(\d+)\/picks$/;
 
 // A team id or gameweek reaching a URL must be a plain positive integer. This
 // is the only place user input becomes part of a request path.
@@ -217,21 +259,30 @@ export function createFplApi({
   }
 
   // The TTL for a path right now, collapsed near a deadline exactly as the proxy
-  // does. The deadline comes from the bootstrap this client already holds, so
-  // this costs no extra request.
+  // does: in the six hours before the next one and the hour after the most
+  // recent one. The deadlines come from the bootstrap this client already
+  // holds, so this costs no extra request.
   function ttlFor(path) {
+    const picks = PICKS_RE.exec(path);
+    const current = currentEventId();
+    if (picks && current !== null && Number(picks[1]) < current) return FINISHED_PICKS_TTL_SECONDS;
     const base = CLIENT_TTL[kindOf(path)];
-    const deadline = nextDeadlineMs();
-    if (deadline === null) return base;
-    const untilDeadline = (deadline - now()) / 1000;
-    if (untilDeadline <= 0 || untilDeadline > DEADLINE_WINDOW_SECONDS) return base;
-    return Math.min(base, DEADLINE_TTL_SECONDS);
+    const t = now();
+    const next = nextDeadlineMs();
+    if (next !== null && (next - t) / 1000 <= DEADLINE_WINDOW_SECONDS) return Math.min(base, DEADLINE_TTL_SECONDS);
+    const last = lastDeadlineMs();
+    if (last !== null && (t - last) / 1000 < POST_DEADLINE_WINDOW_SECONDS) return Math.min(base, DEADLINE_TTL_SECONDS);
+    return base;
+  }
+
+  function bootstrapEvents() {
+    const entry = memory.get('bootstrap-static') || null;
+    return entry && entry.data && Array.isArray(entry.data.events) ? entry.data.events : null;
   }
 
   // The next deadline in the future, read out of the cached bootstrap.
   function nextDeadlineMs() {
-    const entry = memory.get('bootstrap-static') || null;
-    const events = entry && entry.data && Array.isArray(entry.data.events) ? entry.data.events : null;
+    const events = bootstrapEvents();
     if (!events) return null;
     let best = null;
     for (const e of events) {
@@ -240,6 +291,34 @@ export function createFplApi({
       if (best === null || t < best) best = t;
     }
     return best;
+  }
+
+  // The most recent deadline that has passed. Judged on the device clock, the
+  // same clock nextDeadlineMs uses, so the two windows meet without a gap.
+  function lastDeadlineMs() {
+    const events = bootstrapEvents();
+    if (!events) return null;
+    let best = null;
+    for (const e of events) {
+      const t = Date.parse(e.deadline_time);
+      if (!Number.isFinite(t) || t > now()) continue;
+      if (best === null || t > best) best = t;
+    }
+    return best;
+  }
+
+  function currentEventId() {
+    const events = bootstrapEvents();
+    const current = events ? events.find(e => e && e.is_current) : null;
+    return current && Number.isInteger(current.id) ? current.id : null;
+  }
+
+  // How long this stored copy may be served without asking again. A copy the
+  // proxy marked stale gets STALE_TTL_SECONDS at most, never its endpoint's
+  // full TTL (audit B5).
+  function lifeOf(path, entry) {
+    const ttl = ttlFor(path);
+    return entry && entry.stale ? Math.min(ttl, STALE_TTL_SECONDS) : ttl;
   }
 
   function readCache(path) {
@@ -506,11 +585,17 @@ export function createFplApi({
   // than the collapsed TTL is fresh under any deadline, one past the base TTL
   // has expired under none, and the wait costs nothing the caller was not
   // already spending on the bootstrap itself.
+  //
+  // Finished picks wait too, for the other thing the bootstrap decides: which
+  // gameweek is current, and so whether this copy has a day to live or five
+  // minutes.
   function awaitsDeadline(path, entry) {
     const kind = kindOf(path);
     if (kind === 'bootstrap' || memory.has('bootstrap-static') || !inflight.has('bootstrap-static')) return false;
+    if (entry && entry.stale) return false;   // STALE_TTL_SECONDS is below every TTL a deadline can set
     const age = localAgeOf(entry);
-    return age >= DEADLINE_TTL_SECONDS && age < CLIENT_TTL[kind];
+    const longest = PICKS_RE.test(path) ? FINISHED_PICKS_TTL_SECONDS : CLIENT_TTL[kind];
+    return age >= DEADLINE_TTL_SECONDS && age < longest;
   }
 
   async function fetchPath(path, { force = false } = {}) {
@@ -520,7 +605,7 @@ export function createFplApi({
     if (cached && !force && awaitsDeadline(path, cached)) {
       await inflight.get('bootstrap-static').catch(() => null);
     }
-    if (cached && !force && localAgeOf(cached) < ttlFor(path)) {
+    if (cached && !force && localAgeOf(cached) < lifeOf(path, cached)) {
       record(path, cached, null);
       return { data: cached.data, fetchedAt: cached.fetchedAt, stale: !!cached.stale, ageSeconds: ageOf(cached.fetchedAt, cached) };
     }
@@ -581,6 +666,11 @@ export function createFplApi({
     getEntryPicks: (entryId, gw, opts) => fetchPath(`entry/${id(entryId, 'team id')}/event/${id(gw, 'gameweek')}/picks`, opts),
     getElementSummary: (playerId, opts) => fetchPath(`element-summary/${id(playerId, 'player id')}`, opts),
     getEventLive: (gw, opts) => fetchPath(`event/${id(gw, 'gameweek')}/live`, opts),
+    // FPL's own board of what it has finished processing since the deadline
+    // (points, bonus, league tables). Exposed for callers that want to tell
+    // "FPL is still updating" from "nothing has changed"; the app does not
+    // read it yet (app.js retries on the bootstrap's own is_next instead).
+    getEventStatus: (opts) => fetchPath('event-status', opts),
 
     // The deadlines this instance is running with, so the UI (and a test) can
     // say how long a request is allowed to take before it becomes an error.

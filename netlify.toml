@@ -452,10 +452,25 @@
   [headers.values]
     Cache-Control = "public, max-age=3600, stale-while-revalidate=86400"
 
+# FPL Planner's js/ is the one exception among the worker-less apps, and it is
+# max-age=0 ON PURPOSE (2026-10-09 audit, "versioned module graph"). It is an
+# unversioned ES-module graph of ~55 files, loaded twice (the page and the plan
+# worker), and every module is cached on its own: with an hour's max-age plus a
+# day's stale-while-revalidate, a visit after a deploy could run an old app.js
+# against a new engine module, or an old worker against a new planner. Nothing
+# fails loudly when that happens; a renamed export throws at import, a changed
+# wire shape silently misreads. must-revalidate makes every load agree on one
+# deploy. The price is measured, not assumed: revalidation here returns 200
+# with the full body whenever the request carries Accept-Encoding (every
+# browser; only an identity request got a 304 on 2026-10-09), so it is the
+# bytes (about 350 KB brotli for the whole tree) on every load, the trade the
+# rule above avoids for apps without this hazard. The fix that keeps the cache
+# is versioned import URLs, which touches every import; tests/static/
+# netlify-cache-headers.test.mjs pins this carve-out.
 [[headers]]
   for = "/apps/fpl-planner/js/*"
   [headers.values]
-    Cache-Control = "public, max-age=3600, stale-while-revalidate=86400"
+    Cache-Control = "public, max-age=0, must-revalidate"
 
 [[headers]]
   for = "/apps/fpl-planner/css/*"

@@ -13,7 +13,7 @@ import { readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { createPlanRunner } from '../js/ui/plan-runner.js';
+import { createPlanRunner, WORKER_WATCHDOG_MS } from '../js/ui/plan-runner.js';
 import { planBasis, sameBasis, STALE_PLAN } from '../js/engine/plan-basis.js';
 import { assembleSampleBundle } from '../js/data/sample.js';
 import { buildGameState } from '../js/engine/normalize.js';
@@ -43,7 +43,7 @@ function realInputs() {
 // A Worker stand-in. `script` decides how it answers a posted message, so each
 // test can drive the exact branch it cares about.
 function stubWorker(script) {
-  const listeners = { message: [], error: [] };
+  const listeners = { message: [], error: [], messageerror: [] };
   const instances = [];
   class FakeWorker {
     constructor(url, opts) {
@@ -57,6 +57,7 @@ function stubWorker(script) {
       queueMicrotask(() => script(msg, {
         message: (data) => listeners.message.forEach((f) => f({ data })),
         error: () => listeners.error.forEach((f) => f({})),
+        messageerror: () => listeners.messageerror.forEach((f) => f({})),
       }));
     }
     terminate() { this.terminated = true; }
@@ -272,4 +273,109 @@ test('inline: a question about a plan that has since been replaced is refused, n
   } finally {
     if (had) globalThis.Worker = prev;
   }
+});
+
+/* ----------------------------------------------- the worker watchdog */
+
+// A worker that hangs, or dies without an `error` event, used to leave the
+// plan waiting forever: nothing settled the job. These drive that with a fake
+// worker that simply never answers, on a watchdog of a few milliseconds.
+
+test('watchdog: a worker that never answers is terminated and the plan is computed inline, once', async () => {
+  const { FakeWorker, instances } = stubWorker(() => { /* silence */ });
+  await withWorker(FakeWorker, async () => {
+    const { gameState, squadState } = realInputs();
+    const runner = createPlanRunner({ workerUrl: 'about:blank', watchdogMs: 20 });
+    const bundle = await runner.run({ gameState, squadState, options: { seed: 7 } });
+    assert.equal(runner.mode, 'inline');
+    assert.equal(bundle.current.startingXI.length, 11, 'a real plan, not a hang');
+    assert.equal(instances.length, 1);
+    assert.equal(instances[0].terminated, true, 'the hung worker is terminated');
+    // And it is not tried again: the next plan goes straight inline.
+    await runner.run({ gameState, squadState, options: { seed: 7 } });
+    assert.equal(instances.length, 1, 'no second worker is spun up for a runner whose worker hung');
+    runner.dispose();
+  });
+});
+
+test('watchdog: progress messages keep a slow but working worker alive', async () => {
+  const { FakeWorker, instances } = stubWorker((msg, emit) => {
+    if (msg.type !== 'plan') return;
+    // Four stages 15 ms apart: 60 ms in total, never 25 ms of silence.
+    let n = 0;
+    const tick = () => {
+      if (n++ < 4) { emit.message({ id: msg.id, type: 'progress', stage: { key: `s${n}` } }); setTimeout(tick, 15); return; }
+      emit.message({ id: msg.id, type: 'plan', bundle: { current: { marker: 'slow-but-fine' } } });
+    };
+    tick();
+  });
+  await withWorker(FakeWorker, async () => {
+    const runner = createPlanRunner({ workerUrl: 'about:blank', watchdogMs: 40 });
+    const bundle = await runner.run({ gameState: {}, squadState: {}, options: {} });
+    assert.equal(runner.mode, 'worker');
+    assert.equal(bundle.current.marker, 'slow-but-fine');
+    assert.equal(instances[0].terminated, false);
+    runner.dispose();
+  });
+});
+
+test('watchdog: a reply that cannot be deserialized (messageerror) falls back inline instead of hanging', async () => {
+  const { FakeWorker, instances } = stubWorker((msg, emit) => { if (msg.type === 'plan') emit.messageerror(); });
+  await withWorker(FakeWorker, async () => {
+    const { gameState, squadState } = realInputs();
+    // A watchdog far longer than the test: the messageerror alone must settle it.
+    const runner = createPlanRunner({ workerUrl: 'about:blank', watchdogMs: 60000 });
+    const bundle = await runner.run({ gameState, squadState, options: { seed: 7 } });
+    assert.equal(runner.mode, 'inline');
+    assert.ok(bundle.current.captain);
+    assert.equal(instances[0].terminated, true);
+    runner.dispose();
+  });
+});
+
+test('watchdog: the production silence budget is generous next to a slow phone\'s whole plan', () => {
+  // 10-18 s of CPU for a full plan on a slow phone; one silent stretch is a
+  // fraction of that, so 60 s only ever fires on a worker that is gone.
+  assert.ok(WORKER_WATCHDOG_MS >= 45000 && WORKER_WATCHDOG_MS <= 120000);
+});
+
+test('after the worker dies, why-not still answers about the plan it computed', async () => {
+  // The plan on screen came from the worker; the worker then hangs on the
+  // why-not question. The answer used to be "no plan has been computed yet".
+  const { gameState, squadState } = realInputs();
+  const { buildPlan } = await import('../js/engine/planner.js');
+  const { toWireBundle } = await import('../js/ui/plan-model.js');
+  const real = toWireBundle(await buildPlan({ gameState, squadState, options: { seed: 7 } }));
+  const { FakeWorker } = stubWorker((msg, emit) => {
+    if (msg.type === 'plan') emit.message({ id: msg.id, type: 'plan', bundle: real });
+    // why-not: silence, so the watchdog has to notice.
+  });
+  await withWorker(FakeWorker, async () => {
+    const runner = createPlanRunner({ workerUrl: 'about:blank', watchdogMs: 20 });
+    const shown = await runner.run({ gameState, squadState, options: { seed: 7 } });
+    assert.equal(runner.mode, 'worker');
+    const outsider = [...gameState.players.values()].find(p => !shown.current.squad.includes(p.id) && p.position === 4).id;
+    const answer = await runner.whyNot(outsider, { runId: shown.runId });
+    assert.equal(runner.mode, 'inline');
+    assert.ok(typeof answer.text === 'string' && answer.text.length > 0);
+    assert.ok(sameBasis(answer.basis, planBasis(shown)), 'answered about the plan on screen, rebuilt from its inputs');
+    // A question about an older run is still refused rather than re-answered.
+    await assert.rejects(() => runner.whyNot(outsider, { runId: shown.runId - 1 }), new RegExp(STALE_PLAN));
+    runner.dispose();
+  });
+});
+
+test('after the worker dies, a why-not naming a replaced run is refused, not rebuilt', async () => {
+  const { FakeWorker } = stubWorker((msg, emit) => {
+    if (msg.type === 'plan') emit.message({ id: msg.id, type: 'plan', bundle: { current: {} } });
+    else emit.error();
+  });
+  await withWorker(FakeWorker, async () => {
+    const runner = createPlanRunner({ workerUrl: 'about:blank' });
+    const { gameState, squadState } = realInputs();
+    const first = await runner.run({ gameState, squadState, options: { seed: 7 } });
+    await runner.run({ gameState, squadState, options: { seed: 7 } });
+    await assert.rejects(() => runner.whyNot(411, { runId: first.runId }), new RegExp(STALE_PLAN));
+    runner.dispose();
+  });
 });

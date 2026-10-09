@@ -19,7 +19,7 @@ import { readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { loadModel, selectModel, currentEntry, describeModelStatus } from '../js/data/model.js';
+import { loadModel, selectModel, currentEntry, describeModelStatus, declaresNothing } from '../js/data/model.js';
 import { buildGameState } from '../js/engine/normalize.js';
 import { buildSquadState } from '../js/engine/squad.js';
 import { buildStrength } from '../js/engine/strength.js';
@@ -175,10 +175,13 @@ test('a missing index or a missing artifact file is a fallback, never a throw', 
   assert.equal(offline.ok, false);
   assert.match(offline.reason, /network down/);
 
+  // An index WITHOUT the engineConsumes mirror, so the artifact has to be
+  // fetched (the shipped index's mirror lets it skip that fetch entirely).
+  const unmirrored = { models: INDEX.models.map(({ engineConsumes, ...rest }) => rest) };
   const missingFile = await loadModel({
     basePath: 'models/',
     fetchImpl: async (url) => (String(url).endsWith('index.json')
-      ? { ok: true, status: 200, json: async () => INDEX }
+      ? { ok: true, status: 200, json: async () => unmirrored }
       : { ok: false, status: 404, json: async () => ({}) }),
   });
   assert.equal(missingFile.ok, false);
@@ -206,6 +209,82 @@ test('the status panel tells consumed, loaded-but-unused and missing apart', asy
   assert.match(fallback, /analytic priors/);
 
   assert.equal(describeModelStatus(null), 'not checked');
+});
+
+/* ------------------------------------- the index mirror (audit B16) */
+
+// The artifact was downloaded before every first plan although the engine
+// takes nothing from it. The index entry now mirrors its artifact's
+// engineConsumes, and an empty mirror answers without the download.
+
+function recordingFetch(dir = MODELS_DIR) {
+  const inner = fileFetch(dir);
+  const urls = [];
+  const fn = async (url, init) => { urls.push(String(url).split('/').pop()); return inner(url, init); };
+  fn.urls = urls;
+  return fn;
+}
+
+test('B16: the shipped model status is answered from index.json alone, with no artifact download', async () => {
+  const fetchImpl = recordingFetch();
+  const status = await loadModel({ basePath: `${MODELS_DIR}/`, fetchImpl });
+  assert.deepEqual(fetchImpl.urls, ['index.json'], 'the artifact is not fetched when the index says it is consumed by nothing');
+  assert.equal(status.ok, true);
+  assert.equal(status.model, null);
+  assert.deepEqual(status.consumed, []);
+  assert.equal(status.modelVersion, currentEntry(INDEX).modelVersion);
+});
+
+test('B16: the model status panel says exactly what it said when the artifact was downloaded', async () => {
+  const viaIndex = await loadModel({ basePath: `${MODELS_DIR}/`, fetchImpl: fileFetch() });
+  const viaArtifact = selectModel(read('..', 'models', currentEntry(INDEX).file));
+  assert.deepEqual(viaIndex, viaArtifact);
+  assert.equal(describeModelStatus(viaIndex), describeModelStatus(viaArtifact));
+});
+
+test('B16: every index mirror equals the engineConsumes of the artifact it names', () => {
+  let mirrored = 0;
+  for (const entry of INDEX.models) {
+    if (!('engineConsumes' in entry)) continue;
+    const artifact = read('..', 'models', entry.file);
+    assert.deepEqual(entry.engineConsumes, artifact.engineConsumes, `${entry.file}: index mirror drifted from the artifact`);
+    assert.equal(entry.modelVersion, artifact.modelVersion, entry.file);
+    mirrored++;
+  }
+  assert.ok(Array.isArray(currentEntry(INDEX).engineConsumes), 'the current entry carries the mirror, or the skip never happens');
+  assert.ok(mirrored >= 1);
+});
+
+test('B16: an entry with no mirror, or one that lists a part, still fetches and validates the artifact', async () => {
+  const consuming = { models: [{ version: 1, modelVersion: 'fpl-planner-v1', file: 'fpl-planner-v1.json', engineConsumes: ['startCalibratorJSON'] }] };
+  const bare = { models: [{ version: 2, modelVersion: 'fpl-planner-v2', file: 'fpl-planner-v2.json' }] };
+  for (const index of [consuming, bare]) {
+    assert.equal(declaresNothing(currentEntry(index)), false);
+    const urls = [];
+    const status = await loadModel({
+      basePath: `${MODELS_DIR}/`,
+      fetchImpl: async (url, init) => {
+        urls.push(String(url).split('/').pop());
+        return String(url).endsWith('index.json') ? { ok: true, status: 200, json: async () => index } : fileFetch()(url, init);
+      },
+    });
+    assert.deepEqual(urls, ['index.json', index.models[0].file]);
+    assert.equal(status.ok, true);
+  }
+  assert.equal(declaresNothing({ engineConsumes: [], modelVersion: '' }), false, 'no name to report, so the artifact decides');
+});
+
+test('a model fetch that never answers fails with a reason instead of holding the plan', async () => {
+  const started = Date.now();
+  const status = await loadModel({
+    basePath: 'models/',
+    timeoutMs: 30,
+    fetchImpl: () => new Promise(() => {}),
+  });
+  assert.equal(status.ok, false);
+  assert.match(status.reason, /index\.json could not be read: timed out/);
+  assert.ok(Date.now() - started < 2000);
+  assert.match(describeModelStatus(status), /not loaded .*analytic priors/);
 });
 
 /* --------------------------------------------------- it reaches a real plan */
