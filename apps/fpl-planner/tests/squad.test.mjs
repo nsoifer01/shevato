@@ -295,9 +295,10 @@ test('a wildcard or free hit week does not spend banked transfers', () => {
   const withFreeHit = { current: base, chips: [{ name: 'freehit', event: 3 }] };
   const withBenchBoost = { current: base, chips: [{ name: 'bboost', event: 3 }] };
   const noChip = { current: base, chips: [] };
-  // 1 into GW2, 2 into GW3, and the chip week keeps those 2 and adds one.
-  assert.equal(computeFreeTransfers({ history: withWildcard, rules, upToGw: 4 }), 3);
-  assert.equal(computeFreeTransfers({ history: withFreeHit, rules, upToGw: 4 }), 3);
+  // 1 into GW2, 2 into GW3, and the chip week keeps those 2 but its own +1 is
+  // the chip, so GW4 starts with 2.
+  assert.equal(computeFreeTransfers({ history: withWildcard, rules, upToGw: 4 }), 2);
+  assert.equal(computeFreeTransfers({ history: withFreeHit, rules, upToGw: 4 }), 2);
   // Bench boost is a team chip: it does not make transfers free.
   assert.equal(computeFreeTransfers({ history: withBenchBoost, rules, upToGw: 4 }), 1);
   assert.equal(computeFreeTransfers({ history: noChip, rules, upToGw: 4 }), 1);

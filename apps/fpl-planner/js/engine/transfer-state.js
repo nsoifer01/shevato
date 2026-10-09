@@ -31,8 +31,13 @@
 //      a ceiling on what can be banked, never a starting value.
 //   4. Each transfer beyond the free ones costs `rules.hitCost` points.
 //   5. A wildcard or a free hit makes that gameweek's transfers unlimited and
-//      free and does NOT spend what is banked. The usual +1 still arrives the
-//      following gameweek.
+//      free and does NOT spend what is banked. It also CONSUMES that
+//      gameweek's free transfer: the chip is the week's allowance, so no +1
+//      arrives for it and the following gameweek starts with exactly what was
+//      banked going into the chip week. (premierleague.com: "if you had three
+//      saved transfers before using the Wildcard, you still have three
+//      afterwards".) Granting the +1 here put entry 3855835 on 2 free
+//      transfers for GW6 2026-27 when FPL said 1; see FINDINGS.md.
 //
 // A manager who joins mid-season gets the same treatment: unlimited before the
 // first deadline he plays, then one per gameweek. So the pre-season state is
@@ -103,12 +108,17 @@ export function advance(state, { gw, transfersMade = 0, chipPlayed = null, rules
   if (!recorded) return { ...state, gw: nextGw };
 
   const free = chipPlayed === 'wildcard' || chipPlayed === 'freehit';
-  // Rule 5 is the CURRENT rule. Before 2024-25 a wildcard or free hit week
-  // could not bank: the following gameweek started at one whatever was saved.
-  // The flag defaults to the modern behaviour so a rules object that has never
-  // heard of it (every live payload) is unchanged.
-  const preserves = !rules || rules.chipPreservesBank !== false;
-  const kept = free ? (preserves ? state.banked : 0) : Math.max(0, state.banked - transfersMade);
+  if (free) {
+    // Rule 5 is the CURRENT rule: the bank is frozen across the chip week and
+    // no +1 arrives for it, because the chip used that week's transfer. Before
+    // 2024-25 a wildcard or free hit week could not bank at all: the following
+    // gameweek started at one whatever was saved. The flag defaults to the
+    // modern behaviour so a rules object that has never heard of it (every
+    // live payload) is unchanged.
+    const preserves = !rules || rules.chipPreservesBank !== false;
+    return seasonState(preserves ? state.banked : 1, rules, nextGw);
+  }
+  const kept = Math.max(0, state.banked - transfersMade);
   return seasonState(kept + 1, rules, nextGw);
 }
 
