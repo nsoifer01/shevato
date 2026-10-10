@@ -19,8 +19,8 @@ name: FPL deadline archive
 #            finished and data_checked.
 #
 # Storage: one release per season, tagged fpl-archive-<season> (2026-27), a
-# prerelease created with --latest=false so it never becomes the repository's
-# latest release. Snapshot assets are uploaded WITHOUT --clobber, so an asset
+# prerelease, which GitHub never makes the repository's latest release (no
+# --latest flag: gh 2.4.0 rejects it). Snapshot assets are uploaded WITHOUT --clobber, so an asset
 # that already exists fails the upload instead of being replaced; only
 # manifest.json, the append-only index, is replaced, after a check that the new
 # one keeps every entry of the old. Nothing is committed, so this workflow

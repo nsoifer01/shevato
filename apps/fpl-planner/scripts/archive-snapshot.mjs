@@ -24,8 +24,8 @@
 // THE RELEASE (--release)
 //
 // One GitHub release per season, tagged fpl-archive-<season>, created as a
-// prerelease with --latest=false so it never becomes the repository's latest
-// release. The manifest is downloaded first so deduplication and gating work
+// prerelease, which GitHub never makes the repository's latest release (no
+// --latest flag: gh 2.4.0 rejects it). The manifest is downloaded first so deduplication and gating work
 // across runs; new snapshot files are uploaded WITHOUT --clobber, so an asset
 // that already exists makes the upload fail rather than replace it. The one
 // asset that is replaced is manifest.json, the index, and only after the new
@@ -248,7 +248,7 @@ async function main() {
     const manifestChanged = JSON.stringify(before) !== JSON.stringify(manifest);
     if (pending.length || manifestChanged) {
       if (loaded.releaseExists === false) {
-        gh(['release', 'create', tag, '--prerelease', '--latest=false',
+        gh(['release', 'create', tag, '--prerelease',
           '--title', `FPL deadline archive ${season}`,
           '--notes', `Public FPL payloads captured around each ${season} deadline by .github/workflows/fpl-archive.yml (apps/fpl-planner/scripts/archive-snapshot.mjs). Assets are never replaced except manifest.json, the append-only index.`]);
       }

@@ -94,6 +94,26 @@ existed to measure it); the deadline archive will make it measurable.
   scored but never reorder the final ranking. Safe; the README sentence that
   implied more is corrected.
 
+### The pre-merge review (2026-10-10)
+
+- **The 14th tight-budget case** was a candidate-generation gap, not noise: the
+  best pair bought two players ranked 9th to 24th by value, outside the top-8
+  pair pool and above the cheap enablers, best only because the budget rules
+  out everyone above them once the other slot is filled. Neither widening the
+  price-value frontier nor a pool of 16 found it; budget-aware completion
+  (`pairBestResponse`) does, for about 40 ms. The probe's "exhaustive" truth
+  exact-scores only proxy-ranked pairs, so it was re-checked with the planner's
+  own fast lineup objective over all ~490k pairs for the three hardest cases.
+- **The roll sentence was still wrong for two-move alternatives** once the
+  search found them: with two banked transfers a two-move plan gaining +0.71
+  loses correctly (it spends two transfers worth 1.2), but the card said "a
+  free transfer worth 0.6". Each alternative now carries its own
+  `rollMarginPoints` and `transfersSpentVsPlan`.
+- **The trained calibrator was one index reorder from production**: v1 still
+  lists `startCalibratorJSON`. The tag check closes that for good.
+- **`gh release create --latest=false` fails on gh 2.4.0** (this workstation);
+  caught by a real self-test release before the workflow relied on it.
+
 ### The data layer around a deadline
 
 The TTL collapse covered the six hours BEFORE a deadline and reverted to the
@@ -105,8 +125,8 @@ browser, and the page retries every 75 s while FPL still names the locked
 gameweek. Netlify answers a compressed conditional GET with a full 200, so
 `max-age=0, must-revalidate` on the planner's JS is a real per-visit cost
 (about 348 KB brotli), accepted because a mixed module graph after a deploy is a
-dead page. Blob keys per manager and gameweek are never deleted; no safe
-cleanup mechanism exists yet.
+dead page. Blob keys per manager and gameweek are pruned daily after 14 days
+by a scheduled function (see the pre-merge review above).
 
 ---
 
@@ -3617,7 +3637,9 @@ One nuance the tags cannot carry: the engine only ever SUBTRACTS confidence. A
 5. The search proxy prices a spent transfer at `ftValuePoints` 1.2 and a hit
    at 1.5 while the planner uses 0.6 and 2.0; the shortlist protection makes
    it harmless today, and aligning them is a model change for the registry.
-6. Blob keys per manager and gameweek accumulate without cleanup.
+6. Blob keys per manager and gameweek: pruned daily since 2026-10-10
+   (`netlify/functions/fpl-cache-prune.mjs`); watch its first runs' log line
+   for the size of the backlog it clears.
 
 The ranking below is the 2026-08-12 one, kept for its closed items.
 

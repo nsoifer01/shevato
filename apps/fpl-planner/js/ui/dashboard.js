@@ -885,7 +885,9 @@ export function alternativesCard({ bundle, open = false, onToggle = null }) {
         ` over ${bundle.current.horizon} gameweeks, counting what the chip is worth later`,
         alt.hits ? `, costs a ${alt.hitCostPoints} point hit` : '',
       ])
-      : el('div', { class: alt.belowHitMargin ? 'fpl-alt-delta fpl-alt-delta-sentence' : 'fpl-alt-delta' }, [
+      // A row that carries a sentence (the hit bar, or the free transfers it
+      // spends) wraps like the chip-value sentence above; a bare figure does not.
+      : el('div', { class: alt.belowHitMargin || alt.belowRollValue ? 'fpl-alt-delta fpl-alt-delta-sentence' : 'fpl-alt-delta' }, [
         el('b', { text: `${signedXp(alt.deltaHorizon)} pts` }),
         ` over ${bundle.current.horizon} gameweeks`,
         alt.hits ? `, costs a ${alt.hitCostPoints} point hit` : '',

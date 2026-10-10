@@ -424,8 +424,15 @@ fitted on the LOGISTIC start model's own outputs (`scripts/train-model.mjs`,
 `winner.predictValidation`) and is applied to the ANALYTIC `pStart`, a different
 model with a different distribution, and its clamp to `pAppear` moves any
 reduction into "came off the bench" rather than "did not play". A re-test has to
-refit the calibrator on analytic-2's own `pStart` first; re-running the recipe
-above as written measures a mis-specified arm. `models/index.json` now carries
+refit the calibrator on the engine's own start probability first, and that
+was done on 2026-10-10 (`scripts/calibration/calibrate-start.mjs`): a correctly
+specified calibrator improves log loss in every season and still loses points
+(registry entry 46). Both defects are now closed by construction: a calibrator
+is applied in `minutes.js` to the base start probability before the bench is
+built, and only one that declares `startCalibratorFittedOn` equal to
+`minutes.js START_CALIBRATOR_INPUT` is accepted, by `js/data/model.js` and by
+`buildProjections`; both shipped artifacts are refused even if the index were
+reordered, and `train-model.mjs` now labels what its calibrator was fitted on. `models/index.json` now carries
 each artifact's `engineConsumes` list, and an empty one means the app reads the
 index alone and never downloads the artifact.
 
@@ -843,14 +850,22 @@ still choose fewer moves or roll. Until 2026-10-09 it stopped at two, so a
 manager banking three to five transfers was recommended the same two moves he
 would make with two. The pair pool also carries budget enablers (the cheapest
 player at each price step per position), so "downgrade one to fund another" is
-found on a tight bank. Deterministic throughout; a full plan costs about one
+found on a tight bank, and every outgoing pair is also completed budget-aware:
+each player of one slot's full pool is paired with the two most valuable
+players the remaining money buys for the other slot. That last step closed the
+one case of fourteen tight-budget variants the search still missed (a 1.0m
+bank with selling prices cut to three quarters: Gabriel to Senesi and Garner to
+Zubimendi, 174.49, two players ranked 9th to 24th by value who are the best
+pair only once the money is counted); 20 of 20 variants now match a screened
+optimum. Deterministic throughout; a full plan costs about one
 second of CPU on a live-sized pool against a ten-second budget.
 
 The roll is valued by the risk profile's `rollBonus` per transfer carried into
-next week, and the explanation quotes the MARGINAL value of the one transfer a
-roll keeps (0.6 balanced, nothing at the cap), which is the number the decision
-turns on. An alternative that projects more but spends a transfer the plan
-keeps, or takes a hit short of the profile's bar, says so on the card, and the
+next week, and the explanation quotes the value of each transfer a roll keeps
+(0.6 balanced, nothing at the cap), which is the number the decision turns on.
+An alternative that projects more but spends free transfers the plan keeps
+(two for a two-move plan, so 1.2 points), or takes a hit short of the
+profile's bar, says so on the card with its own figure, and the
 confidence band never calls such a runner-up a tie. The risk profile
 (balanced, aggressive, conservative) reaches every lineup and armband the plan
 scores, not only the ranking.
@@ -1207,6 +1222,20 @@ points, captain points and start calibration, appended to a cumulative history
 with a drift flag (engine rank correlation under the naive baseline three
 gameweeks running). It refuses a snapshot captured after its deadline.
 `--fixtures` scores the committed 2026 captures as a smoke test.
+
+Release limits and recovery: GitHub caps a release at 1000 assets, so the
+script stops at 900 with instructions to start a second release for the
+season; an asset the manifest does not list (a run that died between the
+snapshot upload and the manifest upload) is reported on every run and never
+deleted. Release creation is plain `--prerelease` (a prerelease is never the
+repository's latest), which works on old `gh` versions too.
+
+The proxy's own cache is pruned separately: `netlify/functions/fpl-cache-prune.mjs`,
+a Netlify scheduled function at 04:00 UTC daily, deletes per-manager cache
+copies (`v1:entry__...`) fetched more than 14 days ago and leases expired more
+than an hour, at most 2000 a run, and never a shared key, the deadline meta or
+the quota counters. Those copies are re-fetchable caches of public FPL data;
+history lives in the archive above.
 
 ### The health probe
 

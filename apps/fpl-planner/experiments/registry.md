@@ -1707,6 +1707,33 @@ xG/xA rate quality, and early-window squad construction where a wrong opening
 channel; running more weights is known to be useless, because no flat weight
 can satisfy three seasons whose optima genuinely differ.
 
+## 46. A start calibrator fitted on the engine's own start probability: REJECT
+
+- **Date:** 2026-10-10
+- **Decision: REJECT.** No calibrator is applied; the engine now refuses any
+  calibrator that does not declare it was fitted on the base start probability
+  (`minutes.js START_CALIBRATOR_INPUT`), which both shipped artifacts do not.
+- **Pre-registered** in `experiments/configs/start-calibration.mjs`.
+
+The artifacts' calibrator (registry entry 2) was mis-specified: fitted on the
+logistic start model's outputs and applied to the analytic pStart, then clamped
+to pAppear so a lowered start became a free bench appearance (audit B15). The
+honest re-test fits one on the quantity it corrects
+(`scripts/calibration/calibrate-start.mjs`, monotone bins, leave-one-season-out)
+and applies it in minutes.js before the bench is built. Held out it does what a
+calibrator should: log loss better in all four seasons (0.3685 to 0.3649,
+0.3418 to 0.3382, 0.3556 to 0.3536, 0.3314 to 0.3277) and the top bin
+(predicted 0.94) brought to 0.90 against 0.90-0.91 observed. On points:
+
+| arm | per window | se | t | W-L-T | 2023-24 | 2024-25 | 2025-26 |
+| --- | ---: | ---: | ---: | --- | ---: | ---: | ---: |
+| calibrated | -8.4 | 7.8 | -1.07 | 5-10-0 | -11.1 | -24.9 | +10.8 |
+
+A season below -15. Entry 2's conclusion now holds for a correctly specified
+calibrator too: lowering every nailed starter's start chance by a few points is
+a level shift, and what it changes is the margin by which they beat rotation
+options, not who the better buy is.
+
 ## 45. The 2026-10-09 round as a whole, against master: before and after
 
 - **Date:** 2026-10-09
@@ -1732,7 +1759,16 @@ the same three seasons are unchanged to the second decimal (engine rank
 correlation 0.589, top twenty 4.76 against 4.74, captain 7.17; the calibration
 bands all pass).
 
-**New control on this tree:** instrument 3, chips off, 15 windows: 34,470.
+**Re-measured 2026-10-10 after the pre-merge review** (budget-aware pair
+completion, the calibrator guard, the per-alternative roll cost), the branch
+side re-run against the same master runs:
+
+| instrument | per window | se | t | W-L-T | 2023-24 | 2024-25 | 2025-26 | total |
+| --- | ---: | ---: | ---: | --- | ---: | ---: | ---: | ---: |
+| 3, chips off | +6.7 | 4.7 | 1.41 | 10-2-3 | +8.8 | +9.7 | +1.5 | 34,252 to 34,552 |
+| 3, chips on | +4.9 | 7.1 | 0.69 | 6-9-0 | +5.1 | +4.6 | +5.1 | 34,883 to 35,104 |
+
+**New control on this tree:** instrument 3, chips off, 15 windows: 34,552.
 Re-measure it on your own tree before comparing anything (the file's rule).
 
 ## 44. Two-gameweek transfer paths: REJECT
@@ -1927,7 +1963,24 @@ and the transfer engine 74, both significant in every season.
 | no-enablers | (totals 34226 against 34260) | | | | 525 / 10 |
 
 No measurable effect on points, as registered for a correction, and the old
-search does not beat it. Chips-off windows start from a fresh squad and rarely
+search does not beat it.
+
+**Re-measured 2026-10-10 after the pre-merge review** added budget-aware pair
+completion (`pairBestResponse` 2: every player of one slot's full pool paired
+with the best the remaining money buys for the other, which found the one
+tight-budget case of fourteen the search had missed):
+
+| arm vs the shipped search | per window | se | t | W-L-T | seasons |
+| --- | ---: | ---: | ---: | --- | --- |
+| old-search (2 moves, no enablers, no completion) | -2.7 | 3.9 | -0.69 | 2-8-5 | -7.7 / -5.6 / +5.3 |
+| no-enablers | +0.6 | 1.4 | 0.44 | 1-1-13 | -1.8 / +0.0 / +3.7 |
+| no-best-response | -1.8 | 2.5 | -0.73 | 2-3-10 | -2.5 / -5.2 / +2.2 |
+
+The shipped search reads ahead of the old one in two seasons of three and is
+kept; the completion is kept as a correction (it finds strictly better pairs
+on the planner's own objective: 20 of 20 bank and price variants match a
+screened optimum, against 15 of 20 for the old search). New control on this
+tree: 34,552. Chips-off windows start from a fresh squad and rarely
 bank three or more transfers, so the instrument barely exposes the depth; the
 enablers account for the small difference and four extra hits. The value is in
 live seasons where managers bank transfers, which the replay under-represents.
