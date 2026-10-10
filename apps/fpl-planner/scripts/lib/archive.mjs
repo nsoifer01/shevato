@@ -344,3 +344,47 @@ export async function fetchEndpoint(name, path, {
   }
   throw lastErr;
 }
+
+/* ----------------------------------------------------------- one capture */
+
+/**
+ * Fetch and record one capture, wherever it is stored. Pure apart from the
+ * fetch: it returns the new manifest and the files to store, and the caller
+ * writes them (to disk in scripts/archive-snapshot.mjs, to Netlify Blobs in
+ * netlify/functions/fpl-archive-capture.mjs). `bootstrapFetch` is the
+ * bootstrap the gate already read, reused so FPL is not asked for 1.7 MB twice.
+ * @returns {Promise<{ manifest: object, files: Array<{ file: string, gz: Buffer }>, entries: object[] }>}
+ */
+export async function captureRecords({
+  season, phase, gw, deadline, manifest, bootstrapFetch = null, fetchImpl = fetch, sleep, now = () => new Date().toISOString(),
+}) {
+  const stamp = now();
+  const captureId = `${phase}-gw${String(gw).padStart(2, '0')}-${compactStamp(stamp)}`;
+  const jobs = phase === 'live' ? [{ name: 'live', path: livePath(gw) }] : ENDPOINTS;
+  const files = [];
+  const entries = [];
+  for (const ep of jobs) {
+    const got = ep.name === 'bootstrap' && bootstrapFetch
+      ? bootstrapFetch
+      : await fetchEndpoint(ep.name, ep.path, { fetchImpl, ...(sleep ? { sleep } : {}) });
+    const capturedAt = got.capturedAt || now();
+    const record = buildRecord({
+      endpoint: ep.name, url: got.url, phase, gw, deadline, capturedAt, serverDate: got.serverDate, season, raw: got.raw,
+    });
+    const file = snapshotFileName({ phase, gw, capturedAt: stamp, endpoint: ep.name });
+    const added = addToManifest(manifest, {
+      file, captureId, endpoint: ep.name, phase, gw, deadline: deadline || null,
+      capturedAt, serverDate: record.serverDate, url: got.url, sha256: record.sha256, bytes: record.bytes,
+    });
+    manifest = added.manifest;
+    const last = manifest.entries[manifest.entries.length - 1];
+    if (added.store) {
+      const gz = encodeRecord(record);
+      last.gzBytes = gz.length;
+      files.push({ file, gz });
+    }
+    entries.push(last);
+  }
+  return { manifest, files, entries };
+}
+

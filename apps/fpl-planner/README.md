@@ -1194,9 +1194,24 @@ the league.
 Nothing archived FPL's payloads as they stood at each deadline, so the live
 season could never be scored, FPL's own `ep_next` could never be used as an
 honest baseline (the community archive's `xP` column contains the result it
-predicts), and injury flags had no history. `scripts/archive-snapshot.mjs`
-fixes that, run hourly by `.github/workflows/fpl-archive.yml` (from the default
-branch only):
+predicts), and injury flags had no history. `scripts/lib/archive.mjs` holds the
+gate, the records and the dedupe; two schedulers run it:
+
+- **The capture runs on Netlify** (`netlify/functions/fpl-archive-capture.mjs`,
+  hourly at :07) into the `fpl-archive` blob store
+  (`netlify/functions/lib/fpl-archive-stage.mjs`). GitHub fires this
+  repository's schedules hours late or not at all: on 2026-10-10, the day after
+  the archive shipped on GitHub Actions alone, its hourly cron ran once between
+  03:17 and 14:17 UTC and GW6's post-deadline snapshot was lost. Netlify's
+  scheduler fires on time.
+- **The release copy runs on GitHub** (`.github/workflows/fpl-archive.yml`,
+  `scripts/archive-snapshot.mjs --release --staged`): whenever it runs it pulls
+  what Netlify staged (`netlify/functions/fpl-archive-export.mjs`, read-only,
+  public data only, a snapshot name or nothing), checks each file against its
+  manifest hash, uploads what the release lacks, and then runs the same gate
+  itself to fill any gap Netlify left.
+
+The gate:
 
 | phase | when | what |
 | --- | --- | --- |

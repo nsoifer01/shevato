@@ -35,6 +35,15 @@ name: FPL deadline archive
 # Exit 75 from the script means FPL answered "the game is being updated": that
 # is a warning, not a failure, because the next hourly run is the retry.
 
+# SINCE 2026-10-10 THE CAPTURE IS NETLIFY'S. GitHub fires this repository's
+# schedules hours late or not at all (on 10 October the hourly cron below ran
+# once between 03:17 and 14:17 UTC, and GW6's post-deadline snapshot was never
+# taken), so netlify/functions/fpl-archive-capture.mjs takes the snapshots on
+# time into the `fpl-archive` blob store, and this job pulls what is staged
+# there (`--staged`, via netlify/functions/fpl-archive-export.mjs) and uploads
+# it to the release whenever it does run. Its own gate still runs after the
+# pull, so it fills any gap the Netlify side left.
+
 on:
   schedule:
     # :17, off the top of the hour, where GitHub's scheduler is busiest and
@@ -89,7 +98,7 @@ jobs:
           GW: ${{ inputs.gw || '' }}
         run: |
           set -u
-          args=(--release --out "$RUNNER_TEMP/fpl-archive" --phase "$PHASE")
+          args=(--release --staged --out "$RUNNER_TEMP/fpl-archive" --phase "$PHASE")
           if [ -n "$GW" ]; then
             case "$GW" in *[!0-9]*) echo "::error::gw must be a number"; exit 1;; esac
             args+=(--gw "$GW")
