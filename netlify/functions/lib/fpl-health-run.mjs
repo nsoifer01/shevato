@@ -23,9 +23,21 @@
 // Enterprise plan (log drains are Enterprise-only), so a failure is made
 // visible three ways: it is logged as an error; `latest` turns red, and
 // fpl-health-status answers 503 (also when no run has landed for
-// STALE_AFTER_HOURS, so a scheduler that stops is a failure too); and, when
-// FPL_HEALTH_GITHUB_TOKEN is set, a GitHub issue is opened at once (GitHub
-// emails the repository's watchers) and closed again on recovery.
+// STALE_AFTER_HOURS, so a scheduler that stops is a failure too, and when a
+// run claimed its slot but never recorded a result, so a run killed at the
+// 30-second limit is one); and, when FPL_HEALTH_GITHUB_TOKEN is set, the run
+// starts .github/workflows/fpl-health.yml at once, which keeps one incident
+// issue in step with fpl-health-status and fails, so GitHub emails the owner.
+//
+// WHY A WORKFLOW AND NOT AN ISSUE (2026-10-10). An issue opened with the
+// owner's own token notifies nobody: GitHub never notifies a user about their
+// own activity, and the owner's inbox has no mail for anything the
+// repository's bots open either (not watching). What reliably reaches them is
+// a failed workflow run they triggered, and an @mention from
+// github-actions[bot]. So the token can do one thing, start this repository's
+// workflows (fine-grained, Actions read/write on this repository only), and
+// the issue is written by the workflow with GITHUB_TOKEN, by the same script
+// the delayed GitHub schedule runs as the backstop: one writer, one incident.
 
 import { runProbe, payloadShapeFailures } from '../../../apps/fpl-planner/scripts/lib/probe.mjs';
 import { FPL_API, USER_AGENT } from '../../../apps/fpl-planner/scripts/lib/archive.mjs';
@@ -35,7 +47,11 @@ export const SLOT_HOURS = 6;
 export const HISTORY_LIMIT = 120;
 export const STALE_AFTER_HOURS = 7;
 export const SITE = 'https://shevato.com';
-export const ISSUE_MARKER = '[fpl-health]';
+// A run that claimed its slot this long ago and stored nothing is dead:
+// Netlify kills a scheduled function at 30 seconds.
+export const UNFINISHED_AFTER_MS = 2 * 60e3;
+export const ALERT_WORKFLOW = 'fpl-health.yml';
+export const ALERT_TIMEOUT_MS = 5000;
 
 export const slotOf = (iso) => {
   const d = new Date(Date.parse(iso));
@@ -43,12 +59,17 @@ export const slotOf = (iso) => {
   return `${d.toISOString().slice(0, 10)}T${String(h).padStart(2, '0')}`;
 };
 
-/** Claim this slot. False when another invocation already has it. */
-async function claimSlot(store, slot) {
+/**
+ * Claim this slot. `claimed` is false when another invocation already has it;
+ * `previous` is the claim this one replaced, so a run can tell whether the
+ * one before it ever finished.
+ */
+async function claimSlot(store, slot, at) {
   const cur = await store.getWithMetadata('slot', { type: 'json' });
-  if (cur && cur.data && cur.data.slot === slot) return false;
-  const res = await store.setJSON('slot', { slot }, cur && cur.etag ? { onlyIfMatch: cur.etag } : { onlyIfNew: true });
-  return !(res && res.modified === false);
+  const previous = (cur && cur.data) || null;
+  if (previous && previous.slot === slot) return { claimed: false, previous };
+  const res = await store.setJSON('slot', { slot, at }, cur && cur.etag ? { onlyIfMatch: cur.etag } : { onlyIfNew: true });
+  return { claimed: !(res && res.modified === false), previous };
 }
 
 async function readPayload(name, fetchImpl, responses) {
@@ -78,8 +99,12 @@ export async function probeProduction({ fetchImpl = fetch, now = new Date().toIS
   let bootstrap;
   let fixtures;
   try {
-    bootstrap = await readPayload('bootstrap-static', fetchImpl, responses);
-    fixtures = await readPayload('fixtures', fetchImpl, responses);
+    // In parallel: the two reads are independent, and on Netlify every
+    // second counts against the 30-second limit.
+    [bootstrap, fixtures] = await Promise.all([
+      readPayload('bootstrap-static', fetchImpl, responses),
+      readPayload('fixtures', fetchImpl, responses),
+    ]);
   } catch (err) {
     return { checks: [failure('the proxy serves the FPL payloads', `${err.message}; ${await diagnoseUpstream(fetchImpl)}`, 'HTTP 200')], reading: null, lines: [] };
   }
@@ -104,7 +129,9 @@ export async function probeProduction({ fetchImpl = fetch, now = new Date().toIS
 export async function runScheduledProbe({ store, fetchImpl = fetch, now = () => new Date().toISOString(), alert = null } = {}) {
   const at = now();
   const slot = slotOf(at);
-  if (!(await claimSlot(store, slot))) return { skipped: `slot ${slot} already probed` };
+  const before = await store.get('latest', { type: 'json' });
+  const { claimed, previous } = await claimSlot(store, slot, at);
+  if (!claimed) return { skipped: `slot ${slot} already probed` };
 
   const started = Date.now();
   const prev = await store.get('last-reading', { type: 'json' });
@@ -114,6 +141,12 @@ export async function runScheduledProbe({ store, fetchImpl = fetch, now = () => 
   } catch (err) {
     result = { checks: [failure('the probe runs to completion', `threw: ${err && err.message}`, 'no exception')], reading: null, lines: [] };
   }
+  // The run before this one claimed its slot; if it never stored a result it
+  // was killed (the 30-second limit) or crashed, and nothing else would say so.
+  const lostSlot = previous && previous.slot && (!before || before.slot !== previous.slot) ? previous.slot : null;
+  result.checks.push(lostSlot
+    ? failure('the previous scheduled run recorded its result', `slot ${lostSlot} was claimed at ${previous.at || '?'} and stored nothing`, 'a stored result for every claimed slot')
+    : { name: 'the previous scheduled run recorded its result', ok: true });
   const failed = result.checks.filter((c) => c.ok === false);
   const latest = {
     at, slot, ok: failed.length === 0, durationMs: Date.now() - started,
@@ -123,25 +156,36 @@ export async function runScheduledProbe({ store, fetchImpl = fetch, now = () => 
     lines: result.lines,
   };
 
-  const before = await store.get('latest', { type: 'json' });
   await store.setJSON('latest', latest);
   const history = (await store.get('history', { type: 'json' })) || [];
   history.push({ at, slot, ok: latest.ok, failed: latest.failed.map((f) => f.name), durationMs: latest.durationMs });
   await store.setJSON('history', history.slice(-HISTORY_LIMIT));
   if (latest.ok && result.reading) await store.setJSON('last-reading', result.reading);
 
+  // The result is stored BEFORE anything is asked of GitHub, so neither a
+  // GitHub outage nor the 30-second limit can lose it; the alert's outcome is
+  // then added, where the backstop reads it (an expired token is an incident).
   if (alert) {
     try {
-      await alert({ latest, before });
+      latest.alert = await alert({ latest, before, nowMs: Date.parse(at) });
     } catch (err) {
-      console.error('fpl-health alert failed', String(err && err.message));
+      latest.alert = { ok: false, error: String((err && err.message) || err) };
+      console.error('fpl-health alert failed', latest.alert.error);
     }
+    await store.setJSON('latest', latest);
   }
   return latest;
 }
 
-/** What the status endpoint answers: 200 healthy and recent, 503 otherwise. */
-export function statusOf(latest, nowMs = Date.now()) {
+/**
+ * What the status endpoint answers: 200 healthy and recent, 503 otherwise.
+ * `claim` is the store's slot claim: a claim newer than `latest` that is old
+ * enough to have finished is a run that died.
+ */
+export function statusOf(latest, nowMs = Date.now(), claim = null) {
+  if (claim && claim.slot && (!latest || latest.slot !== claim.slot) && nowMs - Date.parse(claim.at) > UNFINISHED_AFTER_MS) {
+    return { status: 503, body: { ok: false, reason: `the run for slot ${claim.slot} started at ${claim.at} and never recorded a result (killed at Netlify's 30-second limit, or crashed)`, latest } };
+  }
   if (!latest) return { status: 503, body: { ok: false, reason: 'no probe has run yet' } };
   const ageHours = (nowMs - Date.parse(latest.at)) / 3600e3;
   if (ageHours > STALE_AFTER_HOURS) {
@@ -151,36 +195,35 @@ export function statusOf(latest, nowMs = Date.now()) {
 }
 
 /**
- * Immediate alerting through GitHub issues, when a token is configured:
- * opens one issue on the first failed run, comments while it stays red,
- * closes it on recovery. Inert without a token.
+ * Immediate alerting, when a token is configured: starts the fpl-health
+ * workflow (mode `monitor`), which reconciles the incident issue with
+ * fpl-health-status. Started when this run failed and when it may end an
+ * incident (the run before failed, is missing, is stale, or could not alert),
+ * so a healthy steady state starts nothing. Otherwise it only checks the token
+ * can still reach the workflow, so an expired token surfaces while nothing is
+ * wrong. Inert (null) without a token.
  */
-export function githubIssueAlert({ token, repo = 'nsoifer01/shevato', fetchImpl = fetch } = {}) {
+export function githubDispatchAlert({ token, repo = 'nsoifer01/shevato', ref = 'master', fetchImpl = fetch, timeoutMs = ALERT_TIMEOUT_MS } = {}) {
   if (!token) return null;
-  const api = (path, init = {}) => fetchImpl(`https://api.github.com/repos/${repo}${path}`, {
+  const url = `https://api.github.com/repos/${repo}/actions/workflows/${ALERT_WORKFLOW}`;
+  const call = (path, init = {}) => fetchImpl(`${url}${path}`, {
     ...init,
+    signal: AbortSignal.timeout(timeoutMs),
     headers: {
       Authorization: `Bearer ${token}`, Accept: 'application/vnd.github+json', 'User-Agent': 'shevato-fpl-health',
       ...(init.body ? { 'Content-Type': 'application/json' } : {}),
     },
   });
-  const describe = (latest) => [
-    `Probe at ${latest.at} (slot ${latest.slot}).`, '',
-    ...latest.failed.map((f) => `- **${f.name}**: saw ${f.saw}, expected ${f.expected}`), '',
-    `Status: ${SITE}/.netlify/functions/fpl-health-status`,
-  ].join('\n');
-  return async ({ latest }) => {
-    const res = await api('/issues?state=open&per_page=100');
-    if (!res.ok) throw new Error(`GitHub issues list: HTTP ${res.status}`);
-    const open = (await res.json()).find((i) => !i.pull_request && String(i.title).startsWith(ISSUE_MARKER));
-    if (!latest.ok) {
-      if (open) return api(`/issues/${open.number}/comments`, { method: 'POST', body: JSON.stringify({ body: `Still failing.\n\n${describe(latest)}` }) });
-      return api('/issues', { method: 'POST', body: JSON.stringify({ title: `${ISSUE_MARKER} FPL Planner health probe failed: ${latest.failed.map((f) => f.name).join('; ')}`.slice(0, 250), body: describe(latest) }) });
+  return async ({ latest, before, nowMs = Date.parse(latest.at) }) => {
+    const priorUnsettled = !before || before.ok === false || (before.alert && before.alert.ok === false)
+      || nowMs - Date.parse(before.at) > STALE_AFTER_HOURS * 3600e3;
+    if (!latest.ok || priorUnsettled) {
+      const res = await call('/dispatches', { method: 'POST', body: JSON.stringify({ ref, inputs: { mode: 'monitor' } }) });
+      if (res.status !== 204) throw new Error(`workflow dispatch: HTTP ${res.status}`);
+      return { ok: true, dispatched: latest.ok ? 'recovery-check' : 'failure' };
     }
-    if (open) {
-      await api(`/issues/${open.number}/comments`, { method: 'POST', body: JSON.stringify({ body: `Recovered at ${latest.at}: every invariant holds.` }) });
-      return api(`/issues/${open.number}`, { method: 'PATCH', body: JSON.stringify({ state: 'closed' }) });
-    }
-    return null;
+    const res = await call('');
+    if (!res.ok) throw new Error(`workflow check: HTTP ${res.status}`);
+    return { ok: true, dispatched: null };
   };
 }

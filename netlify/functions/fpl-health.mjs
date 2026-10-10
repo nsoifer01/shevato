@@ -2,14 +2,15 @@
 // (netlify/functions/lib/fpl-health-run.mjs explains why it moved off GitHub
 // Actions, how a duplicate run is prevented and how a failure is reported).
 // A failed probe is logged as an error and returns 500, so it is visible in
-// the function's log and in fpl-health-status, and opens a GitHub issue when
-// FPL_HEALTH_GITHUB_TOKEN is set.
+// the function's log and in fpl-health-status, and, when
+// FPL_HEALTH_GITHUB_TOKEN is set, starts the GitHub workflow that keeps the
+// incident issue and emails the owner.
 
-import { HEALTH_STORE, runScheduledProbe, githubIssueAlert } from './lib/fpl-health-run.mjs';
+import { HEALTH_STORE, runScheduledProbe, githubDispatchAlert } from './lib/fpl-health-run.mjs';
 
 export default async () => {
   const { getStore } = await import('@netlify/blobs');
-  const alert = githubIssueAlert({
+  const alert = githubDispatchAlert({
     token: process.env.FPL_HEALTH_GITHUB_TOKEN,
     repo: process.env.FPL_HEALTH_GITHUB_REPO || undefined,
   });

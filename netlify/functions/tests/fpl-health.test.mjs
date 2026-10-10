@@ -2,7 +2,8 @@
 // (netlify/functions/fpl-health.mjs, lib/fpl-health-run.mjs) and its status
 // endpoint (fpl-health-status.mjs). Hermetic: a committed real payload
 // stands in for production behind a fake proxy, the store is in memory, and
-// GitHub's API is a recorder.
+// GitHub's API is a recorder. The incident issue itself is the workflow's
+// (apps/fpl-planner/tests/health-monitor.test.mjs).
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -11,7 +12,7 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import {
-  runScheduledProbe, statusOf, slotOf, githubIssueAlert, STALE_AFTER_HOURS, ISSUE_MARKER,
+  runScheduledProbe, statusOf, slotOf, githubDispatchAlert, STALE_AFTER_HOURS, UNFINISHED_AFTER_MS,
 } from '../lib/fpl-health-run.mjs';
 import { handleStatus } from '../fpl-health-status.mjs';
 import { config } from '../fpl-health.mjs';
@@ -121,32 +122,78 @@ test('a scheduler that stops is a failure: the status endpoint goes red once the
   assert.equal(statusOf(null).status, 503);
 });
 
-test('with a token, a failure opens one GitHub issue, a repeat comments on it, a recovery closes it', async () => {
-  const issues = [];
+// A GitHub that records each call and answers `status` for the dispatch.
+function github({ dispatchStatus = 204, checkStatus = 200 } = {}) {
   const calls = [];
-  const gh = async (url, init = {}) => {
-    calls.push(`${init.method || 'GET'} ${url.replace('https://api.github.com/repos/o/r', '')}`);
-    if (url.endsWith('/issues?state=open&per_page=100')) return new Response(JSON.stringify(issues.filter((i) => i.state === 'open')), { status: 200 });
-    if (url.endsWith('/issues') && init.method === 'POST') {
-      const body = JSON.parse(init.body);
-      issues.push({ number: 7, title: body.title, state: 'open' });
-      return new Response('{}', { status: 201 });
-    }
-    if (url.endsWith('/issues/7') && init.method === 'PATCH') { issues[0].state = 'closed'; return new Response('{}', { status: 200 }); }
-    return new Response('{}', { status: 201 });
+  const fetchImpl = async (url, init = {}) => {
+    calls.push({ method: init.method || 'GET', path: url.replace('https://api.github.com/repos/o/r/actions/workflows/fpl-health.yml', ''), body: init.body ? JSON.parse(init.body) : null, auth: init.headers.Authorization });
+    if (url.endsWith('/dispatches')) return new Response(null, { status: dispatchStatus });
+    return new Response('{}', { status: checkStatus });
   };
-  const alert = githubIssueAlert({ token: 't', repo: 'o/r', fetchImpl: gh });
-  const red = { at: NOW, slot: 's', ok: false, failed: [{ name: 'x', saw: 'a', expected: 'b' }] };
-  await alert({ latest: red });
-  await alert({ latest: red });
-  await alert({ latest: { ...red, ok: true, failed: [] } });
-  assert.deepEqual(calls, [
-    'GET /issues?state=open&per_page=100', 'POST /issues',
-    'GET /issues?state=open&per_page=100', 'POST /issues/7/comments',
-    'GET /issues?state=open&per_page=100', 'POST /issues/7/comments', 'PATCH /issues/7',
-  ]);
-  assert.ok(issues[0].title.startsWith(ISSUE_MARKER));
-  assert.equal(githubIssueAlert({ token: '' }), null, 'inert without a token');
+  fetchImpl.calls = calls;
+  return fetchImpl;
+}
+
+test('with a token, a failure starts the incident workflow at once; a healthy steady state only checks the token', async () => {
+  const gh = github();
+  const alert = githubDispatchAlert({ token: 't', repo: 'o/r', fetchImpl: gh });
+  const green = { at: NOW, slot: 's1', ok: true, failed: [] };
+  const red = { ...green, ok: false, failed: [{ name: 'x', saw: 'a', expected: 'b' }] };
+
+  assert.deepEqual(await alert({ latest: red, before: green }), { ok: true, dispatched: 'failure' });
+  assert.deepEqual(gh.calls[0], { method: 'POST', path: '/dispatches', body: { ref: 'master', inputs: { mode: 'monitor' } }, auth: 'Bearer t' });
+
+  // Recovery: the run before failed, so the workflow is started to close the issue.
+  assert.deepEqual(await alert({ latest: green, before: red }), { ok: true, dispatched: 'recovery-check' });
+  // And after a gap (the issue the backstop opened for staleness), and after an alert that failed.
+  const old = { ...green, at: new Date(Date.parse(NOW) - (STALE_AFTER_HOURS + 1) * 3600e3).toISOString() };
+  assert.equal((await alert({ latest: green, before: old })).dispatched, 'recovery-check');
+  assert.equal((await alert({ latest: green, before: { ...green, alert: { ok: false, error: 'HTTP 401' } } })).dispatched, 'recovery-check');
+  assert.equal((await alert({ latest: green, before: null })).dispatched, 'recovery-check');
+
+  // Healthy after healthy: no workflow run, one read that proves the token still works.
+  const n = gh.calls.length;
+  assert.deepEqual(await alert({ latest: green, before: green }), { ok: true, dispatched: null });
+  assert.deepEqual(gh.calls.slice(n).map((c) => `${c.method} ${c.path}`), ['GET ']);
+
+  assert.equal(githubDispatchAlert({ token: '' }), null, 'inert without a token');
+});
+
+test('an expired token is recorded on the run, where the backstop reads it, and never fails the probe', async () => {
+  const store = memoryStore();
+  const r = await runScheduledProbe({
+    store, fetchImpl: production(), now: () => NOW,
+    alert: githubDispatchAlert({ token: 't', repo: 'o/r', fetchImpl: github({ checkStatus: 401, dispatchStatus: 401 }) }),
+  });
+  assert.equal(r.ok, true, 'the probe result is the probe\'s');
+  assert.deepEqual(store.map.get('latest').alert, { ok: false, error: 'workflow dispatch: HTTP 401' });
+  assert.equal(store.map.get('latest').ok, true);
+});
+
+test('a run killed before it stored anything turns the status red within minutes, and the next run reports it', async () => {
+  const store = memoryStore();
+  await runScheduledProbe({ store, fetchImpl: production(), now: () => NOW });
+  // The next slot's run claims its slot and dies (Netlify's 30-second limit).
+  const nextSlotAt = new Date(Date.parse(NOW) + 6 * 3600e3).toISOString();
+  const killed = { ...store, setJSON: async (k, v, o) => { if (k !== 'slot') throw new Error('killed'); return store.setJSON(k, v, o); } };
+  await assert.rejects(runScheduledProbe({ store: killed, fetchImpl: production(), now: () => nextSlotAt }));
+  const claim = store.map.get('slot');
+  assert.equal(claim.slot, slotOf(nextSlotAt));
+
+  assert.equal(statusOf(store.map.get('latest'), Date.parse(nextSlotAt) + 60e3, claim).status, 200, 'a run still inside its time is not dead');
+  const dead = statusOf(store.map.get('latest'), Date.parse(nextSlotAt) + UNFINISHED_AFTER_MS + 1, claim);
+  assert.equal(dead.status, 503);
+  assert.match(dead.body.reason, /never recorded a result/);
+  const res = await handleStatus(req(), store, Date.parse(nextSlotAt) + UNFINISHED_AFTER_MS + 1);
+  assert.equal(res.status, 503);
+
+  // The run after that one fails on it, so the incident is raised even if nobody reads the status.
+  const third = await runScheduledProbe({ store, fetchImpl: production(), now: () => new Date(Date.parse(nextSlotAt) + 6 * 3600e3).toISOString() });
+  assert.equal(third.ok, false);
+  // (Twelve hours on, the fixture's own deadline has passed too, which the probe rightly reports.)
+  const lost = third.failed.find((f) => f.name === 'the previous scheduled run recorded its result');
+  assert.ok(lost, JSON.stringify(third.failed));
+  assert.match(lost.saw, new RegExp(`slot ${slotOf(nextSlotAt)}`));
 });
 
 test('a run whose alert fails still stores its result', async () => {
@@ -157,6 +204,7 @@ test('a run whose alert fails still stores its result', async () => {
   });
   assert.equal(r.ok, false);
   assert.equal(store.map.get('latest').ok, false);
+  assert.deepEqual(store.map.get('latest').alert, { ok: false, error: 'GitHub down' });
 });
 
 test('it runs every six hours on Netlify\'s scheduler, and the status endpoint is read-only', async () => {
