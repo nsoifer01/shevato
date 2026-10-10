@@ -13,6 +13,7 @@
 // plan, AND an artifact that does declare a key is still consumed, so the
 // mechanism is dormant rather than dead.
 
+import { START_CALIBRATOR_INPUT } from '../js/engine/minutes.js';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -114,7 +115,9 @@ test('the points model is never passed to the engine', async () => {
 
   // And an artifact that did ask for it would still not get it: this engine has
   // no seam for a points model, so the key is dropped rather than trusted.
-  const asked = selectModel({ ...artifact, modelVersion: 'test-1', engineConsumes: ['points', 'startCalibratorJSON'] });
+  const asked = selectModel({
+    ...artifact, modelVersion: 'test-1', engineConsumes: ['points', 'startCalibratorJSON'], startCalibratorFittedOn: START_CALIBRATOR_INPUT,
+  });
   assert.equal(asked.ok, true);
   assert.deepEqual(asked.consumed, ['startCalibratorJSON']);
   assert.equal(asked.model.points, undefined);
@@ -128,10 +131,11 @@ test('an artifact that does declare a consumable key is still consumed', () => {
     modelVersion: 'fpl-planner-v99',
     engineConsumes: ['startCalibratorJSON'],
     startCalibratorJSON: read('..', 'models', currentEntry(INDEX).file).startCalibratorJSON,
+    startCalibratorFittedOn: START_CALIBRATOR_INPUT,
   });
   assert.equal(status.ok, true);
   assert.deepEqual(status.consumed, ['startCalibratorJSON']);
-  assert.deepEqual(Object.keys(status.model).sort(), ['modelVersion', 'startCalibratorJSON']);
+  assert.deepEqual(Object.keys(status.model).sort(), ['modelVersion', 'startCalibratorFittedOn', 'startCalibratorJSON']);
   assert.match(describeModelStatus(status), /start probabilities calibrated/);
 });
 
@@ -140,6 +144,7 @@ test('a part the artifact declares but this engine has no seam for is ignored, n
     modelVersion: 'test-1',
     engineConsumes: ['startCalibratorJSON', 'somethingFromTheFuture'],
     startCalibratorJSON: { method: 'bins', points: [{ x: 0.1, y: 0.05 }, { x: 0.9, y: 0.95 }] },
+    startCalibratorFittedOn: START_CALIBRATOR_INPUT,
     somethingFromTheFuture: { weights: [1, 2, 3] },
   });
   assert.equal(status.ok, true);
@@ -154,9 +159,9 @@ test('a malformed artifact falls back with a reason instead of reaching the engi
     [null, /not an object/],
     [{ engineConsumes: ['startCalibratorJSON'] }, /no modelVersion/],
     [{ modelVersion: 'test-1' }, /no engineConsumes/],
-    [{ modelVersion: 'test-1', engineConsumes: ['startCalibratorJSON'], startCalibratorJSON: { method: 'bins', points: [] } }, /malformed startCalibratorJSON/],
-    [{ modelVersion: 'test-1', engineConsumes: ['startCalibratorJSON'], startCalibratorJSON: { method: 'bins', points: [{ x: 'nope', y: 1 }] } }, /malformed startCalibratorJSON/],
-    [{ modelVersion: 'test-1', engineConsumes: ['startCalibratorJSON'], startCalibratorJSON: 'not json' }, /malformed startCalibratorJSON/],
+    [{ modelVersion: 'test-1', engineConsumes: ['startCalibratorJSON'], startCalibratorJSON: { method: 'bins', points: [] }, startCalibratorFittedOn: START_CALIBRATOR_INPUT }, /malformed startCalibratorJSON/],
+    [{ modelVersion: 'test-1', engineConsumes: ['startCalibratorJSON'], startCalibratorJSON: { method: 'bins', points: [{ x: 'nope', y: 1 }] }, startCalibratorFittedOn: START_CALIBRATOR_INPUT }, /malformed startCalibratorJSON/],
+    [{ modelVersion: 'test-1', engineConsumes: ['startCalibratorJSON'], startCalibratorJSON: 'not json', startCalibratorFittedOn: START_CALIBRATOR_INPUT }, /malformed startCalibratorJSON/],
   ];
   for (const [artifact, re] of cases) {
     const status = selectModel(artifact);
@@ -269,7 +274,16 @@ test('B16: an entry with no mirror, or one that lists a part, still fetches and 
       },
     });
     assert.deepEqual(urls, ['index.json', index.models[0].file]);
-    assert.equal(status.ok, true);
+    // v1 lists its calibrator and is fetched, then REFUSED: it was fitted on
+    // the logistic start model, not on the engine's start probability (B15).
+    // v2 lists nothing and is loaded consuming nothing.
+    if (index === consuming) {
+      assert.equal(status.ok, false);
+      assert.match(status.reason, /fitted on .*not on the engine's start probability/);
+      assert.equal(status.model, null);
+    } else {
+      assert.equal(status.ok, true);
+    }
   }
   assert.equal(declaresNothing({ engineConsumes: [], modelVersion: '' }), false, 'no name to report, so the artifact decides');
 });
@@ -311,6 +325,7 @@ const hypothetical = selectModel({
   modelVersion: 'fpl-planner-v99',
   engineConsumes: ['startCalibratorJSON'],
   startCalibratorJSON: read('..', 'models', currentEntry(INDEX).file).startCalibratorJSON,
+  startCalibratorFittedOn: START_CALIBRATOR_INPUT,
 });
 
 test('projections built with what the loader hands over today are the analytic ones', () => {
@@ -364,3 +379,25 @@ test('a plan built with a consuming artifact would report that artifact', async 
   assert.equal(trained.current.modelVersion, 'planner-1+fpl-planner-v99');
   assert.equal(trained.validation.ok, true);
 });
+
+// B15 (2026-10-09). Both shipped artifacts carry a start calibrator fitted on
+// the LOGISTIC start model's own outputs, and the engine used to apply it to its
+// analytic pStart. Neither can reach the engine any more, by either path: the
+// loader refuses it even when the artifact lists it, and buildProjections
+// refuses it even when a caller passes it directly (the replay's --model path).
+test('B15: no shipped calibrator can reach the engine, whichever artifact is current', async () => {
+  for (const file of ['fpl-planner-v1.json', 'fpl-planner-v2.json']) {
+    const artifact = read('..', 'models', file);
+    assert.notEqual(artifact.startCalibratorFittedOn, START_CALIBRATOR_INPUT, `${file} does not claim the engine's input`);
+    const listed = selectModel({ ...artifact, engineConsumes: ['startCalibratorJSON'] });
+    assert.equal(listed.model, null, `${file}: refused even when listed`);
+    assert.equal(listed.ok, false);
+  }
+  const { buildProjections } = await import('../js/engine/projections.js');
+  const v1 = read('..', 'models', 'fpl-planner-v1.json');
+  assert.throws(
+    () => buildProjections({ gameState: { players: new Map(), fixtures: [], rules: { scoring: {} }, teams: new Map() }, strength: {}, gwFrom: 1, gwTo: 1, model: { modelVersion: v1.modelVersion, startCalibratorJSON: v1.startCalibratorJSON } }),
+    /refusing fpl-planner-v1's start calibrator/,
+  );
+});
+

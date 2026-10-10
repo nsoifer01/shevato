@@ -46,6 +46,7 @@ import {
 } from './lib/archive.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
+const ASSET_SOFT_CAP = 900;
 const argv = process.argv.slice(2);
 const arg = (name) => { const i = argv.indexOf(`--${name}`); return i >= 0 ? argv[i + 1] : null; };
 const flag = (name) => argv.includes(`--${name}`);
@@ -102,6 +103,12 @@ function loadManifest(season, dir) {
       return { manifest: local || emptyManifest(season), remote: null, releaseExists: false };
     }
     const assets = (JSON.parse(view.out).assets || []).map((a) => a.name);
+    // GitHub caps a release at 1000 assets. A season stores about 420, so this
+    // is a tripwire, not a plan: stop well short of the cap with a message that
+    // says what to do, rather than fail half way through an upload.
+    if (assets.length >= ASSET_SOFT_CAP) {
+      throw new Error(`release ${tag} holds ${assets.length} assets, at the ${ASSET_SOFT_CAP} safety line under GitHub's 1000 per release: start a second release for the season (--season-label ${season}-b) before capturing more`);
+    }
     let remote = null;
     if (assets.includes('manifest.json')) {
       const dl = gh(['release', 'download', tag, '--pattern', 'manifest.json', '--dir', tmp], { read: true });
@@ -110,6 +117,13 @@ function loadManifest(season, dir) {
       if (!dl.ok) throw new Error(`release ${tag} has a manifest.json that could not be downloaded: ${dl.err.trim()}`);
       remote = readJson(join(tmp, 'manifest.json'));
     }
+    // An asset the manifest does not list is a run that uploaded its snapshots
+    // and died before the manifest: the bytes are safe on the release, only
+    // unindexed. Say so on every run until someone indexes them by hand
+    // (download, then re-run with them in --out), never delete them.
+    const listed = new Set(((remote && remote.entries) || []).map((e) => e.file).filter(Boolean));
+    const orphans = assets.filter((a) => a !== 'manifest.json' && !listed.has(a));
+    if (orphans.length) console.warn(`::warning::release ${tag} has ${orphans.length} asset(s) the manifest does not list (an interrupted run): ${orphans.slice(0, 5).join(', ')}${orphans.length > 5 ? ', ...' : ''}`);
     let manifest = remote || emptyManifest(season);
     const key = (e) => `${e.endpoint}|${e.capturedAt}|${e.sha256}`;
     const known = new Set(manifest.entries.map(key));

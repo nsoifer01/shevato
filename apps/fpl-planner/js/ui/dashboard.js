@@ -890,7 +890,9 @@ export function alternativesCard({ bundle, open = false, onToggle = null }) {
         ` over ${bundle.current.horizon} gameweeks`,
         alt.hits ? `, costs a ${alt.hitCostPoints} point hit` : '',
         alt.belowHitMargin ? `, short of the ${xp(alt.hitMarginPoints)}-point bar a hit must clear` : '',
-        alt.belowRollValue ? `, but spends a free transfer worth ${xp(alt.rollMarginPoints)} to keep` : '',
+        alt.belowRollValue
+          ? `, but spends ${alt.transfersSpentVsPlan > 1 ? `${alt.transfersSpentVsPlan} free transfers` : 'a free transfer'} worth ${xp(alt.rollMarginPoints)} to keep`
+          : '',
       ]),
   ]));
   // A plan with a hit can project MORE than the recommendation and still lose,
@@ -904,7 +906,7 @@ export function alternativesCard({ bundle, open = false, onToggle = null }) {
   const note = margin
     ? `Ranked against the recommendation over the same horizon. Each one is legal and affordable. A plan that takes a hit is only chosen when it beats the best plan without one by ${xp(margin.hitMarginPoints)} points, so one can project more and still not be recommended.`
     : roll
-      ? `Ranked against the recommendation over the same horizon. Each one is legal and affordable. A free transfer kept is worth ${xp(roll.rollMarginPoints)} points next week, so a plan that spends one can project slightly more and still not be recommended.`
+      ? `Ranked against the recommendation over the same horizon. Each one is legal and affordable. Each free transfer kept is worth ${xp(roll.rollPerTransfer)} points next week, so a plan that spends them can project slightly more and still not be recommended.`
       : 'Ranked against the recommendation over the same horizon. Each one is legal and affordable; none of them scored higher.';
 
   const node = disclosure(`Alternatives considered (${alts.length})`, [

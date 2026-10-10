@@ -60,7 +60,7 @@ const clampP = (p) => (p < EPS ? EPS : p > 1 - EPS ? 1 - EPS : p);
 const logit = (p) => Math.log(clampP(p) / (1 - clampP(p)));
 const BUCKETS = [[2, 3], [4, 8], [9, 19], [20, 38]];
 
-function rowsFor(season) {
+export function rowsFor(season) {
   const priorName = previousSeason(season);
   let prior = null;
   try { prior = priorName ? loadSeason(priorName) : null; } catch { prior = null; }
@@ -157,4 +157,4 @@ function main() {
   console.log(`wrote ${OUT}`);
 }
 
-main();
+if (import.meta.url === `file://${process.argv[1]}`) main();

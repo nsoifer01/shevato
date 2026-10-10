@@ -30,6 +30,8 @@
 // analytic priors, and the model and data status panel says which of the three
 // states it is in.
 
+import { START_CALIBRATOR_INPUT } from '../engine/minutes.js';
+
 export const MODEL_INDEX_FILE = 'index.json';
 
 // Each of the (at most two) fetches below is bounded. computePlan awaits this
@@ -41,10 +43,20 @@ export const MODEL_FETCH_TIMEOUT_MS = 8000;
 // The parts of an artifact this engine has a seam for, each with the check its
 // value has to pass. A key an artifact declares that is not here is ignored: a
 // future artifact may offer more than this version of the engine can use.
+//
+// A start calibrator must also declare it was fitted on the start probability
+// the engine produces (`startCalibratorFittedOn`, minutes.js
+// START_CALIBRATOR_INPUT). Both artifacts in models/ were fitted on the logistic
+// start model's outputs and declare nothing, so neither can ever be consumed,
+// even if the index were reordered so that v1 (which lists the calibrator)
+// became current (2026-10-09 audit B15).
 const CONSUMABLES = {
   startCalibratorJSON: {
     label: 'start probabilities calibrated',
-    valid: isCalibrator,
+    valid: (value, artifact) => isCalibrator(value) && artifact.startCalibratorFittedOn === START_CALIBRATOR_INPUT,
+    invalidBecause: (artifact) => (artifact.startCalibratorFittedOn === START_CALIBRATOR_INPUT
+      ? 'a malformed startCalibratorJSON'
+      : `a start calibrator fitted on ${JSON.stringify(artifact.startCalibratorFittedOn || 'the logistic start model')}, not on the engine's start probability`),
   },
 };
 
@@ -89,8 +101,14 @@ export function selectModel(artifact) {
   for (const key of artifact.engineConsumes) {
     const spec = CONSUMABLES[key];
     if (!spec) continue;
-    if (!spec.valid(artifact[key])) return failure(`${modelVersion} has a malformed ${key}`);
+    if (!spec.valid(artifact[key], artifact)) {
+      return failure(`${modelVersion} has ${spec.invalidBecause ? spec.invalidBecause(artifact) : `a malformed ${key}`}`);
+    }
     model[key] = artifact[key];
+    // What the calibrator was fitted on travels with it: buildProjections
+    // checks it again, so a model object assembled anywhere else is held to
+    // the same rule.
+    if (key === 'startCalibratorJSON') model.startCalibratorFittedOn = artifact.startCalibratorFittedOn;
     consumed.push(key);
   }
 

@@ -488,7 +488,7 @@ function rollReason(plan, ctx) {
   } else {
     reasons.push(makeReason(
       'roll_value',
-      'Keeping the transfer is worth {v} points of future flexibility, which no move this week beat.',
+      'Each free transfer kept is worth {v} points of future flexibility, and no move this week gained more than the transfers it would spend.',
       rollValue || 0,
     ));
   }

@@ -132,9 +132,9 @@ test('the experiment switches: maxTransfers pins the depth and beamWidth narrows
 // enabler moves whenever the projection model does; the claims are that the
 // enabler pool never does worse than the old pool, and that in at least one
 // cut it finds a pair the old pool missed, matching the exhaustive screen.
-function tightCase(scale) {
+function tightCase(scale, bankTenths = 0, topN = 600) {
   const state = withFt(working, 2, {
-    bankTenths: 0,
+    bankTenths,
     picks: working.picks.map(p => ({ ...p, sellingTenths: Math.round(p.sellingTenths * scale) })),
   });
   const held = state.picks.map(p => p.playerId);
@@ -157,7 +157,7 @@ function tightCase(scale) {
   for (let a = 0; a < held.length; a++) {
     for (let b = a + 1; b < held.length; b++) {
       const [oA, oB] = [held[a], held[b]];
-      const budget = selling.get(oA) + selling.get(oB);
+      const budget = bankTenths + selling.get(oA) + selling.get(oB);
       const inA = buyable.filter(p => p.position === gameState.players.get(oA).position);
       const inB = buyable.filter(p => p.position === gameState.players.get(oB).position);
       for (const x of inA) {
@@ -178,7 +178,7 @@ function tightCase(scale) {
     return [...counts.values()].every(n => n <= rules.clubLimit);
   };
   let truth = -Infinity;
-  for (const p of pairs.slice(0, 600)) {
+  for (const p of pairs.slice(0, topN)) {
     if (!clubOk(p.outs, p.ins)) continue;
     const s = objectiveOf(state, p.outs, p.ins);
     if (s) truth = Math.max(truth, s.objective);
@@ -186,7 +186,12 @@ function tightCase(scale) {
   const best = (plans) => plans.filter(p => p.transferCount === 2)
     .map(p => ({ p, objective: objectiveOf(state, p.transfersOut, p.transfersIn).objective }))
     .reduce((a, b) => (!a || b.objective > a.objective ? b : a), null);
-  return { state, value, buyable, truth, found: best(search(state)), old: best(search(state, { pairEnablers: false })) };
+  return {
+    state, value, buyable, truth,
+    found: best(search(state)),
+    old: best(search(state, { pairEnablers: false, pairBestResponse: 0 })),
+    noBestResponse: best(search(state, { pairBestResponse: 0 })),
+  };
 }
 
 test('a downgrade that funds an upgrade is found on a tight budget, against an exhaustive screen', () => {
@@ -209,4 +214,30 @@ test('a downgrade that funds an upgrade is found on a tight budget, against an e
     }
   }
   assert.ok(exercised >= 1, 'at least one tight cut is a pair the old pool missed and the new one finds');
+});
+
+// The 14th case of the 2026-10-09 enabler screen: a 1.0m bank with selling
+// prices cut to three quarters. The best pair (Gabriel to Senesi, Garner to
+// Zubimendi, 174.49) buys two players who rank 9th to 24th by value in their
+// positions, below the pair pool and above the enablers, and are the best
+// pair only because the budget rules out everyone above them once the other
+// slot is filled. Without the budget-aware completion the search returned a
+// pair worth 174.20.
+test('a pair whose best members for the money sit mid-pool is found (budget-aware completion)', () => {
+  const c = tightCase(0.75, 10, 3000);
+  assert.ok(Math.abs(c.found.objective - c.truth) < 1e-9, `found ${c.found.objective} vs truth ${c.truth}`);
+  assert.ok(c.noBestResponse.objective < c.truth - 0.1, `without it the search misses (${c.noBestResponse.objective})`);
+  const names = c.found.p.transfersIn.map(id => gameState.players.get(id).webName).sort();
+  assert.deepEqual(names, ['Senesi', 'Zubimendi']);
+});
+
+test('across banks and selling-price cuts the pair search matches the screened optimum', () => {
+  const misses = [];
+  for (const bank of [0, 10, 30]) {
+    for (const scale of [0.75, 0.8, 1]) {
+      const c = tightCase(scale, bank, 1500);
+      if (c.found.objective < c.truth - 1e-9) misses.push(`bank ${bank} x${scale}: ${c.found.objective.toFixed(3)} < ${c.truth.toFixed(3)}`);
+    }
+  }
+  assert.deepEqual(misses, []);
 });

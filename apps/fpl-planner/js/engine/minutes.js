@@ -84,6 +84,7 @@
 
 import { assessBaseline, baselineIsSuperseded } from './baseline.js';
 import { matchesPlayedByClub, matchesKickedOffByClub, fixtureHasKickedOff } from './lifecycle.js';
+import { calibratorFromJSON } from './ml.js';
 
 const UNAVAILABLE_STATUSES = new Set(['i', 's', 'u', 'n']);
 const DOUBTFUL_STATUS = 'd';
@@ -964,6 +965,37 @@ function recencyAdjusted(player, base, recency, gameState) {
   return clamp01(1 / (1 + Math.exp(-eta)));
 }
 
+// --- A start calibrator, where one belongs (2026-10-09) ---------------------
+//
+// THE INPUT A START CALIBRATOR MAY BE FITTED ON. The trained artifacts in
+// models/ carry a calibrator fitted on the LOGISTIC start model's own outputs
+// (scripts/train-model.mjs, `winner.predictValidation`), and projections.js
+// used to apply it to this module's analytic pStart, a different model with a
+// different distribution, and then clamp the result to pAppear, which moved any
+// reduction into "came off the bench" instead of "did not play". Both defects
+// are closed by construction now: a calibrator is applied HERE, to the base
+// start probability before availability and the bench are built from it, so
+// pStart <= pAppear stays structural; and only a calibrator that declares it
+// was fitted on exactly this quantity is accepted (`START_CALIBRATOR_INPUT`).
+// projections.js and js/data/model.js refuse any other.
+export const START_CALIBRATOR_INPUT = 'minutes.js base start probability (analytic-3)';
+
+const calibratorCache = new WeakMap();
+
+function calibratedStart(base, calibration, gameState) {
+  if (!calibration || calibration.fittedOn !== START_CALIBRATOR_INPUT) {
+    throw new Error(`minutes: refusing a start calibrator not fitted on "${START_CALIBRATOR_INPUT}"`);
+  }
+  const label = gameState && gameState.rules && gameState.rules.season
+    ? String(gameState.rules.season).replace('/', '-')
+    : null;
+  const json = (calibration.bySeason && label && calibration.bySeason[label]) || calibration.calibrator;
+  if (!json) return base;
+  let fn = calibratorCache.get(json);
+  if (!fn) { fn = calibratorFromJSON(json); calibratorCache.set(json, fn); }
+  return clamp01(fn.predict(base));
+}
+
 export function projectMinutes(player, { gameState, gw, fixtureCount, modelOptions = null } = {}) {
   const { priors, evidence: season, matchesByTeam, priceBands: bands } = positionPriors(gameState);
   const prior = priors.get(player.position) || { ...FALLBACK_PRIORS };
@@ -1027,6 +1059,9 @@ export function projectMinutes(player, { gameState, gw, fixtureCount, modelOptio
     if (reason === 'historical' && minutesNow <= 0) reason = m > 0 ? 'no-history-unplayed' : 'no-history-prior';
   }
   let baseStart = (s + K * mu) / (m + K);
+  if (modelOptions && modelOptions.startCalibration) {
+    baseStart = calibratedStart(clamp01(baseStart), modelOptions.startCalibration, gameState);
+  }
   if (modelOptions && modelOptions.recency && current) {
     baseStart = recencyAdjusted(player, clamp01(baseStart), modelOptions.recency, gameState);
   }

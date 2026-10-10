@@ -74,10 +74,13 @@ test('the roll reason quotes the marginal value of the transfer kept, the number
     assert.equal(rollMarginValue(ss, gameState.rules, RISK_PROFILES.balanced.rollBonus), roll.value);
     // The sentence and the summary bullets do not both carry it.
     assert.ok(!b.current.explanation.bullets.some(x => x.code === 'roll_value'), 'not repeated in the summary bullets');
-    // "which no move this week beat": no zero-hit alternative's extra points
-    // exceed the value the roll was credited with.
+    // "no move this week gained more than the transfers it would spend": a
+    // zero-hit alternative's extra points never exceed what the free transfers
+    // it spends are worth, counted per transfer (a two-move plan spends two).
     for (const alt of b.current.alternatives.filter(a => !a.hits && !a.chip)) {
-      assert.ok(alt.deltaHorizon <= roll.value + 1e-9, `${alt.headline}: +${alt.deltaHorizon} vs ${roll.value}`);
+      assert.ok(Math.abs(alt.rollMarginPoints - roll.value * alt.transfersSpentVsPlan) < 1e-9, `${alt.headline}: ${alt.rollMarginPoints}`);
+      assert.ok(alt.deltaHorizon <= alt.rollMarginPoints + 1e-9, `${alt.headline}: +${alt.deltaHorizon} vs ${alt.rollMarginPoints}`);
+      assert.equal(alt.rollPerTransfer, roll.value);
     }
   }
   // At the cap the transfer kept is worth nothing.

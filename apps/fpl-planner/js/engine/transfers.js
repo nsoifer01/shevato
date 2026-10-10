@@ -228,6 +228,10 @@ export const TRANSFER_DEFAULTS = Object.freeze({
   // Cheapest points of the price-efficient frontier added to the pair pool as
   // enablers (rule 4 above).
   frontierPerPosition: 8,
+  // Budget-aware pair completion (see BUDGET-AWARE PAIRS in searchTransfers):
+  // for every player of a slot's full pool, the best this many of the other
+  // slot the remaining money buys. 0 turns it off.
+  pairBestResponse: 2,
   // Union the enablers into the pair and beam pools (rule 4 above). false is
   // the pre-2026-10-09 pair pool, for a control arm.
   pairEnablers: true,
@@ -415,6 +419,32 @@ export function searchTransfers({ squadState, projections, gameState, rules, hor
     pairPools.set(position, top);
   }
 
+  // BUDGET-AWARE PAIRS (2026-10-09). The cross product above only pairs the
+  // top `pairPoolPerPosition` of each position (plus enablers), so a pair
+  // whose best member for the money ranks 9th to 24th by value, because the
+  // budget rules out everyone above him once the other slot is filled, was
+  // never generated: on the sample with a 1.0m bank and selling prices cut to
+  // three quarters, the best pair (Gabriel to Senesi, Garner to Zubimendi,
+  // 174.49) was missed for one worth 174.20. Here every player of the FULL
+  // position pool for one slot is paired with the `pairBestResponse` most
+  // valuable players of the other slot that the money left can still buy
+  // (the pool is sorted by value, so the scan stops at the first that fit).
+  const bestResponsePairs = (outA, outB, budget) => {
+    const fullA = pools.get(players.get(outA.playerId).position) || [];
+    const fullB = pools.get(players.get(outB.playerId).position) || [];
+    for (const inA of fullA) {
+      const left = budget - inA.nowCost;
+      if (left < 0) continue;
+      let taken = 0;
+      for (const inB of fullB) {
+        if (taken >= cfg.pairBestResponse) break;
+        if (inB.id === inA.id || inB.nowCost > left) continue;
+        push([outA.playerId, outB.playerId], [inA.id, inB.id]);
+        taken++;
+      }
+    }
+  };
+
   if (maxTransfers >= 2 && freeTransfers + cfg.maxHits >= 2) {
     const outCandidates = sellable
       ? picks.filter(p => sellable.has(p.playerId))
@@ -433,6 +463,10 @@ export function searchTransfers({ squadState, projections, gameState, rules, hor
             if (inA.nowCost + inB.nowCost > budget) continue;
             push([outA.playerId, outB.playerId], [inA.id, inB.id]);
           }
+        }
+        if (cfg.pairBestResponse > 0) {
+          bestResponsePairs(outA, outB, budget);
+          bestResponsePairs(outB, outA, budget);
         }
       }
     }

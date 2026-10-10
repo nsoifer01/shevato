@@ -12,6 +12,8 @@
 //   old-search   maxTransfers 2, no enablers: bit-identical to the search
 //                before 2026-10-09
 //   no-enablers  the beam without the enablers, to isolate them
+//   no-best-response  the shipped search without the budget-aware pair
+//                completion (added in the pre-merge review, 2026-10-09)
 //
 // PRE-REGISTERED, written before any arm ran:
 //   - Instrument 3 (paired, 15 windows, chips off), exposure 2023-24, 2024-25,
@@ -32,7 +34,8 @@ export default {
   exposure: { seasons: ['2023-24', '2024-25', '2025-26'] },
   arms: [
     { name: 'control', description: 'shipped: beam to the free transfers held (max 5) plus enablers' },
-    { name: 'old-search', description: 'two moves at most, no enablers (the search before 2026-10-09)', opts: { planOptions: { transferOptions: { maxTransfers: 2, pairEnablers: false } } } },
+    { name: 'old-search', description: 'two moves at most, no enablers, no budget-aware pairs (the search before 2026-10-09)', opts: { planOptions: { transferOptions: { maxTransfers: 2, pairEnablers: false, pairBestResponse: 0 } } } },
     { name: 'no-enablers', description: 'the beam without enablers', opts: { planOptions: { transferOptions: { pairEnablers: false } } } },
+    { name: 'no-best-response', description: 'the shipped search without the budget-aware pair completion', opts: { planOptions: { transferOptions: { pairBestResponse: 0 } } } },
   ],
 };

@@ -339,7 +339,7 @@ function marginFactor({ plan, projections }) {
   // alternatives card printing a positive gap beside it.
   if (best.deltaHorizon >= 0.05) {
     const cause = best.belowHitMargin ? 'it takes a hit that does not clear the bar for one'
-      : best.belowRollValue ? 'it spends a free transfer that is worth more kept'
+      : best.belowRollValue ? `it spends ${best.transfersSpentVsPlan > 1 ? 'free transfers that are' : 'a free transfer that is'} worth more kept`
         : 'the planner ranks it lower once the transfer it spends is counted';
     return {
       key: 'margin',

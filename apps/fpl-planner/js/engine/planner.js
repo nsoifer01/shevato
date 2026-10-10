@@ -540,8 +540,14 @@ function planFromScored(scored, { squadState, gameState, rules, cfg, gw, certain
 // `plan` is the built primary plan the numbers are reported against;
 // `primaryScored` is the scored candidate it was built from, which carries the
 // objective the two were ranked on.
-function alternativeFrom(scored, plan, primaryScored, gameState, hitMarginPoints = 0, rollMarginPoints = 0) {
+function alternativeFrom(scored, plan, primaryScored, gameState, hitMarginPoints = 0, rollBonus = 0, rollPerTransfer = 0) {
   const deltaHorizon = scored.xPointsHorizon - plan.xPointsHorizon;
+  // The free transfers this plan carries into next week that the
+  // recommendation keeps, and what they are worth on the planner's own scale.
+  // A two-move plan spends two, so it has to beat the roll by both of them.
+  const transfersSpentVsPlan = Math.max(0, primaryScored.acct.freeTransfersNextGw - scored.acct.freeTransfersNextGw);
+  const rollMarginPoints = Math.max(0, bankedValueOf(primaryScored.acct.freeTransfersNextGw, rollBonus)
+    - bankedValueOf(scored.acct.freeTransfersNextGw, rollBonus));
   return {
     chip: scored.chip,
     transfersOut: scored.candidate.transfersOut.slice(),
@@ -578,8 +584,10 @@ function alternativeFrom(scored, plan, primaryScored, gameState, hitMarginPoints
     // line confidence.js draws between a lead and a tie.
     belowRollValue: scored.acct.hits === 0 && scored.chip === primaryScored.chip
       && deltaHorizon >= 0.05 && scored.objective <= primaryScored.objective
-      && scored.acct.freeTransfersNextGw < primaryScored.acct.freeTransfersNextGw,
+      && transfersSpentVsPlan > 0,
     rollMarginPoints,
+    transfersSpentVsPlan,
+    rollPerTransfer,
     headline: alternativeHeadline(scored, gameState),
   };
 }
@@ -871,7 +879,7 @@ export async function buildPlan({ gameState, squadState, options = {}, onProgres
 
   const plan = planFromScored(primary, { squadState: workingSquad, gameState, rules, cfg, gw, certainty: 'current' });
   const rollMargin = isDraft ? 0 : rollMarginValue(workingSquad, rules, cfg.rollBonus);
-  plan.alternatives = alternatives.map(s => alternativeFrom(s, plan, primary, gameState, cfg.hitMarginPoints, rollMargin));
+  plan.alternatives = alternatives.map(s => alternativeFrom(s, plan, primary, gameState, cfg.hitMarginPoints, isDraft ? 0 : cfg.rollBonus, rollMargin));
 
   const explainContext = {
     squadState: workingSquad,

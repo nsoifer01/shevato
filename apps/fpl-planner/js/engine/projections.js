@@ -39,13 +39,12 @@
 import {
   fixtureContext, baselineTeamGoals, baselineOpponentGoals, goalCountVector, pZeroGoals, goalDispersionOf,
 } from './fixtures.js';
-import { projectMinutes, evidenceView } from './minutes.js';
+import { projectMinutes, evidenceView, START_CALIBRATOR_INPUT } from './minutes.js';
 import { rateMinutesOf } from './normalize.js';
 import {
   poissonVector,
   poissonTail,
   calibrate,
-  calibratorFromJSON,
   distPoint,
   distConvolve,
   distMix,
@@ -1015,15 +1014,11 @@ export function projectPlayerGw(player, { gameState, strength, gw, model = null,
   const priors = ratePriors || positionRatePriors(gameState);
   const contexts = fixtureContext(gameState, strength, player.teamId, gw);
 
-  let mins = projectMinutes(player, { gameState, gw, fixtureCount: contexts.length, modelOptions });
-  if (model && model.startCalibrator && mins.pStart > 0) {
-    // A calibrator trained on real start outcomes can only move pStart. Keeping
-    // the correction here, upstream of everything else, means the whole
-    // distribution stays internally consistent instead of a mean being patched
-    // after the fact.
-    const calibrated = clamp(model.startCalibrator.predict(mins.pStart), 0, mins.pAppear);
-    mins = { ...mins, pStart: calibrated };
-  }
+  // A trained start calibrator reaches the minutes model as a start-probability
+  // correction (buildProjections resolves it), never as a patch on pStart here:
+  // patching after the fact, clamped to pAppear, is the mis-specification the
+  // 2026-10-09 audit found (B15; minutes.js START_CALIBRATOR_INPUT).
+  const mins = projectMinutes(player, { gameState, gw, fixtureCount: contexts.length, modelOptions });
 
   const rates = playerRates(player, { gameState, gw, priors });
 
@@ -1120,9 +1115,18 @@ export function buildProjections({ gameState, strength, gwFrom, gwTo, model = nu
   const bonus = bonusModel(gameState);
   const ratePriors = positionRatePriors(gameState);
 
-  const resolved = model && model.startCalibratorJSON
-    ? { ...model, startCalibrator: calibratorFromJSON(model.startCalibratorJSON) }
-    : model;
+  // A trained artifact's start calibrator is accepted only if it says it was
+  // fitted on the start probability minutes.js produces, and is then applied
+  // there. Every artifact in models/ today was fitted on the logistic start
+  // model's outputs instead, so it is REFUSED, loudly: a silent fallback would
+  // let an experiment report "the trained model" while running the analytic one.
+  if (model && model.startCalibratorJSON && model.startCalibratorFittedOn !== START_CALIBRATOR_INPUT) {
+    throw new Error(`buildProjections: refusing ${model.modelVersion || 'a model'}'s start calibrator: it was fitted on ${JSON.stringify(model.startCalibratorFittedOn || 'the logistic start model')}, not on "${START_CALIBRATOR_INPUT}". Refit it (scripts/calibration/calibrate-start.mjs) before using it.`);
+  }
+  if (model && model.startCalibratorJSON) {
+    modelOptions = { ...(modelOptions || {}), startCalibration: { fittedOn: START_CALIBRATOR_INPUT, calibrator: model.startCalibratorJSON } };
+  }
+  const resolved = model;
 
   const byPlayer = new Map();
   const ids = playerIds || [...gameState.players.keys()];
