@@ -63,15 +63,13 @@ const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const html = readFileSync(join(REPO_ROOT, 'privacy.html'), 'utf8');
 
 // The two most recent reviews. Append by moving CURRENT down to PREVIOUS.
-const PREVIOUS = { date: '16 September 2026', digest: '7cfd8d056553663dc4aee4f232fb28695475e521d89282b00d723cd1dcb225bd' };
+const PREVIOUS = { date: '3 October 2026', digest: '82375f32805f6b2bee8beda1b3f1aa7ba0de5ba9df04dec6f0432fb71d93f3e2' };
 const CURRENT = {
-  // The hosting paragraph gained the edge check that turns away the Chrome 99
-  // scraper (netlify/edge-functions/block-crawler.mjs): it reads the browser
-  // identification string and the Netlify-derived country, and keeps nothing.
-  // Written on 2 October UTC, merged (#575) on 3 October UTC, so it carries
-  // the merge day.
-  date: '3 October 2026',
-  digest: '82375f32805f6b2bee8beda1b3f1aa7ba0de5ba9df04dec6f0432fb71d93f3e2',
+  // The GitHub paragraph gained the FPL Planner health check's optional
+  // issue alert (netlify/functions/lib/fpl-health-run.mjs), which sends only
+  // check results computed from public FPL data, nothing about a visitor.
+  date: '10 October 2026',
+  digest: 'c94a16d63847c23a8c63eb3bd48d94c8e5b81aeeea80884275e41bd2e76aaca6',
 };
 
 /**

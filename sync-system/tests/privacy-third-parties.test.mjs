@@ -80,7 +80,7 @@ const SERVICE_HOSTS = {
   'Open-Meteo': [/open-meteo\.com$/],
   'Photon (OpenStreetMap)': [/^photon\.komoot\.io$/],
   'Frankfurter': [/frankfurter/],
-  'GitHub': [/^raw\.githubusercontent\.com$/],
+  'GitHub': [/^raw\.githubusercontent\.com$/, /^api\.github\.com$/],
   'The Trivia API, Wikidata and Wikipedia': [/the-trivia-api\.com$/, /wikidata\.org$/, /wikipedia\.org$/],
   'Fantasy Premier League': [/premierleague\.com$/],
   'MapTap.gg': [/maptap\.gg$/],

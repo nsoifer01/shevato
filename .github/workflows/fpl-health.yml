@@ -1,28 +1,37 @@
 name: FPL health probe
 
-# Runs the FPL Planner's health probe (apps/fpl-planner/scripts/evidence-probe.mjs)
-# against FPL itself every six hours, so a broken pipeline is noticed within a
-# quarter of a day and, around a deadline, before it rather than after. Every
-# six hours rather than a deadline gate: it is one 1.7 MB read and a few
-# seconds of engine, and a schedule that also covers the days between
-# deadlines catches a payload FPL changes on a Tuesday.
+# THE PROBE ITSELF RUNS ON NETLIFY (since 2026-10-10): netlify/functions/fpl-health.mjs,
+# every six hours (00:41, 06:41, 12:41, 18:41 UTC), against production through
+# the proxy, with every invariant of scripts/lib/probe.mjs. GitHub fires this
+# repository's schedules hours late or not at all, so it cannot carry anything
+# time-sensitive. This workflow is what is left for GitHub to do:
 #
-# The probe judges NAMED INVARIANTS (payload shape, freshness, the season the
-# totals describe, start-rate spread, projections for every player, rank
-# agreement with FPL's ep_next, a plan that passes validatePlan, ...) and exits
-# non-zero naming the one that broke. A failed scheduled run is emailed by
-# GitHub to whoever last edited the cron line below: that is the alert, at no
-# cost. `--direct` because the site's proxy refuses every origin but
-# shevato.com, which a runner is not. The change-detection invariant (`--record`
-# baseline) does not apply here: a runner has no previous reading.
+#   schedule ......... the BACKSTOP. Reads fpl-health-status, which answers 503
+#                      when the latest Netlify probe failed or when no probe has
+#                      landed for seven hours (a stopped scheduler). A 503 fails
+#                      this job, and GitHub emails a failed scheduled run to
+#                      whoever last edited the cron line. Late by however long
+#                      GitHub is late, and one cheap request: the immediate
+#                      alert is the GitHub issue the Netlify function opens when
+#                      FPL_HEALTH_GITHUB_TOKEN is set.
+#   workflow_dispatch  mode "full" (default) runs the whole probe on a runner,
+#                      straight against FPL (`--direct`), the manual diagnostic;
+#                      mode "status" runs the backstop check by hand.
 #
-# Scheduled workflows run only from the default branch, so this starts after
-# it merges to master. It commits nothing and never triggers a Netlify build.
+# Scheduled workflows run only from the default branch. It commits nothing and
+# never triggers a Netlify build.
 
 on:
   schedule:
-    - cron: '41 */6 * * *'
+    - cron: '53 */6 * * *'
   workflow_dispatch:
+    inputs:
+      mode:
+        description: 'full: run the probe on this runner; status: check the Netlify probe'
+        required: false
+        type: choice
+        default: full
+        options: [full, status]
 
 concurrency:
   group: fpl-health
@@ -32,7 +41,23 @@ permissions:
   contents: read
 
 jobs:
+  status:
+    if: github.event_name == 'schedule' || inputs.mode == 'status'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Read the Netlify probe's status
+        run: |
+          set -u
+          code=$(curl -s -o status.json -w '%{http_code}' --max-time 60 https://shevato.com/.netlify/functions/fpl-health-status)
+          cat status.json
+          if [ "$code" != 200 ]; then
+            echo "::error::fpl-health-status answered $code: the latest Netlify probe failed or is stale"
+            exit 1
+          fi
+
   probe:
+    if: github.event_name == 'workflow_dispatch' && inputs.mode != 'status'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
