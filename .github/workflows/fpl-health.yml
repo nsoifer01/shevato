@@ -3,20 +3,28 @@ name: FPL health probe
 # THE PROBE ITSELF RUNS ON NETLIFY (since 2026-10-10): netlify/functions/fpl-health.mjs,
 # every six hours (00:41, 06:41, 12:41, 18:41 UTC), against production through
 # the proxy, with every invariant of scripts/lib/probe.mjs. GitHub fires this
-# repository's schedules hours late or not at all, so it cannot carry anything
-# time-sensitive. This workflow is what is left for GitHub to do:
+# repository's schedules hours late or not at all, so it carries nothing
+# time-sensitive. This workflow keeps the incident and the manual diagnostic:
 #
-#   schedule ......... the BACKSTOP. Reads fpl-health-status, which answers 503
-#                      when the latest Netlify probe failed or when no probe has
-#                      landed for seven hours (a stopped scheduler). A 503 fails
-#                      this job, and GitHub emails a failed scheduled run to
-#                      whoever last edited the cron line. Late by however long
-#                      GitHub is late, and one cheap request: the immediate
-#                      alert is the GitHub issue the Netlify function opens when
-#                      FPL_HEALTH_GITHUB_TOKEN is set.
-#   workflow_dispatch  mode "full" (default) runs the whole probe on a runner,
-#                      straight against FPL (`--direct`), the manual diagnostic;
-#                      mode "status" runs the backstop check by hand.
+#   monitor .......... apps/fpl-planner/scripts/health-monitor.mjs reads
+#                      fpl-health-status, judges it by its own clock, and keeps
+#                      ONE `[fpl-health]` issue in step with it (opened with an
+#                      @mention of the owner, closed on recovery, no duplicate
+#                      while the same thing stays wrong). It fails while anything
+#                      is wrong, so GitHub emails the run's owner as well.
+#                      Started two ways, one writer either way:
+#                        - workflow_dispatch mode `monitor`, by the Netlify probe
+#                          the moment it fails or may have recovered (needs
+#                          FPL_HEALTH_GITHUB_TOKEN in Netlify; immediate);
+#                        - the schedule below, the BACKSTOP: independent of
+#                          Netlify, so a stopped scheduler or a dead site is
+#                          still caught, but late by however late GitHub is.
+#   drill-failure /
+#   drill-recovery ... the same path on a synthetic status, against its own
+#                      `[fpl-health drill]` issue: proves the alert reaches the
+#                      owner without breaking production.
+#   full (default) ... the whole probe on a runner, straight against FPL
+#                      (`--direct`), the manual diagnostic.
 #
 # Scheduled workflows run only from the default branch. It commits nothing and
 # never triggers a Netlify build.
@@ -27,37 +35,55 @@ on:
   workflow_dispatch:
     inputs:
       mode:
-        description: 'full: run the probe on this runner; status: check the Netlify probe'
+        description: 'full: run the probe here; monitor: reconcile the incident with the Netlify probe; drill-*: rehearse the alert'
         required: false
         type: choice
         default: full
-        options: [full, status]
+        options: [full, monitor, drill-failure, drill-recovery]
 
+# One reconciliation at a time, never cancelled: a dispatch and the backstop
+# landing together must not both open an issue. A run waiting behind another
+# re-reads the status itself, so the newest one pending is enough.
 concurrency:
   group: fpl-health
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 permissions:
   contents: read
 
 jobs:
-  status:
-    if: github.event_name == 'schedule' || inputs.mode == 'status'
+  monitor:
+    if: github.event_name == 'schedule' || inputs.mode == 'monitor' || startsWith(inputs.mode, 'drill-')
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: write
     steps:
-      - name: Read the Netlify probe's status
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          sparse-checkout: apps/fpl-planner/scripts
+          persist-credentials: false
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version-file: '.nvmrc'
+
+      - name: Reconcile the incident with the Netlify probe
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DRILL: ${{ startsWith(inputs.mode, 'drill-') && inputs.mode || '' }}
         run: |
-          set -u
-          code=$(curl -s -o status.json -w '%{http_code}' --max-time 60 https://shevato.com/.netlify/functions/fpl-health-status)
-          cat status.json
-          if [ "$code" != 200 ]; then
-            echo "::error::fpl-health-status answered $code: the latest Netlify probe failed or is stale"
-            exit 1
+          if [ -n "$DRILL" ]; then
+            node apps/fpl-planner/scripts/health-monitor.mjs --drill "${DRILL#drill-}"
+          else
+            node apps/fpl-planner/scripts/health-monitor.mjs
           fi
 
   probe:
-    if: github.event_name == 'workflow_dispatch' && inputs.mode != 'status'
+    if: github.event_name == 'workflow_dispatch' && (inputs.mode == 'full' || inputs.mode == '')
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
