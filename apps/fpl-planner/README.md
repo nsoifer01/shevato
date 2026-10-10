@@ -1274,8 +1274,23 @@ rank-correlate with FPL's `ep_next` at 0.6 or more (0.835 over 667 players on
 2026-10-09; scrambling a quarter of the projections reads 0.603), and that a
 plan built from the payload passes `validatePlan`. `--direct` reads FPL itself
 (the proxy refuses a CI runner's origin) and `--now` judges freshness for
-saved files. `.github/workflows/fpl-health.yml` runs it every six hours and
-fails loudly, which GitHub emails to the workflow's last editor.
+saved files. The invariants live in `scripts/lib/probe.mjs`, shared by this CLI
+and the scheduled run.
+
+On a schedule it runs on Netlify, not GitHub: `netlify/functions/fpl-health.mjs`
+(`41 */6 * * *`, so 00:41, 06:41, 12:41 and 18:41 UTC) probes production
+through the proxy, at most once per six-hour slot, and stores the result in the
+`fpl-health` blob store. `/.netlify/functions/fpl-health-status` serves it:
+200 when the last run passed and is under 7 hours old, 503 when it failed, when
+no run has landed for 7 hours, or before the first run (`?history` adds the
+last 120 runs). Failures are logged as errors, and when
+`FPL_HEALTH_GITHUB_TOKEN` is set in Netlify a failure opens an `[fpl-health]`
+GitHub issue at once and recovery closes it. `.github/workflows/fpl-health.yml`
+is the backstop: on its own (delay-prone) schedule it only reads the status
+endpoint and goes red, emailed by GitHub, if that is not 200; run by hand it
+does the full probe with `--direct` (mode `full`) or just the status read
+(mode `status`). Why Netlify, and its limits: FINDINGS, "GitHub's scheduler
+cannot carry a deadline archive".
 
 It used to end in a bare "is the projected total
 between 30 and 100", which passed a broken pipeline at 31.5 the same day it

@@ -126,6 +126,36 @@ on them. The capture moved to a Netlify scheduled function (the cache prune
 had fired at 04:00 to the second), staging into Netlify Blobs; GitHub only
 copies staged snapshots to the release, which tolerates any delay.
 
+The health probe followed the same day, for the same reason: a six-hourly
+check that may fire eight hours late cannot promise detection within a quarter
+of a day. It now runs as the `fpl-health` scheduled function (`41 */6 * * *`).
+What Netlify does NOT give, and how each gap is covered:
+
+- **No failure notification** below Enterprise (log drains are
+  Enterprise-only), and a scheduled function's return status alerts nobody.
+  So the result is stored (`fpl-health` blob store) and served by
+  `fpl-health-status`, which answers 503 on a failed run AND when no run has
+  landed for 7 hours, so a scheduler that silently stops is a failure too.
+  GitHub's `fpl-health.yml` now only curls that endpoint on its own schedule:
+  one request, no FPL calls, and a red run is emailed. That backstop inherits
+  GitHub's lateness, so it is the safety net, not the alarm.
+- **Immediate alerting** needs a token: with `FPL_HEALTH_GITHUB_TOKEN` (a
+  fine-grained token, Issues read/write on this repository) set in the
+  Netlify environment, a failed run opens one `[fpl-health]` issue at once,
+  comments while it stays red and closes it on recovery. Without it the alert
+  is inert and the first notice is the backstop's email.
+- **No exact start time and a 30-second limit**: a run is two proxy reads and
+  one plan, about 3 to 4 seconds against production. The six-hour slot is
+  claimed with an etag-conditional write before anything is fetched, so a
+  duplicated or retried invocation costs FPL nothing.
+- **Production deploys only**: the schedule exists only on published
+  production deploys, never on a draft, so the first real run is only
+  observable after a merge.
+
+The probe now also has a memory it never had on a CI runner: the previous
+healthy reading (`last-reading`), which arms the "best eleven has not moved
+without a reason" invariant on every scheduled run.
+
 ### The data layer around a deadline
 
 The TTL collapse covered the six hours BEFORE a deadline and reverted to the
