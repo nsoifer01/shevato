@@ -264,7 +264,8 @@ auto-substitutions nor vice succession; see the note in `gameweekPoints`.
   scripts/               fetch-history, fetch-availability, validate-history,
                          train-model, evaluate-model, backtest, experiment
                          (+ its worker), evidence-probe (health invariants
-                         against the live payload), derive-gw1-fixtures,
+                         against the live payload), health-monitor (the
+                         health incident issue), derive-gw1-fixtures,
                          derive-gw4-fixtures and derive-calibration-fixtures
                          (sanitized fixtures from captured payloads),
                          calibration-report (projections scored against what
@@ -1280,17 +1281,27 @@ and the scheduled run.
 On a schedule it runs on Netlify, not GitHub: `netlify/functions/fpl-health.mjs`
 (`41 */6 * * *`, so 00:41, 06:41, 12:41 and 18:41 UTC) probes production
 through the proxy, at most once per six-hour slot, and stores the result in the
-`fpl-health` blob store. `/.netlify/functions/fpl-health-status` serves it:
-200 when the last run passed and is under 7 hours old, 503 when it failed, when
-no run has landed for 7 hours, or before the first run (`?history` adds the
-last 120 runs). Failures are logged as errors, and when
-`FPL_HEALTH_GITHUB_TOKEN` is set in Netlify a failure opens an `[fpl-health]`
-GitHub issue at once and recovery closes it. `.github/workflows/fpl-health.yml`
-is the backstop: on its own (delay-prone) schedule it only reads the status
-endpoint and goes red, emailed by GitHub, if that is not 200; run by hand it
-does the full probe with `--direct` (mode `full`) or just the status read
-(mode `status`). Why Netlify, and its limits: FINDINGS, "GitHub's scheduler
-cannot carry a deadline archive".
+`fpl-health` blob store. A run is the 20 invariants plus "the previous scheduled
+run recorded its result", about 2 seconds locally and 13.5 on Netlify (its
+limit is 30). `/.netlify/functions/fpl-health-status` serves it: 200 when the
+last run passed and is under 7 hours old; 503 when it failed, when no run has
+landed for 7 hours, when a run claimed its slot and never stored a result, or
+before the first run (`?history` adds the last 120 runs).
+
+Alerting. A failure is logged as an error, and when `FPL_HEALTH_GITHUB_TOKEN`
+(fine-grained, Actions read/write on this repository only) is set in Netlify,
+the run starts `.github/workflows/fpl-health.yml` in mode `monitor` at once,
+on a failure and on a possible recovery. That job runs
+`scripts/health-monitor.mjs`, which reads the status endpoint, judges it by its
+own clock, keeps one `[fpl-health]` issue (opened with an @mention of the
+owner, silent while the same thing stays wrong, one comment when it changes,
+closed on recovery) and fails while anything is wrong, so GitHub emails the
+owner. The workflow's own schedule (`53 */6 * * *`) runs the same job as the
+independent, late backstop. By hand: mode `full` runs the probe on a runner
+with `--direct`; `drill-failure` and `drill-recovery` rehearse the alert on a
+synthetic status against a separate `[fpl-health drill]` issue. Why it is built
+this way, and Netlify's limits: FINDINGS, "GitHub's scheduler cannot carry a
+deadline archive".
 
 It used to end in a bare "is the projected total
 between 30 and 100", which passed a broken pipeline at 31.5 the same day it

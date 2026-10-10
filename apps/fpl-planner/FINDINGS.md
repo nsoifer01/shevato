@@ -134,23 +134,53 @@ What Netlify does NOT give, and how each gap is covered:
 - **No failure notification** below Enterprise (log drains are
   Enterprise-only), and a scheduled function's return status alerts nobody.
   So the result is stored (`fpl-health` blob store) and served by
-  `fpl-health-status`, which answers 503 on a failed run AND when no run has
-  landed for 7 hours, so a scheduler that silently stops is a failure too.
-  GitHub's `fpl-health.yml` now only curls that endpoint on its own schedule:
-  one request, no FPL calls, and a red run is emailed. That backstop inherits
-  GitHub's lateness, so it is the safety net, not the alarm.
-- **Immediate alerting** needs a token: with `FPL_HEALTH_GITHUB_TOKEN` (a
-  fine-grained token, Issues read/write on this repository) set in the
-  Netlify environment, a failed run opens one `[fpl-health]` issue at once,
-  comments while it stays red and closes it on recovery. Without it the alert
-  is inert and the first notice is the backstop's email.
-- **No exact start time and a 30-second limit**: a run is two proxy reads and
-  one plan, about 3 to 4 seconds against production. The six-hour slot is
-  claimed with an etag-conditional write before anything is fetched, so a
-  duplicated or retried invocation costs FPL nothing.
+  `fpl-health-status`, which answers 503 on a failed run, when no run has
+  landed for 7 hours (a scheduler that silently stops), and when a run claimed
+  its slot more than two minutes ago and stored nothing (a run killed at the
+  limit; the next run also fails "the previous scheduled run recorded its
+  result", so it alerts even if nobody reads the endpoint).
+- **Who actually gets told** was measured, not assumed (2026-10-10, the
+  owner's inbox). Failed workflow runs reach it ("Run failed: ..."), and so
+  does an @mention from `github-actions[bot]`. Nothing the repository's bots
+  open reaches it otherwise (the daily Rising Shows PRs never have: the owner
+  does not watch the repository), and GitHub never notifies anyone of their
+  own activity, so an issue opened with the owner's token would have been
+  silent. That killed the first design (#591: the function opens the issue
+  with an Issues token). Instead the function only STARTS the `fpl-health`
+  workflow (mode `monitor`), with a fine-grained token that can do nothing
+  else (Actions read/write, this repository); the workflow keeps one
+  `[fpl-health]` issue with GITHUB_TOKEN, mentioning the owner, and ends red
+  while anything is wrong. GitHub's own schedule runs the same script as the
+  backstop, so the two triggers can never disagree, and runs are serialized
+  (concurrency, never cancelled) so they cannot open two issues. A repeat of
+  the same problem set posts nothing; a changed set posts one comment;
+  recovery comments and closes. The drill (`mode: drill-failure`, twice, then
+  `drill-recovery`) measured it end to end on real GitHub: issue opened, the
+  mention and the red-run emails both in the inbox about 25 seconds after
+  the trigger, the repeat silent, the recovery closed it. A dispatch for a
+  healthy steady state is never sent; a healthy run only reads the workflow,
+  so an expired token is recorded on the run (`latest.alert`) and the
+  backstop raises it as an incident.
+- **The backstop is independent and late**: it judges the endpoint by its OWN
+  clock (a result older than 7 hours is stale even if something answered
+  200), so a run hours behind schedule cannot read an old result as healthy,
+  and it still fires when Netlify runs nothing at all. Its lateness is the
+  only delay when Netlify itself is the thing that stopped.
+- **No exact start time and a 30-second limit.** Measured: the probe takes
+  about 2 seconds locally (the plan 1.2 to 1.5 seconds at every captured
+  deadline of 2026/27, chips evaluated or not), and 13.5 seconds on Netlify
+  (first scheduled run, 2026-10-10 18:41, the plan 10.1 of them). The
+  function CPU is about seven times slower than a desktop core, and the plan
+  is the cost; it does not grow with chip evaluation, so 2x headroom is
+  steady rather than a lucky week. The two proxy reads run in parallel. The
+  six-hour slot is claimed with an etag-conditional write before anything is
+  fetched, so a duplicated or retried invocation costs FPL nothing, and the
+  result is stored BEFORE GitHub is asked anything (with a 5-second timeout),
+  so neither a GitHub outage nor the limit can lose it.
 - **Production deploys only**: the schedule exists only on published
   production deploys, never on a draft, so the first real run is only
-  observable after a merge.
+  observable after a merge. Environment variables reach a function only on
+  the next deploy, so setting `FPL_HEALTH_GITHUB_TOKEN` takes a redeploy.
 
 The probe now also has a memory it never had on a CI runner: the previous
 healthy reading (`last-reading`), which arms the "best eleven has not moved
