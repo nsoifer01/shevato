@@ -1,6 +1,285 @@
 {
   "updates": [
     {
+      "builtAt": "2026-10-10T12:29:32.665Z",
+      "totals": {
+        "seasons": 67140,
+        "delta": 25
+      },
+      "shapeCounts": {
+        "rebound": 10221,
+        "rising": 2646,
+        "slow-burn": 4448,
+        "big-finale": 12243,
+        "u-shaped": 3087,
+        "rollercoaster": 14242,
+        "saved-best-for-last": 1474,
+        "shape-drift": 1587,
+        "mid-peak": 4647,
+        "front-loaded": 3510,
+        "declining": 1907,
+        "bad-finale": 4680,
+        "consistent": 2658
+      },
+      "shapeDeltas": {
+        "rebound": -4,
+        "rising": 1,
+        "slow-burn": 2,
+        "big-finale": -4,
+        "u-shaped": -1,
+        "rollercoaster": 12,
+        "saved-best-for-last": -1,
+        "shape-drift": -1,
+        "mid-peak": 9,
+        "front-loaded": -1,
+        "consistent": 4
+      },
+      "added": [
+        {
+          "seriesId": "tt35934755",
+          "title": "Below",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt33248156",
+          "title": "The Celebrity Traitors UK",
+          "season": 2,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt10413786",
+          "title": "Rifftrax Shorts",
+          "season": 15,
+          "seasonYear": 2022
+        },
+        {
+          "seriesId": "tt7914040",
+          "title": "The Floor",
+          "season": 6,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt0221740",
+          "title": "Crime Stories",
+          "season": 7,
+          "seasonYear": 2009
+        },
+        {
+          "seriesId": "tt0437005",
+          "title": "Hell's Kitchen",
+          "season": 25,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt1874258",
+          "title": "The History of Power Rangers",
+          "season": 4,
+          "seasonYear": 2015
+        },
+        {
+          "seriesId": "tt43652440",
+          "title": "L.O.L. Surprise! The Next Headliner",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt27954448",
+          "title": "Law & Order Toronto: Criminal Intent",
+          "season": 4,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt0211192",
+          "title": "Through the Looking-Glass",
+          "season": 1,
+          "seasonYear": 1982
+        },
+        {
+          "seriesId": "tt34333196",
+          "title": "The Real Housewives of London",
+          "season": 2,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt36933520",
+          "title": "99 to Beat",
+          "season": 2,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt8465918",
+          "title": "Homicide: Hours to Kill",
+          "season": 5,
+          "seasonYear": 2023
+        },
+        {
+          "seriesId": "tt9079966",
+          "title": "Cinemassacre Video",
+          "season": 6,
+          "seasonYear": 2023
+        },
+        {
+          "seriesId": "tt13545674",
+          "title": "StarStarSpace",
+          "season": 1,
+          "seasonYear": 2016
+        },
+        {
+          "seriesId": "tt14074568",
+          "title": "BrewStew",
+          "season": 6,
+          "seasonYear": 2018
+        },
+        {
+          "seriesId": "tt15754974",
+          "title": "Project 863",
+          "season": 2,
+          "seasonYear": 2021
+        },
+        {
+          "seriesId": "tt15754974",
+          "title": "Project 863",
+          "season": 4,
+          "seasonYear": 2021
+        },
+        {
+          "seriesId": "tt1663054",
+          "title": "Telecinema",
+          "season": 1,
+          "seasonYear": 2009
+        },
+        {
+          "seriesId": "tt29902205",
+          "title": "Fear Fear Roblox Horror Stories",
+          "season": 6,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt32832433",
+          "title": "Tôhai ~Ura Rêto Mâjan Tôhai Roku~",
+          "season": 1,
+          "seasonYear": 2024
+        },
+        {
+          "seriesId": "tt36625953",
+          "title": "Les Loups Garous Germany",
+          "season": 2,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt38588981",
+          "title": "The Celebrity Traitors: Uncloaked",
+          "season": 2,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt44733941",
+          "title": "Haysiyet",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt45584297",
+          "title": "Africa Earth's Wild Home",
+          "season": 1,
+          "seasonYear": 2026
+        }
+      ],
+      "removed": [],
+      "ratingSwings": [
+        {
+          "seriesId": "tt0463398",
+          "title": "Dancing with the Stars",
+          "season": 16,
+          "from": 5.79,
+          "to": 4.63,
+          "delta": -1.16
+        },
+        {
+          "seriesId": "tt4267324",
+          "title": "Variety Studio: Actors on Actors",
+          "season": 19,
+          "from": 7.85,
+          "to": 6.8,
+          "delta": -1.05
+        },
+        {
+          "seriesId": "tt0320037",
+          "title": "Jimmy Kimmel Live!",
+          "season": 10,
+          "from": 6.7,
+          "to": 5.78,
+          "delta": -0.92
+        },
+        {
+          "seriesId": "tt39747556",
+          "title": "Real History with Matt Walsh",
+          "season": 1,
+          "from": 5.54,
+          "to": 6.44,
+          "delta": 0.9
+        },
+        {
+          "seriesId": "tt4267324",
+          "title": "Variety Studio: Actors on Actors",
+          "season": 21,
+          "from": 7.77,
+          "to": 6.9,
+          "delta": -0.87
+        },
+        {
+          "seriesId": "tt3371194",
+          "title": "Under the Gunn",
+          "season": 1,
+          "from": 7.93,
+          "to": 7.14,
+          "delta": -0.79
+        },
+        {
+          "seriesId": "tt5714712",
+          "title": "Greatest Hits",
+          "season": 1,
+          "from": 8.33,
+          "to": 7.83,
+          "delta": -0.5
+        },
+        {
+          "seriesId": "tt0111909",
+          "title": "Can't Hurry Love",
+          "season": 1,
+          "from": 6.9,
+          "to": 7.4,
+          "delta": 0.5
+        },
+        {
+          "seriesId": "tt14330440",
+          "title": "Tuttle Twins",
+          "season": 3,
+          "from": 5.53,
+          "to": 5.09,
+          "delta": -0.44
+        },
+        {
+          "seriesId": "tt31804242",
+          "title": "The 50",
+          "season": 3,
+          "from": 6.94,
+          "to": 6.51,
+          "delta": -0.43
+        }
+      ],
+      "modifiedCounts": {
+        "seriesVotes": 20112,
+        "avgRating": 1169,
+        "shapes": 193,
+        "seriesRating": 316,
+        "episodeCount": 65,
+        "providers": 2,
+        "poster": 1
+      }
+    },
+    {
       "builtAt": "2026-10-09T13:11:45.618Z",
       "totals": {
         "seasons": 67115,
@@ -9706,276 +9985,6 @@
         "shapes": 198,
         "episodeCount": 57,
         "poster": 4
-      }
-    },
-    {
-      "builtAt": "2026-08-21T06:58:21.491Z",
-      "totals": {
-        "seasons": 66365,
-        "delta": 21
-      },
-      "shapeCounts": {
-        "mid-peak": 4638,
-        "rebound": 10113,
-        "rising": 2908,
-        "slow-burn": 4401,
-        "big-finale": 12169,
-        "u-shaped": 3102,
-        "rollercoaster": 14096,
-        "saved-best-for-last": 1552,
-        "front-loaded": 3484,
-        "declining": 1881,
-        "bad-finale": 4693,
-        "consistent": 2630,
-        "shape-drift": 1653
-      },
-      "shapeDeltas": {
-        "mid-peak": -12,
-        "rebound": 12,
-        "rising": 1,
-        "slow-burn": 2,
-        "big-finale": 1,
-        "u-shaped": -5,
-        "rollercoaster": 10,
-        "saved-best-for-last": 5,
-        "front-loaded": 2,
-        "declining": 2,
-        "bad-finale": 2,
-        "consistent": -3,
-        "shape-drift": 3
-      },
-      "added": [
-        {
-          "seriesId": "tt0446622",
-          "title": "Hard Knocks: Training Camp",
-          "season": 21,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt0213341",
-          "title": "Dinosaucers",
-          "season": 1,
-          "seasonYear": 1987
-        },
-        {
-          "seriesId": "tt1601141",
-          "title": "WWE NXT",
-          "season": 7,
-          "seasonYear": 2013
-        },
-        {
-          "seriesId": "tt0044301",
-          "title": "The Unexpected",
-          "season": 1,
-          "seasonYear": 1952
-        },
-        {
-          "seriesId": "tt43138820",
-          "title": "Million Dollar Nannies",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt44126845",
-          "title": "The World in the Shadows",
-          "season": 1,
-          "seasonYear": 2025
-        },
-        {
-          "seriesId": "tt44126845",
-          "title": "The World in the Shadows",
-          "season": 2,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt1780701",
-          "title": "Vertiges",
-          "season": 1,
-          "seasonYear": 1997
-        },
-        {
-          "seriesId": "tt0083485",
-          "title": "Een stor familie",
-          "season": 1,
-          "seasonYear": 1982
-        },
-        {
-          "seriesId": "tt0083485",
-          "title": "Een stor familie",
-          "season": 2,
-          "seasonYear": 1983
-        },
-        {
-          "seriesId": "tt0468607",
-          "title": "Miami Guns",
-          "season": 1,
-          "seasonYear": 2000
-        },
-        {
-          "seriesId": "tt13321232",
-          "title": "Karma's World",
-          "season": 3,
-          "seasonYear": 2022
-        },
-        {
-          "seriesId": "tt40893763",
-          "title": "Secret Sex Lives of Tyrants",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt44126845",
-          "title": "The World in the Shadows",
-          "season": 3,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt7112114",
-          "title": "Nosotros los guapos",
-          "season": 3,
-          "seasonYear": 2017
-        },
-        {
-          "seriesId": "tt12098786",
-          "title": "Yu-Gi-Oh! Sevens",
-          "season": 2,
-          "seasonYear": 2021
-        },
-        {
-          "seriesId": "tt6476388",
-          "title": "Snapped: Notorious",
-          "season": 3,
-          "seasonYear": 2021
-        },
-        {
-          "seriesId": "tt6476388",
-          "title": "Snapped: Notorious",
-          "season": 2,
-          "seasonYear": 2018
-        },
-        {
-          "seriesId": "tt3406870",
-          "title": "Benefits Street",
-          "season": 2,
-          "seasonYear": 2015
-        },
-        {
-          "seriesId": "tt43358063",
-          "title": "Jogada de Risco",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt4437732",
-          "title": "El Chapulín Colorado",
-          "season": 1,
-          "seasonYear": 2015
-        },
-        {
-          "seriesId": "tt4437732",
-          "title": "El Chapulín Colorado",
-          "season": 5,
-          "seasonYear": 2016
-        }
-      ],
-      "removed": [
-        {
-          "seriesId": "tt6476388",
-          "title": "Snapped: Notorious",
-          "season": 1,
-          "seasonYear": 2017
-        }
-      ],
-      "ratingSwings": [
-        {
-          "seriesId": "tt5106590",
-          "title": "IMDb Originals",
-          "season": 9,
-          "from": 8.62,
-          "to": 7.35,
-          "delta": -1.27
-        },
-        {
-          "seriesId": "tt0320037",
-          "title": "Jimmy Kimmel Live!",
-          "season": 8,
-          "from": 7.73,
-          "to": 6.77,
-          "delta": -0.96
-        },
-        {
-          "seriesId": "tt7112114",
-          "title": "Nosotros los guapos",
-          "season": 4,
-          "from": 8.17,
-          "to": 7.49,
-          "delta": -0.68
-        },
-        {
-          "seriesId": "tt3406870",
-          "title": "Benefits Street",
-          "season": 1,
-          "from": 7.15,
-          "to": 6.53,
-          "delta": -0.62
-        },
-        {
-          "seriesId": "tt0397800",
-          "title": "JoJo's Circus",
-          "season": 2,
-          "from": 8.4,
-          "to": 7.83,
-          "delta": -0.57
-        },
-        {
-          "seriesId": "tt11238614",
-          "title": "The Giorgi Lemonjava Show",
-          "season": 1,
-          "from": 9.24,
-          "to": 8.71,
-          "delta": -0.53
-        },
-        {
-          "seriesId": "tt34956643",
-          "title": "Sangmin Dinneaw",
-          "season": 1,
-          "from": 7.83,
-          "to": 7.3,
-          "delta": -0.53
-        },
-        {
-          "seriesId": "tt8911552",
-          "title": "Hyperdrive",
-          "season": 1,
-          "from": 7.41,
-          "to": 7.86,
-          "delta": 0.45
-        },
-        {
-          "seriesId": "tt36508039",
-          "title": "In höchster Not - Bergretter im Einsatz",
-          "season": 2,
-          "from": 9.33,
-          "to": 8.9,
-          "delta": -0.43
-        },
-        {
-          "seriesId": "tt1661326",
-          "title": "Shake It Up",
-          "season": 2,
-          "from": 5.41,
-          "to": 5.83,
-          "delta": 0.42
-        }
-      ],
-      "modifiedCounts": {
-        "seriesVotes": 20981,
-        "avgRating": 1429,
-        "shapes": 259,
-        "episodeCount": 98,
-        "seriesRating": 321,
-        "poster": 4,
-        "overview": 2
       }
     }
   ]
