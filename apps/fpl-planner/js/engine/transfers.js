@@ -1,4 +1,4 @@
-// Transfer search: zero, one and two transfers, hits, and rolling.
+// Transfer search: zero to five transfers, hits, and rolling.
 //
 // This is the decision the product exists to make, and the one where an
 // illegal or unaffordable suggestion destroys trust, so legality is checked
@@ -9,6 +9,33 @@
 //   0 transfers  the roll, always generated, always ranked alongside the rest
 //   1 transfer   every owned player against a pruned incoming pool
 //   2 transfers  a pruned set of outgoing pairs against pruned incoming pairs
+//   3 to K       a beam extension of the best pairs, one move at a time (below)
+//
+// THE DEPTH, K. A manager can bank up to five free transfers, and until
+// 2026-10-09 the search stopped at two, so a squad holding three to five could
+// never be told to use them: on the sample squad the planner's own objective
+// gained +5.8, +7.4 and +8.2 from the third to fifth free moves that the search
+// never generated (session report 2026-10-09-1638, B3). K is
+//
+//   K = max(2, min(free transfers held, maxTransfersCap = 5))
+//
+// unless `opts.maxTransfers` sets it. At two free transfers or fewer K is 2 and
+// the search is bit-for-bit what it was, which tests/transfers-depth.test.mjs
+// asserts against `maxTransfers: 2`. With unlimited transfers (pre-season, a
+// wildcard) K stays 2: a rebuild is squad-builder.js's job, not this one's.
+//
+// THE BEAM. From the `beamWidth` best two-transfer candidates, by this
+// search's own fast score, every owned player not already sold is swapped for
+// every player in his position's pair pool the remaining bank affords; the
+// legal results are scored, all of them are kept as candidates, and the best
+// `beamWidth` become the frontier for the next depth. Every depth stays in the
+// candidate list, so the planner can still choose fewer moves and roll: depth
+// is offered, never forced. Whenever K is three or more, the best
+// `deepReserve` candidates of EVERY depth from one up are guaranteed a place in
+// the exact re-score and the best of each in the returned list, so a proxy that prices an extra move differently from the
+// planner (this one charges `ftValuePoints` per transfer spent, the planner
+// its profile's `rollBonus`) cannot silently drop them before the planner's
+// own `scoreCandidate` sees them.
 //
 // Any plan whose transfer count exceeds the banked free transfers is a hit
 // plan; hits above `opts.maxHits` are never generated.
@@ -34,7 +61,11 @@
 //   4. ENABLERS. The `enablersPerPosition` cheapest legal players per position
 //      are kept regardless of rank, because the two-transfer move that matters
 //      most often is a downgrade funding an upgrade, and a pure value ranking
-//      never surfaces the downgrade.
+//      never surfaces the downgrade. They are unioned into the PAIR (and beam)
+//      pools explicitly too (`pairEnablers`): those pools are the top
+//      `pairPoolPerPosition` by value, and until 2026-10-09 they were cut from
+//      the value-sorted pool, so the cheap enablers sorted to the bottom and
+//      never reached the two-transfer search the rule exists for.
 //   5. OUTGOING PRUNE. Two-transfer outgoing pairs are drawn only from the
 //      `maxOutCandidates` players with the largest available upgrade (the best
 //      affordable replacement's horizon value minus their own), unioned with
@@ -180,11 +211,30 @@ const UNBUYABLE_STATUSES = new Set(['u', 'n']);
 export const TRANSFER_DEFAULTS = Object.freeze({
   horizon: DEFAULT_HORIZON,
   discount: DEFAULT_DISCOUNT,
-  maxTransfers: 2,
+  // Deepest move count searched. null means "the free transfers held, at
+  // least 2 and at most `maxTransfersCap`" (see THE DEPTH in the header). A
+  // number pins it: `maxTransfers: 2` is the search as it was before the beam.
+  maxTransfers: null,
+  maxTransfersCap: 5,
+  // Candidates per depth kept as the frontier the next depth extends.
+  beamWidth: 8,
+  // Best candidates of each depth >= 3 guaranteed into the exact re-score and
+  // the returned list.
+  deepReserve: 2,
   maxHits: 2,
   poolPerPosition: 24,
   pairPoolPerPosition: 8,
   enablersPerPosition: 4,
+  // Cheapest points of the price-efficient frontier added to the pair pool as
+  // enablers (rule 4 above).
+  frontierPerPosition: 8,
+  // Budget-aware pair completion (see BUDGET-AWARE PAIRS in searchTransfers):
+  // for every player of a slot's full pool, the best this many of the other
+  // slot the remaining money buys. 0 turns it off.
+  pairBestResponse: 2,
+  // Union the enablers into the pair and beam pools (rule 4 above). false is
+  // the pre-2026-10-09 pair pool, for a control arm.
+  pairEnablers: true,
   maxOutCandidates: 8,
   maxCandidates: 12,
   // How many of the fast-ranked candidates are re-scored under the exact
@@ -196,6 +246,11 @@ export const TRANSFER_DEFAULTS = Object.freeze({
   hitMargin: 1.5,
   // What one banked free transfer is worth as an option on a future move.
   ftValuePoints: 1.2,
+  // The same worth as it enters `rollValue` alone, when set; null means
+  // `ftValuePoints`. Separate so an experiment can price a spent transfer the
+  // way the planner's risk profile does (`rollBonus`, 0.6 balanced) without
+  // also moving the price-change cap, which is derived from `ftValuePoints`.
+  rollValuePoints: null,
   // Share of a doubt-driven transfer gain the engine refuses to act on, so a
   // temporary absence is not converted into a permanent transaction. ZERO on
   // the evidence: see the header and experiments/transfer-churn.md.
@@ -213,6 +268,17 @@ export const TRANSFER_DEFAULTS = Object.freeze({
 // is instead a claim about SIZE ONLY, and it is the claim the tests assert.
 export function priceUrgencyCap(cfg) {
   return cfg.priceUrgencyFraction * cfg.ftValuePoints;
+}
+
+// The deepest move count a search over this many free transfers will
+// generate. Exported so the "why not" comparison (counterfactual.js) can enumerate
+// routes exactly as deep as the planner searches.
+export function resolveMaxTransfers(freeTransfers, opts = {}) {
+  const cfg = { ...TRANSFER_DEFAULTS, ...opts };
+  if (Number.isFinite(cfg.maxTransfers)) return cfg.maxTransfers;
+  // Unlimited (pre-season, a chip week) is a rebuild, which the builder owns.
+  if (!Number.isFinite(freeTransfers)) return 2;
+  return Math.max(2, Math.min(cfg.maxTransfersCap, freeTransfers));
 }
 
 // ---------------------------------------------------------------------------
@@ -235,6 +301,7 @@ export function searchTransfers({ squadState, projections, gameState, rules, hor
   const bankBefore = squadState.bankTenths;
   const transferState = transferStateOf(squadState, R);
   const freeTransfers = freeTransfersFor(transferState);
+  const maxTransfers = resolveMaxTransfers(freeTransfers, cfg);
 
   const lineupOpts = {
     gameState,
@@ -246,7 +313,7 @@ export function searchTransfers({ squadState, projections, gameState, rules, hor
   const lastGw = Math.min(gw + cfg.horizon - 1, projections.gwTo);
 
   const horizonValue = playerHorizonValues(projections, gw, lastGw, cfg.discount);
-  const pools = buildPools({ players, projections, horizonValue, owned, picks, bankBefore, cfg, R });
+  const { pools, enablers } = buildPools({ players, projections, horizonValue, owned, picks, bankBefore, cfg, R });
   const doubts = ownedDoubts(picks, players);
 
   // Read once per player, not once per candidate: the same fifteen and the same
@@ -256,7 +323,7 @@ export function searchTransfers({ squadState, projections, gameState, rules, hor
   const priceNow = Number.isFinite(cfg.now)
     ? cfg.now
     : (Date.parse(gameState.fetchedAt) || Date.now());
-  const priceModels = buildPriceModels({ players, pools, ownedIds, rules: R, now: priceNow });
+  const priceModels = buildPriceModels({ players, pools, enablers, ownedIds, rules: R, now: priceNow });
 
   const baseClubCounts = new Map();
   for (const id of ownedIds) {
@@ -286,7 +353,7 @@ export function searchTransfers({ squadState, projections, gameState, rules, hor
 
     seen.add(key);
     const squad = applyTransfers(ownedIds, outIds, inIds);
-    candidates.push({
+    const c = {
       key, outIds, inIds, squad,
       transferCount: count,
       freeTransfersUsed: acct.freeTransfersUsed,
@@ -297,14 +364,34 @@ export function searchTransfers({ squadState, projections, gameState, rules, hor
       moneyIn, moneyOut, bankAfter,
       churnCost: churnCost(outIds, inIds, doubts, horizonValue, cfg),
       priceAdjustment: priceAdjustment(outIds, inIds, priceModels, cfg),
-    });
+    };
+    candidates.push(c);
+    return c;
   };
+
+  // `churnCost` is a decision margin, not a points forecast, so it stays out of
+  // `xPointsHorizon` for the same reason `hitMargin` does: the number shown to
+  // a user has to remain what the engine actually expects to score.
+  const score = (c) => {
+    c.xPointsHorizon = c.horizonRaw - c.hitCostPoints;
+    c.score = c.xPointsHorizon - cfg.hitMargin * c.hits + c.rollValue - c.churnCost;
+    // Separate key, bounded by construction. `score` above is untouched.
+    c.sortScore = c.score + c.priceAdjustment;
+  };
+  const fastScore = (c) => {
+    const horizonResult = squadHorizonValue(c.squad, projections, gw, R, horizonOpts);
+    c.horizonRaw = horizonResult.total;
+    c.horizonByGw = horizonResult.byGw;
+    c.rollValue = rollValue(c.freeTransfersNextGw, cfg);
+    score(c);
+  };
+  const byScore = (x, y) => (y.sortScore - x.sortScore) || (x.transferCount - y.transferCount) || compareKeys(x.key, y.key);
 
   push([], []);
 
   const sellable = Array.isArray(cfg.outIds) ? new Set(cfg.outIds) : null;
 
-  if (cfg.maxTransfers >= 1) {
+  if (maxTransfers >= 1) {
     for (const pick of picks) {
       if (sellable && !sellable.has(pick.playerId)) continue;
       const position = players.get(pick.playerId).position;
@@ -316,14 +403,52 @@ export function searchTransfers({ squadState, projections, gameState, rules, hor
     }
   }
 
-  if (cfg.maxTransfers >= 2 && freeTransfers + cfg.maxHits >= 2) {
+  const pairPools = new Map();
+  for (const [position, list] of pools) {
+    const top = list.slice(0, cfg.pairPoolPerPosition);
+    if (cfg.pairEnablers) {
+      const ids = new Set(top.map(p => p.id));
+      for (const p of enablers.get(position) || []) {
+        if (!ids.has(p.id)) {
+          ids.add(p.id);
+          top.push(p);
+        }
+      }
+      top.sort((a, b) => (b.value - a.value) || (a.id - b.id));
+    }
+    pairPools.set(position, top);
+  }
+
+  // BUDGET-AWARE PAIRS (2026-10-09). The cross product above only pairs the
+  // top `pairPoolPerPosition` of each position (plus enablers), so a pair
+  // whose best member for the money ranks 9th to 24th by value, because the
+  // budget rules out everyone above him once the other slot is filled, was
+  // never generated: on the sample with a 1.0m bank and selling prices cut to
+  // three quarters, the best pair (Gabriel to Senesi, Garner to Zubimendi,
+  // 174.49) was missed for one worth 174.20. Here every player of the FULL
+  // position pool for one slot is paired with the `pairBestResponse` most
+  // valuable players of the other slot that the money left can still buy
+  // (the pool is sorted by value, so the scan stops at the first that fit).
+  const bestResponsePairs = (outA, outB, budget) => {
+    const fullA = pools.get(players.get(outA.playerId).position) || [];
+    const fullB = pools.get(players.get(outB.playerId).position) || [];
+    for (const inA of fullA) {
+      const left = budget - inA.nowCost;
+      if (left < 0) continue;
+      let taken = 0;
+      for (const inB of fullB) {
+        if (taken >= cfg.pairBestResponse) break;
+        if (inB.id === inA.id || inB.nowCost > left) continue;
+        push([outA.playerId, outB.playerId], [inA.id, inB.id]);
+        taken++;
+      }
+    }
+  };
+
+  if (maxTransfers >= 2 && freeTransfers + cfg.maxHits >= 2) {
     const outCandidates = sellable
       ? picks.filter(p => sellable.has(p.playerId))
       : chooseOutCandidates({ picks, players, horizonValue, pools, bankBefore, cfg });
-    const pairPools = new Map();
-    for (const [position, list] of pools) {
-      pairPools.set(position, list.slice(0, cfg.pairPoolPerPosition));
-    }
     for (let a = 0; a < outCandidates.length; a++) {
       for (let b = a + 1; b < outCandidates.length; b++) {
         const outA = outCandidates[a];
@@ -339,7 +464,39 @@ export function searchTransfers({ squadState, projections, gameState, rules, hor
             push([outA.playerId, outB.playerId], [inA.id, inB.id]);
           }
         }
+        if (cfg.pairBestResponse > 0) {
+          bestResponsePairs(outA, outB, budget);
+          bestResponsePairs(outB, outA, budget);
+        }
       }
+    }
+  }
+
+  // --- deeper: a beam over the best pairs, one move at a time --------------
+  //
+  // See THE BEAM in the header. Every candidate generated here is kept; the
+  // frontier only decides what the NEXT depth grows from.
+  if (maxTransfers >= 3) {
+    let frontier = candidates.filter(c => c.transferCount === 2);
+    for (let depth = 3; depth <= maxTransfers && freeTransfers + cfg.maxHits >= depth; depth++) {
+      for (const c of frontier) if (c.horizonRaw === undefined) fastScore(c);
+      frontier.sort(byScore);
+      const next = [];
+      for (const m of frontier.slice(0, Math.max(1, cfg.beamWidth))) {
+        const sold = new Set(m.outIds);
+        for (const pick of picks) {
+          if (sold.has(pick.playerId)) continue;
+          if (sellable && !sellable.has(pick.playerId)) continue;
+          const budget = m.bankAfter + pick.sellingTenths;
+          for (const cand of pairPools.get(players.get(pick.playerId).position) || []) {
+            if (cand.nowCost > budget || m.inIds.includes(cand.id)) continue;
+            const c = push(m.outIds.concat(pick.playerId), m.inIds.concat(cand.id));
+            if (c) next.push(c);
+          }
+        }
+      }
+      if (!next.length) break;
+      frontier = next;
     }
   }
 
@@ -357,30 +514,26 @@ export function searchTransfers({ squadState, projections, gameState, rules, hor
   // because the whole point is that the exact ordering differs from the fast
   // one and a candidate outside the returned set can be promoted into it.
 
-  // `churnCost` is a decision margin, not a points forecast, so it stays out of
-  // `xPointsHorizon` for the same reason `hitMargin` does: the number shown to
-  // a user has to remain what the engine actually expects to score.
-  const score = (c) => {
-    c.xPointsHorizon = c.horizonRaw - c.hitCostPoints;
-    c.score = c.xPointsHorizon - cfg.hitMargin * c.hits + c.rollValue - c.churnCost;
-    // Separate key, bounded by construction. `score` above is untouched.
-    c.sortScore = c.score + c.priceAdjustment;
-  };
+  for (const c of candidates) if (c.horizonRaw === undefined) fastScore(c);
 
-  for (const c of candidates) {
-    const horizonResult = squadHorizonValue(c.squad, projections, gw, R, horizonOpts);
-    c.horizonRaw = horizonResult.total;
-    c.horizonByGw = horizonResult.byGw;
-    c.rollValue = rollValue(c.freeTransfersNextGw, cfg);
-    score(c);
-  }
-
-  const byScore = (x, y) => (y.sortScore - x.sortScore) || (x.transferCount - y.transferCount) || compareKeys(x.key, y.key);
   candidates.sort(byScore);
 
   const baseline = candidates.find(c => c.transferCount === 0);
   const shortlist = candidates.slice(0, Math.max(1, cfg.rerankCandidates));
   if (baseline && !shortlist.includes(baseline)) shortlist.push(baseline);
+  // Only when the search goes past two, so one that does not is untouched; and
+  // then every depth, so a beam that fills the shortlist with three-move plans
+  // cannot crowd out the best single and pair the planner may prefer.
+  const reserveFrom = maxTransfers >= 3 ? 1 : Infinity;
+  for (let depth = reserveFrom; depth <= maxTransfers; depth++) {
+    let kept = 0;
+    for (const c of candidates) {
+      if (kept >= cfg.deepReserve) break;
+      if (c.transferCount !== depth) continue;
+      kept++;
+      if (!shortlist.includes(c)) shortlist.push(c);
+    }
+  }
 
   const exactHorizonOpts = { ...horizonOpts, mode: 'exact' };
   for (const c of shortlist) {
@@ -393,6 +546,10 @@ export function searchTransfers({ squadState, projections, gameState, rules, hor
 
   const top = shortlist.slice(0, Math.max(1, cfg.maxCandidates));
   if (baseline && !top.includes(baseline)) top.push(baseline);
+  for (let depth = reserveFrom; depth <= maxTransfers; depth++) {
+    const best = shortlist.find(c => c.transferCount === depth);
+    if (best && !top.includes(best)) top.push(best);
+  }
 
   const out = [];
   for (const c of top) {
@@ -416,7 +573,7 @@ export function searchTransfers({ squadState, projections, gameState, rules, hor
 
 // One display model per player the search can actually touch: the fifteen owned
 // plus every pruned incoming pool. Nothing else can appear in a candidate.
-function buildPriceModels({ players, pools, ownedIds, rules, now }) {
+function buildPriceModels({ players, pools, enablers, ownedIds, rules, now }) {
   const deadlines = (rules && rules.priceChangeDeadlines) || [];
   const models = new Map();
   const add = (id) => {
@@ -426,6 +583,7 @@ function buildPriceModels({ players, pools, ownedIds, rules, now }) {
   };
   for (const id of ownedIds) add(id);
   for (const list of pools.values()) for (const cand of list) add(cand.id);
+  for (const list of enablers.values()) for (const cand of list) add(cand.id);
   return models;
 }
 
@@ -565,6 +723,7 @@ function buildPools({ players, projections, horizonValue, owned, picks, bankBefo
   }
 
   const pools = new Map();
+  const enablers = new Map();
   for (const pos of Object.keys(R.positions).map(Number)) {
     const all = byPosition.get(pos) || [];
     const selling = sellingByPosition.get(pos) || [0];
@@ -576,7 +735,28 @@ function buildPools({ players, projections, horizonValue, owned, picks, bankBefo
     const keptIds = new Set(kept.map(p => p.id));
 
     const byPrice = affordable.slice().sort((a, b) => (a.nowCost - b.nowCost) || (b.value - a.value) || (a.id - b.id));
-    for (const p of byPrice.slice(0, cfg.enablersPerPosition)) {
+    const cheapest = byPrice.slice(0, cfg.enablersPerPosition);
+    // The pair search's enablers: the cheapest, plus the price-efficient
+    // frontier (every player worth more than anyone cheaper), which is where
+    // a downgrade that funds an upgrade lands. A 4.4 defender worth more than
+    // every 4.0 to 4.3 one is neither cheapest nor top by value, and he is
+    // exactly the downgrade a tight bank needs.
+    const pairEnablers = cheapest.slice();
+    const enablerIds = new Set(cheapest.map(p => p.id));
+    let bestSoFar = -Infinity;
+    let frontier = 0;
+    for (const p of byPrice) {
+      if (frontier >= cfg.frontierPerPosition) break;
+      if (p.value <= bestSoFar) continue;
+      bestSoFar = p.value;
+      frontier++;
+      if (!enablerIds.has(p.id)) {
+        enablerIds.add(p.id);
+        pairEnablers.push(p);
+      }
+    }
+    enablers.set(pos, pairEnablers);
+    for (const p of cheapest) {
       if (!keptIds.has(p.id)) {
         kept.push(p);
         keptIds.add(p.id);
@@ -586,7 +766,7 @@ function buildPools({ players, projections, horizonValue, owned, picks, bankBefo
     kept.sort((a, b) => (b.value - a.value) || (a.id - b.id));
     pools.set(pos, kept);
   }
-  return pools;
+  return { pools, enablers };
 }
 
 function chooseOutCandidates({ picks, players, horizonValue, pools, bankBefore, cfg }) {
@@ -656,7 +836,8 @@ function churnCost(outIds, inIds, doubts, horizonValue, cfg) {
 // only the ones beyond it are worth anything as an option on a future move, and
 // the difference between candidates correctly falls to zero at the cap.
 function rollValue(carried, cfg) {
-  return cfg.ftValuePoints * Math.max(0, carried - 1);
+  const perTransfer = Number.isFinite(cfg.rollValuePoints) ? cfg.rollValuePoints : cfg.ftValuePoints;
+  return perTransfer * Math.max(0, carried - 1);
 }
 
 function clubLimitOk(baseCounts, outIds, inIds, players, limit) {

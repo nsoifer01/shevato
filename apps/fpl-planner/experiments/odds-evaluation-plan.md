@@ -1,10 +1,24 @@
 # Do bookmaker odds improve this planner?
 
-Status: **plan only. Nothing here has been run.** No odds account exists, so no
-odds data exists, so there is no result to report. This document exists so that
-the experiment is designed before the data is bought rather than after, and so
-that the bar it has to clear is written down before anyone is emotionally
-invested in the answer.
+Status (2026-10-09): **the data premise below is superseded.** No paid odds
+account is needed: football-data.co.uk publishes free pre-closing and closing
+1X2, over/under 2.5 and Asian-handicap prices for every Premier League match of
+2022-23 to 2026-27 (`scripts/fetch-odds.mjs`; terms: free, "intended for
+private individuals only, NOT commerical or data training products using
+automated bots/scrapers/AI", so it is used OFFLINE only and nothing is fetched at
+runtime). Pre-closing prices are collected Friday afternoon for weekend games and
+Tuesday for midweek ones, and `odds.js fixtureOddsAtDeadline` admits only those
+collected before the deadline; closing prices (taken at kickoff) are never read.
+Pinnacle's columns are stale from 2025-26 (the provider's own note), so the
+market average is used. The experiment is `experiments/configs/odds-blend.mjs`;
+its result is registry entry 42. The rest of this document is the original
+design and its bar, which the run followed.
+
+Original status: plan only. No odds account exists, so no odds data exists, so
+there is no result to report. This document exists so that the experiment is
+designed before the data is bought rather than after, and so that the bar it
+has to clear is written down before anyone is emotionally invested in the
+answer.
 
 The thing being tested is the first of the two known weaknesses in
 `js/engine/fixtures.js`: the fixture model is built from team attack and defence

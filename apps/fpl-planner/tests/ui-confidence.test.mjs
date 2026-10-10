@@ -399,15 +399,22 @@ test('the committed sample plan gets a band and a reason built from its own numb
   assert.ok(!current.drivers.includes('availability'), current.reason);
 
   // Every future gameweek is a projection, so none of them may claim the top
-  // band, and each has to get further from certain as it gets further away.
-  let previousScore = current.score;
+  // band or be firmer than this week, and the DISTANCE term has to grow as it
+  // gets further away. The whole score is not monotone and must not be asked to
+  // be: the sample's gameweek 16 is a blank, so that week's plan fields two
+  // fringe players (Diop, Delap) and is honestly shakier than gameweek 17,
+  // whose double puts the regulars back. Asserting the total fell every week
+  // conflated how far away a week is with what that week's eleven looks like.
+  let previousReach = 0;
   for (const future of out.future) {
     const band = assessConfidence({ plan: future, projections: out.projections, gameState, dataStatus: out.dataStatus, now });
     assert.notEqual(band.band, 'high', `GW${future.gw} is a projection and cannot be high confidence`);
-    assert.ok(band.score >= previousScore, `GW${future.gw} must not be firmer than the gameweek before it`);
+    assert.ok(band.score >= current.score, `GW${future.gw} must not be firmer than this week`);
+    const reach = band.factors.find(f => f.key === 'reach').weight;
+    assert.ok(reach >= previousReach, `GW${future.gw}: the distance term must not shrink as the week gets further away`);
+    previousReach = reach;
     assert.equal(future.gwsAhead, future.gw - out.current.gw, 'the plan records how far ahead it is');
     assert.ok(band.reason.includes(`projection ${future.gwsAhead} gameweek${future.gwsAhead === 1 ? '' : 's'} ahead`), band.reason);
     assert.doesNotMatch(band.reason, /of this week's certainty/);
-    previousScore = band.score;
   }
 });

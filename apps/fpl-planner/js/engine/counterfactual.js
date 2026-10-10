@@ -53,7 +53,10 @@
 import { buildSquad } from './squad-builder.js';
 import { squadTrajectory, discountWeights, fmtValue } from './chips.js';
 import { canCompareSquads } from './readiness.js';
-import { scoreCandidate, resolveOptions } from './planner.js';
+import * as planner from './planner.js';
+import { benchBoostDecision, tripleCaptainDecision } from './chips.js';
+import { resolveMaxTransfers } from './transfers.js';
+import { transferAccounting, transferStateOf, isUnlimited } from './transfer-state.js';
 import { planBasis } from './plan-basis.js';
 
 // Statuses the game will not let anyone buy: gone from the league, or not
@@ -65,9 +68,16 @@ export const COUNTERFACTUAL_PARAMS = Object.freeze({
   tieTolerance: 0.5,
   // Expected minutes over the whole horizon, so roughly a third of a start.
   minutesTolerance: 30,
-  // Routes are enumerated up to two moves. Beyond that a manager is rebuilding,
-  // which is a wildcard question and not this one.
+  // The floor on how deep routes are enumerated. The real depth is the
+  // planner's own (transfers.js `resolveMaxTransfers`: the free transfers
+  // held, at least 2 and at most 5), so "why not him?" never refuses a route
+  // the planner itself would search. See `maxRouteTransfers(ctx)`.
   maxRouteTransfers: 2,
+  // Routes of three moves and more are grown from the best this many routes
+  // of the depth below, by the same additive proxy as the two-move routes.
+  routeBeamWidth: 4,
+  // Routes of each depth from three up that get an exact evaluation.
+  deepRouteShortlist: 4,
   // Replacements considered per position when a second move is needed, ranked
   // by projected points over the horizon.
   replacementsPerPosition: 6,
@@ -971,7 +981,10 @@ function replacementPool(ctx, position, exclude, maxCost) {
   return out.slice(0, COUNTERFACTUAL_PARAMS.replacementsPerPosition);
 }
 
-// Every legal way to end this gameweek holding the target, in one move or two.
+const routeKey = r => `${r.out.slice().sort((a, b) => a - b).join(',')}>${r.in.slice().sort((a, b) => a - b).join(',')}`;
+
+// Every legal way to end this gameweek holding the target, in one move or two,
+// and then as many more as the planner's own search would make.
 // Two-move routes are shortlisted on an additive proxy before any of them is
 // scored properly, because the exact scorer runs a lineup optimization per
 // gameweek and there are hundreds of pairs.
@@ -1042,7 +1055,48 @@ function enumerateRoutes(ctx) {
     }
   }
   proxies.sort((a, b) => b.proxy - a.proxy);
+  const byProxy = (a, b) => b.proxy - a.proxy || routeKey(a).localeCompare(routeKey(b));
   routes.push(...proxies.slice(0, COUNTERFACTUAL_PARAMS.exactRouteShortlist));
+
+  // Three moves and more, as deep as the planner searches: each depth grows
+  // the best routes of the one below by one more upgrade, on the same proxy.
+  // A free transfer the manager holds is a move the planner would make, so a
+  // route that needs it to fit him in, or to spend the money he frees, is a
+  // fair answer to "why not him?".
+  const depthMax = maxRouteTransfers(ctx);
+  let frontier = proxies;
+  const seenRoutes = new Set(proxies.map(routeKey));
+  for (let depth = 3; depth <= depthMax && frontier.length; depth++) {
+    const next = [];
+    for (const r of frontier.slice(0, COUNTERFACTUAL_PARAMS.routeBeamWidth)) {
+      const inSquad = new Set([...held, ...r.in]);
+      for (const outId of ids) {
+        if (r.out.includes(outId)) continue;
+        const p = ctx.gameState.players.get(outId);
+        if (!p) continue;
+        const funds = r.bank + (selling.get(outId) || 0);
+        for (const cand of replacementPool(ctx, p.position, inSquad, funds)) {
+          const squad = r.squad.filter(id => id !== outId).concat(cand.id);
+          if (!legalSquad(ctx, squad)) continue;
+          const route = {
+            transfers: depth,
+            out: r.out.concat(outId),
+            in: r.in.concat(cand.id),
+            squad,
+            bank: funds - cand.nowCost,
+            proxy: r.proxy + horizonXp(ctx, cand.id) - horizonXp(ctx, outId),
+          };
+          const key = routeKey(route);
+          if (seenRoutes.has(key)) continue;
+          seenRoutes.add(key);
+          next.push(route);
+        }
+      }
+    }
+    next.sort(byProxy);
+    routes.push(...next.slice(0, COUNTERFACTUAL_PARAMS.deepRouteShortlist));
+    frontier = next;
+  }
 
   return { routes, bestShortfall, clubBlocked, sameClubHeld };
 }
@@ -1058,7 +1112,7 @@ function enumerateRoutes(ctx) {
 function planCfg(ctx) {
   if (ctx.cfg) return ctx.cfg;
   const base = (ctx.planBundle && ctx.planBundle.planOptions) || {};
-  const cfg = resolveOptions({ ...base, horizon: ctx.horizon, discount: ctx.discount, seed: ctx.seed }, ctx.rules, ctx.gw);
+  const cfg = planner.resolveOptions({ ...base, horizon: ctx.horizon, discount: ctx.discount, seed: ctx.seed }, ctx.rules, ctx.gw);
   // `maxHits` is how many hits the planner is willing to TAKE. A question about
   // a route is answered with its price rather than refused, so it is lifted.
   ctx.cfg = { ...cfg, horizon: ctx.horizon, maxHits: Infinity };
@@ -1088,20 +1142,14 @@ function scenarioOf(ctx, { transfersOut, transfersIn }) {
     scored: false,
   };
   if (!base.legal || !base.affordable) return base;
-  const scored = scoreCandidate({
-    candidate: { transfersOut, transfersIn, squad },
-    chip: ctx.plan.chip || null,
-    squadState: ctx.squadState,
-    projections: ctx.projections,
-    gameState: ctx.gameState,
-    rules: ctx.rules,
-    cfg: planCfg(ctx),
-    gw: ctx.gw,
-  });
+  const scored = scoreScenario(ctx, { transfersOut, transfersIn, squad });
   if (!scored) return base;
   return {
     ...base,
     scored: true,
+    // The chip this scenario is scored with: the plan's, except a Bench Boost
+    // or Triple Captain the planner would not play on this squad.
+    chip: scored.chip || null,
     traj: scored.trajectory,
     // What the hero card calls "this gameweek": the canonical expected score.
     gwPoints: scored.xPointsGw,
@@ -1113,6 +1161,140 @@ function scenarioOf(ctx, { transfersOut, transfersIn }) {
     freeTransfersUsed: scored.acct.freeTransfersUsed,
     freeTransfersNextGw: scored.acct.freeTransfersNextGw,
   };
+}
+
+// The planner's own scoring of one squad under the plan's chip.
+//
+// A Wildcard or Free Hit is scored by `scoreCandidate` with the chip, which is
+// exactly how the planner scores the chip plan (and so inherits how it scores
+// a Free Hit's rented week). A Bench Boost or Triple Captain is NOT: the
+// planner scores the squad without the chip, asks the chip's own decision
+// (the bench appearance gate, the hold margins) about THAT squad, and credits
+// the chip's `netValue`, what it adds now minus what keeping it is worth
+// (planner.js `chipCandidates` and `scoreWithTimingChip`). Scoring a scenario
+// with the raw chip bonus instead let "why not him?" call better a squad the
+// planner ranks lower, or one it would not boost at all. A squad whose
+// decision is not to play the chip is scored without it, as the planner would.
+function scoreScenario(ctx, candidate) {
+  const chip = ctx.plan.chip || null;
+  const cfg = planCfg(ctx);
+  const common = {
+    squadState: ctx.squadState,
+    projections: ctx.projections,
+    gameState: ctx.gameState,
+    rules: ctx.rules,
+    cfg,
+    gw: ctx.gw,
+  };
+  if (chip !== 'bboost' && chip !== '3xc') {
+    return planner.scoreCandidate({ candidate, chip, ...common });
+  }
+  const base = planner.scoreCandidate({ candidate, chip: null, ...common });
+  if (!base) return null;
+  const first = base.trajectory.gws[0];
+  const chipsUsed = ctx.squadState.chipsUsed || [];
+  const openingSquad = isUnlimited(transferStateOf(ctx.squadState, ctx.rules));
+  const decision = chip === 'bboost'
+    ? benchBoostDecision({
+      benchIds: [first.bench.gk, ...first.bench.order],
+      projections: ctx.projections, gameState: ctx.gameState, rules: ctx.rules,
+      gw: ctx.gw, horizon: cfg.horizon, chipsUsed, openingSquad,
+    })
+    : tripleCaptainDecision({
+      squadIds: candidate.squad, captainId: first.captain, captainXp: first.captainExtra,
+      projections: ctx.projections, gameState: ctx.gameState, rules: ctx.rules,
+      gw: ctx.gw, horizon: cfg.horizon, chipsUsed, openingSquad,
+    });
+  if (!decision || !decision.recommended) return base;
+  return (planner.scoreWithTimingChip || scoreWithTimingChip)(base, chip, decision, {
+    squadState: ctx.squadState, rules: ctx.rules, cfg,
+  });
+}
+
+// planner.js `scoreWithTimingChip`, line for line, used until the planner
+// exports its own (the namespace import above picks that up the moment it
+// does, so the two cannot drift once it is exported).
+function scoreWithTimingChip(base, chip, decision, { squadState, rules, cfg }) {
+  const acct = transferAccounting({
+    state: transferStateOf(squadState, rules), transfersMade: base.transferCount, chipPlayed: chip, rules,
+  });
+  if (acct.hits > cfg.maxHits) return null;
+  const first = base.trajectory.gws[0];
+  const chipPoints = chip === 'bboost' ? first.xPointsBench : first.captainExtra;
+  return {
+    ...base,
+    chip,
+    acct,
+    chipBonus: chipPoints,
+    chipDecision: decision,
+    ...planner.gameweekPoints(first, chip, acct.hitCostPoints),
+    xPointsHorizon: base.trajectory.total + chipPoints - acct.hitCostPoints,
+    objective: base.trajectory.total + decision.netValue - acct.hitCostPoints
+      + planner.bankedTransferValue(acct, cfg.rollBonus)
+      + cfg.variancePreference * first.sd,
+  };
+}
+
+// How deep a route may go: exactly as deep as the planner's search goes for
+// these free transfers, honouring an experiment's `transferOptions`.
+function maxRouteTransfers(ctx) {
+  const base = (ctx.planBundle && ctx.planBundle.planOptions) || {};
+  return Math.max(
+    COUNTERFACTUAL_PARAMS.maxRouteTransfers,
+    resolveMaxTransfers(ctx.squadState.freeTransfers, base.transferOptions || {}),
+  );
+}
+
+// Under a Wildcard or Free Hit the recommendation is a rebuild, so the fair
+// alternative is the same rebuild with him locked in: the builder the chip
+// evaluator used (chips.js `evaluateWildcard` / `evaluateFreeHit`), same
+// budget, same horizon, same lineup weights, plus `lockedIds`. A one or two
+// move route out of the held squad is not what the planner compared him with.
+//
+// It is the full build, the same cost a pre-season "why not" already pays
+// (`draftAnswer`), about two to three seconds of CPU on a desktop: a polish
+// from the routes already found (one descent, no restarts) cost a third of
+// that and missed the better squad in one of four sampled questions, which is
+// an answer quoting a gap the planner's own builder would not. The best routes
+// found so far are handed in as extra seeds, so the rebuild can never read
+// below them.
+function chipRebuild(ctx, seeds) {
+  const chip = ctx.plan.chip;
+  if (chip !== 'wildcard' && chip !== 'freehit') return null;
+  const seedSquads = seeds.filter(sq => sq && sq.includes(ctx.playerId)).map(sq => sq.slice());
+  if (!seedSquads.length) return null;
+  const { ids, selling, bank } = heldState(ctx);
+  const budgetTenths = ids.reduce((s, id) => s + (selling.get(id) || 0), 0) + bank;
+  const lineupOptions = planCfg(ctx).lineupOptions || {};
+  const weights = {};
+  if (lineupOptions.riskAversion !== undefined) weights.riskAversion = lineupOptions.riskAversion;
+  if (lineupOptions.minutesRiskWeight !== undefined) weights.minutesRiskWeight = lineupOptions.minutesRiskWeight;
+  let built;
+  try {
+    built = buildSquad({
+      projections: ctx.projections,
+      gameState: ctx.gameState,
+      rules: ctx.rules,
+      gw: ctx.gw,
+      horizon: chip === 'freehit' ? 1 : ctx.horizon,
+      budgetTenths,
+      lockedIds: [ctx.playerId],
+      opts: {
+        ...(chip === 'freehit' ? { singleGw: true, discount: 1 } : { discount: ctx.discount }),
+        ...weights,
+        seedSquads,
+      },
+    });
+  } catch {
+    return null;
+  }
+  if (!built || !built.squad || !built.squad.includes(ctx.playerId)) return null;
+  const held = new Set(ids);
+  const next = new Set(built.squad);
+  return scenarioOf(ctx, {
+    transfersOut: ids.filter(id => !next.has(id)),
+    transfersIn: built.squad.filter(id => !held.has(id)),
+  });
 }
 
 function movesOf(scen) {
@@ -1560,6 +1742,10 @@ function overallComparison(ctx, rec, d) {
   const { routes, bestShortfall, clubBlocked, sameClubHeld } = enumerateRoutes(ctx);
   for (const r of routes) add(scenarioOf(ctx, { transfersOut: r.out, transfersIn: r.in }));
   if (d && d.available) add(d.alt);
+  if (ctx.plan.chip === 'wildcard' || ctx.plan.chip === 'freehit') {
+    const seeds = candidates.slice().sort((a, b) => b.points - a.points || a.transfers - b.transfers).slice(0, 2);
+    add(chipRebuild(ctx, seeds.map(c => c.squad)));
+  }
   candidates.sort((a, b) => b.points - a.points || a.transfers - b.transfers);
   if (!candidates.length) return { best: null, candidates, bestShortfall, clubBlocked, sameClubHeld };
 
@@ -1621,13 +1807,21 @@ function overallReasons(ctx, rec, o) {
   // The planner ranks on more than points: a free transfer carried into next
   // week has a value under the risk setting. When that, and not points, is
   // what separates the two, say so, so the answer can never contradict the plan.
+  //
+  // The value quoted is the planner's own value of exactly the transfers that
+  // differ (`bankedValueOf`, read after transfer-state.js applied the cap, so
+  // a transfer that could not have been banked is worth nothing): the same
+  // definition planner.js `rollMarginValue` gives the explanation.
   const pointsAhead = o.delta.points > COUNTERFACTUAL_PARAMS.tieTolerance;
   const objectiveBehind = o.delta.objective < -COUNTERFACTUAL_PARAMS.tieTolerance;
-  if (pointsAhead && objectiveBehind) {
+  const rollBonus = planCfg(ctx).rollBonus;
+  const rollGap = planner.bankedValueOf(rec.freeTransfersNextGw || 0, rollBonus)
+    - planner.bankedValueOf(best.freeTransfersNextGw || 0, rollBonus);
+  if (pointsAhead && objectiveBehind && rollGap > 0) {
     out.push(reason(
       'roll_value',
       `It projects more points, but it leaves you ${best.freeTransfersNextGw} free ${best.freeTransfersNextGw === 1 ? 'transfer' : 'transfers'} next week against ${rec.freeTransfersNextGw}, and the planner values the difference at {v} points, which is why it is not the recommendation.`,
-      (rec.objective - rec.points) - (best.objective - best.points),
+      rollGap,
     ));
   }
   return out;
@@ -1657,7 +1851,7 @@ function transferAnswer(ctx) {
     if (o.clubBlocked || (o.sameClubHeld && o.sameClubHeld.length >= ctx.rules.clubLimit)) {
       blockers.push(reason(
         'club_limit',
-        `You already hold {v} players from ${clubOf(ctx.gameState, ctx.playerId)}, which is the limit, and no legal move inside ${COUNTERFACTUAL_PARAMS.maxRouteTransfers} transfers frees a place.`,
+        `You already hold {v} players from ${clubOf(ctx.gameState, ctx.playerId)}, which is the limit, and no legal move inside ${maxRouteTransfers(ctx)} transfers frees a place.`,
         o.sameClubHeld.length,
         'count',
       ));
@@ -1674,7 +1868,7 @@ function transferAnswer(ctx) {
       blockers.push(reason(
         'squad',
         `No legal squad inside {v} transfers ends the gameweek holding him.`,
-        COUNTERFACTUAL_PARAMS.maxRouteTransfers,
+        maxRouteTransfers(ctx),
         'count',
       ));
     }
@@ -2006,6 +2200,15 @@ function keepAnswer(ctx) {
 export function counterfactual(playerId, { planBundle, gameState, rules, opts = {} }) {
   const answer = answerFor(playerId, { planBundle, gameState, rules, opts });
   return { ...answer, basis: planBasis(planBundle) };
+}
+
+// One route out of the held squad, scored exactly as every "why not" scenario
+// is (`scenarioOf`): the planner's scorer, the plan's options and chip, a
+// timing chip credited at its net value only when its own decision plays it.
+// Exported so a test can hold that number against the planner's own ranking.
+export function scoreRoute({ transfersOut = [], transfersIn = [] }, { planBundle, gameState, rules, opts = {} }) {
+  const ctx = makeContext(transfersIn[0] ?? null, { planBundle, gameState, rules: rules || gameState.rules, opts });
+  return scenarioOf(ctx, { transfersOut, transfersIn });
 }
 
 function answerFor(playerId, { planBundle, gameState, rules, opts = {} }) {

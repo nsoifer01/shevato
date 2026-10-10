@@ -67,6 +67,14 @@ async function runCell({ cell, config, arm }) {
     else process.env[key] = String(value);
   }
 
+  // An odds arm reads bookmaker prices the engine may not load itself
+  // (js/engine/backtest.js ships with the app and cannot import scripts/).
+  const armOpts = { ...(arm.opts || {}) };
+  if (armOpts.planOptions && armOpts.planOptions.modelOptions && armOpts.planOptions.modelOptions.odds && !armOpts.oddsRows) {
+    const { loadReplayOdds } = await import('./lib/odds-football-data.mjs');
+    armOpts.oddsRows = loadReplayOdds(data, cell.season);
+  }
+
   try {
     const report = await replaySeason({
       dataset: data,
@@ -85,7 +93,7 @@ async function runCell({ cell, config, arm }) {
         priorDataset: prior,
         evidenceRegime: config.evidenceRegime,
         ...(config.poolSize ? { poolSize: config.poolSize } : {}),
-        ...(arm.opts || {}),
+        ...armOpts,
       },
     });
 

@@ -14,6 +14,122 @@ tables.
 
 ---
 
+## The 2026-10-09 backend audit, and what its fixes taught (found and FIXED 2026-10-09)
+
+A full backend audit (`.reports/fpl-planner-session-report-2026-10-09-1638.md`,
+gitignored) found seven verified correctness defects. They share one cause worth
+remembering: **every one lived on a code path the historical replay cannot
+reach.** The archive has no injury or suspension flags, no news, no in-season
+set-piece orders and no join dates, and the replay never recommended a Free Hit
+in a way anything compared against the truth, so four seasons of green replays
+said nothing about any of them. When adding engine behaviour, ask first whether
+the replay can see it; if not, it needs a unit test against a real payload
+(`tests/fixtures/xp-calibration-2026`) or a synthesized replay input
+(`syntheticSuspensions`), because the instrument will report it as a flat zero.
+
+### The Free Hit was scored as a five-week squad
+
+`scoreCandidate` scored `candidate.squad` over the whole horizon whatever the
+chip. The chip's own evaluator (one week) and the future plan
+(`projectedSquadState`, which reverts) were right; only the plan's ranking
+number was wrong, so the Alternatives card said a transfer plan trailed a Free
+Hit by 54 points when it trailed by 0.2. `candidateTrajectory` now scores the
+rented week, then the kept squad from the next gameweek at the discount shifted
+by one step. `tests/free-hit-scoring.test.mjs` pins it to the rent-then-revert
+arithmetic.
+
+### Ruled-out players read as five-week absences
+
+`UNAVAILABLE_STATUSES` returned zero before the horizon recovery ran, so `i`
+and `s` never recovered while the same 0% doubt encoded as `d` did. FPL's news
+carries the return date and nothing read it. **"Suspended until D" means
+eligible FROM D**, established on the 2026-10-09 payload: Disasi (red 12 Sep,
+until 25 Oct) misses exactly three league matches, a straight red's ban, and
+Fatawu (second yellow 19 Sep, until 17 Oct) exactly one; Foden and Awoniyi's
+dates cover two league matches, the remaining match of a three-match ban being
+a cup tie (domestic bans count cup ties). The news has no year: the year is the
+one closest after `news_added`. **A date that has already passed while the flag
+is still up means the return slipped**, and it is read as no date: the demo
+sample's Garner ("Expected back 22 Aug", still `i` in November) otherwise came
+back at 0.77 and the plan kept him. The 0.75 return-week availability for an
+expected injury return is a judgement, not a measurement (no flag history
+existed to measure it); the deadline archive will make it measurable.
+
+### Loan clauses, January signings, doubles, set pieces
+
+- `scout_risks` carries `loan_ineligible` with a gameweek (8 players on
+  2026-10-09, e.g. Mudryk GW8). Certain, cheap, previously ignored.
+- `team_join_date` is in bootstrap and in `players_raw.csv`. A join date AFTER
+  the deadline being planned must be ignored: the replay's payload carries the
+  archive's end-of-season value. A player whose season minutes exceed 90 x his
+  matches since joining played for another Premier League club first and keeps
+  the whole season as his denominator.
+- A double gameweek's `1 - (1 - pAppear)^2` treated a shared doubt as two
+  independent ones (0.47 single, 0.69 double for a 50% flag). Fit players keep
+  the independent read; availability multiplies outside.
+- Set-piece multipliers double counted: xG includes penalties (0.76 each) and
+  xA includes corners. Goals/xG of first-choice penalty takers 1.01 / 0.97 /
+  0.93 (2023-24 to 2025-26) against 1.02 / 1.00 / 0.97 for everyone else; FPL
+  assists/xA of first-choice corner takers 1.34 / 1.25 / 1.32 against 1.44 /
+  1.40 / 1.37. 2022-23 is unusable for this (no xG before GW16). The captain's
+  duty tilt is a separate question, measured by `configs/captain-ev.mjs`.
+
+### Consistency between surfaces
+
+- The roll sentence quoted `rollBonus x every banked transfer` (1.2 with two,
+  1.8 with three) while the decision turned on the one transfer a roll keeps
+  (0.6). `rollMarginValue` is now the one definition and counterfactual.js uses
+  `bankedValueOf`, so a tabled `rollBonus` stays consistent everywhere.
+- "Why this plan?" printed the first roll reason twice (once in the summary
+  bullets, once in its own group).
+- A runner-up that projects more and loses on the roll value or the hit bar is
+  flagged on the card (`belowRollValue`, `belowHitMargin`) and confidence no
+  longer clamps its lead to a "tie". The threshold is +0.05, the line where the
+  card's one-decimal figure stops reading +0.0.
+- The risk profile now reaches lineup.js and captain.js through
+  `lineupOptions.risk`; balanced is both modules' default, so the default plan
+  did not move.
+- The price-change tie-break only acts inside `searchTransfers`' shortlist:
+  `buildPlan` re-sorts on the objective, so it can change which candidates are
+  scored but never reorder the final ranking. Safe; the README sentence that
+  implied more is corrected.
+
+### The pre-merge review (2026-10-10)
+
+- **The 14th tight-budget case** was a candidate-generation gap, not noise: the
+  best pair bought two players ranked 9th to 24th by value, outside the top-8
+  pair pool and above the cheap enablers, best only because the budget rules
+  out everyone above them once the other slot is filled. Neither widening the
+  price-value frontier nor a pool of 16 found it; budget-aware completion
+  (`pairBestResponse`) does, for about 40 ms. The probe's "exhaustive" truth
+  exact-scores only proxy-ranked pairs, so it was re-checked with the planner's
+  own fast lineup objective over all ~490k pairs for the three hardest cases.
+- **The roll sentence was still wrong for two-move alternatives** once the
+  search found them: with two banked transfers a two-move plan gaining +0.71
+  loses correctly (it spends two transfers worth 1.2), but the card said "a
+  free transfer worth 0.6". Each alternative now carries its own
+  `rollMarginPoints` and `transfersSpentVsPlan`.
+- **The trained calibrator was one index reorder from production**: v1 still
+  lists `startCalibratorJSON`. The tag check closes that for good.
+- **`gh release create --latest=false` fails on gh 2.4.0** (this workstation);
+  caught by a real self-test release before the workflow relied on it.
+
+### The data layer around a deadline
+
+The TTL collapse covered the six hours BEFORE a deadline and reverted to the
+base TTL at the deadline itself, so the minutes when FPL moves the gameweek on
+were served from pre-deadline copies labelled fresh, and the page's forced
+reload got the same copy back from the proxy and stopped trying. The collapse
+now also covers the hour after the most recent deadline, on blob, edge and
+browser, and the page retries every 75 s while FPL still names the locked
+gameweek. Netlify answers a compressed conditional GET with a full 200, so
+`max-age=0, must-revalidate` on the planner's JS is a real per-visit cost
+(about 348 KB brotli), accepted because a mixed module graph after a deploy is a
+dead page. Blob keys per manager and gameweek are pruned daily after 14 days
+by a scheduled function (see the pre-merge review above).
+
+---
+
 ## "Why not a different player?" named the wrong man and could answer about the wrong plan (found and FIXED 2026-10-09)
 
 Entry 3855835, GW6 2026-27, 1 free transfer, recommendation Isak to Gonzalo.
@@ -3502,6 +3618,30 @@ One nuance the tags cannot carry: the engine only ever SUBTRACTS confidence. A
 "Weakens" row, and the band is the sum of the penalties alone.
 
 ## Open questions / next highest-value work
+
+**Ranked 2026-10-09, after the backend audit round (registry 35-45):**
+
+1. **Let the deadline archive accumulate, then re-test on 2026-27.** Every
+   verdict of the round rests on three seasons, and several mechanisms
+   (ruled-out return dates, the 0.75 return-week availability, the captain's
+   tilts, loan clauses) cannot be replayed from the community archive at all.
+   The archive (`scripts/archive-snapshot.mjs`) starts producing a fourth,
+   flag-bearing production season the day it merges; the scorecard reads it.
+2. **The banked-transfer value table (entry 38)**: +7.0 a window, t 1.76,
+   positive in every season. First in line when a fourth season exists.
+3. **Recency without the churn (entry 37)**: the best prediction gain ever
+   measured here lost on points through twice the hits. Try it on who is
+   bought and fielded only, or with the hit margin re-measured under it.
+4. **Defensive actions by fixture (entry 40)** was accepted on one season;
+   re-test on 2026-27.
+5. The search proxy prices a spent transfer at `ftValuePoints` 1.2 and a hit
+   at 1.5 while the planner uses 0.6 and 2.0; the shortlist protection makes
+   it harmless today, and aligning them is a model change for the registry.
+6. Blob keys per manager and gameweek: pruned daily since 2026-10-10
+   (`netlify/functions/fpl-cache-prune.mjs`); watch its first runs' log line
+   for the size of the backlog it clears.
+
+The ranking below is the 2026-08-12 one, kept for its closed items.
 
 Ranked 2026-08-12, evening, after 2025-26 qualified (entry 15), bonus closed
 (entry 16), the defcon denominator landed (entry 17) and the prior-weight sweep

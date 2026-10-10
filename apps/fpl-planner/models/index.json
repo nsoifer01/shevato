@@ -4,6 +4,9 @@
       "version": 1,
       "modelVersion": "fpl-planner-v1",
       "file": "fpl-planner-v1.json",
+      "engineConsumes": [
+        "startCalibratorJSON"
+      ],
       "trainedAt": "2026-08-10T22:01:45.875Z",
       "datasetVersion": "vaastav-merged-gw-1",
       "featureVersion": "fv1",
@@ -17,6 +20,7 @@
       "version": 2,
       "modelVersion": "fpl-planner-v2",
       "file": "fpl-planner-v2.json",
+      "engineConsumes": [],
       "trainedAt": "2026-08-11T00:55:29.552Z",
       "datasetVersion": "vaastav-merged-gw-1",
       "featureVersion": "fv2",

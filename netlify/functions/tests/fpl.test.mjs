@@ -128,7 +128,12 @@ test('every TTL collapses in the six hours before a deadline', () => {
   assert.equal(at('2026-08-21T11:29:00Z'), TTL.bootstrap);
   assert.equal(at('2026-08-21T11:31:00Z'), DEADLINE_TTL_SECONDS);
   assert.equal(at('2026-08-21T17:29:00Z'), DEADLINE_TTL_SECONDS);
-  assert.equal(at('2026-08-21T17:31:00Z'), TTL.bootstrap, 'after the deadline the rush is over');
+  // The collapse is held for an hour AFTER the deadline too (2026-10-09 audit
+  // B4): this line used to pin base TTL a minute past it, which is exactly when
+  // the gameweek flips and a ten-minute copy still names the locked one.
+  assert.equal(at('2026-08-21T17:31:00Z'), DEADLINE_TTL_SECONDS, 'the gameweek is flipping');
+  assert.equal(at('2026-08-21T18:29:00Z'), DEADLINE_TTL_SECONDS);
+  assert.equal(at('2026-08-21T18:31:00Z'), TTL.bootstrap, 'an hour after the deadline the rush is over');
   // Shortening never lengthens a TTL that was already shorter.
   assert.equal(ttlSeconds('event/1/live', { now: Date.parse('2026-08-21T17:00:00Z'), nextDeadline: deadline }), TTL.live);
   assert.equal(ttlSeconds('bootstrap-static', { now: Date.parse('2026-08-21T17:00:00Z'), nextDeadline: 'not a date' }), TTL.bootstrap);
@@ -173,24 +178,27 @@ function upstream(handlerFn) {
 
 const ok = (body) => new Response(JSON.stringify(body), { status: 200 });
 const NOW = Date.parse('2026-08-10T12:00:00Z');
+// The smallest bootstrap the shape check accepts (hasExpectedShape), plus
+// whatever marker a test wants to see come back.
+const boot = (extra = {}) => ({ elements: [], events: [], teams: [], ...extra });
 
 test('a cache miss fetches upstream, stores the result and reports it as a miss', async () => {
   const store = memoryStore();
-  const fetchUpstream = upstream(() => ok({ total_players: 5 }));
+  const fetchUpstream = upstream(() => ok([{ id: 5 }]));
   const res = await serveFpl({ path: 'fixtures', store, fetchUpstream, now: NOW });
 
   assert.equal(res.status, 200);
-  assert.deepEqual(res.body, { total_players: 5 });
+  assert.deepEqual(res.body, [{ id: 5 }]);
   assert.equal(res.cache, 'miss');
   assert.equal(res.stale, false);
   assert.equal(res.ageSeconds, 0);
   assert.equal(fetchUpstream.calls[0], UPSTREAM_BASE + 'fixtures/');
-  assert.deepEqual(store.map.get(cacheKey('fixtures')).body, { total_players: 5 });
+  assert.deepEqual(store.map.get(cacheKey('fixtures')).body, [{ id: 5 }]);
 });
 
 test('a thousand visitors inside the TTL cost one upstream fetch', async () => {
   const store = memoryStore();
-  const fetchUpstream = upstream(() => ok({ n: 1 }));
+  const fetchUpstream = upstream(() => ok(boot({ n: 1 })));
   await serveFpl({ path: 'bootstrap-static', store, fetchUpstream, now: NOW });
   const later = await serveFpl({ path: 'bootstrap-static', store, fetchUpstream, now: NOW + 9 * 60 * 1000 });
 
@@ -203,17 +211,17 @@ test('a thousand visitors inside the TTL cost one upstream fetch', async () => {
 test('an expired entry is refetched', async () => {
   const store = memoryStore();
   let n = 0;
-  const fetchUpstream = upstream(() => ok({ n: ++n }));
+  const fetchUpstream = upstream(() => ok(boot({ n: ++n })));
   await serveFpl({ path: 'bootstrap-static', store, fetchUpstream, now: NOW });
   const res = await serveFpl({ path: 'bootstrap-static', store, fetchUpstream, now: NOW + 11 * 60 * 1000 });
   assert.equal(res.cache, 'miss');
-  assert.deepEqual(res.body, { n: 2 });
+  assert.deepEqual(res.body, boot({ n: 2 }));
 });
 
 test('fetching the bootstrap records the deadline, which then shortens every other TTL', async () => {
   const store = memoryStore();
-  const bootstrap = { events: [{ deadline_time: new Date(NOW + 60 * 60 * 1000).toISOString() }] };
-  const fetchUpstream = upstream(() => ok(bootstrap));
+  const bootstrap = boot({ events: [{ deadline_time: new Date(NOW + 60 * 60 * 1000).toISOString() }] });
+  const fetchUpstream = upstream((url) => ok(url.includes('bootstrap') ? bootstrap : { id: 1 }));
   await serveFpl({ path: 'bootstrap-static', store, fetchUpstream, now: NOW });
   assert.equal(store.map.get(DEADLINE_KEY).nextDeadline, new Date(NOW + 3600000).toISOString());
 
@@ -226,25 +234,25 @@ test('fetching the bootstrap records the deadline, which then shortens every oth
 
 test('an upstream outage serves the last good copy, clearly marked stale', async () => {
   const store = memoryStore();
-  await serveFpl({ path: 'fixtures', store, fetchUpstream: upstream(() => ok({ n: 1 })), now: NOW });
+  await serveFpl({ path: 'fixtures', store, fetchUpstream: upstream(() => ok([{ n: 1 }])), now: NOW });
 
   const down = upstream(() => { throw new Error('ECONNRESET'); });
   const res = await serveFpl({ path: 'fixtures', store, fetchUpstream: down, now: NOW + 3 * 3600 * 1000 });
   assert.equal(res.status, 200);
-  assert.deepEqual(res.body, { n: 1 }, 'the real last-known payload, never a fabricated one');
+  assert.deepEqual(res.body, [{ n: 1 }], 'the real last-known payload, never a fabricated one');
   assert.equal(res.stale, true);
   assert.equal(res.ageSeconds, 3 * 3600);
 });
 
 test('a 500 from upstream is an outage too', async () => {
   const store = memoryStore();
-  await serveFpl({ path: 'fixtures', store, fetchUpstream: upstream(() => ok({ n: 1 })), now: NOW });
+  await serveFpl({ path: 'fixtures', store, fetchUpstream: upstream(() => ok([{ n: 1 }])), now: NOW });
   const res = await serveFpl({
     path: 'fixtures', store, now: NOW + 3600 * 1000,
     fetchUpstream: upstream(() => new Response('upstream boom', { status: 503 })),
   });
   assert.equal(res.stale, true);
-  assert.deepEqual(res.body, { n: 1 });
+  assert.deepEqual(res.body, [{ n: 1 }]);
 });
 
 test('an outage with nothing cached says so instead of inventing data', async () => {
@@ -270,10 +278,10 @@ test('an unknown team id passes through as a 404 and is never cached', async () 
 
 test('a corrupt cache entry is ignored rather than served', async () => {
   const store = memoryStore({ [cacheKey('fixtures')]: { fetchedAt: 'nonsense' } });
-  const fetchUpstream = upstream(() => ok({ n: 1 }));
+  const fetchUpstream = upstream(() => ok([{ n: 1 }]));
   const res = await serveFpl({ path: 'fixtures', store, fetchUpstream, now: NOW });
   assert.equal(res.cache, 'miss');
-  assert.deepEqual(res.body, { n: 1 });
+  assert.deepEqual(res.body, [{ n: 1 }]);
 });
 
 /* ------------------------------------------------- cache failure isolation */
@@ -319,11 +327,11 @@ test('a cache write failure still returns the body that was fetched', async () =
   const res = await serveFpl({
     path: 'bootstrap-static',
     store,
-    fetchUpstream: async () => ({ status: 200, ok: true, json: async () => ({ fresh: true, events: [] }) }),
+    fetchUpstream: async () => ({ status: 200, ok: true, json: async () => boot({ fresh: true }) }),
     now: Date.now(),
   });
   assert.equal(res.status, 200, 'a failed write must not turn a good fetch into an outage');
-  assert.deepEqual(res.body, { fresh: true, events: [] });
+  assert.deepEqual(res.body, boot({ fresh: true }));
   assert.equal(res.stale, false);
 });
 
@@ -337,10 +345,10 @@ test('a cache write failure does not serve an older copy instead of the fresh on
   const res = await serveFpl({
     path: 'bootstrap-static',
     store,
-    fetchUpstream: async () => ({ status: 200, ok: true, json: async () => ({ day: 'new', events: [] }) }),
+    fetchUpstream: async () => ({ status: 200, ok: true, json: async () => boot({ day: 'new' }) }),
     now: Date.now(),
   });
-  assert.deepEqual(res.body, { day: 'new', events: [] }, 'the fresh body was already in hand');
+  assert.deepEqual(res.body, boot({ day: 'new' }), 'the fresh body was already in hand');
   assert.equal(res.stale, false);
 });
 
@@ -402,11 +410,11 @@ async function withFetchStub(stub, fn) {
 
 test('a successful proxy response carries all four x-fpl-* headers', async () => {
   const res = await withFetchStub(
-    async () => new Response(JSON.stringify({ events: [] }), { status: 200 }),
+    async () => new Response(JSON.stringify(boot()), { status: 200 }),
     () => handler(req('bootstrap-static')),
   );
   assert.equal(res.status, 200);
-  assert.deepEqual(await res.json(), { events: [] });
+  assert.deepEqual(await res.json(), boot());
   assert.equal(res.headers.get('content-type'), 'application/json');
   // The freshness contract js/data/api.js reads. A 404 WITHOUT x-fpl-cache is
   // how the client detects a static server with no function at all, so the
@@ -433,7 +441,7 @@ test('the four headers ride on an in-season 404 too, so the client can tell it f
 test('without a Blobs context the handler serves uncached instead of failing', async () => {
   let upstreamCalls = 0;
   await withFetchStub(
-    async () => { upstreamCalls += 1; return new Response('{"n":1}', { status: 200 }); },
+    async () => { upstreamCalls += 1; return new Response('[{"n":1}]', { status: 200 }); },
     async () => {
       const first = await handler(req('fixtures'));
       const second = await handler(req('fixtures'));

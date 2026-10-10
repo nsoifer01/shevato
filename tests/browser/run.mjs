@@ -82,6 +82,9 @@ const SUITES = [
   'apps/maptap-rivals/e2e/quality.mjs',
   // The Free Hit revert, driven across the chip gameweek and the one after.
   'apps/fpl-planner/e2e/free-hit.mjs',
+  // The near-tie roll: the alternatives card, roll sentence and confidence
+  // band against the engine's own numbers (2026-10-09 audit B7).
+  'apps/fpl-planner/e2e/roll-near-tie.mjs',
 ];
 
 // --only=<substring> runs the suites whose path contains it; --shard=<i>/<n>
@@ -273,6 +276,7 @@ const SUITE_SECONDS = {
   'apps/trip-planner/e2e/share.mjs': 18,
   'tests/browser/suites/pwa-gym.mjs': 12,
   'apps/fpl-planner/e2e/free-hit.mjs': 9,
+  'apps/fpl-planner/e2e/roll-near-tie.mjs': 20,
   'apps/trip-planner/e2e/pwa.mjs': 5,
 };
 

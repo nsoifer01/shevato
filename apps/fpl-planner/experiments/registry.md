@@ -37,6 +37,13 @@ Baselines, same settings. Measured 2026-08-12 on the corrected replay evidence
 | hold      |    1453 |    2107 |    2112 |   5672 |
 | fdr       |    1255 |    1010 |    1282 |   3547 |
 
+(2026-10-09: the deciding instrument is THREE production-regime seasons,
+2023-24 to 2025-26, x 5 windows x 3 seeds = 15 windows and 45 trajectories, and
+its control on the current tree is 34,470, entry 45. 2022-23 replays in the
+production regime since 2021-22 was downloaded but stays out: it has no xG
+before gameweek 16. The paragraph below is the pre-2026-09-16 seeded-regime
+record.)
+
 The deciding instrument is now FOUR seasons x 5 sliding windows x 3 seeds =
 **20 window observations, 60 paired trajectories** (entry 15). Current control:
 **44,296** (10,897 / 10,943 / 11,779 / 10,677), measured after entry 17's
@@ -1699,6 +1706,284 @@ xG/xA rate quality, and early-window squad construction where a wrong opening
 15 echoes for weeks). Any future reopening must first find the 2023-24
 channel; running more weights is known to be useless, because no flat weight
 can satisfy three seasons whose optima genuinely differ.
+
+## 46. A start calibrator fitted on the engine's own start probability: REJECT
+
+- **Date:** 2026-10-10
+- **Decision: REJECT.** No calibrator is applied; the engine now refuses any
+  calibrator that does not declare it was fitted on the base start probability
+  (`minutes.js START_CALIBRATOR_INPUT`), which both shipped artifacts do not.
+- **Pre-registered** in `experiments/configs/start-calibration.mjs`.
+
+The artifacts' calibrator (registry entry 2) was mis-specified: fitted on the
+logistic start model's outputs and applied to the analytic pStart, then clamped
+to pAppear so a lowered start became a free bench appearance (audit B15). The
+honest re-test fits one on the quantity it corrects
+(`scripts/calibration/calibrate-start.mjs`, monotone bins, leave-one-season-out)
+and applies it in minutes.js before the bench is built. Held out it does what a
+calibrator should: log loss better in all four seasons (0.3685 to 0.3649,
+0.3418 to 0.3382, 0.3556 to 0.3536, 0.3314 to 0.3277) and the top bin
+(predicted 0.94) brought to 0.90 against 0.90-0.91 observed. On points:
+
+| arm | per window | se | t | W-L-T | 2023-24 | 2024-25 | 2025-26 |
+| --- | ---: | ---: | ---: | --- | ---: | ---: | ---: |
+| calibrated | -8.4 | 7.8 | -1.07 | 5-10-0 | -11.1 | -24.9 | +10.8 |
+
+A season below -15. Entry 2's conclusion now holds for a correctly specified
+calibrator too: lowering every nailed starter's start chance by a few points is
+a level shift, and what it changes is the margin by which they beat rotation
+options, not who the better buy is.
+
+## 45. The 2026-10-09 round as a whole, against master: before and after
+
+- **Date:** 2026-10-09
+- **Kind:** the before/after reading of everything this round shipped (backend
+  audit B1-B16, entries 35, 40 and 43, the squad builder's challengers 24 to
+  40), measured two-tree: master a6dd048e (engine 441f14815630) and the branch
+  (engine 8547241b6847), each run as a single-arm config on identical
+  trajectories and paired with `--rerender` (the method of entry 29). The
+  master control reproduces the null arm's 34,252 exactly.
+
+| instrument | per window | se | t | W-L-T | 2023-24 | 2024-25 | 2025-26 | total |
+| --- | ---: | ---: | ---: | --- | ---: | ---: | ---: | ---: |
+| 3, chips off | +4.8 | 4.3 | 1.13 | 9-2-4 | +6.3 | +4.5 | +3.7 | 34,252 to 34,470 |
+| 3, chips on | +5.6 | 7.3 | 0.76 | 7-8-0 | +5.1 | +2.9 | +8.7 | 34,883 to 35,133 |
+| 1, full seasons, seed 1, chips on | | | | | 2230 to 2255 | 2322 to 2337 | 2213 to 2253 | 6,765 to 6,845 |
+
+Positive in every season on both instruments, significant on neither. That is
+the expected shape: most of the round fixes behaviour the replay cannot
+represent (injury and suspension news, loan clauses, join dates, set-piece
+orders, the deadline cache, the explanations), so the replay measures a lower
+bound made mostly of entry 40 and the Free Hit scoring. Prediction metrics on
+the same three seasons are unchanged to the second decimal (engine rank
+correlation 0.589, top twenty 4.76 against 4.74, captain 7.17; the calibration
+bands all pass).
+
+**Re-measured 2026-10-10 after the pre-merge review** (budget-aware pair
+completion, the calibrator guard, the per-alternative roll cost), the branch
+side re-run against the same master runs:
+
+| instrument | per window | se | t | W-L-T | 2023-24 | 2024-25 | 2025-26 | total |
+| --- | ---: | ---: | ---: | --- | ---: | ---: | ---: | ---: |
+| 3, chips off | +6.7 | 4.7 | 1.41 | 10-2-3 | +8.8 | +9.7 | +1.5 | 34,252 to 34,552 |
+| 3, chips on | +4.9 | 7.1 | 0.69 | 6-9-0 | +5.1 | +4.6 | +5.1 | 34,883 to 35,104 |
+
+**New control on this tree:** instrument 3, chips off, 15 windows: 34,552.
+Re-measure it on your own tree before comparing anything (the file's rule).
+
+## 44. Two-gameweek transfer paths: REJECT
+
+- **Date:** 2026-10-09
+- **Decision: REJECT.** `pathPlanning` stays off (the switch is kept, off).
+- **Pre-registered** in `experiments/configs/transfer-paths.mjs`.
+
+Ranking this week's six leading candidates (and the roll) by the best
+two-gameweek path each opens, with next week searched and scored by the same
+`scoreCandidate` over the rest of the same horizon, instead of holding each
+squad for the horizon plus 0.6 per banked transfer:
+
+| arm vs control | per window | se | t | W-L-T | 2023-24 | 2024-25 | 2025-26 | transfers / hits |
+| --- | ---: | ---: | ---: | --- | ---: | ---: | ---: | --- |
+| paths | -8.4 | 8.8 | -0.95 | 2-13-0 | -24.7 | +3.7 | -4.1 | 521 / 3 (control 525 / 14) |
+
+Losing 13 windows of 15 with a season below -15 is a REJECT under the
+registered rule. The mechanism read off the counters: paths took 3 hits where
+control took 14, so crediting a banked transfer with what it buys next week
+made the planner more reluctant, not more clever. The next week's search is the
+same one-week greedy re-solve the future plan uses and inherits its optimism
+about a follow-up that rarely happens as planned. Cost was about 1.7x the plan's
+CPU. **Re-test if** the future plan stops being a greedy re-solve.
+
+## 43. Suspensions over the horizon, legacy against dated: the fix stands
+
+- **Date:** 2026-10-09
+- **Decision: KEEP** the date-aware treatment of `i` and `s` (backend audit B2);
+  points were the guard, not the target.
+- **Pre-registered** in `experiments/configs/suspensions.mjs`.
+
+The archive has no flags, so suspensions were synthesized without leakage from
+red cards (`syntheticSuspensions`: a player sent off is banned from his club's
+next fixture, about 49 player-deadlines a season). `legacy` projects him at
+zero for the whole horizon (the pre-fix treatment), `dated` carries FPL's
+"Suspended until" news:
+
+| arm vs control (no suspensions) | per window | t | 2023-24 | 2024-25 | 2025-26 |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| legacy | -1.4 | -0.60 | -6.2 | +3.9 | -2.0 |
+| dated | +0.2 | 0.09 | -1.9 | +2.4 | +0.0 |
+
+dated minus legacy, paired per window: **+1.6 (se 1.4, t 1.12), 3-2-10**, seasons
++4.3 / -1.5 / +2.0. Not significantly worse, so the guard passes. Small because
+one-match bans are rare in a planner's squad; the real exposure is long injuries
+with dated returns, which the archive cannot replay (the deadline archive will).
+
+## 42. Bookmaker odds blended into the decided gameweek: REJECT
+
+- **Date:** 2026-10-09
+- **Decision: REJECT.** Nothing reads odds at runtime; `odds.js` stays offline.
+- **Pre-registered** in `experiments/configs/odds-blend.mjs`, which records the
+  prediction-level evidence and the plan's failed clean-sheet Brier gate.
+
+Free football-data.co.uk pre-closing market averages (Pinnacle is stale from
+2025-26), gated to prices collected before each deadline, blended at the
+prediction-fitted w = 0.65:
+
+| arm vs control | per window | se | t | W-L-T | 2023-24 | 2024-25 | 2025-26 |
+| --- | ---: | ---: | ---: | --- | ---: | ---: | ---: |
+| blend-065 | +3.9 | 7.2 | 0.54 | 8-7-0 | -19.1 | +9.9 | +20.7 |
+| replace-100 (bracket) | +8.8 | 10.6 | 0.83 | 10-5-0 | +16.5 | +6.1 | +4.0 |
+
+A season below -15 makes blend-065 a REJECT. replace-100 does not beat it by
+more than a standard error, so the registered re-open condition is not met.
+The terms (private individuals, no commercial use) would also have kept any
+ACCEPT offline until the owner ruled. **Re-test if** a fifth production season
+exists or pre-deadline odds for later rounds become available.
+
+## 41. Conway-Maxwell goal dispersion for clean sheets: REJECT
+
+- **Date:** 2026-10-09
+- **Decision: REJECT.** `goalDispersion` stays off.
+- **Pre-registered** in `experiments/configs/goal-dispersion.mjs`.
+
+nu fitted on prediction targets, leave-one-season-out, 1.17 / 1.16 / 1.15
+(full fit 1.16, AIrsenal's published 1.17), with goal log-likelihood +0.002 a
+side and clean-sheet calibration better in two seasons of three. On points:
+
+| arm | per window | se | t | W-L-T | 2023-24 | 2024-25 | 2025-26 |
+| --- | ---: | ---: | ---: | --- | ---: | ---: | ---: |
+| nu116 | -2.5 | 7.4 | -0.33 | 5-9-1 | +8.1 | +6.7 | -22.2 |
+
+A season below -15. Another calibration gain that does not change decisions for
+the better (entry 12's pattern): a dispersion lowers every clean sheet together,
+a near level shift for defences that the ranking cancels.
+
+## 40. Defensive actions follow the fixture: ACCEPT
+
+- **Date:** 2026-10-09
+- **Decision: ACCEPT** `DEFCON_FIXTURE_BETA` = **0.10** in `projections.js`
+  (model version analytic-3).
+- **Pre-registered** in `experiments/configs/defcon-fixture.mjs`.
+
+A player's defensive-action count is scaled by `defenceScale ^ beta`, the
+opponent's expected goals over what his club usually concedes. Fitted by
+Poisson likelihood on 2025-26, the only season with the data
+(`scripts/calibration/calibrate-defcon-fixture.mjs`): beta 0.10 on gameweeks
+2-19 and on the full season (DEF 0.15, MID 0.05, FWD -0.05); held out on 20-38
+log likelihood per row -2.51800 to -2.51656, award Brier 0.11727 to 0.11710.
+
+| arm | per window (exposed) | se | t | W-L-T | 2025-26 windows gw1-13 / 7-19 / 14-26 / 20-32 / 27-38 |
+| --- | ---: | ---: | ---: | --- | --- |
+| beta-010 | +15.9 | 7.5 | 2.12 | 5-0-0 | +0.3 / +5.0 / +6.0 / +36.0 / +32.0 |
+
+The two structural seasons read exactly zero, as they must. The large gains are
+in the windows the first-half fit never saw. Clears the registered bar. What it
+does not settle: five windows of one season, and an effect larger on points
+than its tiny prediction gain suggests, which is the profile of a lucky draw as
+much as of a real one. **Re-test** on 2026-27 once the deadline archive holds
+it; reverting is one constant.
+
+## 39. The armband on expected value, and without the tilts: REJECT / INERT
+
+- **Date:** 2026-10-09
+- **Decision: REJECT** ev-only; **no-tilts is INERT on the replay** and nothing
+  changed.
+- **Pre-registered** in `experiments/configs/captain-ev.mjs`.
+
+| arm | per window | se | t | W-L-T | 2023-24 | 2024-25 | 2025-26 |
+| --- | ---: | ---: | ---: | --- | ---: | ---: | ---: |
+| ev-only (mean 1, upside 0, no tilts) | -3.0 | 3.8 | -0.79 | 4-3-8 | -12.5 | +0.2 | +3.4 |
+| no-tilts | 0.0 | 0.0 | - | 0-0-15 | 0 | 0 | 0 |
+
+no-tilts changed no decision anywhere: the archive carries no set-piece orders
+and no fixture difficulty, and minutes confidence never reordered an armband on
+its own, so the replay cannot see the tilts at all. Their value in the live app
+is therefore UNMEASURED, not zero. The 0.75 / 0.25 mean-ceiling blend is kept.
+
+## 38. Banked-transfer value by how many are banked: INCONCLUSIVE
+
+- **Date:** 2026-10-09
+- **Decision: INCONCLUSIVE**, not shipped (`rollBonus` stays a flat 0.6).
+- **Pre-registered** in `experiments/configs/ft-value.mjs`.
+
+| arm | per window | se | t | W-L-T | 2023-24 | 2024-25 | 2025-26 | transfers / hits |
+| --- | ---: | ---: | ---: | --- | ---: | ---: | ---: | --- |
+| falling [0.6, 0.8, 0.64, 0.52, 0.44] | +7.0 | 4.0 | 1.76 | 7-4-4 | +2.3 | +16.5 | +2.1 | 520 / 11 (525 / 14) |
+
+Positive in all three seasons and below the bar (t 1.76). The most promising
+reading of this round. **Re-test** first when a fourth production season exists;
+do not sweep the table on these windows.
+
+## 37. Recent form in the start probability: REJECT
+
+- **Date:** 2026-10-09
+- **Decision: REJECT.** `modelOptions.recency` stays off; the replay keeps
+  attaching `recentGws` (it is free and the scorecard can use it).
+- **Pre-registered** in `experiments/configs/recency-start.mjs`.
+
+The largest prediction gain this project has measured: held-out start log loss
+0.3685 to 0.2977, 0.3418 to 0.2690, 0.3556 to 0.2948 and 0.3314 to 0.2694
+(2022-23 to 2025-26), better in every gameweek bucket; regulars who started none
+of their last three gameweeks went from a predicted 0.69 to 0.16-0.18 against
+0.20-0.22 actual. On points:
+
+| arm | per window | se | t | W-L-T | 2023-24 | 2024-25 | 2025-26 | transfers / hits |
+| --- | ---: | ---: | ---: | --- | ---: | ---: | ---: | --- |
+| recency | +2.9 | 10.2 | 0.28 | 7-8-0 | +30.7 | -4.3 | -17.8 | 560 / 29 (525 / 14) |
+
+A season below -15: REJECT. The counters say why: twice the hits and 35 more
+transfers. Recent form moves many near-indifferent decisions (selling a player
+for one benching) and pays a hit to do it, entry 24's churn cost in a new form.
+**What would reopen it:** using recency to change who is BOUGHT and fielded but
+not to trigger sales, or a hit margin re-measured with it on.
+
+## 36. The planner against greedy and hold, on the deciding instrument
+
+- **Date:** 2026-10-09
+- **Kind:** reference reading, not a decision (`experiments/configs/strategies.mjs`).
+
+| arm vs the planner | per window | se | t | W-L-T | 2023-24 | 2024-25 | 2025-26 |
+| --- | ---: | ---: | ---: | --- | ---: | ---: | ---: |
+| greedy-xp (horizon 1) | -45.1 | 11.8 | -3.84 | 3-12-0 | -51.0 | -38.4 | -46.0 |
+| hold (never transfer) | -74.0 | 16.2 | -4.56 | 2-13-0 | -85.8 | -81.1 | -55.0 |
+
+The first reading of "the planner beats the simple rules" on paired windows
+rather than single seasons: the horizon is worth 45 points a 13-gameweek window
+and the transfer engine 74, both significant in every season.
+
+## 35. The deeper transfer search: kept as a correction
+
+- **Date:** 2026-10-09
+- **Decision: KEEP** the beam to the free transfers held (max 5) with budget
+  enablers (backend audit B3).
+- **Pre-registered** in `experiments/configs/transfer-depth.mjs`.
+
+| arm vs the shipped search | per window | se | t | W-L-T | transfers / hits |
+| --- | ---: | ---: | ---: | --- | --- |
+| old-search (2 moves, no enablers) | -0.2 | 1.4 | -0.13 | 1-4-10 | 525 / 10 (525 / 14) |
+| no-enablers | (totals 34226 against 34260) | | | | 525 / 10 |
+
+No measurable effect on points, as registered for a correction, and the old
+search does not beat it.
+
+**Re-measured 2026-10-10 after the pre-merge review** added budget-aware pair
+completion (`pairBestResponse` 2: every player of one slot's full pool paired
+with the best the remaining money buys for the other, which found the one
+tight-budget case of fourteen the search had missed):
+
+| arm vs the shipped search | per window | se | t | W-L-T | seasons |
+| --- | ---: | ---: | ---: | --- | --- |
+| old-search (2 moves, no enablers, no completion) | -2.7 | 3.9 | -0.69 | 2-8-5 | -7.7 / -5.6 / +5.3 |
+| no-enablers | +0.6 | 1.4 | 0.44 | 1-1-13 | -1.8 / +0.0 / +3.7 |
+| no-best-response | -1.8 | 2.5 | -0.73 | 2-3-10 | -2.5 / -5.2 / +2.2 |
+
+The shipped search reads ahead of the old one in two seasons of three and is
+kept; the completion is kept as a correction (it finds strictly better pairs
+on the planner's own objective: 20 of 20 bank and price variants match a
+screened optimum, against 15 of 20 for the old search). New control on this
+tree: 34,552. Chips-off windows start from a fresh squad and rarely
+bank three or more transfers, so the instrument barely exposes the depth; the
+enablers account for the small difference and four extra hits. The value is in
+live seasons where managers bank transfers, which the replay under-represents.
 
 ## 34. Double-gameweek benches: building and holding for them, REJECT
 

@@ -13,13 +13,14 @@
 // plan, AND an artifact that does declare a key is still consumed, so the
 // mechanism is dormant rather than dead.
 
+import { START_CALIBRATOR_INPUT } from '../js/engine/minutes.js';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { loadModel, selectModel, currentEntry, describeModelStatus } from '../js/data/model.js';
+import { loadModel, selectModel, currentEntry, describeModelStatus, declaresNothing } from '../js/data/model.js';
 import { buildGameState } from '../js/engine/normalize.js';
 import { buildSquadState } from '../js/engine/squad.js';
 import { buildStrength } from '../js/engine/strength.js';
@@ -114,7 +115,9 @@ test('the points model is never passed to the engine', async () => {
 
   // And an artifact that did ask for it would still not get it: this engine has
   // no seam for a points model, so the key is dropped rather than trusted.
-  const asked = selectModel({ ...artifact, modelVersion: 'test-1', engineConsumes: ['points', 'startCalibratorJSON'] });
+  const asked = selectModel({
+    ...artifact, modelVersion: 'test-1', engineConsumes: ['points', 'startCalibratorJSON'], startCalibratorFittedOn: START_CALIBRATOR_INPUT,
+  });
   assert.equal(asked.ok, true);
   assert.deepEqual(asked.consumed, ['startCalibratorJSON']);
   assert.equal(asked.model.points, undefined);
@@ -128,10 +131,11 @@ test('an artifact that does declare a consumable key is still consumed', () => {
     modelVersion: 'fpl-planner-v99',
     engineConsumes: ['startCalibratorJSON'],
     startCalibratorJSON: read('..', 'models', currentEntry(INDEX).file).startCalibratorJSON,
+    startCalibratorFittedOn: START_CALIBRATOR_INPUT,
   });
   assert.equal(status.ok, true);
   assert.deepEqual(status.consumed, ['startCalibratorJSON']);
-  assert.deepEqual(Object.keys(status.model).sort(), ['modelVersion', 'startCalibratorJSON']);
+  assert.deepEqual(Object.keys(status.model).sort(), ['modelVersion', 'startCalibratorFittedOn', 'startCalibratorJSON']);
   assert.match(describeModelStatus(status), /start probabilities calibrated/);
 });
 
@@ -140,6 +144,7 @@ test('a part the artifact declares but this engine has no seam for is ignored, n
     modelVersion: 'test-1',
     engineConsumes: ['startCalibratorJSON', 'somethingFromTheFuture'],
     startCalibratorJSON: { method: 'bins', points: [{ x: 0.1, y: 0.05 }, { x: 0.9, y: 0.95 }] },
+    startCalibratorFittedOn: START_CALIBRATOR_INPUT,
     somethingFromTheFuture: { weights: [1, 2, 3] },
   });
   assert.equal(status.ok, true);
@@ -154,9 +159,9 @@ test('a malformed artifact falls back with a reason instead of reaching the engi
     [null, /not an object/],
     [{ engineConsumes: ['startCalibratorJSON'] }, /no modelVersion/],
     [{ modelVersion: 'test-1' }, /no engineConsumes/],
-    [{ modelVersion: 'test-1', engineConsumes: ['startCalibratorJSON'], startCalibratorJSON: { method: 'bins', points: [] } }, /malformed startCalibratorJSON/],
-    [{ modelVersion: 'test-1', engineConsumes: ['startCalibratorJSON'], startCalibratorJSON: { method: 'bins', points: [{ x: 'nope', y: 1 }] } }, /malformed startCalibratorJSON/],
-    [{ modelVersion: 'test-1', engineConsumes: ['startCalibratorJSON'], startCalibratorJSON: 'not json' }, /malformed startCalibratorJSON/],
+    [{ modelVersion: 'test-1', engineConsumes: ['startCalibratorJSON'], startCalibratorJSON: { method: 'bins', points: [] }, startCalibratorFittedOn: START_CALIBRATOR_INPUT }, /malformed startCalibratorJSON/],
+    [{ modelVersion: 'test-1', engineConsumes: ['startCalibratorJSON'], startCalibratorJSON: { method: 'bins', points: [{ x: 'nope', y: 1 }] }, startCalibratorFittedOn: START_CALIBRATOR_INPUT }, /malformed startCalibratorJSON/],
+    [{ modelVersion: 'test-1', engineConsumes: ['startCalibratorJSON'], startCalibratorJSON: 'not json', startCalibratorFittedOn: START_CALIBRATOR_INPUT }, /malformed startCalibratorJSON/],
   ];
   for (const [artifact, re] of cases) {
     const status = selectModel(artifact);
@@ -175,10 +180,13 @@ test('a missing index or a missing artifact file is a fallback, never a throw', 
   assert.equal(offline.ok, false);
   assert.match(offline.reason, /network down/);
 
+  // An index WITHOUT the engineConsumes mirror, so the artifact has to be
+  // fetched (the shipped index's mirror lets it skip that fetch entirely).
+  const unmirrored = { models: INDEX.models.map(({ engineConsumes, ...rest }) => rest) };
   const missingFile = await loadModel({
     basePath: 'models/',
     fetchImpl: async (url) => (String(url).endsWith('index.json')
-      ? { ok: true, status: 200, json: async () => INDEX }
+      ? { ok: true, status: 200, json: async () => unmirrored }
       : { ok: false, status: 404, json: async () => ({}) }),
   });
   assert.equal(missingFile.ok, false);
@@ -208,6 +216,91 @@ test('the status panel tells consumed, loaded-but-unused and missing apart', asy
   assert.equal(describeModelStatus(null), 'not checked');
 });
 
+/* ------------------------------------- the index mirror (audit B16) */
+
+// The artifact was downloaded before every first plan although the engine
+// takes nothing from it. The index entry now mirrors its artifact's
+// engineConsumes, and an empty mirror answers without the download.
+
+function recordingFetch(dir = MODELS_DIR) {
+  const inner = fileFetch(dir);
+  const urls = [];
+  const fn = async (url, init) => { urls.push(String(url).split('/').pop()); return inner(url, init); };
+  fn.urls = urls;
+  return fn;
+}
+
+test('B16: the shipped model status is answered from index.json alone, with no artifact download', async () => {
+  const fetchImpl = recordingFetch();
+  const status = await loadModel({ basePath: `${MODELS_DIR}/`, fetchImpl });
+  assert.deepEqual(fetchImpl.urls, ['index.json'], 'the artifact is not fetched when the index says it is consumed by nothing');
+  assert.equal(status.ok, true);
+  assert.equal(status.model, null);
+  assert.deepEqual(status.consumed, []);
+  assert.equal(status.modelVersion, currentEntry(INDEX).modelVersion);
+});
+
+test('B16: the model status panel says exactly what it said when the artifact was downloaded', async () => {
+  const viaIndex = await loadModel({ basePath: `${MODELS_DIR}/`, fetchImpl: fileFetch() });
+  const viaArtifact = selectModel(read('..', 'models', currentEntry(INDEX).file));
+  assert.deepEqual(viaIndex, viaArtifact);
+  assert.equal(describeModelStatus(viaIndex), describeModelStatus(viaArtifact));
+});
+
+test('B16: every index mirror equals the engineConsumes of the artifact it names', () => {
+  let mirrored = 0;
+  for (const entry of INDEX.models) {
+    if (!('engineConsumes' in entry)) continue;
+    const artifact = read('..', 'models', entry.file);
+    assert.deepEqual(entry.engineConsumes, artifact.engineConsumes, `${entry.file}: index mirror drifted from the artifact`);
+    assert.equal(entry.modelVersion, artifact.modelVersion, entry.file);
+    mirrored++;
+  }
+  assert.ok(Array.isArray(currentEntry(INDEX).engineConsumes), 'the current entry carries the mirror, or the skip never happens');
+  assert.ok(mirrored >= 1);
+});
+
+test('B16: an entry with no mirror, or one that lists a part, still fetches and validates the artifact', async () => {
+  const consuming = { models: [{ version: 1, modelVersion: 'fpl-planner-v1', file: 'fpl-planner-v1.json', engineConsumes: ['startCalibratorJSON'] }] };
+  const bare = { models: [{ version: 2, modelVersion: 'fpl-planner-v2', file: 'fpl-planner-v2.json' }] };
+  for (const index of [consuming, bare]) {
+    assert.equal(declaresNothing(currentEntry(index)), false);
+    const urls = [];
+    const status = await loadModel({
+      basePath: `${MODELS_DIR}/`,
+      fetchImpl: async (url, init) => {
+        urls.push(String(url).split('/').pop());
+        return String(url).endsWith('index.json') ? { ok: true, status: 200, json: async () => index } : fileFetch()(url, init);
+      },
+    });
+    assert.deepEqual(urls, ['index.json', index.models[0].file]);
+    // v1 lists its calibrator and is fetched, then REFUSED: it was fitted on
+    // the logistic start model, not on the engine's start probability (B15).
+    // v2 lists nothing and is loaded consuming nothing.
+    if (index === consuming) {
+      assert.equal(status.ok, false);
+      assert.match(status.reason, /fitted on .*not on the engine's start probability/);
+      assert.equal(status.model, null);
+    } else {
+      assert.equal(status.ok, true);
+    }
+  }
+  assert.equal(declaresNothing({ engineConsumes: [], modelVersion: '' }), false, 'no name to report, so the artifact decides');
+});
+
+test('a model fetch that never answers fails with a reason instead of holding the plan', async () => {
+  const started = Date.now();
+  const status = await loadModel({
+    basePath: 'models/',
+    timeoutMs: 30,
+    fetchImpl: () => new Promise(() => {}),
+  });
+  assert.equal(status.ok, false);
+  assert.match(status.reason, /index\.json could not be read: timed out/);
+  assert.ok(Date.now() - started < 2000);
+  assert.match(describeModelStatus(status), /not loaded .*analytic priors/);
+});
+
 /* --------------------------------------------------- it reaches a real plan */
 
 const gameState = buildGameState(
@@ -232,6 +325,7 @@ const hypothetical = selectModel({
   modelVersion: 'fpl-planner-v99',
   engineConsumes: ['startCalibratorJSON'],
   startCalibratorJSON: read('..', 'models', currentEntry(INDEX).file).startCalibratorJSON,
+  startCalibratorFittedOn: START_CALIBRATOR_INPUT,
 });
 
 test('projections built with what the loader hands over today are the analytic ones', () => {
@@ -285,3 +379,25 @@ test('a plan built with a consuming artifact would report that artifact', async 
   assert.equal(trained.current.modelVersion, 'planner-1+fpl-planner-v99');
   assert.equal(trained.validation.ok, true);
 });
+
+// B15 (2026-10-09). Both shipped artifacts carry a start calibrator fitted on
+// the LOGISTIC start model's own outputs, and the engine used to apply it to its
+// analytic pStart. Neither can reach the engine any more, by either path: the
+// loader refuses it even when the artifact lists it, and buildProjections
+// refuses it even when a caller passes it directly (the replay's --model path).
+test('B15: no shipped calibrator can reach the engine, whichever artifact is current', async () => {
+  for (const file of ['fpl-planner-v1.json', 'fpl-planner-v2.json']) {
+    const artifact = read('..', 'models', file);
+    assert.notEqual(artifact.startCalibratorFittedOn, START_CALIBRATOR_INPUT, `${file} does not claim the engine's input`);
+    const listed = selectModel({ ...artifact, engineConsumes: ['startCalibratorJSON'] });
+    assert.equal(listed.model, null, `${file}: refused even when listed`);
+    assert.equal(listed.ok, false);
+  }
+  const { buildProjections } = await import('../js/engine/projections.js');
+  const v1 = read('..', 'models', 'fpl-planner-v1.json');
+  assert.throws(
+    () => buildProjections({ gameState: { players: new Map(), fixtures: [], rules: { scoring: {} }, teams: new Map() }, strength: {}, gwFrom: 1, gwTo: 1, model: { modelVersion: v1.modelVersion, startCalibratorJSON: v1.startCalibratorJSON } }),
+    /refusing fpl-planner-v1's start calibrator/,
+  );
+});
+

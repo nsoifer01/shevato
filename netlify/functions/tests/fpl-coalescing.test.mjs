@@ -144,7 +144,7 @@ test('F11: past the stale window every caller refreshes rather than serving old 
 
 test('F11: a cold key (nothing cached) is never coalesced - there is nothing to serve', async () => {
   const store = memStore();
-  const fetchUpstream = upstream();
+  const fetchUpstream = upstream({ current: [] });
   const results = await Promise.all(Array.from({ length: 3 }, () =>
     serveFpl({ path: 'entry/7/history', store, fetchUpstream, now: NOW })));
   assert.ok(results.every((r) => r.status === 200 && !r.coalesced));

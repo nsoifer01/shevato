@@ -199,7 +199,7 @@ function confidenceScoreOf(proj) {
   return TIER_SCORE[tier] ?? 0;
 }
 
-function buildCandidate(playerId, proj, player, weights) {
+function buildCandidate(playerId, proj, player, weights, { tilts = true } = {}) {
   const xPoints = proj ? proj.xPoints : 0;
   const ceiling = proj ? proj.ceiling : 0;
   const sd = proj ? proj.sd : 0;
@@ -215,7 +215,7 @@ function buildCandidate(playerId, proj, player, weights) {
   // The four tilts are summed and then bounded TOGETHER, so no combination of
   // them can outvote the projection by more than MAX_TILT.
   const rawTilt = duty.penalties + duty.setPieces + fixture - confidencePenalty;
-  const tilt = boundedTilt(rawTilt);
+  const tilt = tilts ? boundedTilt(rawTilt) : 0;
   const value = certaintyEquivalent + tilt;
 
   return {
@@ -249,7 +249,13 @@ function buildCandidate(playerId, proj, player, weights) {
 // ---------------------------------------------------------------------------
 
 export function chooseCaptain(startingXI, projections, gw, gameState, opts = {}) {
-  const weights = RISK_PROFILES[opts.risk] || RISK_PROFILES.balanced;
+  // `captainWeights` and `captainTilts` are experiment switches
+  // (lineupOptions in the replay, experiments/configs/captain-ev.mjs): an arm
+  // that ranks the armband on expected points alone sets
+  // `{ meanWeight: 1, upsideWeight: 0 }` and `captainTilts: false`. Nothing in
+  // the app sets them.
+  const weights = opts.captainWeights || RISK_PROFILES[opts.risk] || RISK_PROFILES.balanced;
+  const tilts = opts.captainTilts !== false;
   const players = (gameState && gameState.players) || new Map();
 
   const candidates = startingXI.map(id => buildCandidate(
@@ -257,6 +263,7 @@ export function chooseCaptain(startingXI, projections, gw, gameState, opts = {})
     projections.get(id, gw),
     players.get(id),
     weights,
+    { tilts },
   ));
 
   // Everyone below the floor is out. If nobody clears it (a gameweek where the

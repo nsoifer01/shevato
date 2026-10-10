@@ -437,6 +437,7 @@ function patience(gw, gwFrom) {
 // it is compared with. Empty (the lineup defaults) unless a caller set them.
 function lineupWeights(opts = {}) {
   const out = {};
+  if (opts.risk !== undefined) out.risk = opts.risk;
   if (opts.riskAversion !== undefined) out.riskAversion = opts.riskAversion;
   if (opts.minutesRiskWeight !== undefined) out.minutesRiskWeight = opts.minutesRiskWeight;
   return out;

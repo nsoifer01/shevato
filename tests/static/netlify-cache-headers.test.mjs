@@ -105,6 +105,12 @@ const SW_APPS = readdirSync(resolve(REPO_ROOT, 'apps'))
   .filter((app) => existsSync(resolve(REPO_ROOT, 'apps', app, 'sw.js')))
   .sort();
 
+// The one deliberate exception: FPL Planner's js/ is an unversioned module graph
+// shared by the page and its plan worker, where a per-module cache lets one
+// visit mix two deploys. netlify.toml carries the reasoning and the measured
+// cost above that rule.
+const MODULE_GRAPH_JS = ['fpl-planner'];
+
 test('every app without a service worker has its own js and css cached', () => {
   const apps = readdirSync(resolve(REPO_ROOT, 'apps'))
     .filter((app) => existsSync(resolve(REPO_ROOT, 'apps', app, 'index.html')))
@@ -112,6 +118,7 @@ test('every app without a service worker has its own js and css cached', () => {
   assert.ok(apps.length >= 5, `expected several worker-less apps, found ${apps.join(',')}`);
   for (const app of apps) {
     for (const kind of ['js', 'css']) {
+      if (kind === 'js' && MODULE_GRAPH_JS.includes(app)) continue;
       const path = `/apps/${app}/${kind}/anything.${kind}`;
       const cc = cacheControlFor(RULES, path);
       assert.ok(cc, `${path} matches no [[headers]] rule, so it takes Netlify's max-age=0 default.`
@@ -120,6 +127,14 @@ test('every app without a service worker has its own js and css cached', () => {
       assert.ok(maxAge(cc) > 0, `${path} must not be served with max-age=0`);
     }
   }
+});
+
+test('FPL Planner js revalidates on every load, so one visit never mixes two deploys', () => {
+  for (const path of ['/apps/fpl-planner/js/app.js', '/apps/fpl-planner/js/engine/planner.js', '/apps/fpl-planner/js/worker.js']) {
+    assert.equal(cacheControlFor(RULES, path), 'public, max-age=0, must-revalidate', path);
+  }
+  // Only its js: the stylesheet has no import graph to tear.
+  assert.ok(maxAge(cacheControlFor(RULES, '/apps/fpl-planner/css/fpl-planner.css')) > 0);
 });
 
 test('every app WITH a service worker keeps its js and css at max-age=0', () => {

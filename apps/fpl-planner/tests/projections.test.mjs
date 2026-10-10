@@ -1,3 +1,4 @@
+import { START_CALIBRATOR_INPUT } from '../js/engine/minutes.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
@@ -342,7 +343,13 @@ test('attacking output scales with the fixture, not just with the player', () =>
   assert.ok(a.xPoints > b.xPoints);
 });
 
-test('set-piece and penalty duty measurably raise the projection', () => {
+// Until 2026-10-09 duty multiplied xG by up to 1.16 and xA by up to 1.11. xG
+// already counts every penalty a player takes and xA every corner he delivers,
+// and on the archive first-choice takers convert xG and xA into FPL goals and
+// assists no faster than anyone else (projections.js, the note where the
+// premium used to be), so the premium double counted the duty for exactly the
+// incumbents whose rates already held it.
+test('set-piece and penalty duty do not inflate a projection whose xG and xA already contain them', () => {
   const base = player({ id: 7, position: 3, xG: 6, xA: 6 });
   const first = player({ ...base, setPieces: { penaltiesOrder: 1, directFreekicksOrder: 1, cornersOrder: 1 } });
   const second = player({ ...base, setPieces: { penaltiesOrder: 2, directFreekicksOrder: 2, cornersOrder: 2 } });
@@ -350,10 +357,11 @@ test('set-piece and penalty duty measurably raise the projection', () => {
   const b = project(base);
   const f = project(first);
   const s = project(second);
-  assert.ok(f.xPoints > b.xPoints, `first choice ${f.xPoints} should beat no duty ${b.xPoints}`);
-  assert.ok(f.xPoints > s.xPoints, 'first choice should beat second choice');
-  assert.ok(s.xPoints > b.xPoints, 'second choice should still beat no duty');
-  assert.ok(f.components.xGoals > b.components.xGoals * (1 + PROJECTION_PARAMS.penaltyOrderBoost[0] / 2));
+  assert.equal(f.xPoints, b.xPoints, 'first-choice duty adds nothing the rates do not already hold');
+  assert.equal(s.xPoints, b.xPoints);
+  assert.equal(f.components.xGoals, b.components.xGoals);
+  assert.equal(f.components.xAssists, b.components.xAssists);
+  assert.equal(PROJECTION_PARAMS.penaltyOrderBoost, undefined, 'no premium table survives to be re-applied');
 });
 
 test('recent points luck does not move a projection', () => {
@@ -489,15 +497,31 @@ test('sd and ceiling come from the composed distribution', () => {
   assert.ok(Math.abs(b.ceiling / b.xPoints - a.ceiling / a.xPoints) > 0.05);
 });
 
-test('a start calibrator from a trained model moves the projection through pStart', () => {
-  const p = player({ id: 7, position: 3 });
-  const base = project(p);
-  const halved = project(p, 1, {
-    model: { modelVersion: 'test-1', startCalibrator: { predict: (v) => v * 0.5 } },
-  });
+// A start calibrator is applied by minutes.js to the BASE start probability,
+// before availability and the bench are built from it, and only one that says
+// it was fitted on that quantity is accepted (B15, 2026-10-09). The old seam
+// patched pStart after the fact and clamped it to pAppear, so a halved start
+// chance became "came off the bench" rather than "did not play".
+test('a start calibrator moves the projection through the base start probability, coherently', () => {
+  const p = player({ id: 7, position: 3, minutes: 1800, starts: 20 });
+  const gameState = makeGameState([p]);
+  const strength = makeStrength();
+  const halving = { fittedOn: START_CALIBRATOR_INPUT, calibrator: { method: 'bins', points: [{ x: 0, y: 0 }, { x: 1, y: 0.5 }] } };
+  const base = projectPlayerGw(p, { gameState, strength, gw: 1 });
+  const halved = projectPlayerGw(p, { gameState, strength, gw: 1, modelOptions: { startCalibration: halving } });
   assert.ok(halved.pStart < base.pStart * 0.55);
+  assert.ok(halved.pAppear < base.pAppear, 'a lost start is mostly a match not played, not a free bench appearance');
+  assert.ok(halved.pAppear >= halved.pStart);
   assert.ok(halved.xPoints < base.xPoints);
   assert.ok(halved.xMins < base.xMins);
+
+  // A calibrator that does not declare the engine's input is refused, by
+  // minutes.js and by buildProjections alike.
+  assert.throws(() => projectPlayerGw(p, { gameState, strength, gw: 1, modelOptions: { startCalibration: { calibrator: halving.calibrator } } }), /refusing a start calibrator/);
+  assert.throws(() => buildProjections({ gameState, strength, gwFrom: 1, gwTo: 1, model: { modelVersion: 'x-1', startCalibratorJSON: halving.calibrator } }), /refusing x-1's start calibrator/);
+  const tagged = buildProjections({ gameState, strength, gwFrom: 1, gwTo: 1, model: { modelVersion: 'x-1', startCalibratorJSON: halving.calibrator, startCalibratorFittedOn: START_CALIBRATOR_INPUT } });
+  assert.ok(Math.abs(tagged.get(7, 1).pStart - halved.pStart) < 1e-12);
+  assert.equal(tagged.modelVersion, 'x-1');
 });
 
 test('buildProjections returns the ProjectionSet contract shape', () => {
@@ -510,7 +534,7 @@ test('buildProjections returns the ProjectionSet contract shape', () => {
   assert.equal(set.gwTo, 3);
   assert.ok(set.byPlayer instanceof Map);
   assert.equal(set.byPlayer.get(7).length, 3);
-  assert.equal(set.modelVersion, 'analytic-2');
+  assert.equal(set.modelVersion, 'analytic-3');
   assert.equal(set.dataFetchedAt, '2026-08-10T00:00:00.000Z');
   assert.ok(!Number.isNaN(Date.parse(set.generatedAt)));
 

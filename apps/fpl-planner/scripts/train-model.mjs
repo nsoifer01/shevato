@@ -1136,6 +1136,12 @@ async function main(argv) {
       + 'forward, so clearing the naive baseline is not evidence it would improve the engine. '
       + 'That is a separate measurement against projections.js, and it has not been run.',
     startCalibratorJSON: starts.calibration.json,
+    // What the calibrator above was fitted on: this script's own logistic
+    // start model's validation predictions. The engine accepts a calibrator
+    // only when this names its own input (minutes.js START_CALIBRATOR_INPUT),
+    // so an artifact from here is never consumed by accident; a calibrator for
+    // the engine comes from scripts/calibration/calibrate-start.mjs.
+    startCalibratorFittedOn: 'train-model.mjs logistic start model (validation predictions)',
     durationMs: Date.now() - t0,
   };
 

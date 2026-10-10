@@ -239,7 +239,22 @@ export function assessData(dataStatus, { now = Date.now() } = {}) {
 // covers everything that would change the answer: the gameweek, exactly which
 // players are held, the money and free transfers available, and each held
 // player's price and availability status.
-export function inputFingerprint(squadState, gameState, plan = null) {
+//
+// AND WHAT THE PLAN ITSELF RESTS ON (2026-10-09 audit B11). The squad alone
+// missed the players the plan tells you to buy: a recommended signing flagged
+// at 17:30 left "Check for changes" saying the plan was current. So a
+// fingerprint taken WITH a plan also covers its scope (planScope): every
+// player it moves in or out, by the same fields plan-diff.js planInputs stores
+// for them (price, status, chance of playing) plus the news line, and the
+// fixtures of every club the squad or those moves touch, over the plan's
+// horizon. Players the plan does not name still do not count: a price move on
+// someone neither held nor recommended is not this plan's problem.
+//
+// A later check has no plan of its own, so it is taken with the stored
+// fingerprint's scope instead (fingerprintScope), which makes the two compare
+// field for field. A fingerprint stored before this existed carries no scope,
+// and is compared on the squad alone, exactly as it was written.
+export function inputFingerprint(squadState, gameState, plan = null, scope = planScope(plan)) {
   if (!squadState) return '';
   // A draft squad state holds no picks and banks the whole budget; the squad
   // and the money it describes only exist on the plan. Fingerprinting the raw
@@ -261,7 +276,82 @@ export function inputFingerprint(squadState, gameState, plan = null) {
     const p = gameState && gameState.players ? readPlayer(gameState, id) : null;
     parts.push(p ? `${id}:${p.nowCost}:${p.status}` : `${id}`);
   }
+  if (scope) parts.push(...scopeParts(scope, ids, gameState));
   return parts.join('|');
+}
+
+// What a plan's fingerprint watches beyond the squad: the players it moves,
+// and the gameweeks it plans for. Null when it names neither (a built draft,
+// whose fifteen are already the squad and whose bare test shape has no
+// gameweek, must keep fingerprinting exactly like its restored manual twin).
+export function planScope(plan) {
+  if (!plan) return null;
+  const watch = [...new Set([...(plan.transfersIn || []), ...(plan.transfersOut || [])])]
+    .filter(Number.isInteger).sort((a, b) => a - b);
+  const gwFrom = plan.gw;
+  const horizon = plan.horizon;
+  const range = Number.isInteger(gwFrom) && Number.isInteger(horizon) && horizon > 0
+    ? { gwFrom, gwTo: gwFrom + horizon - 1 }
+    : null;
+  if (!watch.length && !range) return null;
+  return { watch, ...(range || {}) };
+}
+
+// The scope a stored fingerprint was taken with, read back out of it, or null
+// for one with none (written before scopes existed, or by a draft).
+export function fingerprintScope(fingerprint) {
+  if (!fingerprint) return null;
+  const parts = String(fingerprint).split('|');
+  const watch = parts.filter(p => p.startsWith('w:')).map(p => Number(p.split(':')[1])).filter(Number.isInteger);
+  const fx = parts.find(p => p.startsWith('fx:'));
+  const range = fx ? /^fx:(\d+)-(\d+):/.exec(fx) : null;
+  if (!watch.length && !range) return null;
+  return { watch, ...(range ? { gwFrom: Number(range[1]), gwTo: Number(range[2]) } : {}) };
+}
+
+// `w:<id>:<price>:<status>:<chance>:<news>` per moved player, then one
+// `fx:<from>-<to>:<digest>` over the fixture list the plan was judged on. The
+// news line and the fixtures are digested, because this string is stored in
+// the synced plan history next to every version. Neither prefix starts with a
+// digit, which is what outdatedReason reads as a held player.
+function scopeParts(scope, heldIds, gameState) {
+  const parts = [];
+  for (const id of scope.watch || []) {
+    const p = gameState && gameState.players ? readPlayer(gameState, id) : null;
+    parts.push(p
+      ? `w:${id}:${p.nowCost}:${p.status}:${Number.isFinite(p.chanceNext) ? p.chanceNext : ''}:${digest(p.news || '')}`
+      : `w:${id}`);
+  }
+  if (Number.isInteger(scope.gwFrom) && Number.isInteger(scope.gwTo)) {
+    const clubs = new Set();
+    for (const id of [...heldIds, ...(scope.watch || [])]) {
+      const p = gameState && gameState.players ? readPlayer(gameState, id) : null;
+      if (p && p.teamId !== undefined && p.teamId !== null) clubs.add(p.teamId);
+    }
+    const fixtures = (gameState && gameState.fixtures) || [];
+    const rows = [];
+    for (let gw = scope.gwFrom; gw <= scope.gwTo; gw++) {
+      for (const club of [...clubs].sort((a, b) => a - b)) {
+        const ids = fixtures
+          .filter(f => f.event === gw && (f.teamH === club || f.teamA === club))
+          .map(f => f.id).sort((a, b) => a - b);
+        rows.push(`${gw}.${club}.${ids.join(',')}`);
+      }
+    }
+    parts.push(`fx:${scope.gwFrom}-${scope.gwTo}:${digest(rows.join(';'))}`);
+  }
+  return parts;
+}
+
+// FNV-1a, 32 bit, base 36: short, stable across runs and engines, and only
+// ever compared for equality.
+function digest(text) {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < text.length; i++) {
+    h ^= text.charCodeAt(i);
+    h = Math.imul(h, 0x01000193) >>> 0;
+  }
+  return h.toString(36);
 }
 
 function readPlayer(gameState, id) {
@@ -288,6 +378,14 @@ export function outdatedReason(oldFp, newFp) {
   }
   if (field(oldParts, 'bank:') !== field(newParts, 'bank:') || field(oldParts, 'ft:') !== field(newParts, 'ft:')) {
     return { code: 'budget-changed', text: 'Your bank or free transfers changed since this plan was calculated.' };
+  }
+  // Only the fixture digest moved. Same code, because it is the same kind of
+  // event (an input to the projections moved, not the manager's squad or
+  // money) and the saved-plan history labels it by code; a sentence of its
+  // own, because "prices or availability" would not be true.
+  const rest = (parts) => parts.filter(p => !p.startsWith('fx:')).join('|');
+  if (rest(oldParts) === rest(newParts)) {
+    return { code: 'players-changed', text: 'The fixtures for players in this plan changed since it was calculated.' };
   }
   return { code: 'players-changed', text: 'Prices or player availability changed since this plan was calculated.' };
 }

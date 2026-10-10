@@ -36,14 +36,15 @@
 // double gameweek convolves both fixtures, so xPoints is their sum. Neither is
 // a special case in the code.
 
-import { fixtureContext, baselineTeamGoals, baselineOpponentGoals } from './fixtures.js';
-import { projectMinutes, evidenceView } from './minutes.js';
+import {
+  fixtureContext, baselineTeamGoals, baselineOpponentGoals, goalCountVector, pZeroGoals, goalDispersionOf,
+} from './fixtures.js';
+import { projectMinutes, evidenceView, START_CALIBRATOR_INPUT } from './minutes.js';
 import { rateMinutesOf } from './normalize.js';
 import {
   poissonVector,
   poissonTail,
   calibrate,
-  calibratorFromJSON,
   distPoint,
   distConvolve,
   distMix,
@@ -77,15 +78,39 @@ const RECENCY_HALF_LIFE_GWS = 6;
 // under-60 sub branch are solved here so the branch-weighted mean minutes match
 // the minutes model.
 
-// Set-piece and penalty duty premium, applied multiplicatively to the expected
-// goal and expected assist rates by duty order (first, second, third choice).
-// Deliberately modest: an incumbent taker's last-season expected goals ALREADY
-// contain their penalties, so a large additive term would double count. The
-// premium exists to separate a newly appointed taker from the player who lost
-// the job, and to break ties between otherwise identical players.
-const PENALTY_ORDER_BOOST = [0.10, 0.05, 0.02];
-const FREEKICK_ORDER_BOOST = [0.06, 0.03, 0.01];
-const CORNER_ORDER_BOOST = [0.08, 0.04, 0.015];
+// NO SET-PIECE PREMIUM ON TOP OF xG AND xA (removed 2026-10-09). A first-choice
+// penalty taker's goals were multiplied by 1.10, a free-kick taker's by 1.06
+// and a corner taker's assists by 1.08, on the argument that duty separates a
+// new taker from the player who lost the job. But xG already counts every
+// penalty a player takes (0.76 each) and xA every corner he delivers, so the
+// premium landed on incumbents whose rates already held their duties, the
+// opposite of its purpose. Measured on the archive (outfielders with 900+
+// minutes, end-of-season orders), FPL goals per xG for first-choice penalty
+// takers ran 1.01 / 0.97 / 0.93 in 2023-24 / 2024-25 / 2025-26 against 1.02 /
+// 1.00 / 0.97 for everyone else, and FPL assists per xA for first-choice
+// corner takers 1.34 / 1.25 / 1.32 against 1.44 / 1.40 / 1.37: no premium to
+// find, and for corners a deficit the assist conversion (ASSIST_CONVERSION)
+// already models. The boosts added 0.20 to 0.41 xP a gameweek to the league's
+// highest-xG incumbents (Haaland +0.41 at 2026/27 GW4) and widened captain
+// margins they did not earn. The replay could never measure them, because the
+// archive carries no in-season duty orders, so the correction is taken on the
+// archive's ratios, as registry entries 5 and 11 took theirs. Duty still
+// reaches the armband through captain.js, where it is one of the bounded
+// tilts the captaincy experiments measure.
+
+// DEFENSIVE ACTIONS FOLLOW THE FIXTURE (ACCEPT, registry entry 40). A
+// player's clearances, blocks, interceptions, tackles (and, outside defence,
+// recoveries) were projected at his own per-90 rate whatever the opponent. A
+// side expected to face more of the ball makes more of them, so the count's
+// mean is scaled by `defenceScale ^ beta`, the same opponent-goals ratio saves
+// already use. beta was fitted by Poisson likelihood of the actual counts of
+// outfield starters at each production-regime deadline of 2025-26, the only
+// archived season with the data (scripts/calibration/calibrate-defcon-fixture.mjs):
+// 0.10 on gameweeks 2-19 and 0.10 on the whole season. On the replay it won
+// +15.9 a window (t 2.12, five windows of five, the largest gains in the
+// gameweek 20-38 windows the first-half fit never saw). One season of evidence:
+// re-test when 2026-27 is archived.
+const DEFCON_FIXTURE_BETA = 0.1;
 
 // Bonus points track team performance, but only about half as strongly as goals
 // do, because bonus is a within-match ranking and a whole team playing well
@@ -270,10 +295,8 @@ export const PROJECTION_PARAMS = Object.freeze({
   savesPerPoint: SAVES_PER_POINT,
   concededPerPenalty: CONCEDED_PER_PENALTY,
   recencyHalfLifeGws: RECENCY_HALF_LIFE_GWS,
-  penaltyOrderBoost: PENALTY_ORDER_BOOST,
-  freekickOrderBoost: FREEKICK_ORDER_BOOST,
-  cornerOrderBoost: CORNER_ORDER_BOOST,
   bonusFixtureSensitivity: BONUS_FIXTURE_SENSITIVITY,
+  defconFixtureBeta: DEFCON_FIXTURE_BETA,
   ceilingQuantile: CEILING_QUANTILE,
   priorNinetiesMax: PRIOR_NINETIES_MAX,
   priorNineties: PRIOR_NINETIES,
@@ -284,8 +307,11 @@ export const PROJECTION_PARAMS = Object.freeze({
 // from "it did not" without matching a string in two places.
 // analytic-2 since 2026-09-16: the xP calibration repair (registry entry 29)
 // replaced the minutes, rates and strength models, so a plan stored under
-// analytic-1 was produced by a different model and says so.
-export const DEFAULT_MODEL_VERSION = 'analytic-2';
+// analytic-1 was produced by a different model and says so. analytic-3 since
+// 2026-10-09: ruled-out players recover over the horizon from FPL's news,
+// doubles share one availability, set-piece multipliers are gone, and
+// defensive actions follow the fixture (registry entries 35-45).
+export const DEFAULT_MODEL_VERSION = 'analytic-3';
 
 const clamp = (v, lo, hi) => (v < lo ? lo : v > hi ? hi : v);
 
@@ -686,24 +712,6 @@ export function playerRates(player, { gameState, gw, priors = null }) {
   return out;
 }
 
-function setPieceMultipliers(player) {
-  const sp = player.setPieces || {};
-  const boost = (order, table) => {
-    if (order === null || order === undefined) return 0;
-    const idx = Math.round(order) - 1;
-    return idx >= 0 && idx < table.length ? table[idx] : 0;
-  };
-  const pen = boost(sp.penaltiesOrder, PENALTY_ORDER_BOOST);
-  const fk = boost(sp.directFreekicksOrder, FREEKICK_ORDER_BOOST);
-  const corner = boost(sp.cornersOrder, CORNER_ORDER_BOOST);
-  return {
-    goals: 1 + pen + fk,
-    // A free-kick taker creates from the same dead balls a corner taker does,
-    // so half of the free-kick premium lands on assists too.
-    assists: 1 + corner + fk / 2,
-  };
-}
-
 // ---------------------------------------------------------------------------
 // Bonus model
 //
@@ -793,10 +801,15 @@ function groupedCountPointsDist(lambda, pointsPer, divisor) {
 // Clean sheet and the concession penalty come from the SAME goals-conceded
 // count, so they are built together rather than as two independent draws. A
 // keeper cannot both keep a clean sheet and lose two points for conceding.
-function concessionDist(lambda, { csPoints, concededPoints, divisor, over60 }) {
+//
+// `nu` is the goal count's dispersion (fixtures.js goalCountVector): 1, the
+// shipped Poisson, unless an experiment arm sets `modelOptions.goalDispersion`,
+// in which case the count keeps its mean and changes its shape (P(0) and the
+// tail), which is exactly what a clean sheet and the concession penalty read.
+function concessionDist(lambda, { csPoints, concededPoints, divisor, over60, nu = 1 }) {
   if (!csPoints && !concededPoints) return distPoint(0);
   const maxK = adaptiveMaxK(lambda) || 1;
-  const pmf = poissonVector(lambda, maxK);
+  const pmf = goalCountVector(lambda, nu, maxK);
   return distFromValues(pmf.map((prob, k) => {
     const cs = k === 0 && over60 ? csPoints : 0;
     const conceded = concededPoints ? Math.floor(k / divisor) * concededPoints : 0;
@@ -850,7 +863,7 @@ function minuteBranches(mins) {
 // One player, one fixture
 // ---------------------------------------------------------------------------
 
-function projectFixtureForPlayer({ player, rules, rates, mins, fx, strength, bonus, setPiece }) {
+function projectFixtureForPlayer({ player, rules, rates, mins, fx, strength, bonus, modelOptions = null }) {
   const position = player.position;
   const goalPoints = scoreValue(rules, 'goals_scored', position);
   const assistPoints = scoreValue(rules, 'assists', position);
@@ -886,6 +899,15 @@ function projectFixtureForPlayer({ player, rules, rates, mins, fx, strength, bon
   const bonusRate90 = Math.min(MAX_BONUS_PER_MATCH, bonusBase * bonusScale);
   const assistConversion = Number.isFinite(rates.assistConversion) ? rates.assistConversion : 1;
 
+  const nu = goalDispersionOf(strength);
+  // A side expected to face more of the opponent makes more defensive
+  // actions, so the count's mean is scaled by defenceScale ^ DEFCON_FIXTURE_BETA
+  // (registry entry 40). `modelOptions.defconFixtureBeta` overrides it for an
+  // experiment arm; 0 is the model before 2026-10-09.
+  const defConBeta = modelOptions && Number.isFinite(modelOptions.defconFixtureBeta)
+    ? modelOptions.defconFixtureBeta
+    : DEFCON_FIXTURE_BETA;
+  const defConScale = defConBeta ? defenceScale ** defConBeta : 1;
   const branches = minuteBranches(mins);
   const parts = [];
   const expected = {
@@ -899,12 +921,12 @@ function projectFixtureForPlayer({ player, rules, rates, mins, fx, strength, bon
 
   for (const branch of branches) {
     const share = branch.minutes / 90;
-    const lamGoals = rates.xG * setPiece.goals * attackScale * share;
-    const lamAssists = rates.xA * assistConversion * setPiece.assists * attackScale * share;
+    const lamGoals = rates.xG * attackScale * share;
+    const lamAssists = rates.xA * assistConversion * attackScale * share;
     const lamConceded = fx.opponentXg * share;
     const lamSaves = rates.saves * defenceScale * share;
     const lamPensSaved = rates.pensSaved * defenceScale * share;
-    const lamDefCon = rates.defCon * share;
+    const lamDefCon = rates.defCon * share * defConScale;
     const expBonus = bonusRate90 * share;
     const pYellow = clamp(rates.yellow * share, 0, 1);
     const pRed = clamp(rates.red * share, 0, 1);
@@ -919,6 +941,7 @@ function projectFixtureForPlayer({ player, rules, rates, mins, fx, strength, bon
       concededPoints,
       divisor: concededPerPenalty(rules),
       over60: branch.over60,
+      nu,
     }));
     d = distConvolve(d, groupedCountPointsDist(lamSaves, savePoints, savesPerPoint(rules)));
     d = distConvolve(d, countPointsDist(lamPensSaved, penSavePoints));
@@ -932,7 +955,7 @@ function projectFixtureForPlayer({ player, rules, rates, mins, fx, strength, bon
     const w = branch.weight;
     expected.goals += w * lamGoals;
     expected.assists += w * lamAssists;
-    expected.cleanSheet += w * (branch.over60 ? Math.exp(-lamConceded) : 0);
+    expected.cleanSheet += w * (branch.over60 ? pZeroGoals(lamConceded, nu) : 0);
     expected.saves += w * lamSaves;
     expected.pensSaved += w * lamPensSaved;
     expected.defCon += w * pDefCon;
@@ -946,8 +969,8 @@ function projectFixtureForPlayer({ player, rules, rates, mins, fx, strength, bon
     points.appearance += w * appearancePoints;
     points.goals += w * lamGoals * goalPoints;
     points.assists += w * lamAssists * assistPoints;
-    points.cleanSheets += w * (branch.over60 ? Math.exp(-lamConceded) * csPoints : 0);
-    points.conceded += w * concededExpectedPoints(lamConceded, concededPoints, concededPerPenalty(rules));
+    points.cleanSheets += w * (branch.over60 ? pZeroGoals(lamConceded, nu) * csPoints : 0);
+    points.conceded += w * concededExpectedPoints(lamConceded, concededPoints, concededPerPenalty(rules), nu);
     points.saves += w * groupedExpectedPoints(lamSaves, savePoints, savesPerPoint(rules));
     points.penaltySaves += w * lamPensSaved * penSavePoints;
     points.defcon += w * pDefCon * defConPoints;
@@ -971,32 +994,33 @@ function groupedExpectedPoints(lambda, pointsPer, divisor) {
   return s;
 }
 
-function concededExpectedPoints(lambda, concededPoints, divisor) {
-  return groupedExpectedPoints(lambda, concededPoints, divisor);
+function concededExpectedPoints(lambda, concededPoints, divisor, nu = 1) {
+  if (nu === 1) return groupedExpectedPoints(lambda, concededPoints, divisor);
+  if (!concededPoints || !(lambda > 0)) return 0;
+  const maxK = adaptiveMaxK(lambda);
+  const pmf = goalCountVector(lambda, nu, maxK);
+  let s = 0;
+  for (let k = 0; k <= maxK; k++) s += pmf[k] * Math.floor(k / divisor) * concededPoints;
+  return s;
 }
 
 // ---------------------------------------------------------------------------
 // One player, one gameweek
 // ---------------------------------------------------------------------------
 
-export function projectPlayerGw(player, { gameState, strength, gw, model = null, bonus = null, ratePriors = null }) {
+export function projectPlayerGw(player, { gameState, strength, gw, model = null, bonus = null, ratePriors = null, modelOptions = null }) {
   const rules = gameState.rules;
   const bonusM = bonus || bonusModel(gameState);
   const priors = ratePriors || positionRatePriors(gameState);
   const contexts = fixtureContext(gameState, strength, player.teamId, gw);
 
-  let mins = projectMinutes(player, { gameState, gw, fixtureCount: contexts.length });
-  if (model && model.startCalibrator && mins.pStart > 0) {
-    // A calibrator trained on real start outcomes can only move pStart. Keeping
-    // the correction here, upstream of everything else, means the whole
-    // distribution stays internally consistent instead of a mean being patched
-    // after the fact.
-    const calibrated = clamp(model.startCalibrator.predict(mins.pStart), 0, mins.pAppear);
-    mins = { ...mins, pStart: calibrated };
-  }
+  // A trained start calibrator reaches the minutes model as a start-probability
+  // correction (buildProjections resolves it), never as a patch on pStart here:
+  // patching after the fact, clamped to pAppear, is the mis-specification the
+  // 2026-10-09 audit found (B15; minutes.js START_CALIBRATOR_INPUT).
+  const mins = projectMinutes(player, { gameState, gw, fixtureCount: contexts.length, modelOptions });
 
   const rates = playerRates(player, { gameState, gw, priors });
-  const setPiece = setPieceMultipliers(player);
 
   const fixtures = contexts.map(c => ({
     fixtureId: c.fixtureId,
@@ -1019,9 +1043,12 @@ export function projectPlayerGw(player, { gameState, strength, gw, model = null,
   let xMins = 0;
   let p60 = 0;
   let pAppearGw = 0;
+  const availability = Number.isFinite(mins.availability) ? clamp(mins.availability, 0, 1) : 1;
+  const appearIfFit = availability > 0 ? clamp(mins.pAppear / availability, 0, 1) : 0;
+  let notAppearIfFit = 1;
 
   for (const fx of contexts) {
-    const r = projectFixtureForPlayer({ player, rules, rates, mins, fx, strength, bonus: bonusM, setPiece });
+    const r = projectFixtureForPlayer({ player, rules, rates, mins, fx, strength, bonus: bonusM, modelOptions });
     dist = distConvolve(dist, r.dist);
     components.xGoals += r.expected.goals;
     components.xAssists += r.expected.assists;
@@ -1036,9 +1063,18 @@ export function projectPlayerGw(player, { gameState, strength, gw, model = null,
     for (const key of Object.keys(pointsBreakdown)) pointsBreakdown[key] += r.points[key];
     xMins += r.expected.minutes;
     p60 += r.expected.p60;
-    // Playing in at least one fixture of a double.
-    pAppearGw = 1 - (1 - pAppearGw) * (1 - mins.pAppear);
+    notAppearIfFit *= 1 - appearIfFit;
   }
+  // Playing in at least one fixture of a double. Availability is SHARED by the
+  // two fixtures: an injured player misses both, a fit one gets two chances to
+  // be picked. Treating the fixtures as independent, which this did until
+  // 2026-10-09, read a 50% doubt as 0.69 to appear in a double (truth about
+  // 0.50), and that number gates the Bench Boost and the captain's floor in
+  // exactly the weeks those chips are usually played. A single fixture keeps
+  // the minutes model's pAppear as it is.
+  pAppearGw = contexts.length === 1
+    ? mins.pAppear
+    : availability * (1 - notAppearIfFit);
 
   const xPoints = distMean(dist);
   const variance = distVariance(dist);
@@ -1073,15 +1109,24 @@ export function projectPlayerGw(player, { gameState, strength, gw, model = null,
 
 // ---------------------------------------------------------------------------
 
-export function buildProjections({ gameState, strength, gwFrom, gwTo, model = null, playerIds = null }) {
+export function buildProjections({ gameState, strength, gwFrom, gwTo, model = null, playerIds = null, modelOptions = null }) {
   const from = gwFrom;
   const to = gwTo === undefined || gwTo === null ? gwFrom : gwTo;
   const bonus = bonusModel(gameState);
   const ratePriors = positionRatePriors(gameState);
 
-  const resolved = model && model.startCalibratorJSON
-    ? { ...model, startCalibrator: calibratorFromJSON(model.startCalibratorJSON) }
-    : model;
+  // A trained artifact's start calibrator is accepted only if it says it was
+  // fitted on the start probability minutes.js produces, and is then applied
+  // there. Every artifact in models/ today was fitted on the logistic start
+  // model's outputs instead, so it is REFUSED, loudly: a silent fallback would
+  // let an experiment report "the trained model" while running the analytic one.
+  if (model && model.startCalibratorJSON && model.startCalibratorFittedOn !== START_CALIBRATOR_INPUT) {
+    throw new Error(`buildProjections: refusing ${model.modelVersion || 'a model'}'s start calibrator: it was fitted on ${JSON.stringify(model.startCalibratorFittedOn || 'the logistic start model')}, not on "${START_CALIBRATOR_INPUT}". Refit it (scripts/calibration/calibrate-start.mjs) before using it.`);
+  }
+  if (model && model.startCalibratorJSON) {
+    modelOptions = { ...(modelOptions || {}), startCalibration: { fittedOn: START_CALIBRATOR_INPUT, calibrator: model.startCalibratorJSON } };
+  }
+  const resolved = model;
 
   const byPlayer = new Map();
   const ids = playerIds || [...gameState.players.keys()];
@@ -1090,7 +1135,7 @@ export function buildProjections({ gameState, strength, gwFrom, gwTo, model = nu
     if (!player) continue;
     const rows = [];
     for (let gw = from; gw <= to; gw++) {
-      rows.push(projectPlayerGw(player, { gameState, strength, gw, model: resolved, bonus, ratePriors }));
+      rows.push(projectPlayerGw(player, { gameState, strength, gw, model: resolved, bonus, ratePriors, modelOptions }));
     }
     byPlayer.set(id, rows);
   }

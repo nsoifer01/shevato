@@ -34,7 +34,7 @@ import { pathToFileURL } from 'node:url';
 import { parseMergedGw, reconstructStarts, flagExpectedData } from '../js/engine/backtest.js';
 import { defConComposite } from '../js/engine/projections.js';
 import { loadRules, KNOWN_SEASONS } from './backtest.mjs';
-import { seasonPath } from './fetch-history.mjs';
+import { seasonPath, PRIOR_ONLY_SEASONS } from './fetch-history.mjs';
 
 // A full Premier League season: 20 clubs, 38 rounds, 10 fixtures a round, and
 // eleven starters for each of the two sides in every one of them.
@@ -55,6 +55,14 @@ const LOAD_BEARING_COLUMNS = [
 // Columns that arrived with a rule change. Their absence is a fact about the
 // season, not a defect, but the replay has to know which case it is in.
 const ERA_COLUMNS = ['clearances_blocks_interceptions', 'recoveries', 'tackles', 'defensive_contribution'];
+
+// Load-bearing columns a PREDECESSOR-ONLY season (fetch-history.mjs
+// PRIOR_ONLY_SEASONS) may lack, because the loader has an honest path for each:
+// `starts` is reconstructed per gameweek, and the expected_* minutes are left
+// out of the xG/xA denominators so the prior carries no xG evidence rather
+// than a zero. Any other missing column, or these in a season that is
+// replayed or trained on, is still a FAIL.
+const PRIOR_ONLY_TOLERATED = ['starts', 'expected_goals', 'expected_assists', 'expected_goals_conceded'];
 
 function headerOf(csv) {
   const line = csv.slice(0, csv.indexOf('\n'));
@@ -106,8 +114,14 @@ export function validateSeason(season, { rules }) {
 
   // --- schema -------------------------------------------------------------
   const missing = LOAD_BEARING_COLUMNS.filter(c => !header.includes(c));
-  if (missing.length) add('FAIL', 'schema', `missing load-bearing columns: ${missing.join(', ')}`);
-  else add('OK', 'schema', `all ${LOAD_BEARING_COLUMNS.length} load-bearing columns present`);
+  const priorOnly = PRIOR_ONLY_SEASONS.includes(season);
+  const tolerated = priorOnly ? missing.filter(c => PRIOR_ONLY_TOLERATED.includes(c)) : [];
+  const fatal = missing.filter(c => !tolerated.includes(c));
+  if (fatal.length) add('FAIL', 'schema', `missing load-bearing columns: ${fatal.join(', ')}`);
+  else if (tolerated.length) {
+    add('WARN', 'schema', `predecessor-only season, missing ${tolerated.join(', ')}: starts are reconstructed and `
+      + 'its minutes are excluded from xG/xA denominators, so as a prior it carries no expected-goals evidence');
+  } else add('OK', 'schema', `all ${LOAD_BEARING_COLUMNS.length} load-bearing columns present`);
 
   const era = ERA_COLUMNS.filter(c => header.includes(c));
   add('INFO', 'era columns', era.length ? `carries ${era.join(', ')}` : 'no defensive-contribution columns (predates the rule)');
@@ -134,10 +148,15 @@ export function validateSeason(season, { rules }) {
   } else {
     const probe = rows.map(r => ({ ...r }));
     const fixed = reconstructStarts(probe);
-    add('WARN', 'starts',
+    // What the loader will actually hold once the reconstruction has run: two
+    // elevens per fixture again, or a shortfall the reconstruction cannot reach.
+    const after = probe.reduce((s, r) => s + r.starts, 0);
+    const closes = Math.abs(expected - after) <= fixtures.size * 0.01;
+    add(fixed.gameweeks.length && !closes ? 'FAIL' : 'WARN', 'starts',
       `${startsSum} against ${expected} expected, short by ${shortfall}. `
       + (fixed.gameweeks.length
-        ? `Gameweeks ${fixed.gameweeks.join(', ')} carry no starts at all and are reconstructed at load.`
+        ? `Gameweeks ${fixed.gameweeks.join(', ')} carry no starts at all and are reconstructed at load, `
+          + `giving ${after} of ${expected}.`
         : 'The shortfall is NOT a whole missing gameweek, so reconstruction will not fix it.'));
   }
 
@@ -204,7 +223,7 @@ export function validateSeason(season, { rules }) {
 
 function main(argv) {
   const only = argv.includes('--season') ? argv[argv.indexOf('--season') + 1] : null;
-  const seasons = only ? [only] : [...new Set([...KNOWN_SEASONS, '2025-26'])];
+  const seasons = only ? [only] : [...new Set([...PRIOR_ONLY_SEASONS, ...KNOWN_SEASONS, '2025-26'])];
   const rules = loadRules();
   let failed = 0;
 

@@ -488,7 +488,7 @@ function rollReason(plan, ctx) {
   } else {
     reasons.push(makeReason(
       'roll_value',
-      'Keeping the transfer is worth {v} points of future flexibility, which no move this week beat.',
+      'Each free transfer kept is worth {v} points of future flexibility, and no move this week gained more than the transfers it would spend.',
       rollValue || 0,
     ));
   }
@@ -598,7 +598,9 @@ export function explainPlan(plan, context = {}) {
 
   bullets.push(...captain.reasons.slice(0, 1));
   if (chip.decision === 'hold' && chip.reasons.length) bullets.push(chip.reasons[0]);
-  if (roll) bullets.push(roll.reasons[0]);
+  // The roll's own reasons are not repeated here: "Why this plan?" renders
+  // `rollReason` as its own group directly below these bullets, and the first
+  // of them used to appear twice on the same screen.
 
   return {
     headline,

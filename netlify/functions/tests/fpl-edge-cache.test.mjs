@@ -164,7 +164,7 @@ test('handler: a blob HIT inside the window emits the collapsed edge window minu
 test('handler: a bootstrap MISS takes the deadline from the body it just fetched', opts, async () => {
   const now = Date.now();
   seedBlobs({}); // no stored deadline at all: the body is the only source
-  const body = { events: [{ id: 5, deadline_time: iso(now + 90 * 60 * SEC) }] };
+  const body = { elements: [], teams: [], events: [{ id: 5, deadline_time: iso(now + 90 * 60 * SEC) }] };
   const res = await withFetch(async () => ok(body), () => handler(req('bootstrap-static')));
   assert.equal(res.headers.get('x-fpl-cache'), 'miss');
   assert.equal(res.headers.get('x-fpl-age-seconds'), '0');

@@ -885,20 +885,31 @@ export function alternativesCard({ bundle, open = false, onToggle = null }) {
         ` over ${bundle.current.horizon} gameweeks, counting what the chip is worth later`,
         alt.hits ? `, costs a ${alt.hitCostPoints} point hit` : '',
       ])
-      : el('div', { class: alt.belowHitMargin ? 'fpl-alt-delta fpl-alt-delta-sentence' : 'fpl-alt-delta' }, [
+      // A row that carries a sentence (the hit bar, or the free transfers it
+      // spends) wraps like the chip-value sentence above; a bare figure does not.
+      : el('div', { class: alt.belowHitMargin || alt.belowRollValue ? 'fpl-alt-delta fpl-alt-delta-sentence' : 'fpl-alt-delta' }, [
         el('b', { text: `${signedXp(alt.deltaHorizon)} pts` }),
         ` over ${bundle.current.horizon} gameweeks`,
         alt.hits ? `, costs a ${alt.hitCostPoints} point hit` : '',
         alt.belowHitMargin ? `, short of the ${xp(alt.hitMarginPoints)}-point bar a hit must clear` : '',
+        alt.belowRollValue
+          ? `, but spends ${alt.transfersSpentVsPlan > 1 ? `${alt.transfersSpentVsPlan} free transfers` : 'a free transfer'} worth ${xp(alt.rollMarginPoints)} to keep`
+          : '',
       ]),
   ]));
   // A plan with a hit can project MORE than the recommendation and still lose,
   // because a hit must beat the best plan without one by the risk profile's
   // margin. "None of them scored higher" was false whenever that happened.
+  // The same is true of a plan that spends a free transfer the recommendation
+  // keeps: it can project a little more and lose on what the kept transfer is
+  // worth next week.
   const margin = alts.find(a => a.belowHitMargin);
+  const roll = alts.find(a => a.belowRollValue);
   const note = margin
     ? `Ranked against the recommendation over the same horizon. Each one is legal and affordable. A plan that takes a hit is only chosen when it beats the best plan without one by ${xp(margin.hitMarginPoints)} points, so one can project more and still not be recommended.`
-    : 'Ranked against the recommendation over the same horizon. Each one is legal and affordable; none of them scored higher.';
+    : roll
+      ? `Ranked against the recommendation over the same horizon. Each one is legal and affordable. Each free transfer kept is worth ${xp(roll.rollPerTransfer)} points next week, so a plan that spends them can project slightly more and still not be recommended.`
+      : 'Ranked against the recommendation over the same horizon. Each one is legal and affordable; none of them scored higher.';
 
   const node = disclosure(`Alternatives considered (${alts.length})`, [
     el('p', { class: 'fpl-note', style: 'margin-bottom:12px' }, note),

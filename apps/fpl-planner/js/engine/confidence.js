@@ -332,6 +332,24 @@ function marginFactor({ plan, projections }) {
 
   const best = alternatives.reduce((b, a) => (a.deltaHorizon > b.deltaHorizon ? a : b));
   const margin = Math.max(0, -best.deltaHorizon);
+  // A runner-up that projects MORE than the plan lost on something other than
+  // points: a hit it had to clear by the profile's margin, or a free transfer
+  // it spends that the plan keeps. Clamping its lead to zero used to report
+  // "a second plan projects the same points", which contradicted the
+  // alternatives card printing a positive gap beside it.
+  if (best.deltaHorizon >= 0.05) {
+    const cause = best.belowHitMargin ? 'it takes a hit that does not clear the bar for one'
+      : best.belowRollValue ? `it spends ${best.transfersSpentVsPlan > 1 ? 'free transfers that are' : 'a free transfer that is'} worth more kept`
+        : 'the planner ranks it lower once the transfer it spends is counted';
+    return {
+      key: 'margin',
+      weight: 1,
+      margin: 0,
+      lead: best.deltaHorizon,
+      swing: null,
+      reason: makeReason('confidence_runner_up_projects_more', `the next best plan projects {v} more points over the horizon and is not chosen because ${cause}`, best.deltaHorizon),
+    };
+  }
 
   // Reconstruct the alternative's fifteen from the primary's: undo the primary's
   // moves, then apply the alternative's. Whoever is left in one squad and not
