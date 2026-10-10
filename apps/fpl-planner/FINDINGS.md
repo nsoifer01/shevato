@@ -114,6 +114,18 @@ existed to measure it); the deadline archive will make it measurable.
 - **`gh release create --latest=false` fails on gh 2.4.0** (this workstation);
   caught by a real self-test release before the workflow relied on it.
 
+### GitHub's scheduler cannot carry a deadline archive (2026-10-10)
+
+The archive shipped capturing on an hourly GitHub Actions cron. On its first
+day the `17 * * * *` schedule fired once in eleven slots (09:46 UTC, by luck
+inside GW6's final two hours) and GW6's post-deadline window (10:00 to 13:00)
+passed with no run, so that snapshot was taken by hand 4.5 hours late. This
+repository's daily 06:00 job had been starting 5 to 8 hours late all week.
+Free-tier GitHub schedules are best effort; nothing deadline-bound may depend
+on them. The capture moved to a Netlify scheduled function (the cache prune
+had fired at 04:00 to the second), staging into Netlify Blobs; GitHub only
+copies staged snapshots to the release, which tolerates any delay.
+
 ### The data layer around a deadline
 
 The TTL collapse covered the six hours BEFORE a deadline and reverted to the

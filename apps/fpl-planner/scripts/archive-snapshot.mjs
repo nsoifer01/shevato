@@ -42,7 +42,7 @@ import { execFileSync } from 'node:child_process';
 import {
   ENDPOINTS, GATE, livePath, seasonLabelFrom, releaseTagFor, snapshotFileName, compactStamp,
   buildRecord, encodeRecord, writeSnapshotFile, emptyManifest, addToManifest, assertAppendOnly, decideCaptures,
-  deadlineContext, fetchEndpoint, PHASES,
+  deadlineContext, fetchEndpoint, PHASES, captureRecords, decodeRecord,
 } from './lib/archive.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -140,42 +140,58 @@ function loadManifest(season, dir) {
   }
 }
 
+/* ----------------------------------------------------------------- staged */
+
+const STAGED_DEFAULT = 'https://shevato.com/.netlify/functions/fpl-archive-export';
+
+async function pullStaged(season, dir) {
+  const given = arg('staged');
+  const base = given && !given.startsWith('--') ? given : STAGED_DEFAULT;
+  const res = await fetch(`${base}?season=${encodeURIComponent(season)}`, { headers: { Accept: 'application/json' } });
+  if (res.status === 404) { log(`nothing staged for ${season}`); return; }
+  if (!res.ok) throw new Error(`staged manifest: HTTP ${res.status}`);
+  const manifest = await res.json();
+  if (!manifest || !Array.isArray(manifest.entries)) throw new Error('staged manifest is malformed');
+  const local = readJson(join(dir, 'manifest.json'));
+  // A local manifest wins (a machine with its own captures); the staged one
+  // is folded in by loadManifest's merge exactly as local captures are.
+  let pulled = 0;
+  for (const e of manifest.entries) {
+    if (!e.file || existsSync(join(dir, e.file))) continue;
+    const r = await fetch(`${base}?season=${encodeURIComponent(season)}&file=${encodeURIComponent(e.file)}`);
+    if (!r.ok) throw new Error(`staged ${e.file}: HTTP ${r.status}`);
+    const buf = Buffer.from(await r.arrayBuffer());
+    // decodeRecord re-hashes the body against the record's own sha256.
+    const { meta } = decodeRecord(buf);
+    if (meta.sha256 !== e.sha256) throw new Error(`staged ${e.file} does not match its manifest hash`);
+    writeSnapshotFile(dir, e.file, buf);
+    pulled++;
+  }
+  if (!local) writeAtomic(join(dir, 'manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`);
+  else {
+    let merged = local;
+    const key = (x) => `${x.endpoint}|${x.capturedAt}|${x.sha256}`;
+    const known = new Set(local.entries.map(key));
+    for (const e of manifest.entries) {
+      if (known.has(key(e))) continue;
+      const { sameAs, ...entry } = e;
+      ({ manifest: merged } = addToManifest(merged, { ...entry, file: e.file || sameAs }));
+    }
+    writeAtomic(join(dir, 'manifest.json'), `${JSON.stringify(merged, null, 2)}\n`);
+  }
+  log(`staged: ${manifest.entries.length} entries, ${pulled} file(s) pulled`);
+}
+
 /* ---------------------------------------------------------------- capture */
 
 async function captureOne({ season, dir, manifest, phase, gw, deadline, bootstrapFetch }) {
-  const stamp = new Date().toISOString();
-  const captureId = `${phase}-gw${String(gw).padStart(2, '0')}-${compactStamp(stamp)}`;
-  const jobs = phase === 'live'
-    ? [{ name: 'live', path: livePath(gw) }]
-    : ENDPOINTS;
-  const written = [];
-  for (const ep of jobs) {
-    // The bootstrap the gate read seconds ago is the capture's bootstrap: a
-    // second download would only cost FPL another 1.7 MB.
-    const got = ep.name === 'bootstrap' && bootstrapFetch ? bootstrapFetch : await fetchEndpoint(ep.name, ep.path);
-    const capturedAt = got.capturedAt || new Date().toISOString();
-    const record = buildRecord({
-      endpoint: ep.name, url: got.url, phase, gw, deadline, capturedAt, serverDate: got.serverDate, season, raw: got.raw,
-    });
-    const file = snapshotFileName({ phase, gw, capturedAt: stamp, endpoint: ep.name });
-    const entry = {
-      file, captureId, endpoint: ep.name, phase, gw, deadline: deadline || null,
-      capturedAt, serverDate: record.serverDate, url: got.url, sha256: record.sha256, bytes: record.bytes,
-    };
-    const added = addToManifest(manifest, entry);
-    manifest = added.manifest;
-    const last = manifest.entries[manifest.entries.length - 1];
-    if (added.store) {
-      const gz = encodeRecord(record);
-      writeSnapshotFile(dir, file, gz);
-      last.gzBytes = gz.length;
-      written.push(file);
-      log(`  wrote ${file}  ${(record.bytes / 1024).toFixed(0)} KB raw, ${(gz.length / 1024).toFixed(0)} KB gz`);
-    } else {
-      log(`  ${ep.name}: unchanged payload, recorded as a pointer to ${last.sameAs}`);
-    }
+  const r = await captureRecords({ season, phase, gw, deadline, manifest, bootstrapFetch });
+  for (const { file, gz } of r.files) {
+    writeSnapshotFile(dir, file, gz);
+    log(`  wrote ${file}  ${(gz.length / 1024).toFixed(0)} KB gz`);
   }
-  return { manifest, written };
+  for (const e of r.entries) if (!e.file) log(`  ${e.endpoint}: unchanged payload, recorded as a pointer to ${e.sameAs}`);
+  return { manifest: r.manifest, written: r.files.map((f) => f.file) };
 }
 
 async function main() {
@@ -186,6 +202,12 @@ async function main() {
   const season = arg('season-label') || seasonLabelFrom(bootstrap);
   const dir = join(OUT, season);
   mkdirSync(dir, { recursive: true });
+
+  // --staged [url]: start from what Netlify captured on time
+  // (netlify/functions/fpl-archive-capture.mjs) instead of an empty directory,
+  // so this run's job is to copy it to the release. The gate below then sees
+  // those captures and only fills a gap Netlify left.
+  if (flag('staged')) await pullStaged(season, dir);
 
   const loaded = loadManifest(season, dir);
   const before = loaded.remote;
