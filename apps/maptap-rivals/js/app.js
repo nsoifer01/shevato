@@ -196,7 +196,7 @@
     isoWeekId, monthId, periodRecords, runningRivalPeriodRecords, periodTallyText,
     accumulatePositionHits,
     accumulateFinishPositions, avgPositionColor, avgPositionColors,
-    coordNum, myAvgByContinent,
+    coordNum, myAvgByContinent, myAvgByRound,
     compareNamesCI, compareWinPctDesc,
     // Local calendar dates (see stats.js "local calendar dates"): every day
     // the app shows is the user's local day, and ISO-string arithmetic is
@@ -3058,6 +3058,7 @@
     if (!state.rivals.length) {
       wrap.innerHTML = '';
       renderDashContinents();
+      renderDashRounds();
       return;
     }
 
@@ -3095,6 +3096,7 @@
     if (worstRival && worstRival !== bestRival) wrap.appendChild(makeSummaryCard('Toughest rival', worstRival.rival.name, `${(worstRival.winPct * 100).toFixed(0)}% win rate`));
 
     renderDashContinents();
+    renderDashRounds();
   }
 
   // "My average by continent": my own raw 0-100 round average per continent
@@ -3138,6 +3140,92 @@
       ]));
     }
     wrap.appendChild(chips);
+  }
+
+  // "My average by round vs my rivals": my raw 0-100 average on each round
+  // next to my rivals' on the same days (myAvgByRound in stats.js), and the
+  // round that costs me the most daily points once MapTap's round weights
+  // are applied. Needs per-round scores on both sides, so it stays hidden
+  // until one such head-to-head day exists.
+  function signedText(v, digits) {
+    const r = Number(v.toFixed(digits));
+    if (r === 0) return (0).toFixed(digits);
+    return (r > 0 ? '+' : '−') + Math.abs(r).toFixed(digits);
+  }
+  // The gap as the reader can check it: the difference of the two averages
+  // AS SHOWN (one decimal each). Subtracting first and rounding after can
+  // print "96.9 vs 94.7, +2.3", which reads as an arithmetic slip.
+  function shownGap(row) {
+    return Number((Number(row.myAvg.toFixed(1)) - Number(row.rivalsAvg.toFixed(1))).toFixed(1));
+  }
+  function roundGapClass(gap) {
+    return gap > 0 ? 'good' : gap < 0 ? 'bad' : 'tie';
+  }
+
+  // Daily points for the insight line, worked from the gap AS SHOWN so the
+  // sentence checks out for the reader: "3.2 behind a round at ×3" reads as
+  // about 10 points, even when the raw gap times 3 is -9.4999... (9).
+  function shownPoints(row) {
+    return Math.round(Math.abs(shownGap(row)) * row.weight);
+  }
+
+  function renderDashRounds() {
+    const wrap = $('#dash-rounds');
+    if (!wrap) return;
+    wrap.innerHTML = '';
+    const res = state.rivals.length
+      ? myAvgByRound(state.games, liveRivalIds())
+      : { rows: [], days: 0 };
+    if (!res.rows.length) {
+      wrap.hidden = true;
+      return;
+    }
+    wrap.hidden = false;
+
+    wrap.appendChild(el('div', { class: 'dash-continents-head' }, [
+      el('h3', { class: 'dash-continents-title' }, 'My average by round vs my rivals'),
+      el('span', { class: 'dash-continents-sub' },
+        `${countNoun(res.days, 'day')} · rivals averaged on the same days`),
+    ]));
+
+    const chips = el('div', { class: 'dash-round-chips' });
+    for (const r of res.rows) {
+      const gap = shownGap(r);
+      const cls = roundGapClass(gap);
+      chips.appendChild(el('div', {
+        class: 'dash-round-chip ' + cls,
+        title: `Round ${r.round} (×${r.weight}): you ${r.myAvg.toFixed(1)}, rivals ${r.rivalsAvg.toFixed(1)}, ` +
+          `${signedText(r.points, 0)} points a day`,
+      }, [
+        el('span', { class: 'dash-round-label' }, [
+          el('span', { class: 'dash-round-name' }, LOC_LABELS[r.round - 1]),
+          el('span', { class: 'dash-round-weight' }, `×${r.weight}`),
+        ]),
+        el('span', { class: 'dash-round-mine' }, r.myAvg.toFixed(1)),
+        el('span', { class: 'dash-round-rivals' }, `Rivals ${r.rivalsAvg.toFixed(1)}`),
+        el('span', { class: 'dash-round-diff' }, signedText(gap, 1)),
+      ]));
+    }
+    wrap.appendChild(chips);
+
+    const lines = [];
+    // A raw gap that rounds to 0.0 on screen is not worth a sentence.
+    const weak = res.weakest !== null && shownGap(res.rows[res.weakest]) < 0 ? res.rows[res.weakest] : null;
+    const strong = res.strongest !== null && shownGap(res.rows[res.strongest]) > 0 ? res.rows[res.strongest] : null;
+    if (weak) {
+      const w = weak;
+      lines.push(`Biggest gap: ${LOC_NAMES[w.round - 1]}, ${Math.abs(shownGap(w)).toFixed(1)} behind a round, ` +
+        `about ${shownPoints(w)} points a day at ×${w.weight}.`);
+    } else {
+      lines.push('You are level with or ahead of your rivals on every round.');
+    }
+    if (strong) {
+      const s = strong;
+      lines.push(`Biggest edge: ${LOC_NAMES[s.round - 1]}, ${shownGap(s).toFixed(1)} ahead, ` +
+        `about ${shownPoints(s)} points a day.`);
+    }
+    lines.push(`Net: ${signedText(res.netPoints, 0)} points a day against your rivals' average.`);
+    wrap.appendChild(el('p', { class: 'dash-round-insight' }, lines.join(' ')));
   }
 
   function makeSummaryCard(label, value, sub) {

@@ -554,6 +554,51 @@ export async function run({ base, cdpPort }) {
     const longCard = await evaluate(s, "(()=>{const c=[...document.querySelectorAll('.dash-summary-card')].find(c=>/Bartholomew/.test(c.textContent)); if(!c) return {none:true}; const v=c.querySelector('.value'); return {overflow: v.scrollWidth > v.clientWidth + 1, cardRight: Math.round(c.getBoundingClientRect().right), stripRight: Math.round(document.getElementById('dash-summary').getBoundingClientRect().right)}})()");
     t('1280px: a long name in a summary card wraps instead of overflowing', longCard.none || (!longCard.overflow && longCard.cardRight <= longCard.stripRight + 1), JSON.stringify(longCard));
 
+    // ---- "My average by round vs my rivals" band ----
+    // Worked by hand from fixture(): 14 head-to-head days with round arrays
+    // (the 12 synced days, Cy's manual tie, today); the totals-only loss,
+    // Bex's rival-only day and the orphan are excluded. The rivals average
+    // per day first (day -12 is Ari 90 / Bex 70 / long 75 = 78.33), then
+    // over the days: 73.1 on every round. Mine: R1 79.8, R2 66.9, R3 79.8,
+    // R4 75.5, R5 69.9. So R2 and R5 are behind, R5 costs the most points
+    // (-3.2 x3 = -9.5, shown as "about 10"), R3 earns the most (+6.7 x2).
+    mark('round band @1280');
+    await seed(s, '#dashboard');
+    const rb = await evaluate(s, `(()=>{const w=document.getElementById('dash-rounds'); if(!w) return {missing:true};
+      const chips=[...w.querySelectorAll('.dash-round-chip')];
+      return {hidden:w.hidden, sub:(w.querySelector('.dash-continents-sub')||{}).textContent,
+        chips:chips.map(c=>({cls:c.className.replace('dash-round-chip','').trim(), mine:c.querySelector('.dash-round-mine').textContent,
+          rivals:c.querySelector('.dash-round-rivals').textContent, diff:c.querySelector('.dash-round-diff').textContent})),
+        insight:(w.querySelector('.dash-round-insight')||{}).textContent,
+        afterContinents: document.getElementById('dash-continents').nextElementSibling === w}})()`);
+    t('round band: visible under the continent band with 14 days counted', rb && !rb.hidden && rb.afterContinents && /^14 days/.test(rb.sub || ''), JSON.stringify(rb).slice(0, 220));
+    t('round band: my averages and the rivals\' same-day averages per round',
+      rb.chips && rb.chips.map(c => c.mine).join() === '79.8,66.9,79.8,75.5,69.9' && rb.chips.every(c => c.rivals === 'Rivals 73.1'),
+      JSON.stringify(rb.chips));
+    t('round band: R2 and R5 marked behind, R1/R3/R4 ahead',
+      rb.chips && rb.chips.map(c => c.cls).join() === 'good,bad,good,good,bad', rb.chips && rb.chips.map(c => c.cls + ' ' + c.diff).join(' | '));
+    t('round band: names Round 5 as the biggest gap and Round 3 as the biggest edge',
+      /Biggest gap: Round 5, 3\.2 behind a round, about 10 points a day at ×3\./.test(rb.insight || '') &&
+      /Biggest edge: Round 3, 6\.7 ahead, about 13 points a day\./.test(rb.insight || '') && /Net: \+12 points a day/.test(rb.insight || ''),
+      rb.insight);
+    const rbColor = await evaluate(s, `(()=>{const css=getComputedStyle(document.documentElement);
+      const bad=document.querySelector('#dash-rounds .dash-round-chip.bad .dash-round-diff'); const good=document.querySelector('#dash-rounds .dash-round-chip.good .dash-round-diff');
+      const probe=(v)=>{const e=document.createElement('span'); e.style.color=v; document.body.appendChild(e); const c=getComputedStyle(e).color; e.remove(); return c};
+      return {bad:getComputedStyle(bad).color, badTok:probe(css.getPropertyValue('--bad').trim()), good:getComputedStyle(good).color, goodTok:probe(css.getPropertyValue('--good').trim()),
+        mine:getComputedStyle(document.querySelector('#dash-rounds .dash-round-mine')).color, textTok:probe(css.getPropertyValue('--text').trim())}})()`);
+    t('round band: gap badges compute to the --good / --bad tokens, averages to --text', rbColor.bad === rbColor.badTok && rbColor.good === rbColor.goodTok && rbColor.mine === rbColor.textTok, JSON.stringify(rbColor));
+    for (const [w, h, mobile] of [[390, 844, true], [1280, 900, false]]) {
+      await setViewport(s, w, h, mobile);
+      await hashTo(s, '#dashboard', 1000);
+      const fit = await evaluate(s, `(()=>{const w=document.getElementById('dash-rounds'); const wr=w.getBoundingClientRect();
+        const chips=[...w.querySelectorAll('.dash-round-chip')]; const tops=[...new Set(chips.map(c=>Math.round(c.getBoundingClientRect().top)))];
+        const over=chips.filter(c=>c.scrollWidth>c.clientWidth+1 || c.getBoundingClientRect().right>wr.right+1).length;
+        const minFont=Math.min(...[...w.querySelectorAll('.dash-round-chip *')].filter(e=>!e.children.length).map(e=>parseFloat(getComputedStyle(e).fontSize)));
+        return {rows:tops.length, over, minFont}})()`);
+      t(`${w}px round band: chips contained, ${w === 390 ? 'wrapping onto two rows' : 'one row of five'}, text >= 10px`,
+        fit.over === 0 && fit.rows === (w === 390 ? 2 : 1) && fit.minFont >= 10, JSON.stringify(fit));
+    }
+
     // ---- a stale rival id in the persisted matrix selection is harmless ----
     // Deleting a rival prunes it from state.matrixSelection, but only on the
     // device that did the delete: the rival list and the selection sync under
