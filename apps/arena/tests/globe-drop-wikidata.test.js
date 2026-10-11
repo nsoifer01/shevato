@@ -121,3 +121,30 @@ test('normalizeLandmarkBinding: missing siteLabel → null (cannot show prompt)'
     delete b.siteLabel;
     assert.equal(normalizeLandmarkBinding(b), null);
 });
+
+// --- runQuery timeout --------------------------------------------------
+
+// The top-cities query takes about a minute on the query service and
+// sometimes 504s after it, so room creation waited a minute for an error.
+// The fetch must be abandoned, and the message is what the host's
+// "Could not fetch locations" alert shows.
+test('fetchTopCitiesByCountry: a query the service never answers is abandoned after 45s', async (t) => {
+    const { fetchTopCitiesByCountry } = require('../js/globe-drop-wikidata.js');
+    t.mock.timers.enable({ apis: ['setTimeout'] });
+    const realFetch = global.fetch;
+    t.after(() => { global.fetch = realFetch; });
+    let sawSignal = false;
+    global.fetch = (url, opts) => new Promise((resolve, reject) => {
+        sawSignal = !!(opts && opts.signal);
+        opts.signal.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')));
+    });
+    const pending = fetchTopCitiesByCountry(5);
+    let settled = false;
+    pending.then(() => { settled = true; }, () => { settled = true; });
+    t.mock.timers.tick(44999);
+    await new Promise((r) => setImmediate(r));
+    assert.equal(settled, false, 'a slow but healthy query must be allowed to finish');
+    t.mock.timers.tick(1);
+    await assert.rejects(pending, /did not answer within 45 seconds/);
+    assert.equal(sawSignal, true);
+});

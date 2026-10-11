@@ -1977,3 +1977,22 @@ the filtered explorer (24 rows for `bad-finale`), and neither throws. The
 earlier "no modal" reading was a probe bug: the show modal is `#showModal`,
 and a selector loop that stops at the first hidden `.modal` finds
 `#changelogModal` and reports the app broken.
+
+## The TMDB step redid the same work every day (2026-10-11)
+
+The daily refresh took 35-52 minutes, about 28 of them in `enrich-tmdb.js`,
+with the same counts every run: about 2,340 retries of not-found or posterless
+shows, cast back-fill for about 4,130 entries, season details for about 860
+seasons and providers for about 590 entries. The retries are intended (a title
+search often finds a better match later), but each retried row was REPLACED by
+the fresh lookup, which dropped the `providers`, `seasonTvdbIds` and
+`seasonOverviews` later passes had added, so those were fetched again the next
+day. `mergeResolvedRow` now keeps them when the lookup lands on the same TMDB
+show, and a failed lookup no longer overwrites a row that holds a match.
+Nothing was ever wrong in the published data; the cost was time and TMDB load.
+
+A pause longer than 7 days loses the TMDB cache (GitHub evicts caches unused
+that long) and makes the next refresh a cold pass that does not fit the 6-hour
+job limit: after the 15 September to 1 October pause, run 36928708099 was cut
+off, saved its cache on cancel, and the next run finished in 3h22m. The site
+kept serving the last good data throughout.

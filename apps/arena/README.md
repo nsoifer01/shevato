@@ -231,7 +231,9 @@ stamp, and `PRESENCE_STALE_MS` after a crash that left no stamp at all.
   instead of looking like a slow player. The host sweeps their docs, but only
   while a game is PLAYING: outside that, the dimmed tile is the only way the
   others learn their friend dropped, so deleting the doc would just make the
-  player vanish from the grid.
+  player vanish from the grid. The swept player's own client notices (its
+  listeners error, or its uid drops out of the roster) and leaves the room
+  with a toast saying why, instead of freezing.
 - **Teardown order matters**: the last leaver takes over `hostUid` if the
   host is already stale, deletes the ROOM DOC first, then sweeps the gate,
   the chat messages and any leftover player docs. That order is what the

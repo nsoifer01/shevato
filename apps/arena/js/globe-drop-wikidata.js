@@ -141,13 +141,36 @@
         LIMIT 250
     `;
 
+    // The query service can sit on a heavy query for a minute and then 504,
+    // which kept room creation waiting that long for nothing. Give up
+    // first; the message reaches the "Could not fetch locations" alert. Not
+    // shorter: TOP_CITIES_QUERY measured 22-31 s on healthy uncached runs
+    // (2026-10-11), so a 15 s cap would fail that round type every time.
+    const QUERY_TIMEOUT_MS = 45000;
+
     async function runQuery(query) {
         const url = `${SPARQL_ENDPOINT}?query=${encodeURIComponent(query.trim())}&format=json`;
-        // force-cache so re-fetches within a session are instant; Wikidata
-        // doesn't change minute-to-minute and these are recreational lists.
-        const res = await fetch(url, { cache: 'force-cache', headers: { 'Accept': 'application/sparql-results+json' } });
-        if (!res.ok) throw new Error(`Wikidata SPARQL HTTP ${res.status}`);
-        const data = await res.json();
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), QUERY_TIMEOUT_MS);
+        let data;
+        try {
+            // force-cache so re-fetches within a session are instant; Wikidata
+            // doesn't change minute-to-minute and these are recreational lists.
+            const res = await fetch(url, {
+                cache: 'force-cache',
+                headers: { 'Accept': 'application/sparql-results+json' },
+                signal: controller.signal
+            });
+            if (!res.ok) throw new Error(`Wikidata SPARQL HTTP ${res.status}`);
+            data = await res.json();
+        } catch (err) {
+            if (controller.signal.aborted) {
+                throw new Error(`Wikidata did not answer within ${QUERY_TIMEOUT_MS / 1000} seconds`);
+            }
+            throw err;
+        } finally {
+            clearTimeout(timer);
+        }
         const bindings = data && data.results && Array.isArray(data.results.bindings) ? data.results.bindings : [];
         if (!bindings.length) throw new Error('Wikidata SPARQL returned no rows');
         return bindings;

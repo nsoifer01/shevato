@@ -1492,3 +1492,17 @@ peer's client still counted, and that would silently reconnect the moment the
 user rejoined. It now deletes the links too, read from Firestore rather than
 from the local cache so a device that has been offline still sweeps the ones it
 never saw, and reports a partial failure honestly.
+
+## A secret message read as round 1 (2026-10-11)
+
+Some daily files open with `secretMessages = [ { lat, lng, message } ]` ahead
+of `cities` (August 8, August 28 and October 9 of 78 files checked, 1 August to
+17 October 2026). `parseDailyCitiesText` scanned the whole file, so that pin
+became round 1 and the real five shifted by one: every prediction that day was
+wrong, with no warning, while the revealed names (secret messages have no
+`name:`) still looked right. MapTap's own loader anchors on `cities = [`; both
+parsers now do too (`dailyCitiesSection`), falling back to the whole text only
+when there is no such assignment. Cached coordinates carry `v: 2`, so entries
+parsed the old way are fetched again rather than trusted forever. Only the
+predictions card read those coordinates: synced game rows take theirs from the
+MapTap profile payload, so no stored game was affected.

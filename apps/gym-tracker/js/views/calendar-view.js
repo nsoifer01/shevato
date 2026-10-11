@@ -7,7 +7,7 @@ import { app } from '../app.js';
 import { normalizeWeightUnit, volumeIn } from '../utils/units.js';
 import { performedExerciseCount } from '../utils/session-metrics.js';
 import { AnalyticsService } from '../services/AnalyticsService.js';
-import { formatDate, escapeHtml } from '../utils/helpers.js';
+import { formatDate, escapeHtml, parseLocalDate } from '../utils/helpers.js';
 import { DarkSelect } from '../utils/dark-select.js';
 import { programsScheduledOnWeekday, weekdayOrder } from '../utils/program-schedule.js';
 
@@ -288,7 +288,7 @@ class CalendarView {
         const daySessions = sessions
             .filter(s => s.date === this.selectedDate)
             .sort((a, b) => new Date(b.sortTimestamp) - new Date(a.sortTimestamp));
-        const dateObj = new Date(this.selectedDate);
+        const dateObj = parseLocalDate(this.selectedDate);
         const headerLabel = dateObj.toLocaleDateString('en-US', {
             weekday: 'long', month: 'short', day: 'numeric', year: 'numeric',
         });

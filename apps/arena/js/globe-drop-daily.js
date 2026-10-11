@@ -7,11 +7,11 @@
  *   - mulberry32(seed) → seeded RNG, returns a [0,1) function
  *   - seededShuffle(arr, seedString) → Fisher–Yates driven by mulberry32
  *
- * The challenge is: "given the live Wikidata/REST Countries result for
- * round type X today, deterministically pick the same N locations for
- * every player who plays today." Live data drift between morning and
- * evening is acceptable — Wikidata doesn't churn meaningfully — but
- * within a single day every player gets identical input.
+ * The challenge is: "given the Wikidata (live) or data/countries.json
+ * (vendored) result for round type X today, deterministically pick the
+ * same N locations for every player who plays today." Live data drift
+ * between morning and evening is acceptable (Wikidata doesn't churn
+ * meaningfully), but within a single day every player gets identical input.
  *
  * UMD: CommonJS for node:test + window.BrainArena.GlobeDropDaily.
  */

@@ -1729,9 +1729,9 @@ async function createRoom(opts) {
         }
     } catch (err) {
         console.warn('Room creation failed:', err);
-        // The live APIs (The Trivia API + REST Countries) are the only
-        // built-in question/location sources - there's no offline pack to
-        // fall back to. Surface the failure so the host knows to retry.
+        // The Trivia API and Wikidata are live, and the vendored
+        // data/countries.json is fetched from this origin; none has an
+        // offline fallback. Surface the failure so the host knows to retry.
         alert(
             (gameType === 'globe-drop' ? 'Could not fetch locations: ' : 'Could not fetch questions: ')
             + (err && err.message ? err.message : 'unknown error')
@@ -2083,6 +2083,8 @@ function openSignInPrompt() {
  * Room lifecycle
  * ===================================================================== */
 
+const ROOM_REMOVED_REASON = 'You were removed from the room after being away too long.';
+
 function enterRoom(code) {
     state.roomCode = code;
     state.currentAnswers = [];
@@ -2120,6 +2122,17 @@ function enterRoom(code) {
     const roomRef = doc(db, 'triviaRooms', code);
     const playersRef = collection(db, 'triviaRooms', code, 'players');
 
+    // The host's stale sweep deletes the doc of a player backgrounded past
+    // PRESENCE_STALE_MS. Once it is gone the rules refuse that player's reads
+    // and the listeners die, which used to freeze the screen with no word.
+    // A listener that errors is dead for good, so any error leaves.
+    const removedFromRoom = (err) => {
+        if (state.roomCode !== code) return;
+        const reason = !err || err.code === 'permission-denied'
+            ? ROOM_REMOVED_REASON : 'Lost connection to the room.';
+        leaveRoom({ silent: true, reason });
+    };
+
     state.roomUnsubs.push(onSnapshot(roomRef, (snap) => {
         if (!snap.exists()) {
             // Room got deleted while we were in it.
@@ -2129,15 +2142,20 @@ function enterRoom(code) {
         state.roomData = snap.data();
         maybeResetForNewRound();
         renderRoom();
-    }));
+    }, removedFromRoom));
 
     state.roomUnsubs.push(onSnapshot(playersRef, (snap) => {
         const prev = state.roomPlayers;
         const next = snap.docs.map((d) => d.data());
+        if (RoomState.selfRemovedFromRoom(prev, next, state.user && state.user.uid,
+            state.roomData && state.roomData.status)) {
+            removedFromRoom();
+            return;
+        }
         notifyOpponentSubmissions(prev, next);
         state.roomPlayers = next;
         renderRoom();
-    }));
+    }, removedFromRoom));
 }
 
 /**
@@ -5508,7 +5526,9 @@ async function submitGuess() {
     try {
         await runTransaction(db, async (tx) => {
             const snap = await tx.get(pref);
-            if (!snap.exists()) return;
+            // Swept while away: resolving here would leave the guess on
+            // screen as recorded when nothing was written.
+            if (!snap.exists()) throw new Error('player doc missing');
             const cur = snap.data();
             if (cur.currentAnsweredFor === loc.id) return; // already submitted
 
@@ -5969,7 +5989,9 @@ async function submitAnswer(choiceIndex, question) {
     try {
         await runTransaction(db, async (tx) => {
             const snap = await tx.get(pref);
-            if (!snap.exists()) return;
+            // Swept while away: resolving here would show "Locked in" for an
+            // answer that was never recorded.
+            if (!snap.exists()) throw new Error('player doc missing');
             const cur = snap.data();
             // Idempotent: if we already wrote this question's answer, skip.
             if (cur.currentAnswerIndex != null && cur.currentAnsweredFor === question.id) return;

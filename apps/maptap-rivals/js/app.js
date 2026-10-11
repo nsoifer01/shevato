@@ -626,8 +626,26 @@
   // then the nearest `lng:` (same letter-boundary exclusion).
   const DAILY_LATLNG_RE =
     /(?<![A-Za-z])lat\s*:\s*(-?\d+(?:\.\d+)?)\s*,[\s\S]{0,80}?(?<![A-Za-z])lng\s*:\s*(-?\d+(?:\.\d+)?)/g;
+  // Some days' files open with a `secretMessages = [ { lat, lng, message } ]`
+  // block ahead of `cities` (August 8 and 28, October 9 2026). Scanning from
+  // the top read that pin as round 1 and shifted rounds 2-5 by one. MapTap's
+  // own loader anchors on `cities = [`, so both parsers start there too, and
+  // fall back to the whole file only when it has no such assignment.
+  const DAILY_CITIES_START_RE = /(?:^|[^A-Za-z0-9_$])cities\s*=\s*\[/;
+  function dailyCitiesSection(src) {
+    const m = DAILY_CITIES_START_RE.exec(src);
+    return m ? src.slice(m.index) : src;
+  }
+  // Bumped when the parser changed what it reads: entries cached by the
+  // unanchored parser are not trusted (a past day is otherwise cached for good).
+  const DAILY_CITIES_CACHE_V = 2;
+  function cachedDailyCities(cached) {
+    return cached && cached.v === DAILY_CITIES_CACHE_V &&
+      Array.isArray(cached.cities) && cached.cities.length === N_LOCS ? cached.cities : null;
+  }
   function parseDailyCitiesText(src) {
     if (typeof src !== 'string' || !src.length) return null;
+    src = dailyCitiesSection(src);
     DAILY_LATLNG_RE.lastIndex = 0;
     const out = [];
     let m;
@@ -653,7 +671,7 @@
     const cacheKey = KEY.DAILY_CITIES_PREFIX + iso;
     try {
       const cached = JSON.parse(localStorage.getItem(cacheKey) || 'null');
-      if (cached && Array.isArray(cached.cities) && cached.cities.length === N_LOCS) {
+      if (cachedDailyCities(cached)) {
         const isPast = iso < todayISO();
         const fresh = isPast || (Date.now() - (cached.cachedAt || 0)) < 6 * 3600 * 1000;
         if (fresh) return cached.cities;
@@ -666,7 +684,7 @@
       const cities = parseDailyCitiesText(text);
       if (!cities) return null;
       try {
-        localStorage.setItem(cacheKey, JSON.stringify({ cities, cachedAt: Date.now() }));
+        localStorage.setItem(cacheKey, JSON.stringify({ v: DAILY_CITIES_CACHE_V, cities, cachedAt: Date.now() }));
       } catch (_) { /* quota — ignore, prediction still works for this session */ }
       return cities;
     } catch (_) {
@@ -687,6 +705,7 @@
   const DAILY_NAME_RE = /(?<![A-Za-z])name\s*:\s*"([^"]*)"/g;
   function parseDailyNamesText(src) {
     if (typeof src !== 'string' || !src.length) return null;
+    src = dailyCitiesSection(src);
     DAILY_NAME_RE.lastIndex = 0;
     const out = [];
     let m;
@@ -1972,9 +1991,8 @@
     if (inline) return inline;
     try {
       const cached = JSON.parse(localStorage.getItem(KEY.DAILY_CITIES_PREFIX + iso) || 'null');
-      if (cached && Array.isArray(cached.cities) && cached.cities.length === N_LOCS) {
-        return cached.cities;
-      }
+      const cities = cachedDailyCities(cached);
+      if (cities) return cities;
     } catch (_) { /* corrupted cache entry: treat the day as unknown */ }
     return null;
   }
@@ -8632,6 +8650,8 @@
   // the sync system reads this.
   if (typeof window !== 'undefined') {
     window._testExports = {
+      parseDailyCitiesText,
+      parseDailyNamesText,
       swingLines,
       consistencyLabel,
       continentSubText,

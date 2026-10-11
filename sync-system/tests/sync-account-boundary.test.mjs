@@ -62,11 +62,13 @@ globalThis.localStorage = {
 
 const windowTarget = new EventTarget();
 const reloads = [];
+// Each page's data-updated receiver, newest last: what a peer tab's broadcast reaches.
+const channelSubscribers = [];
 globalThis.window = {
   addEventListener: (...args) => windowTarget.addEventListener(...args),
   removeEventListener: (...args) => windowTarget.removeEventListener(...args),
   dispatchEvent: (ev) => windowTarget.dispatchEvent(ev),
-  __shevatoSyncChannel: { tabId: 'boundary', isLive: false, publish() {}, subscribe: () => () => {}, close() {} },
+  __shevatoSyncChannel: { tabId: 'boundary', isLive: false, publish() {}, subscribe: (type, fn) => { channelSubscribers.push(fn); return () => {}; }, close() {} },
   immediateDebug: {},
   location: { reload: () => { reloads.push(Date.now()); } }
 };
@@ -935,6 +937,223 @@ test('T-3: the barrier waits for a chunked value in the first snapshot to be ass
   await settle(16);
   assert.deepEqual(stored(k).map((r) => r.id).sort(), ['c1', 'early']);
   assert.match(sentText(writesTo(A.uid, from)), /early/, 'then the merge goes');
+});
+
+/** A chunked cloud value: its versioned parts stored, its manifest returned. */
+function chunkedCloud(space, k, value, rev) {
+  const serialised = JSON.stringify(value);
+  const version = `${rev}-${hashValue(value)}`.replace(/[^A-Za-z0-9_-]/g, '');
+  const parts = splitIntoChunks(serialised, 128 * 1024);
+  const stem = `${String(k).replace(/[^A-Za-z0-9_-]/g, '-').slice(0, 64)}-${hashValue(k)}`;
+  parts.forEach((part, seq) => {
+    firestoreFakes().docs.set(`users/${A.uid}/apps/${space}/chunks/${stem}__v${version}__${seq}`, { key: k, seq, part, version });
+  });
+  return {
+    chunked: true, parts: parts.length, rev, updatedAt: (clock += 1000),
+    hash: hashValue(value), chunkVersion: version, chars: serialised.length
+  };
+}
+
+test('T-3: a chunked value whose parts cannot be read keeps the barrier shut; the listener re-attaches and the edit goes after a snapshot that could be read', async (t) => {
+  isolate(t);
+  const space = ns('t3chunkfail');
+  const k = `${space}:log`;
+  const manifest = chunkedCloud(space, k, [{ id: 'c1', blob: 'x'.repeat(140 * 1024) }], 5);
+  const page = await openPage(t, [{ namespace: space, keys: [k] }]);
+  const from = mark();
+  signIn(A);
+  page.start(space, [k]);
+  await settle();
+  page.write(k, [{ id: 'early' }]);
+  firestoreFakes().getDocResponders = Array.from({ length: manifest.parts },
+    () => () => Promise.reject({ code: 'unavailable', message: 'unavailable' }));
+  emit(A.uid, space, { [k]: manifest });
+  await settle(16);
+  t.mock.timers.tick(5000);
+  await settle(16);
+  assert.equal(writesTo(A.uid, from).length, 0, 'an unread cloud value is never overwritten');
+  assert.equal(revsOf(space).keys[k].dirty, true, 'the edit is kept as unsaved');
+
+  emit(A.uid, space, { [k]: manifest });                  // the re-attached listener's snapshot
+  await settle(16);
+  t.mock.timers.tick(500);
+  await settle(16);
+  assert.deepEqual(stored(k).map((r) => r.id).sort(), ['c1', 'early']);
+  assert.match(sentText(writesTo(A.uid, from)), /early/, 'then the merge goes');
+});
+
+test('T-3: a chunked value that is corrupt on every read costs a bounded number of re-attaches, then the merge completes without it and the namespace\'s other keys sync', async (t) => {
+  isolate(t);
+  const space = ns('t3chunkcorrupt');
+  const kLog = `${space}:log`, kPrefs = `${space}:prefs`, kTheme = `${space}:theme`;
+  const keys = [kLog, kPrefs, kTheme];
+  // Every part is there and reads fine, but they never form the value the
+  // manifest describes: a torn value that no re-read can assemble.
+  const manifest = { ...chunkedCloud(space, kLog, [{ id: 'c1', blob: 'x'.repeat(140 * 1024) }], 5) };
+  manifest.chars += 1;
+  const theme = cloud('dark', 2);
+  const page = await openPage(t, [{ namespace: space, keys }]);
+  const from = mark();
+  signIn(A);
+  page.start(space, keys);
+  await settle();
+  page.write(kPrefs, '"typed early"');
+  const attaches = () => firestoreFakes().snapshotListeners.filter((l) => l.path === `users/${A.uid}/apps/${space}`).length;
+
+  // The first snapshot, then one per re-attach: 1 s, 2 s, 4 s apart.
+  for (const wait of [1000, 2000, 4000]) {
+    emit(A.uid, space, { [kLog]: manifest, [kTheme]: theme });
+    await settle(16);
+    assert.equal(writesTo(A.uid, from).length, 0, 'nothing is sent while a re-read is still due');
+    t.mock.timers.tick(wait);
+    await settle(16);
+  }
+  emit(A.uid, space, { [kLog]: manifest, [kTheme]: theme });
+  await settle(16);
+  t.mock.timers.tick(60_000);
+  await settle(16);
+
+  // The first attach, MAX_RETRY_ATTEMPTS (3) re-attaches, and the one live
+  // listener the released session attaches after the merge; no more.
+  assert.equal(attaches(), 5, 'the re-attaches are bounded');
+  assert.equal(listenersFor(A.uid, space).length, 1, 'the session keeps a live listener');
+  assert.equal(page.mod.getSyncStatus(space).initialMergeDone, true);
+  assert.equal(backingStore.get(kTheme), 'dark', 'the cloud\'s other keys arrive');
+  const sent = writesTo(A.uid, from).filter((c) => c.path === `users/${A.uid}/apps/${space}`);
+  assert.match(sentText(sent), /typed early/, 'the early edit is sent');
+});
+
+test('T-3: a chunked value whose part reads keep failing is never overwritten: after the ladder nothing is sent, its parts survive, the page is told, and the next start rebuilds the listener', async (t) => {
+  isolate(t);
+  const space = ns('t3chunktransient');
+  const k = `${space}:log`;
+  const manifest = chunkedCloud(space, k, [{ id: 'c1', blob: 'x'.repeat(140 * 1024) }], 5);
+  const partPaths = [...firestoreFakes().docs.keys()].filter((p) => p.startsWith(`users/${A.uid}/apps/${space}/chunks/`));
+  const page = await openPage(t, [{ namespace: space, keys: [k] }]);
+  const events = pageEvents.length;
+  const from = mark();
+  const deletesFrom = firestoreFakes().deleteDocCalls.length;
+  signIn(A);
+  page.start(space, [k]);
+  await settle();
+  page.write(k, [{ id: 'early' }]);                       // an edit to the value nobody here has read
+  firestoreFakes().getDocResponders = Array.from({ length: 100 },
+    () => () => Promise.reject({ code: 'unavailable', message: 'slow network' }));
+
+  for (const wait of [1000, 2000, 4000, 60_000]) {
+    emit(A.uid, space, { [k]: manifest });
+    await settle(16);
+    t.mock.timers.tick(wait);
+    await settle(16);
+  }
+
+  assert.equal(writesTo(A.uid, from).filter((c) => c.path === `users/${A.uid}/apps/${space}`).length, 0,
+    'nothing is sent over the unread cloud value');
+  assert.deepEqual(firestoreFakes().deleteDocCalls.slice(deletesFrom).filter((p) => partPaths.includes(p)), [],
+    'the cloud\'s parts are not collected');
+  assert.ok(partPaths.length && partPaths.every((p) => firestoreFakes().docs.has(p)));
+  assert.equal(page.mod.getSyncStatus(space).initialMergeDone, false);
+  assert.equal(listenersFor(A.uid, space).length, 0, 'the listener gave up');
+  const rejected = eventsSince(events, 'syncWriteRejected').filter((e) => e.namespace === space);
+  assert.equal(rejected.length, 1);
+  assert.equal(rejected[0].retryable, true);
+
+  firestoreFakes().getDocResponders = [];
+  page.start(space, [k]);                                  // the next same-user start
+  await settle();
+  assert.equal(listenersFor(A.uid, space).length, 1, 'the session is rebuilt');
+  emit(A.uid, space, { [k]: manifest });
+  await settle(16);
+  t.mock.timers.tick(500);
+  await settle(16);
+  assert.deepEqual(stored(k).map((r) => r.id).sort(), ['c1', 'early'], 'the edit meets the cloud value once it can be read');
+});
+
+test('T-3: a cached snapshot already reading a chunked value does not let the server snapshot release the barrier before it is assembled', async (t) => {
+  isolate(t);
+  const space = ns('t3chunkcache');
+  const k = `${space}:log`;
+  const manifest = chunkedCloud(space, k, [{ id: 'c1', blob: 'x'.repeat(140 * 1024) }], 5);
+  const page = await openPage(t, [{ namespace: space, keys: [k] }]);
+  const from = mark();
+  signIn(A);
+  page.start(space, [k]);
+  await settle();
+  page.write(k, [{ id: 'early' }]);
+  const gate = deferred();
+  firestoreFakes().getDocResponders = Array.from({ length: manifest.parts }, () => () => gate.promise);
+  listenerFor(A.uid, space).onNext({ data: () => ({ data: { [k]: manifest } }), metadata: { fromCache: true, hasPendingWrites: false } });
+  await settle();
+  emit(A.uid, space, { [k]: manifest });                  // server-confirmed, same manifest
+  await settle();
+  t.mock.timers.tick(5000);
+  await settle();
+  assert.equal(writesTo(A.uid, from).length, 0, 'nothing is sent while the cached read of the same value is still running');
+
+  gate.resolve();
+  await settle(16);
+  t.mock.timers.tick(500);
+  await settle(16);
+  assert.deepEqual(stored(k).map((r) => r.id).sort(), ['c1', 'early']);
+  assert.match(sentText(writesTo(A.uid, from)), /early/, 'then the merge goes');
+});
+
+test('T-3: a listener that ran out of retries is rebuilt by the next same-user start, and the queued edit goes after its snapshot', async (t) => {
+  isolate(t);
+  const space = ns('t3dead');
+  const k = `${space}:prefs`;
+  const page = await openPage(t, [{ namespace: space, keys: [k] }]);
+  const from = mark();
+  signIn(A);
+  page.start(space, [k]);
+  await settle();
+  page.write(k, '"typed offline"');
+
+  const fail = () => listenerFor(A.uid, space).onError({ code: 'unavailable', message: 'offline' });
+  fail(); t.mock.timers.tick(1000); await settle();
+  fail(); t.mock.timers.tick(2000); await settle();
+  fail(); t.mock.timers.tick(4000); await settle();
+  fail(); await settle();                                  // out of retries
+  assert.equal(listenersFor(A.uid, space).length, 0);
+
+  page.start(space, [k]);                                  // initAppSync re-entered for the same user
+  await settle();
+  assert.equal(listenersFor(A.uid, space).length, 1, 'the dead session is not reused');
+  emit(A.uid, space, {});
+  await settle();
+  t.mock.timers.tick(500);
+  await settle();
+  const toA = writesTo(A.uid, from);
+  assert.equal(toA.length, 1);
+  assert.equal(toA[0].payload.data[k].value, 'typed offline');
+});
+
+test('another tab of the same account uploads a value: its broadcast and then its snapshot leave this tab clean, so the next update is not a conflict', async (t) => {
+  isolate(t);
+  const space = ns('crosstab');
+  const k = `${space}:units`;
+  const page = await openPage(t, [{ namespace: space, keys: [k] }]);
+  signIn(A);
+  page.start(space, [k]);
+  await settle();
+  emit(A.uid, space, { [k]: cloud('kg', 3) });
+  await settle();
+  t.mock.timers.tick(600);
+  await settle();
+  const events = pageEvents.length;
+
+  backingStore.set(k, JSON.stringify('lb'));               // the other tab's write
+  channelSubscribers.at(-1)({ namespace: space });         // its data-updated, before this tab's snapshot
+  emit(A.uid, space, { [k]: cloud('lb', 4) });             // the same commit, through this tab's listener
+  await settle();
+  assert.equal(revsOf(space).keys[k].dirty, false, 'the cloud holds what is stored here');
+  assert.equal(revsOf(space).keys[k].rev, 4);
+
+  emit(A.uid, space, { [k]: cloud('st', 5) });             // an ordinary update from another device
+  await settle();
+  assert.equal(backingStore.get(k), 'st');
+  assert.equal(eventsSince(events, 'syncConflict').filter((e) => e.key === k).length, 0, 'no false conflict');
+  assert.equal(copiesOf(k).length, 0, 'no recovery copy');
 });
 
 test('T-3: closing the page during initialisation does not force out a write that never met the cloud', async (t) => {

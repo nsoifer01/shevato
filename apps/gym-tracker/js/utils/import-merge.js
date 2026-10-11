@@ -35,10 +35,15 @@
  *                 file the user just chose is the more deliberate statement)
  *   settings      key-by-key overlay: keys present in the file win, keys
  *                 absent from it keep their current value. Never wholesale.
+ *   measurementGoals, warmupSettings  the same key-by-key overlay
+ *   programOrder  current order kept; ids only the file knows are appended
+ *   programSort   the file's value wins when it has one
  */
 import { sameId } from './id-utils.js';
 
 export const IMPORT_MODES = { MERGE: 'merge', REPLACE: 'replace' };
+
+export const isPlainObject = (v) => !!v && typeof v === 'object' && !Array.isArray(v);
 
 /** ms since epoch for a date-ish field; -Infinity when absent/unparseable. */
 function timeOf(value) {
@@ -146,6 +151,20 @@ export function mergeImportedData(current = {}, incoming = {}) {
     out.settings = incoming.settings
         ? mergeSettings(current.settings, incoming.settings)
         : (current.settings || null);
+
+    const overlay = (key) => (isPlainObject(incoming[key])
+        ? { ...(isPlainObject(current[key]) ? current[key] : {}), ...incoming[key] }
+        : (current[key] ?? null));
+    out.measurementGoals = overlay('measurementGoals');
+    out.warmupSettings = overlay('warmupSettings');
+
+    const order = Array.isArray(current.programOrder) ? current.programOrder : [];
+    out.programOrder = Array.isArray(incoming.programOrder)
+        ? [...order, ...incoming.programOrder.filter(id => !order.some(o => sameId(o, id)))]
+        : (current.programOrder ?? null);
+    out.programSort = typeof incoming.programSort === 'string'
+        ? incoming.programSort
+        : (current.programSort ?? null);
 
     // The active program is a pointer, not a store: keep the current one
     // unless it no longer exists in the merged list.

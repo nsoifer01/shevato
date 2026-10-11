@@ -444,6 +444,27 @@
         return (Array.isArray(players) ? players : []).filter((p) => isPlayerLive(p, nowMs));
     }
 
+    /**
+     * Was this client's own player doc removed from under it mid-game? The
+     * host's stale sweep deletes the doc of a player backgrounded past
+     * PRESENCE_STALE_MS, and nothing else tells that player. True only when
+     * the PREVIOUS roster held `myUid` and the next one does not, so the
+     * first (possibly empty) fill never counts, and only in the in-game
+     * stages: the sweep runs while playing, and the room may have moved on to
+     * picking by the time the snapshot lands. A normal room close is the room
+     * doc's own "Room closed." path, and an own leave unsubscribes first.
+     * @param {Array<object>} prevPlayers
+     * @param {Array<object>} nextPlayers
+     * @param {string|null} myUid
+     * @param {string|undefined} status  the room doc's status
+     * @returns {boolean}
+     */
+    function selfRemovedFromRoom(prevPlayers, nextPlayers, myUid, status) {
+        if (!myUid || (status !== 'playing' && status !== 'picking')) return false;
+        const has = (list) => Array.isArray(list) && list.some((p) => p && p.uid === myUid);
+        return has(prevPlayers) && !has(nextPlayers);
+    }
+
     /** joinedAt as epoch ms, whether it arrives as a Timestamp or a number. */
     function joinedAtMs(p) {
         const j = p && p.joinedAt;
@@ -647,6 +668,7 @@
         isPlayerLive,
         livePlayers,
         shouldTakeOverHost,
+        selfRemovedFromRoom,
         finalRankingSnapshot,
         nextRoomStateAfterQuestion,
         endOfGameStatsDelta

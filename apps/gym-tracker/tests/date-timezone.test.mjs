@@ -235,3 +235,39 @@ test('monthly-workouts counts a month whose tally needs a session dated the 1st'
     `);
     assert.equal(count, 1, 'twelve September sessions are one completed month');
 });
+
+// ---------------------------------------------------------------------------
+// View surfaces that label a stored YYYY-MM-DD key (2026-10-11 audit)
+// ---------------------------------------------------------------------------
+// Both used `new Date(key)`, which is UTC midnight and therefore the PREVIOUS
+// local day anywhere west of UTC. The real source text is lifted out of each
+// view and evaluated in a Los Angeles child process.
+
+const { loadSource, extractClassMethod } = await import('./helpers/source-extract.mjs');
+
+// 22:00Z on Oct 11 is 15:00 PDT, the same local calendar day.
+const LA_AFTERNOON = '2026-10-11T22:00:00Z';
+
+test('calendar day panel: tapping Oct 11 in Los Angeles is headed Sunday, Oct 11', () => {
+    const detailSrc = extractClassMethod(loadSource('js/views/calendar-view.js'), 'renderDetail', 'calendar-view.js');
+    const header = /const dateObj = [\s\S]*?\}\);/.exec(detailSrc);
+    assert.ok(header, 'header-label construction found in renderDetail');
+    const label = inZone('America/Los_Angeles', LA_AFTERNOON, `
+        const parseLocalDate = h.parseLocalDate;
+        const selectedDate = '2026-10-11';
+        ${header[0].replace(/this\.selectedDate/g, 'selectedDate')}
+        print(headerLabel);
+    `);
+    assert.equal(label, 'Sunday, Oct 11, 2026');
+});
+
+test('program card "Last done": a date-only session from yesterday reads Yesterday in Los Angeles', () => {
+    const src = loadSource('js/views/workout-view.js');
+    const methods = `{ ${extractClassMethod(src, '_relativeDate', 'workout-view.js')}, ${extractClassMethod(src, '_absoluteDate', 'workout-view.js')} }`;
+    const out = inZone('America/Los_Angeles', LA_AFTERNOON, `
+        const parseLocalDate = h.parseLocalDate;
+        const v = ${methods};
+        print({ rel: v._relativeDate('2026-10-10'), abs: v._absoluteDate('2026-10-10') });
+    `);
+    assert.deepEqual(out, { rel: 'Last done: Yesterday', abs: 'Oct 10, 2026' });
+});

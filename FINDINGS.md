@@ -200,7 +200,7 @@ that risk. What would change the decision: RUM showing cold-load bytes are the
 binding constraint, AND a plan to point the browser suite and the scope guard
 at `dist/`.
 
-## Netlify build minutes: where they went, and the plan from 1 October (2026-09-14)
+## Netlify build minutes: where they went, and what changed from 1 October (2026-09-14)
 
 Evidence: the Netlify API for the production project (account capabilities and
 usage, `build_settings`, all 475 retained deploys and 542 builds), nine deploy
@@ -391,7 +391,7 @@ day); today's setup reaches it at 249, and the one before 14 September at 51.
 has been synchronous, since 2026-09-15. That day Netlify builds on the
 production project were stopped (`build_settings.stop_builds: true`) so that
 nothing could spend any more of September's minutes. Until the 1 October reset
-every merge to `master` is published by hand: `npm run build:site` in a clean,
+every merge to `master` was published by hand: `npm run build:site` in a clean,
 detached checkout of `origin/master`, then `netlify deploy --no-build --dir
 dist --functions netlify/functions --prod`. With no `COMMIT_REF`,
 `scripts/stamp-release.mjs` stamps `git rev-parse HEAD`, so the release id
@@ -400,8 +400,11 @@ the baseline the ignore rule reads. A deploy from a dirty tree would break that
 promise; a deploy from an unpushed commit is caught, because the commit is not
 in Netlify's clone and the rule builds.
 
-After the reset `stop_builds` goes back to `false`, merges build on Netlify
-again, and the ignore rule decides each one:
+After the reset `stop_builds` went back to `false` and merges build on Netlify
+again. Measured 2026-10-11: every `master` commit since 1 October deployed, with
+no failed or cancelled build; October had used 25 of the 300 minutes; and no
+`[netlify-ignore] SKIP` had fired yet, because every merge so far changed a
+published file. What to look for, and what each signal means:
 
 - The first Netlify build compares against the last CLI deploy's commit. If
   only inert files changed since then it is cancelled, which is correct. To
@@ -1931,12 +1934,32 @@ silently, placeholders still upload where the account has nothing).
   `initialMergeDone`. `runFlush`, `flushPendingNow` and `flushAllNow` send
   nothing before `initialMergeDone`; writes stay queued and dirty (persisted).
   The first server-confirmed snapshot is applied in full, chunked values
-  included (the release waits for their assembly), then `completeInitialMerge`
+  included (the release waits for their assembly, and a second snapshot
+  reading the same manifest waits on the SAME running fetch, `chunkFetches`
+  token -> promise), then `completeInitialMerge`
   requeues dirty keys, queues local-only keys, drops queued writes the merge
   superseded (their hash no longer matches the revision) and flushes at once.
   Other namespaces are never held.
+- **A chunked value that cannot be read keeps the barrier shut** (fixed
+  2026-10-11; before, a failed part read or a fetch already in flight for an
+  earlier cached snapshot let the merge release, the early edit uploaded over
+  the unread value and stale-part cleanup deleted the cloud's parts). The
+  listener re-attaches for a fresh first snapshot on its own ladder
+  (`mergeRetryAttempts`, 1 s / 2 s / 4 s). After three re-reads the two
+  failures part ways. Parts that keep being READ but never form the value
+  the manifest describes (missing, wrong version, length or digest) are
+  corrupt and can never be assembled, so the merge completes without them, as
+  it always did: one unreadable key must not cost the user every other key.
+  A read that keeps FAILING may hide a perfectly good value, so nothing is
+  sent over it: the listener gives up and announces the queued keys. Merging
+  over a transient failure was tried first in this round and reproduced the
+  original loss about 7 s later (the early edit uploaded at a lower revision
+  and the cloud's parts were deleted).
 - **No deadlocks.** An empty cloud releases on its first snapshot. A listener
-  that gives up announces the queued keys (`syncWriteRejected`, retryable), and
+  that gives up announces the queued keys (`syncWriteRejected`, retryable),
+  marks its session `listenerGaveUp` so the next same-user start rebuilds it
+  rather than reusing a session with no listener (before 2026-10-11 the reused
+  session never sent its queue or heard the cloud again), and
   nothing ever awaits the barrier, so sign-out and pagehide return at once.
   Signing out while waiting sends nothing late; the next session sends the edit
   after its own snapshot. A deletion latch stops the session instead of
@@ -2011,6 +2034,15 @@ preference strings) fall back to a deterministic winner with the loser
 preserved under `shevato:sync-conflict:*`, capped at 20 copies. Either way the
 page is told, via a `syncConflict` event the shared sync banner renders: a
 conflict nobody knows about is the same as a conflict that lost data.
+
+A false conflict is the opposite failure, and it had one source (fixed
+2026-10-11): another tab of the same account uploads a value, its data-updated
+broadcast marks the key dirty here, and the snapshot carrying that same
+content is skipped as a duplicate (`skip-deduped`). The key stayed dirty at its
+old revision, so the next ordinary update raised `syncConflict` and wrote a
+recovery copy of a value the cloud already held. A deduped snapshot now marks
+the key clean at the higher revision when nothing of this tab's is queued or in
+flight for the namespace.
 
 ## The deploy served the repository (2026-09-05 F15)
 

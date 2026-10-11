@@ -250,7 +250,7 @@ class StorageSyncManager {
     // Conflict copies written this session, newest last, so a page can offer
     // recovery without re-reading storage.
     this.conflictRecords = [];
-    this.chunkFetches = new Set(); // `${key}:${hash}:${rev}`
+    this.chunkFetches = new Map(); // `${key}:${hash}:${rev}` -> running fetch
     // Keys the page has been told did not reach the cloud, per namespace
     // (`syncWriteRejected`). Emptied key by key as each one is acknowledged;
     // `syncWriteRecovered` goes out when the set for a namespace is empty.
@@ -767,7 +767,9 @@ class StorageSyncManager {
       console.warn(`Sync for ${namespace} not started: this account is being deleted`);
       return this.inertHandle(namespace);
     }
-    if (existing && !existing.stopped
+    // A session whose listener ran out of retries is not kept: it would never
+    // send its queue or hear the cloud again, so it is rebuilt instead.
+    if (existing && !existing.stopped && !existing.listenerGaveUp
         && existing.userId === user.uid
         && sameKeySet(existing.keys, keys)) {
       // The next sync start for this user is one of the bounded triggers a
@@ -878,6 +880,7 @@ class StorageSyncManager {
 
     let retryAttempts = 0;
     let authRetryAttempts = 0;
+    let mergeRetryAttempts = 0;
 
     const tearDown = () => {
       if (state.unsubscribe) {
@@ -980,7 +983,45 @@ class StorageSyncManager {
             // Released only once every chunked value in this snapshot has been
             // assembled and reconciled: a queued edit to one of them must not
             // be sent over a cloud value this device has not read yet.
-            Promise.all(chunkFlights).then(() => this.completeInitialMerge(state, remoteData));
+            // A chunked value that could not be read leaves the cloud unread:
+            // the barrier stays shut and the listener re-attaches for a fresh
+            // first snapshot, on its own ladder (a snapshot resets the other).
+            // When the ladder runs out, the two failures part ways. A read that
+            // keeps FAILING (the part fetch itself rejects) may hide a perfectly
+            // good value, so nothing is sent over it: the listener gives up,
+            // the queued keys are announced as retryable, and the next start
+            // rebuilds the session. Parts that keep being read but never form
+            // the value the manifest describes (missing, wrong version, wrong
+            // length or digest) are corrupt and can never be assembled; as the
+            // engine always has, the merge completes without them, because one
+            // unreadable key must not cost the user every other key.
+            Promise.all(chunkFlights).then((applied) => {
+              if (state.stopped || state.initialMergeDone) return;
+              const failed = applied.filter((r) => r === 'transient' || r === 'corrupt');
+              if (!failed.length) {
+                mergeRetryAttempts = 0;
+                this.completeInitialMerge(state, remoteData);
+                return;
+              }
+              state.initialMergeStarted = false;
+              tearDown();
+              if (mergeRetryAttempts < MAX_RETRY_ATTEMPTS) {
+                mergeRetryAttempts++;
+                setTimeout(setupListener, RETRY_DELAY_MS * Math.pow(2, mergeRetryAttempts - 1));
+                return;
+              }
+              if (failed.every((r) => r === 'corrupt')) {
+                console.warn(`⚠️ A chunked value in ${state.namespace} is still corrupt after ${MAX_RETRY_ATTEMPTS} re-reads; merging without it`);
+                mergeRetryAttempts = 0;
+                state.initialMergeStarted = true;
+                this.completeInitialMerge(state, remoteData);
+                setupListener();
+                return;
+              }
+              console.error(`💥 Max retries exceeded reading a chunked value in ${state.namespace} - sync disabled`);
+              state.listenerGaveUp = true;
+              this.noteSnapshotUnavailable(state, { code: 'unavailable', message: 'a chunked value in the first snapshot could not be read' });
+            });
           }
 
           retryAttempts = 0;
@@ -1008,6 +1049,7 @@ class StorageSyncManager {
             }
             console.error(`🔐 Authentication error for ${state.namespace} after ${MAX_AUTH_RETRY_ATTEMPTS} retries:`, error.message);
             tearDown();
+            state.listenerGaveUp = true;
             this.noteSnapshotUnavailable(state, error);
             return;
           }
@@ -1026,6 +1068,7 @@ class StorageSyncManager {
           } else {
             console.error(`💥 Max retries exceeded for ${state.namespace} - sync disabled`);
             tearDown();
+            state.listenerGaveUp = true;
             this.noteSnapshotUnavailable(state, error);
           }
         }
@@ -1198,6 +1241,22 @@ class StorageSyncManager {
       // snapshot be recognised even after the token list has aged out or a
       // reload has emptied it.
       if (remoteInfo.value !== undefined) this.rememberSyncBaseForKey(key, remoteInfo.value);
+      // The cloud holds exactly what is stored here (another tab of this
+      // account uploaded it, and its data-updated broadcast marked it dirty
+      // here first). With nothing of ours queued or on the wire there is no
+      // unsent work, so the key is clean at the cloud's revision; left dirty
+      // at the old one, the next ordinary update read as a conflict.
+      const localRev = this.localRevisions.get(key);
+      const state = this.syncStates.get(this.namespaceOfKey(key));
+      if (verdict === 'skip-deduped' && localRev && localRev.dirty && state
+          && !(state.inFlight > 0) && !this.writeQueues.get(state.namespace)?.has(key)) {
+        this.localRevisions.set(key, {
+          ...localRev,
+          rev: Math.max(localRev.rev || 0, remoteInfo.rev || 0),
+          dirty: false
+        });
+        this.schedulePersistRevisions(state.namespace);
+      }
       return true;
     }
 
@@ -2973,24 +3032,48 @@ class StorageSyncManager {
       // own-write echoes, agreed-base short-circuits and re-attach replays
       // are recorded the same way an inline key's are.
       this.noteRemoteSkip(key, verdict, manifest, remoteToken(manifest));
-      return;
+      return true;
     }
 
+    // The running fetch, not a bare return: the initial merge waits on this
+    // promise, and must not release while the same manifest is still being
+    // read for an earlier (cached) snapshot.
     const token = `${key}:${manifest.hash}:${manifest.rev}`;
-    if (this.chunkFetches.has(token)) return;
-    this.chunkFetches.add(token);
+    if (this.chunkFetches.has(token)) return this.chunkFetches.get(token);
+    const flight = this.fetchChunkedValue(state, key, manifest, options, parts, manifestVersion);
+    this.chunkFetches.set(token, flight);
+    try {
+      return await flight;
+    } finally {
+      this.chunkFetches.delete(token);
+    }
+  }
 
+  /**
+   * Read, verify and apply one chunked value. Resolves true once it has been
+   * applied; 'transient' when its parts could not be fetched, 'corrupt' when
+   * they were fetched and do not form the value the manifest describes, and
+   * false when the session stopped meanwhile (the cloud value is unread in
+   * all three).
+   */
+  async fetchChunkedValue(state, key, manifest, options, parts, manifestVersion) {
     try {
       const base = `users/${state.userId}/apps/${state.namespace}/${CHUNK_COLLECTION}`;
       // A manifest with no chunkVersion was written by the pre-2026-09-07
       // engine and points at the unversioned ids. Reading it must keep
       // working: an upgraded device may well find its own cloud document
       // still in the old shape.
-      const snapshots = await Promise.all(
-        Array.from({ length: parts },
-          (_, seq) => getDoc(doc(db, `${base}/${chunkDocId(key, seq, manifestVersion)}`)))
-      );
-      if (state.stopped) return;
+      let snapshots;
+      try {
+        snapshots = await Promise.all(
+          Array.from({ length: parts },
+            (_, seq) => getDoc(doc(db, `${base}/${chunkDocId(key, seq, manifestVersion)}`)))
+        );
+      } catch (error) {
+        console.warn(`⚠️ Could not read the parts of chunked value ${key}:`, error?.message || error);
+        return 'transient';
+      }
+      if (state.stopped) return false;
 
       let joined = '';
       for (let seq = 0; seq < snapshots.length; seq++) {
@@ -3036,11 +3119,13 @@ class StorageSyncManager {
         hash: manifest.hash,
         value
       }, options);
+      return true;
     } catch (error) {
-      // Leave lastRemoteUpdates untouched so the next snapshot retries.
+      // Leave lastRemoteUpdates untouched so the next snapshot retries. The
+      // parts were read and do not form the manifest's value: corrupt, not
+      // merely unreachable (see the initial-merge barrier).
       console.warn(`⚠️ Could not assemble chunked value for ${key}:`, error?.message || error);
-    } finally {
-      this.chunkFetches.delete(token);
+      return 'corrupt';
     }
   }
 

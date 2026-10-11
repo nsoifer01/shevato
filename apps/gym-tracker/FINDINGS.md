@@ -493,7 +493,9 @@ ordering problem, not just a code problem.**
 
 - `data/exercises-db.json` is precached; **any catalog edit needs a
   `CACHE_VERSION` PATCH bump in `sw.js`** or existing installs keep serving
-  the old catalog until the next unrelated bump.
+  the old catalog until the next unrelated bump. (The loader's header comment
+  claimed the opposite until 2026-10-11.) The loader memoizes only a
+  successful fetch: a failed one resolves `[]` and the next call retries.
 - **The fetch handler falls back to the gym precache on a runtime miss**
   (fixed 2026-08-15, `CACHE_VERSION` 1.9.0; was TESTING-AUDIT.md defect 16:
   it used to open only the RUNTIME cache, so a URL precached at install but
@@ -1277,6 +1279,21 @@ mode })` takes an explicit mode:
 The malformed-payload validation in `settings-view.js` is unchanged and still
 runs first.
 
+**Every store the user can set must be in all four places**: `exportAllData`,
+`snapshotStores`, `writeStores` and both branches of `importAllData` (plus
+`mergeImportedData`). Until 2026-10-11 measurement goals, warm-up settings,
+program order and program sort were in none of them, so "export, then Replace
+on a new phone" silently lost all four. They now round-trip (`tests/import-merge.test.mjs`).
+`snapshotStores` reads those four RAW (null when never stored) and
+`writeStores` skips a null, so an import never materialises a default the user
+did not have; an older export that lacks them leaves them alone in both modes.
+
+**An import re-renders the open view** (`app.importData` calls
+`refreshFromStorage`). Imports start in Settings, and before 2026-10-11 the
+form and its `savedSnapshot` stayed pre-import, so the next Save wrote the old
+settings back over the imported ones. Pinned in
+`tests/import-refreshes-open-view.test.mjs`.
+
 ## Touch targets and the rest dial (GT-05, GT-19)
 
 The audit measured every control in the live workout below the 44×44 the
@@ -1828,7 +1845,17 @@ no repairs), `program-model`, and `storage-service`, which runs the real
 source-extracted `loadAllData` / `_safeLoad` over a store that already holds a
 null row and asserts no reset toast and both programs loaded.
 
-## Two achievement paths read the UTC day, not the local one
+## `new Date('YYYY-MM-DD')` is the previous day west of UTC
+
+A stored date key parsed with `new Date(key)` is UTC midnight, which is the
+PREVIOUS local day anywhere west of UTC. Always parse keys with
+`parseLocalDate` (or compare with `toLocalDateKey`). Found and fixed so far:
+the two achievement paths below, the calendar's selected-day header (tapping
+Oct 11 in Los Angeles read "Saturday, Oct 10") and the program card's "Last
+done" label and tooltip for sessions without a `sortTimestamp` (2026-10-11).
+All pinned in `date-timezone.test.mjs` under a fixed western TZ.
+
+### Two achievement paths read the UTC day, not the local one
 
 Sessions are dated with the LOCAL day (`getTodayDateString`).
 `calculateProgress('workout-today')` compared that against

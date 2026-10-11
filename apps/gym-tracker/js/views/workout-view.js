@@ -8,7 +8,7 @@ import { WorkoutExercise } from '../models/WorkoutExercise.js';
 import { Set } from '../models/Set.js';
 import { timerService } from '../services/TimerService.js';
 import { storageService } from '../services/StorageService.js';
-import { showToast, showConfirmModal, formatMuscleGroup, vibrate, playSound, escapeHtml, debugLog, formatDate, pluralLabel, downloadJSON } from '../utils/helpers.js';
+import { showToast, showConfirmModal, formatMuscleGroup, vibrate, playSound, escapeHtml, debugLog, formatDate, parseLocalDate, pluralLabel, downloadJSON } from '../utils/helpers.js';
 import { trapModalFocus } from '../utils/modal-focus.js';
 import { renderPausedBannerHTML, wirePausedBannerActions } from './paused-banner.js';
 import { orderPrograms } from '../utils/program-order.js';
@@ -4618,7 +4618,7 @@ case 'toggle-warmup':
     /** Returns a human-friendly relative date label, e.g. "Today", "2 days ago". */
     _relativeDate(isoOrDate) {
         if (!isoOrDate) return '';
-        const then = new Date(isoOrDate);
+        const then = parseLocalDate(isoOrDate);
         const now = new Date();
         // Compare calendar days in local time.
         const thenDay = new Date(then.getFullYear(), then.getMonth(), then.getDate());
@@ -4637,7 +4637,7 @@ case 'toggle-warmup':
     /** Returns a short absolute date string for the tooltip. */
     _absoluteDate(isoOrDate) {
         if (!isoOrDate) return '';
-        const d = new Date(isoOrDate);
+        const d = parseLocalDate(isoOrDate);
         return d.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
     }
 

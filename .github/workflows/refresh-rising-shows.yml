@@ -14,8 +14,11 @@ name: Refresh Rising Shows data
 on:
   schedule:
     # Every day at 06:00 UTC, to keep the static site current with IMDb's
-    # daily TSV publishing cadence. Incremental TMDB cache hits keep
-    # runtimes well under 15 min once the cold-start bootstrap is done.
+    # daily TSV publishing cadence. GitHub starts it hours late in practice
+    # (11:16-13:55 UTC through October 2026), so nothing may assume the data
+    # lands by morning. An incremental run took 35-52 minutes in October
+    # 2026, most of it the TMDB step's daily retries of posterless and
+    # not-found shows (apps/rising-shows/DATA_README.md).
     - cron: '0 6 * * *'
   workflow_dispatch:
     inputs:
@@ -42,12 +45,12 @@ permissions:
 jobs:
   refresh:
     runs-on: ubuntu-latest
-    # Cold first pass after a TMDB schema change (cast back-fill,
-    # per-season tvdbId + overview fetch, providers back-fill) re-fetches
-    # tens of thousands of entries and, in practice, needs ~3-4 hours
-    # end-to-end. Incremental subsequent runs are typically well under
-    # 15 min, so this ceiling only matters on the cold pass after a
-    # schema bump.
+    # A cold pass (a TMDB schema change, or the TMDB cache evicted because
+    # the job did not run for 7 days) re-fetches tens of thousands of entries
+    # and needs MORE than this ceiling: on 1 October 2026, after a 16-day
+    # pause, run 36928708099 was cut off at 6h, its cache was saved on
+    # cancel, and the next run finished the pass in 3h22m. Incremental runs
+    # take 35-52 minutes, so the ceiling only matters on a cold pass.
     #
     # 360 rather than 240 because the job now waits for its own pull request
     # as well as building: up to 45 minutes reconciling a stuck predecessor
@@ -293,13 +296,12 @@ jobs:
       #
       # Every test above builds its own small fixture, which is the right way
       # to test build logic and leaves the 66,000-record file that actually
-      # ships validated by nothing. Nothing downstream covers it either: the
-      # bot PR's `tests` and `browser tests` runs never execute (GitHub does
-      # not start workflow runs from GITHUB_TOKEN events, see the note on the
-      # merge step below), and even when they did they would skip every
-      # data-dependent check, because the dataset is gitignored and absent on
-      # a runner. This job is the only place the real data exists, so it is
-      # the only place it can be checked.
+      # ships validated by nothing else before it is uploaded. The bot PR's
+      # `ci` run does execute (held for approval and released by this job,
+      # see Checkout above) and restores the dataset this job caches, but it
+      # runs only after the upload below has happened. This job is the only
+      # place the new data exists BEFORE it replaces the release asset, so it
+      # is the only place that can stop a bad one.
       #
       # Deliberately gating the UPLOAD, not the whole job: a dataset that
       # fails here must not replace the release asset, and the previous one

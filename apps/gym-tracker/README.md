@@ -92,8 +92,8 @@ gym-tracker/
 │   └── views/                  # home, programs, workout, history, exercises, calendar,
 │                               #   achievements, insights, measurements, settings, paused-banner
 ├── data/
-│   ├── exercises-db.js         # 500+ exercise database (JS module)
-│   └── exercises-db.json       # Same data as JSON (for the page generator)
+│   ├── exercises-db.js         # Lazy loader: fetches + memoizes exercises-db.json at runtime
+│   └── exercises-db.json       # The 514-exercise catalog (app + page generator)
 ├── exercises/                  # Generated static exercise-directory pages (gitignored)
 ├── scripts/                    # Static-page + sitemap generators (build-exercise-pages.cjs, ...)
 │                               #   plus update-precache-manifest.mjs (sw.js freshness fixture)
@@ -330,7 +330,10 @@ Designed for gym environments with low lighting:
 
 ### Export/Import
 - JSON format
-- Complete data backup
+- Complete data backup: programs, workouts, settings, achievements, custom
+  exercises, measurements, measurement goals, warm-up settings and the
+  program list's order and sort. Older exports without the last four still
+  import; those stores are then left as they are
 - Transfer between devices
 - Every import and restore passes through one field-level sanitiser
   (`js/utils/import-sanitize.js`) before anything is persisted: settings whose
@@ -351,8 +354,10 @@ Designed for gym environments with low lighting:
   numeric one it came from), keeps everything the file does not mention, and
   never lets an empty array in the file empty a populated store. Collisions
   resolve deterministically: newer `updatedAt` / `timestamp` / `createdAt`
-  wins, an unlocked achievement always beats a locked one, and settings merge
-  key by key. **Replace** restores a full backup, says plainly that anything
+  wins, an unlocked achievement always beats a locked one, settings,
+  measurement goals and warm-up settings merge key by key, the program order
+  keeps yours and appends ids only the file has, and the file's sort wins.
+  **Replace** restores a full backup, says plainly that anything
   not in the file is deleted, and downloads a rollback file first
 - Export downloads a dated JSON file (`gym-tracker-data-YYYY-MM-DD.json`); import reads a JSON file you pick and asks whether to merge it with your data or replace everything (a Replace downloads `gym-tracker-rollback-<timestamp>.json` first)
 - CSV export: one row per completed set (date, program, exercise, set number, weight, reps, duration, volume, unit) as `gym-tracker-sets-YYYY-MM-DD.csv`, RFC-4180 escaped; exporting with no workouts shows a toast instead of an empty file

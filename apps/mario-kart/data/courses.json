@@ -99,9 +99,9 @@
       "label": "Mario Kart 8 Deluxe",
       "maxPositions": 12,
       "source": {
-        "name": "Manual seed (base game nitro + retro cups)",
+        "name": "Manual seed (base game: nitro and retro cups, plus the Egg, Triforce, Crossing and Bell cups)",
         "url": "https://www.mariowiki.com/Mario_Kart_8_Deluxe",
-        "lastSynced": "2026-06-07",
+        "lastSynced": "2026-10-11",
         "complete": false,
         "todo": "Booster Course Pass (48 DLC courses across 12 cups) not yet vendored; extend via scripts/sync-courses.mjs."
       },
@@ -184,6 +184,46 @@
             { "id": "piranha-plant-slide", "name": "Piranha Plant Slide", "origin": "Mario Kart 7", "aliases": [] },
             { "id": "grumble-volcano", "name": "Grumble Volcano", "origin": "Mario Kart Wii", "aliases": [] },
             { "id": "rainbow-road-64", "name": "Rainbow Road (N64)", "origin": "Mario Kart 64", "aliases": ["rr 64"] }
+          ]
+        },
+        {
+          "id": "egg",
+          "name": "Egg Cup",
+          "courses": [
+            { "id": "yoshi-circuit", "name": "Yoshi Circuit", "origin": "Mario Kart: Double Dash!!", "aliases": [] },
+            { "id": "excitebike-arena", "name": "Excitebike Arena", "origin": "new", "aliases": [] },
+            { "id": "dragon-driftway", "name": "Dragon Driftway", "origin": "new", "aliases": [] },
+            { "id": "mute-city", "name": "Mute City", "origin": "new", "aliases": [] }
+          ]
+        },
+        {
+          "id": "triforce",
+          "name": "Triforce Cup",
+          "courses": [
+            { "id": "warios-gold-mine", "name": "Wario's Gold Mine", "origin": "Mario Kart Wii", "aliases": [] },
+            { "id": "rainbow-road-snes", "name": "Rainbow Road (SNES)", "origin": "Super Mario Kart", "aliases": [] },
+            { "id": "ice-ice-outpost", "name": "Ice Ice Outpost", "origin": "new", "aliases": [] },
+            { "id": "hyrule-circuit", "name": "Hyrule Circuit", "origin": "new", "aliases": [] }
+          ]
+        },
+        {
+          "id": "crossing",
+          "name": "Crossing Cup",
+          "courses": [
+            { "id": "baby-park", "name": "Baby Park", "origin": "Mario Kart: Double Dash!!", "aliases": [] },
+            { "id": "cheese-land", "name": "Cheese Land", "origin": "Mario Kart: Super Circuit", "aliases": [] },
+            { "id": "wild-woods", "name": "Wild Woods", "origin": "new", "aliases": [] },
+            { "id": "animal-crossing", "name": "Animal Crossing", "origin": "new", "aliases": [] }
+          ]
+        },
+        {
+          "id": "bell",
+          "name": "Bell Cup",
+          "courses": [
+            { "id": "neo-bowser-city", "name": "Neo Bowser City", "origin": "Mario Kart 7", "aliases": [] },
+            { "id": "ribbon-road", "name": "Ribbon Road", "origin": "Mario Kart: Super Circuit", "aliases": [] },
+            { "id": "super-bell-subway", "name": "Super Bell Subway", "origin": "new", "aliases": [] },
+            { "id": "big-blue", "name": "Big Blue", "origin": "new", "aliases": [] }
           ]
         }
       ]

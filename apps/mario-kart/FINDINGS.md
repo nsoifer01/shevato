@@ -530,3 +530,12 @@ hardcoded "5". Both game versions are pinned in `tests/charts.test.js`.
   test that locates a panel by looking for an `h2`/`h3` whose text is
   "Average Finish Position" finds nothing and reports the element missing.
   The grid of all four panels is `.stats-container`.
+
+## MK8 Deluxe was missing a third of its base game (2026-10-11)
+
+The vendored `mk8d` list stopped at the Lightning Cup: 8 cups, 32 courses. The
+Egg, Triforce, Crossing and Bell cups (16 courses, Wii U DLC that ships in the
+Deluxe base game) were missing, so races on Mute City or Big Blue could not be
+tagged, and the `todo` note blamed only the Booster Course Pass. They are now
+vendored, giving the 48 base-game courses in 12 cups; the 48 Booster Course
+Pass tracks are still not.

@@ -63,13 +63,13 @@ const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const html = readFileSync(join(REPO_ROOT, 'privacy.html'), 'utf8');
 
 // The two most recent reviews. Append by moving CURRENT down to PREVIOUS.
-const PREVIOUS = { date: '3 October 2026', digest: '82375f32805f6b2bee8beda1b3f1aa7ba0de5ba9df04dec6f0432fb71d93f3e2' };
+const PREVIOUS = { date: '10 October 2026', digest: 'c94a16d63847c23a8c63eb3bd48d94c8e5b81aeeea80884275e41bd2e76aaca6' };
 const CURRENT = {
-  // The GitHub paragraph gained the FPL Planner health check's optional
-  // issue alert (netlify/functions/lib/fpl-health-run.mjs), which sends only
-  // check results computed from public FPL data, nothing about a visitor.
-  date: '10 October 2026',
-  digest: 'c94a16d63847c23a8c63eb3bd48d94c8e5b81aeeea80884275e41bd2e76aaca6',
+  // The Google Places paragraph now describes the assistant's discovery
+  // searches (tp-places `discover`): the search text and area reach Google,
+  // the slot's date and time are used only inside the function.
+  date: '11 October 2026',
+  digest: 'bf2da3a73d525d065375d04a141d268e332972668f264c4558f3636efb758fca',
 };
 
 /**

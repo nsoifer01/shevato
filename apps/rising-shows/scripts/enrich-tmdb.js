@@ -8,8 +8,8 @@
 //   2. Get a v4 read access token at https://www.themoviedb.org/settings/api
 //   3. Run: TMDB_TOKEN=eyJh... npm run enrich:rising-shows
 //
-// Results are cached in data/tmdb-cache.json so re-runs only fetch new
-// series. Re-run after each `npm run build:rising-shows` if your dataset's
+// Results are cached in data/tmdb-cache.json so re-runs fetch new series
+// plus the posterless and not-found rows they retry. Re-run after each `npm run build:rising-shows` if your dataset's
 // list of unique series changed.
 
 const fs = require('fs');
@@ -150,7 +150,23 @@ async function fetchSeasonExtras(tmdbId, seasonNumber) {
   }
 }
 
-(async () => {
+// A retried row (no poster yet, or missing a field) used to be REPLACED by the
+// fresh lookup, which threw away what later passes had added to it
+// (`providers`, `seasonTvdbIds`, `seasonOverviews`) and so re-fetched all of
+// it the next day, every day: about 7,900 requests a run, measured 2026-10-11.
+// When the lookup lands on the same TMDB show, the fresh fields win and the
+// rest is kept; a different show starts clean. A failed lookup keeps a row
+// that already holds a match instead of overwriting it with the error.
+function mergeResolvedRow(prev, result, err) {
+  const matched = prev && !prev.notFound && !prev.error && prev.id;
+  if (err) return matched ? prev : { error: err.message };
+  if (matched && result && !result.notFound && result.id === prev.id) {
+    return { ...prev, ...result };
+  }
+  return result;
+}
+
+if (require.main === module) (async () => {
   if (!TOKEN) {
     console.error('Set TMDB_TOKEN env var (a v4 read access token from https://www.themoviedb.org/settings/api)');
     process.exit(1);
@@ -219,10 +235,10 @@ async function fetchSeasonExtras(tmdbId, seasonNumber) {
         await sleep(REQUEST_INTERVAL_MS);
         result.cast = await fetchCast(result.id);
       }
-      cache[imdbId] = result;
+      cache[imdbId] = mergeResolvedRow(cache[imdbId], result);
       if (wasNotFound && result && !result.notFound) recoveredViaSearch++;
     } catch (err) {
-      cache[imdbId] = { error: err.message };
+      cache[imdbId] = mergeResolvedRow(cache[imdbId], null, err);
       failed++;
     }
     done++;
@@ -374,3 +390,5 @@ async function fetchSeasonExtras(tmdbId, seasonNumber) {
   }
   console.log('Re-run `npm run build:rising-shows` to merge into data.json.');
 })();
+
+module.exports = { mergeResolvedRow };

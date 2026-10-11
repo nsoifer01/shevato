@@ -2295,6 +2295,29 @@ test('forecastEligible spans today through the 16th day and stops there', () => 
   assert.equal(L.forecastEligible('2027-13-40', today), false);
 });
 
+// Measured 2026-10-11 15:00 UTC, already the 12th in Tokyo: Open-Meteo
+// answered "end_date out of allowed range ... to 2026-10-26" for 2026-10-27,
+// which is local today + 15. Its horizon counts from the UTC date.
+test('forecastEligible also caps the far end at the UTC date + 15 when given', () => {
+  const local = '2026-10-12', utc = '2026-10-11';
+  assert.equal(L.forecastEligible('2026-10-26', local, utc), true);
+  assert.equal(L.forecastEligible('2026-10-27', local, utc), false);
+  assert.equal(L.forecastEligible('2026-10-27', local), true); // no UTC date: the old rule
+  assert.equal(L.forecastEligible('2026-10-12', local, utc), true);
+});
+
+// The archive API refuses a future end_date (measured 2026-10-11: "end_date
+// is out of allowed range from 1940-01-01 to 2026-10-11"), so the climate
+// window cannot end on trip-year-minus-one for a trip a year or more out.
+test('climateEndYear ends on the latest year whose month is complete', () => {
+  const today = '2026-10-11';
+  assert.equal(L.climateEndYear('2027-03-10', 3, today), 2026);  // Mar 2026 is past
+  assert.equal(L.climateEndYear('2027-10-05', 10, today), 2025); // Oct 2026 not complete yet
+  assert.equal(L.climateEndYear('2027-11-05', 11, today), 2025);
+  assert.equal(L.climateEndYear('2026-12-20', 12, today), 2025); // the old rule, unchanged
+  assert.equal(L.climateEndYear('2029-09-01', 9, today), 2026);
+});
+
 test('forecastKey keys per place and DATE, never colliding with the climate key', () => {
   assert.equal(L.forecastKey('Tokyo', '2027-03-10'), 'tokyo|2027-03-10');
   assert.equal(L.forecastKey('  Rome ', '2027-12-01'), 'rome|2027-12-01');
