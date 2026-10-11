@@ -1133,6 +1133,80 @@
     return { rows, totalRounds, days };
   }
 
+  // ---------- my average by round, against my rivals ----------
+  // My raw 0-100 average on each of the 5 rounds next to my rivals' average
+  // on the SAME days, so a round that is hard for everybody (round 5 is
+  // MapTap's hardest by a distance) does not read as a weakness of mine.
+  //
+  // Built on the one eligibility rule (eligibleH2HGames: both sides played,
+  // rival still on the list), plus a full, finite 5-round array on both
+  // sides; a totals-only game cannot say which round anything came from.
+  //
+  // Each day weighs the same on both sides. The log holds one row per
+  // (rival, day) carrying the same myScores, so my side takes the day once,
+  // and the rivals' side first averages every rival who played that day,
+  // then averages the days. Averaging rows instead would let a day logged
+  // against five rivals count five times on their side and once on mine.
+  //
+  // `points` is the gap converted into daily points with MapTap's round
+  // weights, so the five values sum to my average daily total minus the
+  // rivals' (`netPoints`). `weakest` / `strongest` are the round indexes
+  // costing / earning the most points, or null when no round is below /
+  // above zero.
+  function finiteRounds(scores) {
+    if (!Array.isArray(scores) || scores.length !== N_LOCS) return null;
+    const out = [];
+    for (let i = 0; i < N_LOCS; i++) {
+      const v = Number(scores[i]);
+      if (scores[i] === null || scores[i] === '' || !Number.isFinite(v)) return null;
+      out.push(v);
+    }
+    return out;
+  }
+
+  function myAvgByRound(games, knownRivalIds) {
+    const byDate = new Map();
+    for (const g of eligibleH2HGames(games, knownRivalIds)) {
+      const mine = finiteRounds(g.myScores);
+      const theirs = finiteRounds(g.theirScores);
+      if (!mine || !theirs) continue;
+      if (!byDate.has(g.date)) byDate.set(g.date, { mine, rivals: new Map() });
+      const day = byDate.get(g.date);
+      if (!day.rivals.has(g.rivalId)) day.rivals.set(g.rivalId, theirs);
+    }
+
+    const days = byDate.size;
+    const mySum = Array(N_LOCS).fill(0);
+    const rivalSum = Array(N_LOCS).fill(0);
+    let rivalRows = 0;
+    byDate.forEach(day => {
+      const n = day.rivals.size;
+      rivalRows += n;
+      for (let i = 0; i < N_LOCS; i++) {
+        mySum[i] += day.mine[i];
+        let s = 0;
+        day.rivals.forEach(r => { s += r[i]; });
+        rivalSum[i] += s / n;
+      }
+    });
+
+    if (!days) return { rows: [], days: 0, rivalRows: 0, netPoints: 0, weakest: null, strongest: null };
+
+    const rows = [];
+    let netPoints = 0, weakest = null, strongest = null;
+    for (let i = 0; i < N_LOCS; i++) {
+      const myAvg = mySum[i] / days;
+      const rivalsAvg = rivalSum[i] / days;
+      const diff = myAvg - rivalsAvg;
+      const points = diff * WEIGHTS[i];
+      netPoints += points;
+      rows.push({ round: i + 1, weight: WEIGHTS[i], myAvg, rivalsAvg, diff, points });
+      if (points < 0 && (weakest === null || points < rows[weakest].points)) weakest = i;
+      if (points > 0 && (strongest === null || points > rows[strongest].points)) strongest = i;
+    }
+    return { rows, days, rivalRows, netPoints, weakest, strongest };
+  }
+
   // ---------- backup import validation ----------
   // A backup file is untrusted input: hand-edited JSON, a file from another
   // app, a truncated download. Until 2026-08-22 importData() only checked
@@ -1474,6 +1548,8 @@
     avgPositionColor, avgPositionColors,
     // continents
     coordNum, myAvgByContinent,
+    // rounds against my rivals
+    myAvgByRound,
     // ordering
     compareNamesCI, compareWinPctDesc,
   };

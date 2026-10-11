@@ -607,15 +607,60 @@ may not. Adjust a vertex only against `CONTINENT_CITIES` in
 
 `index.html` fixes the dashboard order: profile card, network notices,
 network card, record banner, `#dash-summary`, `#dash-continents`,
-`#todays-card`, `.paste-section`, `.dash-controls` (Rivalries), `#rival-grid`.
-Nothing re-parents these at runtime; `#todays-card` and `#dash-continents`
-only toggle `hidden`, so the paste panel still sits directly above Rivalries
-when the predictions card is hidden.
+`#dash-rounds`, `#todays-card`, `.paste-section`, `.dash-controls`
+(Rivalries), `#rival-grid`. Nothing re-parents these at runtime;
+`#todays-card`, `#dash-continents` and `#dash-rounds` only toggle `hidden`, so
+the paste panel still sits directly above Rivalries when the predictions card
+is hidden.
 
 `renderDashSummary()` owns the whole strip: it calls `renderDashContinents()`
-on both paths (including the no-rivals early return), so every existing call
-site (initial render, post-save refresh, sync) keeps the band in step without
-new wiring.
+and `renderDashRounds()` on both paths (including the no-rivals early return),
+so every existing call site (initial render, post-save refresh, sync) keeps
+both bands in step without new wiring.
+
+## My average by round vs my rivals (2026-10-11)
+
+The dashboard band under the continent band. It exists because a raw round
+average says little on its own: across 4,365 public daily games in 2026
+(50 players, sampled 2026-10-11) MapTap's rounds get steadily harder, from an
+average of 95.1 on round 1 to 79.2 on round 5 (median miss 143 km against
+744 km), and rounds 4 and 5 count x3. An 85 on round 5 is a good day; on
+round 1 it is a bad one. Comparing against the rivals on the SAME days removes
+that difficulty curve, and the day mix too, without fetching anybody new: the
+benchmark is the people the user already tracks (owner call, 2026-10-11; a
+sample of strangers' public profiles was the other option, rejected because
+the app would then fetch profiles nobody asked it to, against the narrow
+promises in `privacy.html`).
+
+- **Each day weighs the same on both sides.** `myAvgByRound` (js/stats.js)
+  groups the eligible head-to-head games by date: my rounds are taken once per
+  day, and the rivals are averaged across everyone who played that day FIRST,
+  then over the days. Averaging rows would count a day logged against five
+  rivals five times on their side and once on mine, so the benchmark would
+  drift towards whichever days had the most rivals. Pinned by the
+  "counts once on my side, and once (averaged) on theirs" unit test.
+- **Eligibility is the one rule** (`eligibleH2HGames`) plus a full, finite
+  5-round array on BOTH sides. A row with a malformed round is skipped whole,
+  never read as 0, since a 0 would read as a disaster round.
+- **The numbers shown always add up on screen.** The gap badge and the
+  insight sentence use the difference of the two averages AS SHOWN (one
+  decimal each), and "about N points a day" is that gap times the weight.
+  Subtracting first and rounding after printed "96.9 vs 94.7, +2.3"; and the
+  seeded e2e fixture lands exactly on a raw -9.5 for round 5, which
+  `Math.round` takes to -9 (and floating point to 9.4999...) while the
+  sentence beside it says "3.2 behind at x3", i.e. about 10. `netPoints` stays
+  raw: it is not derived from any number on screen.
+- **Which round is "biggest"** is chosen on raw weighted points; a pick whose
+  shown gap rounds to 0.0 gets no sentence.
+- Nothing new is stored, synced or sent: the band is computed from the game
+  log on every render, so `privacy.html` needed no change.
+
+Covered by the `myAvgByRound` tests in `tests/stats.test.js` and the "round
+band" checks in `e2e/quality.mjs` (values worked by hand from the seeded
+fixture, colours compared against the `--good` / `--bad` / `--text` tokens,
+chip containment at 390 and 1280). The e2e reseeds before those checks: by
+that point earlier steps have added a game, which is how a first run reported
+15 days instead of the fixture's 14.
 
 ## Dashboard width budget (why the continent band is a three-tier grid)
 

@@ -1378,6 +1378,88 @@ body.maptap-rivals-app textarea:focus {
   font-variant-numeric: tabular-nums;
 }
 
+/* ---------- Dashboard: my average by round vs my rivals ----------
+   Sits under the continent band and reuses its head (.dash-continents-*).
+   One chip per round: my average large, the rivals' average under it, and
+   the gap as a coloured badge; the left accent bar carries the same colour
+   so the band reads at a glance. Five chips stretch across one row on wide
+   screens and wrap 3 + 2 at phone width. Every colour is pinned, since
+   assets/css/main.css overrides unpinned text colours. */
+.dash-round-chips {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(6.5rem, 1fr));
+  gap: 0.5rem;
+}
+.dash-round-chip {
+  --gap-color: var(--tie);
+  --gap-soft: var(--tie-soft);
+  display: grid;
+  grid-template-columns: 1fr auto;
+  grid-template-areas:
+    "label diff"
+    "mine mine"
+    "rivals rivals";
+  row-gap: 0.15rem;
+  min-width: 0;
+  padding: 0.45rem 0.6rem 0.5rem 0.55rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--gap-color);
+  border-radius: var(--radius-sm);
+}
+.dash-round-chip.good { --gap-color: var(--good); --gap-soft: var(--good-soft); }
+.dash-round-chip.bad { --gap-color: var(--bad); --gap-soft: var(--bad-soft); }
+.dash-round-label {
+  grid-area: label;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.3rem;
+  min-width: 0;
+}
+.dash-round-name {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--text);
+}
+.dash-round-weight {
+  font-size: 0.7rem;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.dash-round-diff {
+  grid-area: diff;
+  align-self: start;
+  padding: 0.05rem 0.35rem;
+  border-radius: 999px;
+  background: var(--gap-soft);
+  color: var(--gap-color);
+  font-size: 0.72rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.dash-round-mine {
+  grid-area: mine;
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: var(--text);
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+}
+.dash-round-rivals {
+  grid-area: rivals;
+  font-size: 0.7rem;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.dash-round-insight {
+  margin: 0.5rem 0 0;
+  font-size: 0.78rem;
+  line-height: 1.45;
+  color: var(--muted);
+}
+
 /* ---------- Today's predictions card ----------
    Head-to-head card comparing each player's predicted total against
    their actual once results sync. Visual language mirrors the rival
