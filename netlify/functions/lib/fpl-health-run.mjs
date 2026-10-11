@@ -40,7 +40,8 @@
 // the delayed GitHub schedule runs as the backstop: one writer, one incident.
 
 import { runProbe, payloadShapeFailures } from '../../../apps/fpl-planner/scripts/lib/probe.mjs';
-import { FPL_API, USER_AGENT } from '../../../apps/fpl-planner/scripts/lib/archive.mjs';
+import { FPL_API, USER_AGENT, archiveCoverageFailures, seasonLabelFrom } from '../../../apps/fpl-planner/scripts/lib/archive.mjs';
+import { stagedManifest } from './fpl-archive-stage.mjs';
 
 export const HEALTH_STORE = 'fpl-health';
 export const SLOT_HOURS = 6;
@@ -119,14 +120,15 @@ export async function probeProduction({ fetchImpl = fetch, now = new Date().toIS
       return res.json();
     },
   });
-  return result;
+  // Handed back for the archive check below, which needs the deadlines.
+  return { ...result, bootstrap };
 }
 
 /**
  * The scheduled run: claim the slot, probe, store, alert. Returns what was
  * stored (or `{ skipped }`).
  */
-export async function runScheduledProbe({ store, fetchImpl = fetch, now = () => new Date().toISOString(), alert = null } = {}) {
+export async function runScheduledProbe({ store, fetchImpl = fetch, now = () => new Date().toISOString(), alert = null, archiveStore = null } = {}) {
   const at = now();
   const slot = slotOf(at);
   const before = await store.get('latest', { type: 'json' });
@@ -147,6 +149,21 @@ export async function runScheduledProbe({ store, fetchImpl = fetch, now = () => 
   result.checks.push(lostSlot
     ? failure('the previous scheduled run recorded its result', `slot ${lostSlot} was claimed at ${previous.at || '?'} and stored nothing`, 'a stored result for every claimed slot')
     : { name: 'the previous scheduled run recorded its result', ok: true });
+  // The deadline archive (fpl-archive-capture) runs hourly on Netlify, where a
+  // failing scheduled function tells nobody, and a deadline it misses is lost
+  // for good. This run alerts, so it checks the staged captures are keeping up.
+  if (archiveStore && result.bootstrap) {
+    const name = 'the deadline archive holds the captures due by now';
+    try {
+      const manifest = await stagedManifest(archiveStore, seasonLabelFrom(result.bootstrap));
+      const missing = archiveCoverageFailures({ bootstrap: result.bootstrap, manifest, now: at });
+      result.checks.push(missing.length
+        ? failure(name, missing.join('; '), 'a staged capture for every deadline phase that is due')
+        : { name, ok: true });
+    } catch (err) {
+      result.checks.push(failure(name, `could not read the staged archive: ${err && err.message}`, 'a readable fpl-archive manifest'));
+    }
+  }
   const failed = result.checks.filter((c) => c.ok === false);
   const latest = {
     at, slot, ok: failed.length === 0, durationMs: Date.now() - started,

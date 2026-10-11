@@ -126,6 +126,19 @@ on them. The capture moved to a Netlify scheduled function (the cache prune
 had fired at 04:00 to the second), staging into Netlify Blobs; GitHub only
 copies staged snapshots to the release, which tolerates any delay.
 
+That left the capture itself unwatched (found 2026-10-11): a failing Netlify
+scheduled function alerts nobody, GitHub's backstop gate runs hours late, and
+a pre-deadline capture cannot be taken once the deadline has passed, so a
+missed one would have been lost with no word. The health probe, which does
+alert, now also checks the staging store (`archiveCoverageFailures`): a pre
+capture must exist once the next deadline is under 24 hours away (the first
+is due at T-26h, so two hourly runs have had their chance), and a post capture
+from 4 to 30 hours after the last deadline (due inside 3 hours). Older
+deadlines are not re-checked, so GW6, which predates staging, raises nothing,
+and a miss is reported for about a day rather than forever. Against the live
+manifest on 2026-10-11 it passes now and stays quiet until the 12:41 UTC probe
+on 16 October, the first one at which GW7's pre capture (due 08:07) must exist.
+
 The health probe followed the same day, for the same reason: a six-hourly
 check that may fire eight hours late cannot promise detection within a quarter
 of a day. It now runs as the `fpl-health` scheduled function (`41 */6 * * *`).

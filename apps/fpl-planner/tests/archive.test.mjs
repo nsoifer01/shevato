@@ -20,6 +20,7 @@ import {
   seasonLabelFrom, releaseTagFor, compactStamp, snapshotFileName, parseSnapshotFileName,
   buildRecord, encodeRecord, decodeRecord, writeSnapshotFile, emptyManifest, addToManifest,
   assertAppendOnly, parsePayload, assertShape, isGameUpdating, decideCaptures, fetchEndpoint, GATE,
+  archiveCoverageFailures,
 } from '../scripts/lib/archive.mjs';
 
 const H = 3600e3;
@@ -241,4 +242,43 @@ test('hourly runs at :17 through a whole deadline: about five pre captures, one 
   const fx = m.entries.filter((e) => e.endpoint === 'fixtures');
   assert.equal(fx.filter((e) => e.file).length, 1);
   assert.ok(fx.slice(1).every((e) => e.file === null && e.sameAs === fx[0].file));
+});
+
+// The health probe's archive check. A deadline whose capture is missed is lost
+// for good and the Netlify capture's own failures alert nobody, so every
+// six-hourly probe asks whether the captures due by now exist.
+const coverageBootstrap = {
+  events: [
+    { id: 6, deadline_time: '2026-10-10T10:00:00Z', finished: false, data_checked: false },
+    { id: 7, deadline_time: '2026-10-17T10:00:00Z', finished: false, data_checked: false },
+    { id: 8, deadline_time: '2026-10-24T10:00:00Z', finished: false, data_checked: false },
+  ],
+};
+const entry = (phase, gw, capturedAt) => ({ phase, gw, endpoint: phase === 'live' ? 'live' : 'bootstrap', capturedAt });
+
+test('archive coverage: a missing pre capture is reported once the deadline is under 24h away', () => {
+  const none = { entries: [] };
+  // The first probe after the window opens: 2026-10-16 08:07 is T-25.9h.
+  assert.deepEqual(archiveCoverageFailures({ bootstrap: coverageBootstrap, manifest: none, now: '2026-10-16T06:41:00Z' }), []);
+  const late = archiveCoverageFailures({ bootstrap: coverageBootstrap, manifest: none, now: '2026-10-16T12:41:00Z' });
+  assert.equal(late.length, 1);
+  assert.match(late[0], /no pre-deadline capture for GW7, 21\.3h before its deadline/);
+  const taken = { entries: [entry('pre', 7, '2026-10-16T08:07:00Z')] };
+  assert.deepEqual(archiveCoverageFailures({ bootstrap: coverageBootstrap, manifest: taken, now: '2026-10-16T12:41:00Z' }), []);
+});
+
+test('archive coverage: a missing post capture is reported from 4h to 30h after the deadline, then dropped', () => {
+  const pre = { entries: [entry('pre', 7, '2026-10-17T08:07:00Z')] };
+  // Inside the 3h post window the capture may simply not have run yet.
+  assert.deepEqual(archiveCoverageFailures({ bootstrap: coverageBootstrap, manifest: pre, now: '2026-10-17T12:41:00Z' }), []);
+  assert.match(archiveCoverageFailures({ bootstrap: coverageBootstrap, manifest: pre, now: '2026-10-17T18:41:00Z' })[0],
+    /no post-deadline capture for GW7, 8\.7h after its deadline/);
+  assert.deepEqual(archiveCoverageFailures({ bootstrap: coverageBootstrap, manifest: pre, now: '2026-10-18T18:41:00Z' }), []);
+  const post = { entries: [...pre.entries, entry('post', 7, '2026-10-17T10:07:00Z')] };
+  assert.deepEqual(archiveCoverageFailures({ bootstrap: coverageBootstrap, manifest: post, now: '2026-10-17T18:41:00Z' }), []);
+});
+
+test('archive coverage: a GW that predates staging (GW6, over 30h past) and a far deadline raise nothing', () => {
+  assert.deepEqual(archiveCoverageFailures({ bootstrap: coverageBootstrap, manifest: { entries: [] }, now: '2026-10-11T22:00:00Z' }), []);
+  assert.deepEqual(archiveCoverageFailures({ bootstrap: coverageBootstrap, manifest: null, now: '2026-10-12T12:41:00Z' }), []);
 });
