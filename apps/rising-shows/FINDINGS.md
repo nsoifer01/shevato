@@ -1993,6 +1993,7 @@ Nothing was ever wrong in the published data; the cost was time and TMDB load.
 
 A pause longer than 7 days loses the TMDB cache (GitHub evicts caches unused
 that long) and makes the next refresh a cold pass that does not fit the 6-hour
-job limit: after the 15 September to 1 October pause, run 36928708099 was cut
-off, saved its cache on cancel, and the next run finished in 3h22m. The site
+job limit: after the pause from 14 September (last run 21:46 UTC) to
+1 October, run 36928708099 was cut off, saved its cache on cancel, and the
+next run finished in 3h22m. The site
 kept serving the last good data throughout.

@@ -1495,14 +1495,30 @@ never saw, and reports a partial failure honestly.
 
 ## A secret message read as round 1 (2026-10-11)
 
-Some daily files open with `secretMessages = [ { lat, lng, message } ]` ahead
-of `cities` (August 8, August 28 and October 9 of 78 files checked, 1 August to
-17 October 2026). `parseDailyCitiesText` scanned the whole file, so that pin
-became round 1 and the real five shifted by one: every prediction that day was
-wrong, with no warning, while the revealed names (secret messages have no
-`name:`) still looked right. MapTap's own loader anchors on `cities = [`; both
-parsers now do too (`dailyCitiesSection`), falling back to the whole text only
-when there is no such assignment. Cached coordinates carry `v: 2`, so entries
-parsed the old way are fetched again rather than trusted forever. Only the
-predictions card read those coordinates: synced game rows take theirs from the
-MapTap profile payload, so no stored game was affected.
+`parseDailyCitiesText` scanned the whole daily file for lat/lng pairs, and two
+shapes of file defeat that. Some carry a pin ahead of `cities`, usually
+`secretMessages = [ { lat, lng, message } ]` (July 13, July 23, August 8,
+August 28, October 9; April 17 has a different block there), so that pin
+became round 1 and the real five shifted by one. Others park a commented-out
+draft city after the array (November 6-9, 12, 16, 20, 21 and 25, December 13:
+four real cities, then a `/* PARKED DRAFT */` block), which the scan counted as
+round 5. Every prediction those
+days was wrong, with no warning, while the revealed names (secret messages
+have no `name:`) still looked right.
+
+MapTap's own loader reads exactly `cities = [ ... ];`. Both parsers now read
+that span (`dailyCitiesSection`): from the assignment to the first `];`, or to
+the end of the file when the array closes on a bare `]` (January 1), and the
+whole file only when there is no assignment at all. Measured 2026-10-11 by
+evaluating every one of the 366 daily files as JavaScript in an isolated
+`node:vm` context: 361 evaluate, and the parser now agrees with all 361 (the
+old one with 345). Ending the span at the first line holding only `]` was
+tried and REJECTED: nested arrays close that way, and it cut 145 files after
+their first city. Four-city days now give no prediction rather than a wrong
+one. Five future files (October 17, 21 and 25, November 5, February 29) do not
+evaluate at all; those are MapTap's own data errors.
+
+Cached coordinates carry `v: 2`, so entries parsed the old way are fetched
+again rather than trusted forever. Only the predictions card read those
+coordinates: synced game rows take theirs from the MapTap profile payload, so
+no stored game was affected.

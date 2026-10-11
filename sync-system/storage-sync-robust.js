@@ -250,7 +250,7 @@ class StorageSyncManager {
     // Conflict copies written this session, newest last, so a page can offer
     // recovery without re-reading storage.
     this.conflictRecords = [];
-    this.chunkFetches = new Map(); // `${key}:${hash}:${rev}` -> running fetch
+    this.chunkFetches = new Map(); // `${key}:${hash}:${rev}` -> { state, flight }
     // Keys the page has been told did not reach the cloud, per namespace
     // (`syncWriteRejected`). Emptied key by key as each one is acknowledged;
     // `syncWriteRecovered` goes out when the set for a namespace is empty.
@@ -889,9 +889,16 @@ class StorageSyncManager {
       }
     };
 
+    // Each attach takes a generation number. Two re-attach timers can be armed
+    // at once (a listener error and a failed first-merge chunk read), and both
+    // calls wait on getIdToken: without this, both attached and the first
+    // listener outlived even stopSync, because state.unsubscribe kept only the
+    // second. A call overtaken while waiting simply drops out.
+    let attachGeneration = 0;
     const setupListener = async () => {
       tearDown();
       if (state.stopped) return;
+      const generation = ++attachGeneration;
 
       // Cold-boot guard: wait for a fresh ID token before letting
       // onSnapshot fire its first listen request. auth.currentUser
@@ -909,7 +916,8 @@ class StorageSyncManager {
       } catch (err) {
         console.warn(`🔐 Failed to acquire ID token for ${state.namespace}, falling through to listener:`, err?.message);
       }
-      if (state.stopped) return;
+      if (state.stopped || generation !== attachGeneration) return;
+      tearDown();
 
       const unsubscribe = onSnapshot(docRef,
         { includeMetadataChanges: true },
@@ -997,7 +1005,10 @@ class StorageSyncManager {
             // unreadable key must not cost the user every other key.
             Promise.all(chunkFlights).then((applied) => {
               if (state.stopped || state.initialMergeDone) return;
-              const failed = applied.filter((r) => r === 'transient' || r === 'corrupt');
+              // Anything but `true` left the value unapplied; a `false` from a
+              // live session is treated as a failed read, not a success.
+              const failed = applied.filter((r) => r !== true)
+                .map((r) => (r === 'corrupt' ? 'corrupt' : 'transient'));
               if (!failed.length) {
                 mergeRetryAttempts = 0;
                 this.completeInitialMerge(state, remoteData);
@@ -3038,14 +3049,20 @@ class StorageSyncManager {
     // The running fetch, not a bare return: the initial merge waits on this
     // promise, and must not release while the same manifest is still being
     // read for an earlier (cached) snapshot.
+    // Joined only by the SAME session: a fetch left running by a stopped one
+    // (a quick sign-out and back in, a key-set change) resolves false for its
+    // own stopped state, and a new session that joined it released its
+    // barrier on a value it had never applied.
     const token = `${key}:${manifest.hash}:${manifest.rev}`;
-    if (this.chunkFetches.has(token)) return this.chunkFetches.get(token);
+    const running = this.chunkFetches.get(token);
+    if (running && running.state === state) return running.flight;
     const flight = this.fetchChunkedValue(state, key, manifest, options, parts, manifestVersion);
-    this.chunkFetches.set(token, flight);
+    const entry = { state, flight };
+    this.chunkFetches.set(token, entry);
     try {
       return await flight;
     } finally {
-      this.chunkFetches.delete(token);
+      if (this.chunkFetches.get(token) === entry) this.chunkFetches.delete(token);
     }
   }
 

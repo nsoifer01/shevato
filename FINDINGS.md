@@ -609,6 +609,21 @@ doing.**
   for itself. `probe()` in `tests/browser/cdp.mjs` closes it for hand-written
   loops; details in `apps/arena/FINDINGS.md`.
 
+### `ubuntu-latest` becomes Ubuntu 26.04 from 19 October 2026 (checked 2026-10-11)
+
+GitHub moves the label to 26.04 over 19 October to 19 November
+(actions/runner-images#14748). What the workflows take from the image is
+Chrome (resolved by name in the browser and rules jobs), and, for the weekly
+cross-browser job, `npx playwright install --with-deps firefox webkit`; Node
+comes from `.nvmrc` and Java is pinned (Temurin 21), so neither moves.
+Playwright 1.62.1 lists `ubuntu26.04-x64` with its own dependency map and
+WebKit build. Measured rather than assumed: `scheduled.yml` was dispatched on
+a throwaway branch whose `ci.yml` and `scheduled.yml` said `ubuntu-26.04`
+(run 38156326357), and the whole weekly estate passed there - lint, unit,
+all six browser shards, both Arena rules/emulator shards, coverage, and
+cross-browser 8/8 with no skips. No workflow needed changing; pin
+`ubuntu-24.04` only if a later image update breaks something.
+
 ## A stalled third-party CDN held every page (2026-09-13)
 
 A request that is refused fails fast. One that is accepted and never answered
@@ -1936,7 +1951,10 @@ silently, placeholders still upload where the account has nothing).
   The first server-confirmed snapshot is applied in full, chunked values
   included (the release waits for their assembly, and a second snapshot
   reading the same manifest waits on the SAME running fetch, `chunkFetches`
-  token -> promise), then `completeInitialMerge`
+  token -> { state, flight }; only the same session may join it, because a
+  fetch left running by a stopped session resolves false for that session,
+  and a restarted one that joined it released on a value it never applied),
+  then `completeInitialMerge`
   requeues dirty keys, queues local-only keys, drops queued writes the merge
   superseded (their hash no longer matches the revision) and flushes at once.
   Other namespaces are never held.
@@ -1954,7 +1972,10 @@ silently, placeholders still upload where the account has nothing).
   sent over it: the listener gives up and announces the queued keys. Merging
   over a transient failure was tried first in this round and reproduced the
   original loss about 7 s later (the early edit uploaded at a lower revision
-  and the cloud's parts were deleted).
+  and the cloud's parts were deleted). Two re-attach timers can be armed at
+  once (a listener error and a failed chunk read), so `setupListener` takes an
+  attach generation and a call overtaken while waiting for its ID token drops
+  out; before that, both attached and one listener outlived `stopSync`.
 - **No deadlocks.** An empty cloud releases on its first snapshot. A listener
   that gives up announces the queued keys (`syncWriteRejected`, retryable),
   marks its session `listenerGaveUp` so the next same-user start rebuilds it

@@ -1362,3 +1362,66 @@ test('S-4 provenance: a boot-window write replayed after a click is still the ap
   assert.deepEqual(stored('shevato:sync-local-work')?.[key], { hash: hashValue(['floor']), work: false },
     'recorded with the gesture state the write was made with');
 });
+
+// Two re-attach timers armed at once (the listener erroring while the first
+// snapshot's chunk read is pending, then that read failing too) used to attach
+// TWO listeners, and the first outlived stopSync, because state.unsubscribe
+// kept only the second. Found reviewing the T-3 fix, 2026-10-11.
+test('T-3: two re-attach timers armed together leave one listener, and none after stop', async (t) => {
+  isolate(t);
+  const space = ns('twoTimers');
+  const k = `${space}:log`;
+  const manifest = chunkedCloud(space, k, [{ id: 'c1', blob: 'x'.repeat(140 * 1024) }], 5);
+  const page = await openPage(t, [{ namespace: space, keys: [k] }]);
+  signIn(A);
+  page.start(space, [k]);
+  await settle();
+  let failRead;
+  const read = new Promise((_, rej) => { failRead = rej; });
+  firestoreFakes().getDocResponders = Array.from({ length: manifest.parts }, () => () => read);
+  emit(A.uid, space, { [k]: manifest });
+  await settle();
+  listenerFor(A.uid, space).onError({ code: 'unavailable', message: 'offline' });
+  await settle();
+  failRead({ code: 'unavailable', message: 'offline' });
+  await settle(16);
+  t.mock.timers.tick(1000);
+  await settle(16);
+  assert.equal(listenersFor(A.uid, space).length, 1, 'exactly one live listener after both timers fire');
+  page.stopAll();
+  await settle();
+  assert.equal(listenersFor(A.uid, space).length, 0, 'and none once sync is stopped');
+});
+
+// A fetch left running by a stopped session resolves false for its own
+// stopped state. A new session for the same user that joined it (the token
+// had no session in it) released its barrier on a value it never applied,
+// and the early edit went up over the cloud's.
+test('T-3: a restarted session does not join a chunk read left running by the stopped one', async (t) => {
+  isolate(t);
+  const space = ns('restartJoin');
+  const k = `${space}:log`;
+  const manifest = chunkedCloud(space, k, [{ id: 'c1', blob: 'x'.repeat(140 * 1024) }], 5);
+  const page = await openPage(t, [{ namespace: space, keys: [k] }]);
+  const from = mark();
+  signIn(A);
+  page.start(space, [k]);
+  await settle();
+  page.write(k, [{ id: 'early' }]);
+  const gate = deferred();
+  firestoreFakes().getDocResponders = Array.from({ length: manifest.parts * 2 }, () => () => gate.promise);
+  emit(A.uid, space, { [k]: manifest });
+  await settle();
+  page.stopAll();
+  page.start(space, [k]);
+  await settle();
+  emit(A.uid, space, { [k]: manifest });
+  await settle();
+  gate.resolve();
+  await settle(16);
+  t.mock.timers.tick(5000);
+  await settle(16);
+  const sent = writesTo(A.uid, from).filter((c) => c.path === `users/${A.uid}/apps/${space}`);
+  assert.ok(!/"value":\[\{"id":"early"\}\]/.test(sentText(sent)),
+    `the unread cloud value must not be overwritten by the early edit alone: sent ${sentText(sent).slice(0, 160)}`);
+});

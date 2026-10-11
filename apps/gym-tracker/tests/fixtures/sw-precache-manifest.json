@@ -39,7 +39,7 @@
     "./js/utils/paginator.js": "81446f236c15b20b",
     "./js/utils/sync-status.js": "0445011e3b029830",
     "./js/utils/active-workout.js": "3dacfac7189e065c",
-    "./js/utils/data-migrations.js": "e865b9b0e2a6bb50",
+    "./js/utils/data-migrations.js": "cb40ba6ff898cd04",
     "./js/utils/exercise-search.js": "bddaca3253bb9789",
     "./js/utils/exercise-taxonomy.js": "e29d504e2fb500ae",
     "./js/utils/import-merge.js": "c5e16fe3c135c4fb",

@@ -1705,6 +1705,21 @@ test('daily file parsers skip a secretMessages block ahead of cities', () => {
   assert.deepEqual(cities[0], { lat: 47.3769, lng: 8.5417 });
   assert.deepEqual(cities[4], { lat: 14.0354, lng: -0.0345 });
   assert.equal(plain(helpers.parseDailyNamesText(src))[0], 'Zurich, Switzerland');
+  // November 21's file: four real cities, then a commented-out draft after
+  // the array. MapTap plays only the array, so this is not a five-round day.
+  const parked = [
+    'cities = [',
+    ' { name: "Jerusalem", lat: 31.7683, lng: 35.2137 },',
+    ' { name: "Haifa", lat: 32.1149, lng: 34.8 },',
+    ' { name: "Islamabad", lat: 33.6844, lng: 73.0479 },',
+    ' { name: "Bern", lat: 46.9481, lng: 7.4474 },',
+    '];',
+    '/*  ---- PARKED DRAFT ----',
+    ' { name: "Tonnerre", lat: 48.8049, lng: 2.1204 },',
+    '*/',
+  ].join('\n');
+  assert.equal(helpers.parseDailyCitiesText(parked), null);
+  assert.equal(helpers.parseDailyNamesText(parked), null);
   // A file with no `cities =` assignment still parses from the top.
   const bare = src.slice(src.indexOf('cities = [') + 'cities = ['.length);
   assert.deepEqual(plain(helpers.parseDailyCitiesText(bare))[0], { lat: 47.3769, lng: 8.5417 });

@@ -322,3 +322,17 @@ button has a label.
   90-minute and penalty splits. That section measures 812x462 at a 1200px
   viewport, which is within a hair of the hub's 16:9 frame, so the capture is
   very close to the section's own bounds and needs no invented crop.
+
+## The auto-backup raised sync conflicts nobody could act on (2026-10-11)
+
+`footballH2HAutoBackup` is synced, and every open tab rewrites it every 10
+minutes with a fresh `backupDate`, so two devices disagree on it as a matter of
+course. It was on the default sync policy, which treats a plain object as user
+input: a disagreement with an unsent local copy raised a conflict banner and
+kept the losing backup, a full copy of the game log, as a recovery copy
+(reproduced in `sync-system/tests/storage-sync-conflicts.test.mjs`,
+"AUTO-BACKUP"). Nothing in it is the user's own input: the games, names and
+icons it copies are synced under their own keys, the games with the per-record
+merge. It is now declared `derived` in `APP_SYNC_CONFIG`, so both ends still
+converge on one winner, without a copy or a banner. The Mario Kart backups had
+the same shape and got the same policy.

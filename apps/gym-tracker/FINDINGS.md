@@ -683,7 +683,12 @@ guarded by `gymTrackerDataVersion`:
 - **v2** drops sessions with zero completed sets (see below).
 
 It is pure (`migrateStoredData(snapshot, fromVersion)` takes and returns plain
-data), idempotent, and never mutates its input. `gymTrackerDataVersion` starts
+data), idempotent, and never mutates its input. Measurement goals have no
+canonical stamp of their own, so they convert only in a pass that actually
+converted an unstamped measurement: until 2026-10-11 they converted whenever
+the version read 0, and `importData` resets it to 0 so an older file's weights
+migrate, which divided an lb account's goals again on every import (75 lb ->
+34.02 -> 15.43) while its stamped measurements were correctly left alone. `gymTrackerDataVersion` starts
 with `gymTracker`, so the sync layer carries it between a user's devices and a
 second device does not re-run a migration the first one already did.
 

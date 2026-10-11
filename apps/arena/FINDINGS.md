@@ -320,7 +320,13 @@ call.
   doc is readable, `resource == null`), an own leave unsubscribes before it
   deletes, and the first roster fill can never count. The heartbeat still
   swallows its failure; the listeners are what notice. Pinned by
-  `tests/swept-player-exit.test.js`.
+  `tests/swept-player-exit.test.js` and end to end by emulator scenario S11,
+  which freezes the player's tab through CDP (`Page.setWebLifecycleState`,
+  what a backgrounded phone tab gets), lets the host's real sweep delete the
+  doc, and thaws it. The exit is NOT immediate: the thawed tab hears no
+  removal snapshot at all, and only once the SDK re-establishes its stream is
+  the listen refused (`permission-denied`), 31-49 s after the thaw across
+  five runs. On master the tab was still sitting in the dead room after 76 s.
 - **Teardown order is load-bearing**: room doc first, then chat, gate and
   leftover player docs (see the gate bullet above). Chat is append-only while
   the room lives - the rules only permit chat deletes once the room doc is

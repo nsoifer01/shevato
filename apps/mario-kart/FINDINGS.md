@@ -539,3 +539,13 @@ Deluxe base game) were missing, so races on Mute City or Big Blue could not be
 tagged, and the `todo` note blamed only the Booster Course Pass. They are now
 vendored, giving the 48 base-game courses in 12 cups; the 48 Booster Course
 Pass tracks are still not.
+
+## Backup keys are a derived sync policy (2026-10-11)
+
+`marioKartAutoBackup` and `marioKartWorldAutoBackup` copy the races, names and
+symbols that are synced in their own right, and are rewritten every 10 minutes
+by every open tab, so two devices routinely disagree on them. On the default
+policy that disagreement raised a sync-conflict banner and kept a whole race log
+as a recovery copy. They are declared `derived` in `APP_SYNC_CONFIG`: both ends
+still converge on one deterministic winner, and the Restore button still finds
+a backup. The same fix as Football H2H's (its FINDINGS has the reproduction).

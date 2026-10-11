@@ -11,6 +11,7 @@ import {
     LENGTH_FIELDS,
     migrateMeasurementGoals,
     migrateStoredData,
+    CANONICAL_FLAG,
 } from '../js/utils/data-migrations.js';
 import { displayLength, displayWeight } from '../js/utils/units.js';
 
@@ -206,4 +207,26 @@ test('malformed records are passed through rather than crashing the boot', () =>
     assert.equal(Array.isArray(after.sessions), true);
     assert.equal(after.measurements[1].weight, null);
     assert.equal(after.measurements[1].waist, '');
+});
+
+// importData resets the data version to 0 so an older file's weights migrate.
+// Goals carry no canonical stamp, so at version 0 an lb account's goals were
+// converted again on EVERY import, although its measurements were stamped and
+// left alone: 75 -> 34.02 -> 15.43. Goals now move only with measurements
+// that were actually converted.
+test('re-running the migration over stamped measurements leaves lb goals alone', () => {
+    const measurements = [{ id: 'm1', date: '2026-10-01', weight: 80, waist: 90, [CANONICAL_FLAG]: true }];
+    const goals = { weight: { target: 75, direction: 'down' }, waist: { target: 85, direction: 'down' } };
+    const settings = { weightUnit: 'lb' };
+    const once = migrateStoredData({ sessions: [], measurements, goals, settings }, 0);
+    const twice = migrateStoredData({ sessions: [], measurements: once.measurements, goals: once.goals, settings }, 0);
+    assert.deepEqual(once.goals, goals);
+    assert.deepEqual(twice.goals, goals);
+});
+
+test('lb goals still migrate alongside legacy measurements they are compared against', () => {
+    const measurements = [{ id: 'm1', date: '2026-01-01', weight: 176, waist: 34 }];
+    const goals = { weight: { target: 165, direction: 'down' } };
+    const out = migrateStoredData({ sessions: [], measurements, goals, settings: { weightUnit: 'lb' } }, 0);
+    assert.notEqual(out.goals.weight.target, 165, 'a legacy lb goal is converted with its measurements');
 });
