@@ -1124,8 +1124,9 @@ class GymTrackerApp {
         storageService.saveDataVersion(0);
         this.runStoredDataMigrations();
 
-        this.loadAllData();
-        this.updateAchievements();
+        // Re-renders the open view too: Settings is where imports start, and
+        // a form still showing pre-import values would write them back on Save.
+        this.refreshFromStorage();
         showToast(
             result.mode === IMPORT_MODES.REPLACE
                 ? 'Data replaced from file'

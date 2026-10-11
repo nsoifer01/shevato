@@ -1,15 +1,15 @@
 /**
  * Lazy loader for the exercise database.
  *
- * The actual catalog (~75 KB, 513 entries) lives in `exercises-db.json`
+ * The actual catalog (~75 KB, 514 entries) lives in `exercises-db.json`
  * and is fetched on demand. This module memoizes the Promise so every
- * caller after the first reuses the same in-flight fetch.
+ * caller after the first reuses the same in-flight fetch. A failed fetch
+ * is not memoized, so the next call retries.
  *
- * Why JSON instead of a `.js` constant: shaving 75 KB off the initial
- * JS parse step and decoupling refresh — the precache + browser HTTP
- * cache can revalidate just the data file without forcing an SW
- * precache bump on every entry tweak. The JSON is also smaller than
- * the equivalent JS source (no syntax overhead, no comments).
+ * Why JSON instead of a `.js` constant: it keeps 75 KB off the initial
+ * JS parse step, and the JSON is smaller than the equivalent JS source.
+ * The JSON is precached by `sw.js`, so a catalog edit still needs a
+ * `CACHE_VERSION` bump (tests/sw-precache-content-version.test.mjs).
  *
  * Backwards-compat: legacy code that imported `EXERCISE_DATABASE`
  * directly used to get a populated array on script evaluation. We
@@ -49,9 +49,9 @@ export async function loadExerciseDatabase() {
         })
         .catch((err) => {
             console.error('Failed to load exercise database', err);
-            _cache = [];
+            // _cache stays null so the next call retries the fetch.
             _inflight = null;
-            return _cache;
+            return [];
         });
 
     return _inflight;

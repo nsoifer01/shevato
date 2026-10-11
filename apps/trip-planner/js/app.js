@@ -23,7 +23,7 @@
   // js/app.js, in index.html and in sw.js's PRECACHE list alike. Bumping the
   // cache-buster without bumping this number is what made "build 31" outlive
   // v=32..38 and stop identifying anything.
-  const TP_BUILD = 86;
+  const TP_BUILD = 87;
   const LS_KEY = 'trip-planner:v1';
   // Which trip THIS DEVICE has open. Navigation, not data: it is not part of
   // the synced value and is deliberately absent from app-sync-init.js's key
@@ -131,7 +131,7 @@
     // assistant contract and the tests, and are deliberately not read here.
     isMealKind, mealLabel, splitMealTitle, itemMealKind, normalizeMealItem,
     weatherKey, summarizeClimate, weatherLine, weatherRange, pickMonthSamples, docGuard,
-    FORECAST_DAYS, forecastEligible, forecastKey, forecastFresh, freshForecasts, summarizeForecast, forecastLine, forecastChipParts,
+    FORECAST_DAYS, forecastEligible, climateEndYear, forecastKey, forecastFresh, freshForecasts, summarizeForecast, forecastLine, forecastChipParts,
     extractTripActions, validateTripAction, buildAssistPackage, buildAssistSystemPrompt,
     planReplyIncomplete, PLAN_REPAIR_REQUEST,
     buildPlanRequest, groupProposals, linkifySegments, parseMarkdown,
@@ -3609,6 +3609,7 @@
     const pairs = new Map();
     const forecastJobs = new Map();
     const today = todayIso();
+    const utcToday = new Date().toISOString().slice(0, 10);
     const now = Date.now();
     document.querySelectorAll('#daysList .day-card').forEach(card => {
       const date = card.dataset.date;
@@ -3630,7 +3631,7 @@
       // forecast or not: a stored forecast cannot be checked or refreshed with
       // no connection, and "what it is typically like" is the honest answer
       // then. navigator.onLine is the same signal ensureWeather gates on.
-      if (!navigator.onLine || !forecastEligible(date, today)) return;
+      if (!navigator.onLine || !forecastEligible(date, today, utcToday)) return;
       const id = place.toLowerCase();
       const fKey = forecastKey(id, date);
       chip.dataset.forecastKey = fKey;
@@ -3683,11 +3684,12 @@
       // "typically", so a single freak August was the whole claim. It now spans
       // WEATHER_YEARS of that month and averages across them.
       //
-      // The window still ENDS on the same safely-archived date it always did
-      // (the target month of trip-year-minus-one; the archive lags a few days),
-      // and one contiguous range is one request: the month is selected from the
-      // response below rather than by fetching a range per year.
-      const year = Number(date.slice(0, 4)) - 1;
+      // The window ENDS on the target month of trip-year-minus-one, clamped to
+      // the latest year in which that month is complete: for a trip a year or
+      // more out, trip-year-minus-one is still in the future and the archive
+      // refuses it. One contiguous range is one request: the month is selected
+      // from the response below rather than by fetching a range per year.
+      const year = climateEndYear(date, month, todayIso());
       const mm = String(month).padStart(2, '0');
       const lastDay = new Date(Date.UTC(year, month, 0)).getUTCDate();
       const from = year - (WEATHER_YEARS - 1);

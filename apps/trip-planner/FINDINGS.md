@@ -4306,3 +4306,21 @@ in force from the first byte of markup - so the dialogs never lay out in flow
 (8,173px of them) before the CSS arrives. `.overlay.open` outranks the
 attribute (0,2,0 against 0,1,0), so opening a dialog is still exactly "add the
 class" and nothing has to remember to clear anything.
+
+## Open-Meteo's two date limits (2026-10-11)
+
+Both weather lookups had a date edge that failed silently, measured against the
+live APIs on 2026-10-11:
+
+- **The archive refuses a future `end_date`** ("out of allowed range from
+  1940-01-01 to 2026-10-11"). The "Typical" window used to end on the trip
+  month of trip-year-minus-one, which is still in the future for any trip a
+  year or more out, so the chip never appeared for those days and the 60 s
+  failure memo re-asked forever. `climateEndYear` (trip-logic.js) now clamps
+  the end to the latest year whose month is complete; the cache key is place
+  plus month, so any complete year answers the same question.
+- **The forecast horizon counts from the UTC date** (UTC + 15). A device ahead
+  of UTC counted one day further, and because one request covers a city's
+  whole near-term run, that single day made the request 400 and every day of
+  that city fell back to "Typical". `forecastEligible` takes the UTC date as an
+  optional third argument and `loadWeatherForDays` passes it.

@@ -49,6 +49,7 @@
 // Isolation comes from per-test namespaces and per-test key names.
 
 import { test } from 'node:test';
+import { readFileSync } from 'node:fs';
 import assert from 'node:assert/strict';
 import { register } from 'node:module';
 import { join, dirname } from 'node:path';
@@ -987,4 +988,53 @@ test('DERIVED: the policy is per key, not per namespace', async (t) => {
   assert.equal(h.conflicts.length, 1, 'only the non-derived key raises anything');
   assert.equal(h.conflicts[0].key, kGames);
   assert.deepEqual(h.copies().map((c) => c.key), [kGames]);
+});
+
+// The Football H2H and Mario Kart auto-backups are one synced object holding a
+// copy of the whole game log plus a fresh `backupDate`, rewritten every 10
+// minutes by every open tab. Two devices therefore disagree on it routinely,
+// and nothing in it is the user's own input: the games, races and names it
+// copies are synced (and record-merged) under their own keys. Under the
+// default policy that disagreement is a conflict banner and a full copy of
+// the log kept as a "recovery" copy; declared derived it converges quietly.
+const BACKUP_A = { games: [{ id: 1, p1: 2, p2: 1 }], players: { player1: 'A', player2: 'B' }, backupDate: '2026-10-11T10:00:00.000Z', version: '1.0' };
+const BACKUP_B = { games: [{ id: 1, p1: 2, p2: 1 }, { id: 2, p1: 0, p2: 0 }], players: { player1: 'A', player2: 'B' }, backupDate: '2026-10-11T10:05:00.000Z', version: '1.0' };
+
+async function twoDeviceBackupDisagreement(t, policies) {
+  const h = await startClient(t, ['footballH2HAutoBackup'], { policies });
+  const [k] = h.keys;
+  localStorage.setItem(k, JSON.stringify({ ...BACKUP_A, backupDate: '2026-10-11T09:50:00.000Z' }));
+  t.mock.timers.tick(500);
+  await settle();
+  await h.commitAndEcho();
+  // This tab's next 10-minute snapshot is still unsent when the other
+  // device's arrives.
+  localStorage.setItem(k, JSON.stringify(BACKUP_A));
+  await settle();
+  h.peerWrite('footballH2HAutoBackup', BACKUP_B, 9);
+  h.deliver();
+  await settle();
+  return h;
+}
+
+test('AUTO-BACKUP: under the default policy two devices\' backups raise a conflict and copy the log', async (t) => {
+  const h = await twoDeviceBackupDisagreement(t);
+  assert.equal(h.conflicts.length, 1, 'the documented cost of leaving a backup key on the default policy');
+  assert.equal(h.copies().length, 1);
+});
+
+test('AUTO-BACKUP: declared derived, the same disagreement converges with no copy and no banner', async (t) => {
+  const h = await twoDeviceBackupDisagreement(t, { footballH2HAutoBackup: 'derived' });
+  assert.deepEqual(h.conflicts, []);
+  assert.deepEqual(h.copies(), []);
+});
+
+test('AUTO-BACKUP: every synced *AutoBackup key is declared derived in APP_SYNC_CONFIG', () => {
+  const src = readFileSync(join(here, '..', 'app-sync-init.js'), 'utf8');
+  const backups = [...src.matchAll(/'([A-Za-z0-9]*AutoBackup)'/g)].map((m) => m[1]);
+  const keyed = [...new Set(backups)];
+  assert.ok(keyed.length >= 3, `expected the Football and both Mario Kart backup keys, found ${keyed.join(', ')}`);
+  for (const key of keyed) {
+    assert.match(src, new RegExp(`${key}:\\s*'derived'`), `${key} must be declared 'derived'`);
+  }
 });

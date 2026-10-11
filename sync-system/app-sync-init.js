@@ -67,7 +67,16 @@ const APP_SYNC_CONFIG = {
       'selectedGameVersion'       // Game version (mk8d/mkworld)
       // Not synced: sidebar open/closed is device-local UI state, and the
       // undo/redo stack lives in memory only (never written to storage).
-    ]
+    ],
+    // The auto-backups copy keys that are synced (and record-merged) in their
+    // own right, and every open tab rewrites them every 10 minutes with a new
+    // backupDate, so two devices disagree on them routinely. As 'auto' that
+    // was a conflict banner plus a full copy of the race log kept as a
+    // recovery copy; nothing in them is the user's own input.
+    policies: {
+      marioKartAutoBackup: 'derived',
+      marioKartWorldAutoBackup: 'derived'
+    }
   },
   
   'football-h2h': {
@@ -77,7 +86,11 @@ const APP_SYNC_CONFIG = {
       'footballH2HPlayers',       // Player data
       'footballH2HPlayerIcons',   // Player icons
       'footballH2HAutoBackup'     // Backup data
-    ]
+    ],
+    // Same reasoning as the Mario Kart backups above.
+    policies: {
+      footballH2HAutoBackup: 'derived'
+    }
   },
 
   'fpl-planner': {

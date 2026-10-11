@@ -103,7 +103,7 @@ for (const a of args) {
 // Pinned check counts per suite. A suite that silently loses checks (an early
 // return, a refactor that drops a loop, a throw swallowed inside the suite)
 // still "passes" everything it did run; comparing against a pinned total turns
-// that silent shrinkage into an explicit failure. All six harness-owned
+// that silent shrinkage into an explicit failure. All seven harness-owned
 // suites are pinned, plus the app-owned maptap-rivals suite by its owner's
 // choice; trip-planner and fpl-planner are not, by theirs. Adding or removing
 // a check on purpose means updating the pinned number in the same change.

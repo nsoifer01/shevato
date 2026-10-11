@@ -1809,6 +1809,81 @@ export async function run({ base, cdpPort, base2 = null }) {
       await leaveRoom(A);
     });
 
+    await guard('S11: a player swept while backgrounded is told, and leaves the room', async () => {
+      /* ---------- S11: the swept player is told ---------- */
+      /*
+       * The host's stale sweep deletes the doc of a player whose tab stopped
+       * heart-beating mid-game (a phone that backgrounded it). That is
+       * deliberate. What was missing is the other end: when the tab woke up,
+       * the rules refused its reads and its listeners died with no error
+       * callback, so the screen froze in the room, and an answer resolved as
+       * "Locked in" with nothing written. The page is FROZEN here through
+       * CDP's lifecycle state, which is what a backgrounded mobile tab gets:
+       * no timers, no heartbeat, no listener callbacks until it thaws.
+       *
+       * Before S10 on purpose: S10 closes the host for good.
+       */
+      await resetToLobby([A, B]);
+      await front(A);
+      await safeClick(A, '.game-type-btn[data-game-type="trivia"]', { settle: 300 });
+      await setValue(A, '#create-questions-count', '5');
+      await setValue(A, '#create-trivia-time', '30');
+      await safeClick(A, '#create-room-btn', { settle: 600 });
+      if (await evaluate(A, visible('name-prompt-modal'))) await safeClick(A, '#name-prompt-confirm', { settle: 500 });
+      await waitForExpr(A, visible('room-panel'), { timeout: 20000 });
+      const code11 = await roomCodeOf(A);
+      await setValue(B, '#join-code', code11);
+      await safeClick(B, '#join-room-btn', { settle: 600 });
+      await waitForExpr(B, visible('room-panel'), { timeout: 15000 });
+      await waitForExpr(A, nInLobby(2), { timeout: 12000 });
+      await waitForExpr(A, "(()=>{const b=document.getElementById('start-game-btn');return !!b && !b.disabled})()", { timeout: 10000 });
+      await safeClick(A, '#start-game-btn', { settle: 800 });
+      await advanceThroughPick([A, B]);
+      const playing11 = await waitRoom(code11, (st) => st.status === 'playing' && !!st.qid, 20000);
+      const bUid11 = await evaluate(B, 'window.firebaseAuth.getCurrentUser().uid');
+      t('emulator (S11): PRECONDITION, both players are in a playing game',
+        playing11.status === 'playing' && !!bUid11, `status=${playing11.status} b=${bUid11}`);
+
+      // B goes to the background: frozen, then stamped past the 30 s grace
+      // with the owner bypass (the stamp a backgrounded tab's unload leaves,
+      // as S8 and S10 do), so the HOST's own sweep is what deletes the doc.
+      await B.send('Page.setWebLifecycleState', { state: 'frozen' });
+      const path11 = `triviaRooms/${code11}/players/${bUid11}`;
+      await ownerPatch(path11, { disconnectedAt: Date.now() - 40000 });
+      const swept11 = await (async () => {
+        for (let i = 0; i < 80; i++) {
+          if ((await ownerGetDocRaw(path11, PAGE_PROJECT)).status !== 200) return true;
+          await sleep(250);
+        }
+        return false;
+      })();
+      t('emulator (S11): PRECONDITION, the host sweeps the backgrounded player mid-game', swept11);
+
+      // B wakes up. It must leave the room and say why, not sit in a dead one.
+      // A thawed tab's listeners do not hear the removal at once: the SDK
+      // re-establishes its stream first and only then is refused
+      // (permission-denied, measured 31-49 s after the thaw on the emulator,
+      // 2026-10-11; on master the tab was still in the dead room after 76 s), which
+      // is the error callback this exit hangs off.
+      await B.send('Page.setWebLifecycleState', { state: 'active' });
+      await front(B);
+      const woke11 = Date.now();
+      const left11 = await waitForExpr(B, `!(${visible('room-panel')})`, { timeout: 75000 });
+      console.log(`  [S11] the woken tab ${left11 ? 'left' : 'was still in the room'} after ${((Date.now() - woke11) / 1000).toFixed(1)}s`);
+      const toast11 = await evaluate(B, "(document.getElementById('ba-toast-stack')||{}).textContent || ''");
+      t('emulator (S11): the swept player is taken out of the room when the tab wakes', left11,
+        `after ${((Date.now() - woke11) / 1000).toFixed(1)}s, search=${JSON.stringify(await evaluate(B, 'window.location.search'))}`);
+      t('emulator (S11): and is told why', /removed from the room|lost connection to the room/i.test(toast11),
+        `toast=${JSON.stringify(toast11.slice(0, 120))}`);
+      const room11 = await roomState(code11);
+      // The game carries on for the host: still playing, or on to the next
+      // round's pick, never ended or reset by the other player's exit.
+      t('emulator (S11): the host stays in the game', ['playing', 'picking'].includes(room11.status)
+        && await evaluate(A, visible('room-panel')), `status=${room11.status}`);
+      await front(A);
+      await resetToLobby([A, B]);
+    });
+
     await guard('S10: the host tab goes away without leaving (clock-driven takeover)', async () => {
       /* ---------- S10: the host tab goes away without leaving ---------- */
       /*

@@ -315,8 +315,8 @@ function loadSeasonOverviews() {
   //
   // GAP FILLER ONLY. data/season-overviews.json is a one-off snapshot written
   // by the orphaned fetch-season-overviews.js (in no workflow since 2026-07-04)
-  // while enrich-tmdb.js refreshes seasonOverviews inside tmdb-cache.json every
-  // day. The side-file used to be applied last, on the theory that it was the
+  // while enrich-tmdb.js fills in seasonOverviews inside tmdb-cache.json on
+  // every run (seasons it has no text for yet). The side-file used to be applied last, on the theory that it was the
   // fresher of the two, so a July snapshot overwrote today's text for ~12k
   // seasons and its ''/null entries counted for nothing. Now the cache wins and
   // the side-file only supplies seasons the cache has no text for - and never

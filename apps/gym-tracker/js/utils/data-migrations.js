@@ -390,13 +390,22 @@ export function reconcileUnits(snapshot = {}, ctx = {}) {
         report.measurementsCanonical = measurements.length - unstamped.length;
         report.measurementsNeedingConfirmation = unstamped.length;
     } else if (provenance === LEGACY) {
+        let converted = 0;
         outMeasurements = measurements.map((m) => {
             if (isCanonicalRecord(m)) { report.measurementsCanonical += 1; return m; }
             report.changed = true;
+            converted += 1;
             return convertMeasurementToCanonical(m, accountUnit);
         });
-        outGoals = migrateMeasurementGoals(outGoals, accountUnit);
-        report.goalsRepaired = accountUnit !== 'kg';
+        // Goals carry no canonical stamp of their own; they migrate WITH the
+        // measurements they are compared against. Converting them whenever
+        // the version read 0 divided an lb account's goals again on every
+        // import (importData resets the version so an older file's weights
+        // migrate), though its measurements were stamped and left alone.
+        if (converted > 0) {
+            outGoals = migrateMeasurementGoals(outGoals, accountUnit);
+            report.goalsRepaired = accountUnit !== 'kg';
+        }
     } else if (provenance === CANONICAL) {
         outMeasurements = measurements.map((m) => {
             report.measurementsCanonical += 1;

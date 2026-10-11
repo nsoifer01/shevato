@@ -1682,3 +1682,45 @@ test('another tab\'s write holding a day twice shows collapsed but is left for t
   assert.equal(app._testExports.state.games.length, 3);
   assert.equal(app.localStorage.writes.length, before, 'same rule as the inline-cities migration: never rewrite another tab\'s write');
 });
+
+// MapTap's October 9 2026 file opened with a secretMessages pin ahead of
+// `cities`; reading from the top made that pin round 1 and shifted the real
+// five by one. Both parsers anchor on `cities = [` like MapTap's own loader.
+test('daily file parsers skip a secretMessages block ahead of cities', () => {
+  const src = [
+    'secretMessages = [ // Funchal',
+    '    { lat: 32.6500, lng: -16.9100, message: "Happy birthday!" }',
+    '];',
+    '',
+    'cities = [',
+    ' { id: "a", name: "Zurich, Switzerland", lat: 47.3769, lng: 8.5417, labelLat: 45, labelLng: -30 },',
+    ' { id: "b", name: "Bloemfontein, South Africa", lat: -29.1, lng: 26.2 },',
+    ' { id: "c", name: "Albuquerque, USA", lat: 35.08, lng: -106.65 },',
+    ' { id: "d", name: "Windhoek, Namibia", lat: -22.56, lng: 17.08 },',
+    ' { id: "e", name: "Burkina Faso", lat: 14.0354, lng: -0.0345 },',
+    '];',
+  ].join('\n');
+  const cities = plain(helpers.parseDailyCitiesText(src));
+  assert.equal(cities.length, 5);
+  assert.deepEqual(cities[0], { lat: 47.3769, lng: 8.5417 });
+  assert.deepEqual(cities[4], { lat: 14.0354, lng: -0.0345 });
+  assert.equal(plain(helpers.parseDailyNamesText(src))[0], 'Zurich, Switzerland');
+  // November 21's file: four real cities, then a commented-out draft after
+  // the array. MapTap plays only the array, so this is not a five-round day.
+  const parked = [
+    'cities = [',
+    ' { name: "Jerusalem", lat: 31.7683, lng: 35.2137 },',
+    ' { name: "Haifa", lat: 32.1149, lng: 34.8 },',
+    ' { name: "Islamabad", lat: 33.6844, lng: 73.0479 },',
+    ' { name: "Bern", lat: 46.9481, lng: 7.4474 },',
+    '];',
+    '/*  ---- PARKED DRAFT ----',
+    ' { name: "Tonnerre", lat: 48.8049, lng: 2.1204 },',
+    '*/',
+  ].join('\n');
+  assert.equal(helpers.parseDailyCitiesText(parked), null);
+  assert.equal(helpers.parseDailyNamesText(parked), null);
+  // A file with no `cities =` assignment still parses from the top.
+  const bare = src.slice(src.indexOf('cities = [') + 'cities = ['.length);
+  assert.deepEqual(plain(helpers.parseDailyCitiesText(bare))[0], { lat: 47.3769, lng: 8.5417 });
+});

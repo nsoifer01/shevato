@@ -258,7 +258,7 @@ const CourseDataConfig = {
 };
 ```
 
-> Note: MK8 Deluxe is currently `source.complete: false` - the 48 Booster Course Pass tracks are not vendored yet. Add them as new cups the same way.
+> Note: MK8 Deluxe is currently `source.complete: false`. All 48 base-game courses (12 cups, including the Egg, Triforce, Crossing and Bell cups that came from the Wii U DLC and ship in the Deluxe base game) are vendored; the 48 Booster Course Pass tracks (12 more cups) are not yet. Add them as new cups the same way.
 
 ## 🚀 Getting Started
 

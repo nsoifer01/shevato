@@ -306,6 +306,27 @@ call.
   definition, so a host cannot kick a live player. The old comments promised
   a "host TTL sweep" that did not exist anywhere. For why the stage gating is
   deliberate rather than an oversight, see "Host handoff" above.
+- **The swept player is told now (2026-10-11).** A player backgrounded past
+  `PRESENCE_STALE_MS` loses their doc to the sweep, and with it their
+  membership, so in a scoped room the rules refuse their reads. Both room
+  listeners had no error callback and died silently (frozen screen), and both
+  answer transactions `return`ed on a missing own doc, which resolved as
+  success and left "Locked in" on screen for nothing. Now: both `onSnapshot`
+  calls in `enterRoom` leave through `leaveRoom` with a toast on error, the
+  players listener also leaves when `RoomState.selfRemovedFromRoom` sees the
+  own uid drop out of a roster that held it while playing or picking (legacy
+  unscoped rooms never error), and the transactions throw so the existing
+  catch restores the UI. A normal close stays "Room closed." (a deleted room
+  doc is readable, `resource == null`), an own leave unsubscribes before it
+  deletes, and the first roster fill can never count. The heartbeat still
+  swallows its failure; the listeners are what notice. Pinned by
+  `tests/swept-player-exit.test.js` and end to end by emulator scenario S11,
+  which freezes the player's tab through CDP (`Page.setWebLifecycleState`,
+  what a backgrounded phone tab gets), lets the host's real sweep delete the
+  doc, and thaws it. The exit is NOT immediate: the thawed tab hears no
+  removal snapshot at all, and only once the SDK re-establishes its stream is
+  the listen refused (`permission-denied`), 31-49 s after the thaw across
+  five runs. On master the tab was still sitting in the dead room after 76 s.
 - **Teardown order is load-bearing**: room doc first, then chat, gate and
   leftover player docs (see the gate bullet above). Chat is append-only while
   the room lives - the rules only permit chat deletes once the room doc is
@@ -325,6 +346,29 @@ call.
   `isGuest`, and a registered player skips the lifetime `triviaH2H` pair
   write against a guest opponent - those rows could only ever orphan, since a
   guest uid dies with browser storage.
+
+## Wikidata top-cities query: timeout, and why the query is unchanged (2026-10-11)
+
+`runQuery` had no timeout, and `TOP_CITIES_QUERY` (transitive
+`wdt:P31/wdt:P279* wd:Q515`, pop > 100k, LIMIT 2000) is slow: 21.8, 22.8 and
+30.6 s on uncached 200s (2026-10-11), with 50-65 s and occasional 504s reported
+before. It now aborts at `QUERY_TIMEOUT_MS` (45 s), and the message reaches the
+"Could not fetch locations" alert. 15 s was tried on paper and refused: it
+would fail this round type on every healthy run.
+
+A rewrite that runs the label service AFTER the limit (inner
+`SELECT DISTINCT ... ORDER BY DESC(?pop) LIMIT 2000`, labels outside) took
+3.3-7.4 s on four of six runs but 12.0 and 32.1 s on the others, and returned
+the identical 2000 rows every time. It was still NOT adopted, because the row
+ORDER changes, and `fetchTopCitiesByCountry` dedupes by first occurrence: a
+city with several `P17` values (historic states) keeps whichever country row
+comes first. The rewrite's order put Bangkok under "Rattanakosin Kingdom",
+Yangon under "British rule in Myanmar", Tripoli under "Italian Tripolitania"
+and created five phantom countries (233 of 239 per-country finalists shared).
+The current query's order is not principled either (it files El Paso-Juarez
+under the US and Gaza City under Palestine), so making the query fast first
+needs the dedupe to prefer a current country, which is a behaviour change, not
+a speed fix.
 
 ## Behaviours fixed in the 2026-08-23 remediation round
 

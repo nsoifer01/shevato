@@ -3598,10 +3598,25 @@ const TripLogic = (() => {
   // cache has no such limit because a 5-year average of a past month is fixed.
   const FORECAST_TTL_MS = 3 * 60 * 60 * 1000;
 
-  function forecastEligible(date, today) {
+  // `utcToday` is optional. Open-Meteo counts its horizon from the UTC date,
+  // so on a device ahead of UTC (Tokyo before 09:00) local today + 15 is one
+  // day past what it answers, and the whole city's request 400s. Passing the
+  // UTC date caps the far end there as well.
+  function forecastEligible(date, today, utcToday) {
     if (!isIsoDate(date) || !isIsoDate(today)) return false;
     const d = diffDays(today, date);
-    return d >= 0 && d < FORECAST_DAYS;
+    if (!(d >= 0 && d < FORECAST_DAYS)) return false;
+    return !isIsoDate(utcToday) || diffDays(utcToday, date) < FORECAST_DAYS;
+  }
+
+  // The latest year whose `month` is fully in the past on `today`: the
+  // archive API refuses a future end_date, so a trip a year or more out
+  // cannot simply use "trip year minus one". Any complete year answers a
+  // place+month climate question equally well.
+  function climateEndYear(tripDate, month, today) {
+    const ty = Number(today.slice(0, 4));
+    const tm = Number(today.slice(5, 7));
+    return Math.min(Number(tripDate.slice(0, 4)) - 1, month < tm ? ty : ty - 1);
   }
 
   // Per place+DATE, unlike weatherKey's place+month: a forecast describes one
@@ -11107,7 +11122,7 @@ const TripLogic = (() => {
     departureOrigin, suggestedPassport, passportAssumptionParts,
     coveringStay, timelineGroups,
     defaultPlanDay, planDayGroups, weatherKey, summarizeClimate, weatherLine, weatherRange, pickMonthSamples, docGuard,
-    FORECAST_DAYS, FORECAST_TTL_MS, forecastEligible, forecastKey, forecastFresh, freshForecasts, summarizeForecast, forecastLine,
+    FORECAST_DAYS, FORECAST_TTL_MS, forecastEligible, climateEndYear, forecastKey, forecastFresh, freshForecasts, summarizeForecast, forecastLine,
     FORECAST_CONDITIONS, forecastConditionKey, forecastCondition, forecastChipParts,
     setTempUnit, getTempUnit, tempSpan,
     extractTripActions, validateTripAction, buildAssistPackage, buildAssistSystemPrompt,

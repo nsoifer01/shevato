@@ -49,7 +49,7 @@ shevato/
 ├── scripts/                          # Site-level build and CI helpers (partial inlining, release stamping, sitemap lastmod stamping, the publish directory, IndexNow submit, the Node version check, the bot PR autopilot)
 ├── sync-system/                      # localStorage <-> Firestore sync used by the apps (+ cross-cutting invariant tests)
 ├── tests/                            # Site-level test estate: static/, browser/, coverage/, cross-browser/, plus app-previews/ (the apps-hub preview image builder)
-├── .github/workflows/                # CI: tests, lint, browser tests, cross-browser smoke, arena emulator, rising-shows refresh, bot PR autopilot
+├── .github/workflows/                # CI: tests, lint, browser tests, cross-browser smoke, arena emulator, rising-shows refresh, bot PR autopilot, FPL deadline archive, FPL health backstop
 │
 ├── index.html                        # Apex shell, redirects to /home (noindex)
 ├── home.html                         # Main landing page
@@ -494,7 +494,7 @@ Latest two versions of Chrome, Edge, Firefox, and Safari (desktop and mobile).
 - FontAwesome (4.x and 6.x).
 - Chart.js (Mario Kart tracker, MapTap Rivals).
 - Firebase Auth + Firestore (optional sync; Arena requires Firestore for room state). `firebase-config.js` is auth only and loads on every page; `firebase-firestore.js` brings Firestore in for the sync engine, Arena and the MapTap rival network. There is no Realtime Database.
-- Netlify Functions: `tp-assist` and `tp-places` (Trip Planner AI assistant and venue ratings) and `fpl` (the cached, allowlisted read proxy in front of the public Fantasy Premier League API, which sends no CORS headers and is otherwise unreachable from a browser), and `csp-report` (the endpoint `netlify.toml` names for CSP violation reports; it logs them and stores nothing).
+- Netlify Functions: `tp-assist` and `tp-places` (Trip Planner AI assistant and venue ratings) and `fpl` (the cached, allowlisted read proxy in front of the public Fantasy Premier League API, which sends no CORS headers and is otherwise unreachable from a browser), `csp-report` (the endpoint `netlify.toml` names for CSP violation reports; it logs them and stores nothing), the three scheduled FPL Planner functions `fpl-health` (the six-hourly health probe), `fpl-archive-capture` (the hourly deadline archive) and `fpl-cache-prune` (the daily per-manager cache prune), and their read-only endpoints `fpl-health-status` and `fpl-archive-export`.
 - Netlify Edge Function: `block-crawler` runs on page requests only and answers 403 to one automated scraper (Chrome 99.0.4844.51 on Windows 10 from China, which inflated GA4's user count about tenfold from 2026-09-24); every other request passes through unchanged.
 
 ## Contact

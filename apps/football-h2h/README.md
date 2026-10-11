@@ -52,7 +52,7 @@ Opening `index.html` directly over `file://` works for the core tracker, but the
 ## Running tests
 
 ```sh
-npm run test:football          # or: node --test apps/football-h2h/tests/
+npm run test:football          # or: node --test "apps/football-h2h/tests/**/*.test.*"
 ```
 
 No browser and no server: everything runs under `node --test`.
@@ -65,6 +65,7 @@ No browser and no server: everything runs under `node --test`.
 | ---- | ------ |
 | `matchLogic.test.js` | The pure helpers in `js/match-logic.js`: table sorting (Game # by the displayed number, zero and negative goal counts), sequential ID and game-number assignment (`nextGameId` / `nextGameNumber` / `assignIds`), `parseGoals` / `isDraw`, the text limits, penalty-winner normalization, and import-payload validation (envelope AND per-game rows: score checks, coercion, id assignment, duplicate ids, unreadable dates, rejected-row counting). |
 | `modalRenderer.test.js` | The modal renderer (`renderFormFieldsHtml` in `js/modalUtils.js`) with the real `escapeHtml`: hostile and quoted values create no element and round-trip through the value attribute; the edit save path keeps a quoted note / team across two edits; the delete confirm escapes player names. |
+| `modalSemantics.test.js` | Dialog and toast semantics for assistive technology: dialogs built by `modalUtils` carry `role="dialog"` (`alertdialog` for confirms), `aria-modal` and an accessible name, and toasts are live regions: success is a polite `status`, an error an assertive `alert`. |
 | `pagination.test.js` | `assets/js/pagination.js` (shared with mario-kart): the current page clamps when the item count shrinks. |
 | `textAndSummary.test.js` | `updatePlayerName` trimming / capping / blank fallback, the session summary's chronological ordering, and that `buildSessionSummaryText` skips a game with a missing score instead of misattributing its win and NaN-poisoning the goal total. |
 | `playerStats.test.js` | `js/playerStats.js`: per-player stats, penalty-aware match results (including tolerance for legacy string penalty winners), streak and run detection, comparison-table formatters. |

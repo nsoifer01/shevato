@@ -119,7 +119,7 @@ release.
 
 ## How CI runs it
 
-The estate is 32 suites (`SUITES` in run.mjs, counted 2026-09-13) walked one at
+The estate is 33 suites (`SUITES` in run.mjs, counted 2026-10-11) walked one at
 a time in one browser per machine, so the way to finish sooner is to put the
 suites on more machines. The `browser-shard` jobs of `.github/workflows/ci.yml`
 are a matrix, each job taking its share of the list:

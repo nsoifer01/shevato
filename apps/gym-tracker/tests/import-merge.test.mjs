@@ -211,3 +211,80 @@ test('a malformed payload fails safely and leaves the stores alone', () => {
     assert.equal(result.ok, false);
     assert.equal(svc.getPrograms()[0].name, 'Push Day A');
 });
+
+// ---------------------------------------------------------------------------
+// The four preference stores a "full JSON backup" used to leave out
+// ---------------------------------------------------------------------------
+// exportAllData wrote programs/sessions/settings/achievements/custom
+// exercises/measurements only, so an export followed by a Replace import on a
+// fresh device silently lost measurement goals, the warm-up ramp and the
+// program list's drag order and sort (2026-10-11 audit).
+
+const goals = { weight: { target: 80, direction: 'down' } };
+const warmup = { enabled: false, thresholdKg: 60, thresholdLb: 135, ramp: [{ pct: 50, reps: 5 }] };
+
+function seedPreferences(svc) {
+    svc.saveMeasurementGoals(goals);
+    svc.set('gymTrackerWarmupSettings', warmup);
+    svc.saveProgramOrder([3, 1, 2]);
+    svc.saveProgramSort('name-desc');
+}
+
+test('export + REPLACE import on a fresh device preserves goals, warm-up, order and sort', () => {
+    const source = freshService();
+    seedPreferences(source);
+    const file = JSON.parse(JSON.stringify(source.exportAllData()));
+
+    const target = freshService();
+    const result = target.importAllData(file, { mode: IMPORT_MODES.REPLACE });
+    assert.equal(result.ok, true);
+    assert.deepEqual(target.getMeasurementGoals(), goals);
+    assert.deepEqual(target.get('gymTrackerWarmupSettings'), warmup);
+    assert.deepEqual(target.getProgramOrder(), [3, 1, 2]);
+    assert.equal(target.getProgramSort(), 'name-desc');
+});
+
+test('an older export without the four stores still imports and leaves them alone', () => {
+    for (const mode of [IMPORT_MODES.REPLACE, IMPORT_MODES.MERGE]) {
+        const svc = freshService();
+        seedPreferences(svc);
+        const legacy = { version: '2.0', programs: [{ id: 9, name: 'Old' }], sessions: [] };
+        const result = svc.importAllData(legacy, { mode });
+        assert.equal(result.ok, true, mode);
+        assert.deepEqual(svc.getMeasurementGoals(), goals, mode);
+        assert.deepEqual(svc.get('gymTrackerWarmupSettings'), warmup, mode);
+        assert.deepEqual(svc.getProgramOrder(), [3, 1, 2], mode);
+        assert.equal(svc.getProgramSort(), 'name-desc', mode);
+    }
+});
+
+test('an import never writes a preference the user and the file both lack', () => {
+    const store = new Map();
+    globalThis.localStorage = {
+        getItem: (k) => (store.has(k) ? store.get(k) : null),
+        setItem: (k, v) => store.set(k, String(v)),
+        removeItem: (k) => store.delete(k),
+    };
+    const svc = new StorageService();
+    svc.importAllData({ version: '2.0', programs: [{ id: 1 }] }, { mode: IMPORT_MODES.REPLACE });
+    for (const key of ['gymTrackerMeasurementGoals', 'gymTrackerWarmupSettings',
+        'gymTrackerProgramOrder', 'gymTrackerProgramSort']) {
+        assert.equal(store.has(key), false, `${key} was materialised from a default`);
+    }
+});
+
+test('MERGE: goals and warm-up overlay key by key, order keeps yours and appends, file sort wins', () => {
+    const svc = freshService();
+    seedPreferences(svc);
+    svc.importAllData({
+        version: '2.0',
+        measurementGoals: { waist: { target: 80, direction: 'down' } },
+        warmupSettings: { enabled: true },
+        programOrder: [2, '7'],
+        programSort: 'custom',
+    });
+    assert.deepEqual(svc.getMeasurementGoals(), { ...goals, waist: { target: 80, direction: 'down' } });
+    assert.deepEqual(svc.get('gymTrackerWarmupSettings'), { ...warmup, enabled: true });
+    assert.deepEqual(svc.getProgramOrder(), [3, 1, 2, '7'], 'an id already in the order is not duplicated');
+    assert.equal(svc.getProgramSort(), 'custom');
+});

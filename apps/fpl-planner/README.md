@@ -214,25 +214,6 @@ apps/fpl-planner/
       projections.js     position-specific expected points, carried rates
       ml.js              ridge / poisson / logistic regression, calibration, metrics
       lineup.js          optimal XI and bench order
-
-**The one expected-points number, and its named parts.** `plan.xPointsGw` is
-"expected final FPL points this gameweek": what the manager should expect to
-score. `planner.js` `gameweekPoints()` is the only place it is computed:
-
-    xPointsGw = xPointsXi                       the eleven that starts
-              + xPointsAutosubs                 legal auto-substitutions,
-                                                zero under Bench Boost
-              + m * xPointsCaptaincy            m = 2 under Triple Captain else
-                                                1; each copy is the captain when
-                                                he plays and the VICE when he
-                                                does not
-              + xPointsBenchPaid                Bench Boost only
-
-Each component is carried on the plan under those names, so nothing downstream
-re-derives "expected points" a second way. `xPointsNet` is the same number less
-the hit. `xPointsHorizon` and `objective` are a DIFFERENT quantity - the
-discounted ranking objective - and deliberately contain neither
-auto-substitutions nor vice succession; see the note in `gameweekPoints`.
       captain.js         captain and vice-captain, ranked on a certainty
                          equivalent plus four BOUNDED tilts (duty, fixture,
                          confidence), with the vice discounted by a MEASURED
@@ -284,13 +265,40 @@ auto-substitutions nor vice succession; see the note in `gameweekPoints`.
                          and tests/xp-calibration-guard.test.mjs
     lib/archive*.mjs     archive naming, gating, manifest and scorecard metrics
     lib/odds-football-data.mjs  football-data.co.uk team-name map and loader
+    lib/probe.mjs        the health-probe invariants (evidence-probe.mjs and fpl-health)
   e2e/                   browser suites (raw CDP): the interactive scenario
                          workflow and the gameweek lifecycle boundaries
   GW1-RUNBOOK.md         the live checks to run around the opening deadline
   tests/                 *.test.mjs plus committed fixtures/
 netlify/functions/fpl.mjs           the FPL read proxy
 netlify/functions/lib/fpl-cache.mjs its allowlist, TTL policy and cache pipeline
+netlify/functions/fpl-health.mjs    scheduled health probe (`41 */6 * * *`)
+netlify/functions/fpl-health-status.mjs    serves the probe's latest result
+netlify/functions/fpl-archive-capture.mjs  scheduled deadline-archive capture (`7 * * * *`)
+netlify/functions/fpl-archive-export.mjs   serves the staged archive to fpl-archive.yml
+netlify/functions/fpl-cache-prune.mjs      scheduled per-manager cache prune (`0 4 * * *`)
+netlify/functions/lib/fpl-health-run.mjs   the probe run, slot claim and alert
+netlify/functions/lib/fpl-archive-stage.mjs  the staging store the capture writes
 ```
+
+**The one expected-points number, and its named parts.** `plan.xPointsGw` is
+"expected final FPL points this gameweek": what the manager should expect to
+score. `planner.js` `gameweekPoints()` is the only place it is computed:
+
+    xPointsGw = xPointsXi                       the eleven that starts
+              + xPointsAutosubs                 legal auto-substitutions,
+                                                zero under Bench Boost
+              + m * xPointsCaptaincy            m = 2 under Triple Captain else
+                                                1; each copy is the captain when
+                                                he plays and the VICE when he
+                                                does not
+              + xPointsBenchPaid                Bench Boost only
+
+Each component is carried on the plan under those names, so nothing downstream
+re-derives "expected points" a second way. `xPointsNet` is the same number less
+the hit. `xPointsHorizon` and `objective` are a DIFFERENT quantity - the
+discounted ranking objective - and deliberately contain neither
+auto-substitutions nor vice succession; see the note in `gameweekPoints`.
 
 Every module under `js/engine/` is a pure ES module with no DOM access, so `node --test` imports it directly. Only `app.js`, `worker.js`, `ui/*` and `data/*` touch browser APIs. `apps/fpl-planner/package.json` sets `"type": "module"` so the `.js` engine files are ESM under Node as well as in the browser.
 
@@ -1281,7 +1289,7 @@ and the scheduled run.
 On a schedule it runs on Netlify, not GitHub: `netlify/functions/fpl-health.mjs`
 (`41 */6 * * *`, so 00:41, 06:41, 12:41 and 18:41 UTC) probes production
 through the proxy, at most once per six-hour slot, and stores the result in the
-`fpl-health` blob store. A run is the 20 invariants plus "the previous scheduled
+`fpl-health` blob store. A run is the 21 invariants plus "the previous scheduled
 run recorded its result", about 2 seconds locally and 13.5 on Netlify (its
 limit is 30). `/.netlify/functions/fpl-health-status` serves it: 200 when the
 last run passed and is under 7 hours old; 503 when it failed, when no run has

@@ -4,11 +4,11 @@
     "sha256": "6368cd399ddef7a2"
   },
   "js/trip-logic.js": {
-    "pin": 57,
-    "sha256": "d7d11490e93c6035"
+    "pin": 58,
+    "sha256": "047a7f46c03b6106"
   },
   "js/app.js": {
-    "pin": 86,
-    "sha256": "6334894b76de660e"
+    "pin": 87,
+    "sha256": "6519cde630a90b5a"
   }
 }

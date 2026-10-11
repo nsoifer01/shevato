@@ -3,7 +3,7 @@
  * Manages all data storage operations (localStorage + Firebase sync)
  */
 import { sameId } from '../utils/id-utils.js';
-import { IMPORT_MODES, mergeImportedData } from '../utils/import-merge.js';
+import { IMPORT_MODES, isPlainObject, mergeImportedData } from '../utils/import-merge.js';
 import { sanitizeImportData } from '../utils/import-sanitize.js';
 
 export class StorageService {
@@ -368,6 +368,10 @@ export class StorageService {
             customExercises: this.getCustomExercises(),
             measurements: this.getMeasurements(),
             activeProgram: this.get(this.keys.ACTIVE_PROGRAM),
+            measurementGoals: this.getMeasurementGoals(),
+            warmupSettings: this.get(this.keys.WARMUP_SETTINGS),
+            programOrder: this.getProgramOrder(),
+            programSort: this.getProgramSort(),
             exportDate: new Date().toISOString(),
             version: StorageService.SCHEMA_VERSION
         };
@@ -442,6 +446,12 @@ export class StorageService {
             customExercises: this.getCustomExercises(),
             measurements: this.getMeasurements(),
             activeProgram: this.get(this.keys.ACTIVE_PROGRAM),
+            // Raw reads (null when never stored), so writing a snapshot back
+            // never materialises a default the user did not have.
+            measurementGoals: this.get(this.keys.MEASUREMENT_GOALS),
+            warmupSettings: this.get(this.keys.WARMUP_SETTINGS),
+            programOrder: this.get(this.keys.PROGRAM_ORDER),
+            programSort: this.get(this.keys.PROGRAM_SORT),
         };
     }
 
@@ -464,7 +474,13 @@ export class StorageService {
             this.saveMeasurements(snapshot.measurements || []),
             snapshot.activeProgram
                 ? this.set(this.keys.ACTIVE_PROGRAM, snapshot.activeProgram)
-                : this.remove(this.keys.ACTIVE_PROGRAM)
+                : this.remove(this.keys.ACTIVE_PROGRAM),
+            ...[
+                [this.keys.MEASUREMENT_GOALS, snapshot.measurementGoals],
+                [this.keys.WARMUP_SETTINGS, snapshot.warmupSettings],
+                [this.keys.PROGRAM_ORDER, snapshot.programOrder],
+                [this.keys.PROGRAM_SORT, snapshot.programSort],
+            ].map(([key, value]) => (value == null ? true : this.set(key, value))),
         ];
         return results.every((ok) => ok !== false);
     }
@@ -503,6 +519,12 @@ export class StorageService {
                         ? payload.customExercises : before.customExercises,
                     measurements: Array.isArray(payload.measurements) ? payload.measurements : before.measurements,
                     activeProgram: payload.activeProgram || null,
+                    measurementGoals: isPlainObject(payload.measurementGoals)
+                        ? payload.measurementGoals : before.measurementGoals,
+                    warmupSettings: isPlainObject(payload.warmupSettings)
+                        ? payload.warmupSettings : before.warmupSettings,
+                    programOrder: Array.isArray(payload.programOrder) ? payload.programOrder : before.programOrder,
+                    programSort: typeof payload.programSort === 'string' ? payload.programSort : before.programSort,
                 };
                 const wrote = this.writeStores(after);
                 return { ok: wrote, mode, before, after, repairs, storageFull: !wrote };

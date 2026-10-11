@@ -28,11 +28,19 @@ The workflow `.github/workflows/refresh-rising-shows.yml` runs daily at
    in sequence, `enrich-tmdb.js` (posters / overviews / language) then
    `enrich-providers.js` (US watch providers), and rebuilds so the new
    fields are merged in. The TMDB cache is persisted between runs via
-   `actions/cache` so each refresh only fetches metadata for newly-
-   discovered series.
+   `actions/cache`, so a refresh fetches newly-discovered series plus the
+   rows it retries every run: shows TMDB has no match or no poster for
+   (about 2,300) and empty cast lists (about 4,100). A retry that lands on
+   the same TMDB show keeps the providers and season fields already cached
+   (`mergeResolvedRow`). GitHub evicts a cache unused for 7 days, so a
+   refresh paused that long starts cold and needs more than the 6-hour job
+   limit: the first run is cut off with its cache saved, and a second run
+   finishes (1-2 October 2026). Dispatch it once within a week of a pause
+   to avoid that.
 4. Runs the test suite.
-5. If the data actually changed (byte-compare against the previous
-   release assets), gzips `data.json` + `data/show-modal-extras.json`
+5. If the data actually changed (its `contentHash` differs from the
+   previous release's, or `show-modal-extras.json` differs byte for byte),
+   gzips `data.json` + `data/show-modal-extras.json`
    and uploads them to the `rising-shows-data` release with
    `gh release upload --clobber`.
 6. Commits the small derived files (`changelog.json`, `exports/`) and
