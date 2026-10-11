@@ -1,6 +1,244 @@
 {
   "updates": [
     {
+      "builtAt": "2026-10-11T12:47:38.604Z",
+      "totals": {
+        "seasons": 67158,
+        "delta": 18
+      },
+      "shapeCounts": {
+        "rebound": 10216,
+        "rising": 2651,
+        "slow-burn": 4448,
+        "big-finale": 12256,
+        "u-shaped": 3088,
+        "rollercoaster": 14238,
+        "saved-best-for-last": 1473,
+        "shape-drift": 1584,
+        "mid-peak": 4647,
+        "front-loaded": 3508,
+        "declining": 1911,
+        "bad-finale": 4684,
+        "consistent": 2654
+      },
+      "shapeDeltas": {
+        "rebound": -5,
+        "rising": 5,
+        "big-finale": 13,
+        "u-shaped": 1,
+        "rollercoaster": -4,
+        "saved-best-for-last": -1,
+        "shape-drift": -3,
+        "front-loaded": -2,
+        "declining": 4,
+        "bad-finale": 4,
+        "consistent": -4
+      },
+      "added": [
+        {
+          "seriesId": "tt35854736",
+          "title": "Avatar: Seven Havens",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt32499579",
+          "title": "Haunted Hotel",
+          "season": 2,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt36984433",
+          "title": "S.W.A.T. Exiles",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt37737331",
+          "title": "Take Charge of My Heart",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt22003362",
+          "title": "Special Forces: World's Toughest Test",
+          "season": 5,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt0924651",
+          "title": "The Graham Norton Show",
+          "season": 34,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt0061293",
+          "title": "The Second Hundred Years",
+          "season": 1,
+          "seasonYear": 1967
+        },
+        {
+          "seriesId": "tt37956320",
+          "title": "Play for Today",
+          "season": 2,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt40407840",
+          "title": "Paolo",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt0103396",
+          "title": "Dateline NBC",
+          "season": 35,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt46669647",
+          "title": "Ingorgo",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt13540190",
+          "title": "Deliciousness",
+          "season": 1,
+          "seasonYear": 2020
+        },
+        {
+          "seriesId": "tt44632465",
+          "title": "Anne Yarisi",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt32750414",
+          "title": "Break Clause",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt3392714",
+          "title": "Das Sommerhaus der Stars - Kampf der Promipaare",
+          "season": 11,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt14112170",
+          "title": "Bangers & Cash",
+          "season": 1,
+          "seasonYear": 2019
+        },
+        {
+          "seriesId": "tt28296035",
+          "title": "Khat Kabbadi",
+          "season": 1,
+          "seasonYear": 2022
+        },
+        {
+          "seriesId": "tt45495066",
+          "title": "The Howard Stern Show",
+          "season": 1,
+          "seasonYear": 2026
+        }
+      ],
+      "removed": [],
+      "ratingSwings": [
+        {
+          "seriesId": "tt3551980",
+          "title": "Dinner at Tiffani's",
+          "season": 3,
+          "from": 7.92,
+          "to": 6.92,
+          "delta": -1
+        },
+        {
+          "seriesId": "tt3551980",
+          "title": "Dinner at Tiffani's",
+          "season": 2,
+          "from": 8.3,
+          "to": 7.35,
+          "delta": -0.95
+        },
+        {
+          "seriesId": "tt3551980",
+          "title": "Dinner at Tiffani's",
+          "season": 1,
+          "from": 8.28,
+          "to": 7.34,
+          "delta": -0.94
+        },
+        {
+          "seriesId": "tt1809014",
+          "title": "My Strange Addiction",
+          "season": 5,
+          "from": 5.9,
+          "to": 6.36,
+          "delta": 0.46
+        },
+        {
+          "seriesId": "tt35934755",
+          "title": "Below",
+          "season": 1,
+          "from": 7.48,
+          "to": 7.03,
+          "delta": -0.45
+        },
+        {
+          "seriesId": "tt10253244",
+          "title": "Search: WWW",
+          "season": 1,
+          "from": 8.71,
+          "to": 8.28,
+          "delta": -0.43
+        },
+        {
+          "seriesId": "tt38268282",
+          "title": "Steel Ball Run: JoJo's Bizarre Adventure",
+          "season": 2,
+          "from": 8.98,
+          "to": 9.4,
+          "delta": 0.42
+        },
+        {
+          "seriesId": "tt45584297",
+          "title": "Africa Earth's Wild Home",
+          "season": 1,
+          "from": 7.77,
+          "to": 7.35,
+          "delta": -0.42
+        },
+        {
+          "seriesId": "tt1809014",
+          "title": "My Strange Addiction",
+          "season": 4,
+          "from": 5.56,
+          "to": 5.96,
+          "delta": 0.4
+        },
+        {
+          "seriesId": "tt3392714",
+          "title": "Das Sommerhaus der Stars - Kampf der Promipaare",
+          "season": 9,
+          "from": 6.4,
+          "to": 6,
+          "delta": -0.4
+        }
+      ],
+      "modifiedCounts": {
+        "seriesVotes": 20845,
+        "avgRating": 1251,
+        "shapes": 207,
+        "seriesRating": 346,
+        "episodeCount": 71,
+        "poster": 28,
+        "overview": 29,
+        "providers": 10
+      }
+    },
+    {
       "builtAt": "2026-10-10T12:29:32.665Z",
       "totals": {
         "seasons": 67140,
@@ -9692,299 +9930,6 @@
         "poster": 3,
         "overview": 4,
         "providers": 1
-      }
-    },
-    {
-      "builtAt": "2026-08-22T06:47:41.488Z",
-      "totals": {
-        "seasons": 66380,
-        "delta": 15
-      },
-      "shapeCounts": {
-        "mid-peak": 4631,
-        "rebound": 10107,
-        "rising": 2905,
-        "slow-burn": 4403,
-        "big-finale": 12167,
-        "u-shaped": 3104,
-        "rollercoaster": 14100,
-        "saved-best-for-last": 1555,
-        "front-loaded": 3489,
-        "declining": 1884,
-        "bad-finale": 4690,
-        "consistent": 2625,
-        "shape-drift": 1654
-      },
-      "shapeDeltas": {
-        "mid-peak": -7,
-        "rebound": -6,
-        "rising": -3,
-        "slow-burn": 2,
-        "big-finale": -2,
-        "u-shaped": 2,
-        "rollercoaster": 4,
-        "saved-best-for-last": 3,
-        "front-loaded": 5,
-        "declining": 3,
-        "bad-finale": -3,
-        "consistent": -5,
-        "shape-drift": 1
-      },
-      "added": [
-        {
-          "seriesId": "tt1146333",
-          "title": "Shark Week",
-          "season": 38,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt0426745",
-          "title": "Maya & Miguel",
-          "season": 3,
-          "seasonYear": 2005
-        },
-        {
-          "seriesId": "tt43657402",
-          "title": "Umthetho",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt3010856",
-          "title": "The Great British Sewing Bee",
-          "season": 12,
-          "seasonYear": 2025
-        },
-        {
-          "seriesId": "tt4859164",
-          "title": "The Loud House",
-          "season": 11,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt1271995",
-          "title": "Ojciec Mateusz",
-          "season": 3,
-          "seasonYear": 2010
-        },
-        {
-          "seriesId": "tt13315772",
-          "title": "Perv Mom",
-          "season": 2,
-          "seasonYear": 2019
-        },
-        {
-          "seriesId": "tt21248600",
-          "title": "Chibiverse",
-          "season": 4,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt27148130",
-          "title": "Murder in the Red Light",
-          "season": 1,
-          "seasonYear": 2023
-        },
-        {
-          "seriesId": "tt28717624",
-          "title": "School Friends",
-          "season": 3,
-          "seasonYear": 2025
-        },
-        {
-          "seriesId": "tt31860531",
-          "title": "Catching Up",
-          "season": 1,
-          "seasonYear": 2024
-        },
-        {
-          "seriesId": "tt32502749",
-          "title": "Nachtstreife",
-          "season": 1,
-          "seasonYear": 2020
-        },
-        {
-          "seriesId": "tt32502749",
-          "title": "Nachtstreife",
-          "season": 4,
-          "seasonYear": 2025
-        },
-        {
-          "seriesId": "tt32502749",
-          "title": "Nachtstreife",
-          "season": 6,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt39929238",
-          "title": "Ferry Lost",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt43640818",
-          "title": "Final Project",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt43686214",
-          "title": "Meztelen igazság",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt43710542",
-          "title": "Hello! Hum Bol Rahe Hain",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt43707783",
-          "title": "Women's Self Defense Championship",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt43597214",
-          "title": "Bock Saga",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt6423184",
-          "title": "Ghost Chasers",
-          "season": 1,
-          "seasonYear": 2016
-        }
-      ],
-      "removed": [
-        {
-          "seriesId": "tt1138645",
-          "title": "Bizarre Foods with Andrew Zimmern",
-          "season": 12,
-          "seasonYear": 2018
-        },
-        {
-          "seriesId": "tt2558662",
-          "title": "Food Factory",
-          "season": 3,
-          "seasonYear": 2013
-        },
-        {
-          "seriesId": "tt2558662",
-          "title": "Food Factory",
-          "season": 5,
-          "seasonYear": 2015
-        },
-        {
-          "seriesId": "tt2558662",
-          "title": "Food Factory",
-          "season": 6,
-          "seasonYear": 2014
-        },
-        {
-          "seriesId": "tt6269222",
-          "title": "Mommy Got Boobs",
-          "season": 14,
-          "seasonYear": 2018
-        },
-        {
-          "seriesId": "tt6520014",
-          "title": "Adaptatsiya",
-          "season": 1,
-          "seasonYear": 2017
-        }
-      ],
-      "ratingSwings": [
-        {
-          "seriesId": "tt26685570",
-          "title": "Disney How NOT to Draw",
-          "season": 3,
-          "from": 8.01,
-          "to": 6.87,
-          "delta": -1.14
-        },
-        {
-          "seriesId": "tt36053205",
-          "title": "Rebaa",
-          "season": 1,
-          "from": 9.39,
-          "to": 8.34,
-          "delta": -1.05
-        },
-        {
-          "seriesId": "tt44126845",
-          "title": "The World in the Shadows",
-          "season": 3,
-          "from": 7.87,
-          "to": 6.93,
-          "delta": -0.94
-        },
-        {
-          "seriesId": "tt36053205",
-          "title": "Rebaa",
-          "season": 2,
-          "from": 9.25,
-          "to": 8.36,
-          "delta": -0.89
-        },
-        {
-          "seriesId": "tt38607962",
-          "title": "Ágata y Lola",
-          "season": 1,
-          "from": 7.57,
-          "to": 8.23,
-          "delta": 0.66
-        },
-        {
-          "seriesId": "tt9280252",
-          "title": "Tozkoparan",
-          "season": 1,
-          "from": 8.82,
-          "to": 8.18,
-          "delta": -0.64
-        },
-        {
-          "seriesId": "tt42071698",
-          "title": "Cousins and Kalyanams",
-          "season": 1,
-          "from": 7.11,
-          "to": 7.74,
-          "delta": 0.63
-        },
-        {
-          "seriesId": "tt21248600",
-          "title": "Chibiverse",
-          "season": 3,
-          "from": 8.63,
-          "to": 8.05,
-          "delta": -0.58
-        },
-        {
-          "seriesId": "tt11497386",
-          "title": "Ghost Loop",
-          "season": 1,
-          "from": 5.8,
-          "to": 6.33,
-          "delta": 0.53
-        },
-        {
-          "seriesId": "tt1388815",
-          "title": "La commanderie",
-          "season": 1,
-          "from": 7.04,
-          "to": 6.55,
-          "delta": -0.49
-        }
-      ],
-      "modifiedCounts": {
-        "seriesVotes": 17246,
-        "avgRating": 1051,
-        "seriesRating": 296,
-        "shapes": 198,
-        "episodeCount": 57,
-        "poster": 4
       }
     }
   ]
