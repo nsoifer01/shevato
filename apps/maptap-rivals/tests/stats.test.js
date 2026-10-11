@@ -21,7 +21,7 @@ const {
   finishPositionsForDay, fieldSharesForDay, competitionRanksForDay,
   accumulateFinishPositions,
   avgPositionColor, avgPositionColors,
-  myAvgByContinent,
+  myAvgByContinent, myAvgByRound,
   compareNamesCI, compareWinPctDesc,
 } = require('../js/stats.js');
 
@@ -2273,4 +2273,98 @@ test('sanitizeBackup: a backup holding the same rival and day twice imports one 
   assert.deepEqual(r.dropped, { rivals: 0, games: 0 }, 'a merge drops no data, so it is not counted as skipped');
   assert.ok(r.repaired.some(x => /games #1, #3 \(2026-08-03\)/.test(x) && /merged into one/.test(x)), r.repaired.join(' | '));
   assert.equal(S.overallRecord(r.games).games, 2);
+});
+
+// --- myAvgByRound ----------------------------------------------------------
+
+const h2h = (date, rivalId, myScores, theirScores) =>
+  ({ id: `${date}-${rivalId}`, rivalId, date, myScores, theirScores });
+
+test('myAvgByRound: averages my rounds and the rivals\' rounds, with the gap in daily points', () => {
+  const out = myAvgByRound([
+    h2h('2026-08-01', 'a', [90, 80, 70, 60, 50], [80, 80, 80, 80, 80]),
+    h2h('2026-08-02', 'a', [100, 90, 80, 70, 60], [90, 70, 60, 90, 40]),
+  ], ['a']);
+  assert.equal(out.days, 2);
+  assert.equal(out.rivalRows, 2);
+  assert.deepEqual(out.rows.map(r => r.round), [1, 2, 3, 4, 5]);
+  assert.deepEqual(out.rows.map(r => r.weight), WEIGHTS);
+  assert.deepEqual(out.rows.map(r => r.myAvg), [95, 85, 75, 65, 55]);
+  assert.deepEqual(out.rows.map(r => r.rivalsAvg), [85, 75, 70, 85, 60]);
+  assert.deepEqual(out.rows.map(r => r.diff), [10, 10, 5, -20, -5]);
+  assert.deepEqual(out.rows.map(r => r.points), [10, 10, 10, -60, -15]);
+  assert.equal(out.netPoints, -45);
+  assert.equal(out.weakest, 3, 'round 4 costs the most points (-60)');
+  assert.equal(out.strongest, 0, 'rounds 1-3 tie on +10; the first one wins the tie');
+});
+
+test('myAvgByRound: netPoints equals my average daily total minus the rivals\'', () => {
+  const games = [
+    h2h('2026-08-01', 'a', [93, 88, 71, 64, 52], [97, 91, 80, 55, 61]),
+    h2h('2026-08-02', 'a', [100, 76, 90, 81, 33], [88, 94, 70, 79, 72]),
+    h2h('2026-08-02', 'b', [100, 76, 90, 81, 33], [60, 99, 85, 40, 90]),
+  ];
+  const out = myAvgByRound(games, ['a', 'b']);
+  const myDaily = (weightedTotal(games[0].myScores) + weightedTotal(games[1].myScores)) / 2;
+  const rivalsDaily = (weightedTotal(games[0].theirScores) +
+    (weightedTotal(games[1].theirScores) + weightedTotal(games[2].theirScores)) / 2) / 2;
+  closeTo(out.netPoints, myDaily - rivalsDaily);
+  closeTo(out.rows.reduce((s, r) => s + r.points, 0), out.netPoints);
+});
+
+test('myAvgByRound: a day logged against 3 rivals counts once on my side, and once (averaged) on theirs', () => {
+  const out = myAvgByRound([
+    h2h('2026-08-01', 'a', [50, 50, 50, 50, 50], [90, 90, 90, 90, 90]),
+    h2h('2026-08-01', 'b', [50, 50, 50, 50, 50], [60, 60, 60, 60, 60]),
+    h2h('2026-08-01', 'c', [50, 50, 50, 50, 50], [30, 30, 30, 30, 30]),
+    h2h('2026-08-02', 'a', [70, 70, 70, 70, 70], [70, 70, 70, 70, 70]),
+  ], ['a', 'b', 'c']);
+  assert.equal(out.days, 2);
+  assert.equal(out.rivalRows, 4);
+  // Day 1's rivals average 60, day 2's 70: 65 per round. Row-averaging
+  // would give (90+60+30+70)/4 = 62.5 and over-weight the busy day.
+  assert.deepEqual(out.rows.map(r => r.rivalsAvg), [65, 65, 65, 65, 65]);
+  assert.deepEqual(out.rows.map(r => r.myAvg), [60, 60, 60, 60, 60]);
+});
+
+test('myAvgByRound: rival-only, me-only, totals-only and orphaned rows contribute nothing', () => {
+  const out = myAvgByRound([
+    h2h('2026-08-01', 'a', [80, 80, 80, 80, 80], [70, 70, 70, 70, 70]),
+    { id: 'ro', rivalId: 'a', date: '2026-08-02', theirScores: [10, 10, 10, 10, 10], theirScore: 100 },
+    { id: 'mo', rivalId: 'a', date: '2026-08-03', myScores: [10, 10, 10, 10, 10], myScore: 100 },
+    { id: 'tt', rivalId: 'a', date: '2026-08-04', myScore: 900, theirScore: 100 },
+    h2h('2026-08-05', 'gone', [0, 0, 0, 0, 0], [100, 100, 100, 100, 100]),
+  ], ['a']);
+  assert.equal(out.days, 1);
+  assert.deepEqual(out.rows.map(r => r.myAvg), [80, 80, 80, 80, 80]);
+  assert.deepEqual(out.rows.map(r => r.rivalsAvg), [70, 70, 70, 70, 70]);
+});
+
+test('myAvgByRound: a row with a malformed round is skipped whole, never read as 0', () => {
+  const out = myAvgByRound([
+    h2h('2026-08-01', 'a', [80, 80, 80, 80, 80], [70, 70, 70, 70, 70]),
+    h2h('2026-08-02', 'a', [80, null, 80, 80, 80], [70, 70, 70, 70, 70]),
+    h2h('2026-08-03', 'a', [80, 80, 80, 80, 80], [70, 70, '', 70, 70]),
+    h2h('2026-08-04', 'a', [80, 80, 80, 80], [70, 70, 70, 70]),
+    h2h('2026-08-05', 'a', [80, 80, 80, 80, 'x'], [70, 70, 70, 70, 70]),
+  ], ['a']);
+  assert.equal(out.days, 1);
+  assert.deepEqual(out.rows.map(r => r.myAvg), [80, 80, 80, 80, 80]);
+});
+
+test('myAvgByRound: weakest / strongest are null when no round is behind / ahead', () => {
+  const ahead = myAvgByRound([h2h('2026-08-01', 'a', [90, 90, 90, 90, 90], [80, 90, 80, 80, 80])], ['a']);
+  assert.equal(ahead.weakest, null);
+  assert.equal(ahead.strongest, 3, 'rounds 4 and 5 tie on +30; the first one wins the tie');
+  const level = myAvgByRound([h2h('2026-08-01', 'a', [70, 70, 70, 70, 70], [70, 70, 70, 70, 70])], ['a']);
+  assert.equal(level.weakest, null);
+  assert.equal(level.strongest, null);
+  assert.equal(level.netPoints, 0);
+});
+
+test('myAvgByRound: no qualifying games yields an empty result', () => {
+  const empty = { rows: [], days: 0, rivalRows: 0, netPoints: 0, weakest: null, strongest: null };
+  assert.deepEqual(myAvgByRound([], ['a']), empty);
+  assert.deepEqual(myAvgByRound(null, ['a']), empty);
+  assert.deepEqual(myAvgByRound([h2h('2026-08-01', 'a', [1, 1, 1, 1, 1], [1, 1, 1, 1, 1])], []), empty);
 });
