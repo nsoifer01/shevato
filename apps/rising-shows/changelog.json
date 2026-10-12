@@ -1,6 +1,293 @@
 {
   "updates": [
     {
+      "builtAt": "2026-10-12T15:16:34.194Z",
+      "totals": {
+        "seasons": 67180,
+        "delta": 22
+      },
+      "shapeCounts": {
+        "rebound": 10222,
+        "rising": 2659,
+        "slow-burn": 4453,
+        "big-finale": 12258,
+        "u-shaped": 3088,
+        "rollercoaster": 14237,
+        "saved-best-for-last": 1476,
+        "shape-drift": 1582,
+        "mid-peak": 4644,
+        "front-loaded": 3508,
+        "declining": 1914,
+        "bad-finale": 4683,
+        "consistent": 2657
+      },
+      "shapeDeltas": {
+        "rebound": 6,
+        "rising": 8,
+        "slow-burn": 5,
+        "big-finale": 2,
+        "rollercoaster": -1,
+        "saved-best-for-last": 3,
+        "shape-drift": -2,
+        "mid-peak": -3,
+        "declining": 3,
+        "bad-finale": -1,
+        "consistent": 3
+      },
+      "added": [
+        {
+          "seriesId": "tt32445572",
+          "title": "Sean Combs: The Reckoning",
+          "season": 1,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt0072562",
+          "title": "Saturday Night Live",
+          "season": 52,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt33258199",
+          "title": "A Wild Last Boss Appeared!",
+          "season": 2,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt41296506",
+          "title": "Magical Explorer",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt38939893",
+          "title": "A Tale of the Secret Saint",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt33406999",
+          "title": "Get Jiro!",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt0096636",
+          "title": "Live with Kelly and Mark",
+          "season": 26,
+          "seasonYear": 2014
+        },
+        {
+          "seriesId": "tt3040130",
+          "title": "Sendokai Champions",
+          "season": 3,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt1173677",
+          "title": "The Rachel Zoe Project",
+          "season": 1,
+          "seasonYear": 2008
+        },
+        {
+          "seriesId": "tt39216741",
+          "title": "El castillo",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt3962914",
+          "title": "Itch",
+          "season": 2,
+          "seasonYear": 2021
+        },
+        {
+          "seriesId": "tt1118529",
+          "title": "Iryû: Team Medical Dragon",
+          "season": 1,
+          "seasonYear": 2006
+        },
+        {
+          "seriesId": "tt34870889",
+          "title": "Game of Throws: Inside Darts",
+          "season": 1,
+          "seasonYear": 2024
+        },
+        {
+          "seriesId": "tt0163461",
+          "title": "Kommissar Freytag",
+          "season": 1,
+          "seasonYear": 1963
+        },
+        {
+          "seriesId": "tt0297639",
+          "title": "Swiat wedlug Kiepskich",
+          "season": 2,
+          "seasonYear": 2003
+        },
+        {
+          "seriesId": "tt22167756",
+          "title": "Take 5 with Zan Rowe",
+          "season": 1,
+          "seasonYear": 2022
+        },
+        {
+          "seriesId": "tt2312563",
+          "title": "Secret War",
+          "season": 1,
+          "seasonYear": 2011
+        },
+        {
+          "seriesId": "tt15303242",
+          "title": "Republic City Hustle",
+          "season": 1,
+          "seasonYear": 2013
+        },
+        {
+          "seriesId": "tt37599841",
+          "title": "Skibidi Toilet Multiverse",
+          "season": 10,
+          "seasonYear": 2024
+        },
+        {
+          "seriesId": "tt40699747",
+          "title": "LIS",
+          "season": 2,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt10571968",
+          "title": "The Cold War Story",
+          "season": 1,
+          "seasonYear": 2019
+        },
+        {
+          "seriesId": "tt40260395",
+          "title": "The Tale of Narges",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt36743307",
+          "title": "Inside the Circle",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt44913797",
+          "title": "Hunger",
+          "season": 1,
+          "seasonYear": 2026
+        }
+      ],
+      "removed": [
+        {
+          "seriesId": "tt33473000",
+          "title": "Sean Combs: The Reckoning",
+          "season": 1,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt38268282",
+          "title": "Steel Ball Run: JoJo's Bizarre Adventure",
+          "season": 2,
+          "seasonYear": 2026
+        }
+      ],
+      "ratingSwings": [
+        {
+          "seriesId": "tt4504724",
+          "title": "Markiplier",
+          "season": 1,
+          "from": 7.77,
+          "to": 8.92,
+          "delta": 1.15
+        },
+        {
+          "seriesId": "tt34385400",
+          "title": "Vampirina: Teenage Vampire",
+          "season": 2,
+          "from": 9.35,
+          "to": 8.47,
+          "delta": -0.88
+        },
+        {
+          "seriesId": "tt11717526",
+          "title": "Belzebubs",
+          "season": 1,
+          "from": 8.23,
+          "to": 8.9,
+          "delta": 0.67
+        },
+        {
+          "seriesId": "tt31323246",
+          "title": "Hot Ones Versus",
+          "season": 1,
+          "from": 7.15,
+          "to": 6.56,
+          "delta": -0.59
+        },
+        {
+          "seriesId": "tt16409202",
+          "title": "Spare Me, Great Lord!",
+          "season": 2,
+          "from": 9.38,
+          "to": 8.82,
+          "delta": -0.56
+        },
+        {
+          "seriesId": "tt37196425",
+          "title": "Pierre",
+          "season": 1,
+          "from": 6.33,
+          "to": 6.83,
+          "delta": 0.5
+        },
+        {
+          "seriesId": "tt43736405",
+          "title": "A Love Other Than Yours",
+          "season": 1,
+          "from": 7.02,
+          "to": 7.47,
+          "delta": 0.45
+        },
+        {
+          "seriesId": "tt35836959",
+          "title": "Medusa",
+          "season": 2,
+          "from": 5.65,
+          "to": 6.1,
+          "delta": 0.45
+        },
+        {
+          "seriesId": "tt0211802",
+          "title": "Esmeralda",
+          "season": 1,
+          "from": 8.87,
+          "to": 8.42,
+          "delta": -0.45
+        },
+        {
+          "seriesId": "tt37599841",
+          "title": "Skibidi Toilet Multiverse",
+          "season": 11,
+          "from": 6.57,
+          "to": 7,
+          "delta": 0.43
+        }
+      ],
+      "modifiedCounts": {
+        "seriesVotes": 22019,
+        "avgRating": 1218,
+        "shapes": 207,
+        "seriesRating": 389,
+        "overview": 5,
+        "episodeCount": 80,
+        "poster": 13,
+        "providers": 1
+      }
+    },
+    {
       "builtAt": "2026-10-11T12:47:38.604Z",
       "totals": {
         "seasons": 67158,
@@ -9456,480 +9743,6 @@
         "seriesRating": 348,
         "poster": 21,
         "overview": 19
-      }
-    },
-    {
-      "builtAt": "2026-08-24T06:59:37.285Z",
-      "totals": {
-        "seasons": 66419,
-        "delta": 39
-      },
-      "shapeCounts": {
-        "mid-peak": 4630,
-        "rebound": 10113,
-        "rising": 2605,
-        "slow-burn": 4405,
-        "big-finale": 12090,
-        "u-shaped": 3074,
-        "rollercoaster": 14114,
-        "saved-best-for-last": 1505,
-        "front-loaded": 3489,
-        "declining": 1881,
-        "bad-finale": 4649,
-        "consistent": 2630,
-        "shape-drift": 1585
-      },
-      "shapeDeltas": {
-        "mid-peak": -1,
-        "rebound": 6,
-        "rising": -300,
-        "slow-burn": 2,
-        "big-finale": -77,
-        "u-shaped": -30,
-        "rollercoaster": 14,
-        "saved-best-for-last": -50,
-        "declining": -3,
-        "bad-finale": -41,
-        "consistent": 5,
-        "shape-drift": -69
-      },
-      "added": [
-        {
-          "seriesId": "tt10293938",
-          "title": "Outer Banks",
-          "season": 5,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt14675560",
-          "title": "Elite Short Stories: Carla Samuel",
-          "season": 4,
-          "seasonYear": 2021
-        },
-        {
-          "seriesId": "tt14668192",
-          "title": "Elite Short Stories: Guzmán Caye Rebe",
-          "season": 2,
-          "seasonYear": 2021
-        },
-        {
-          "seriesId": "tt14676004",
-          "title": "Elite Short Stories: Omar Ander Alexis",
-          "season": 3,
-          "seasonYear": 2021
-        },
-        {
-          "seriesId": "tt16306836",
-          "title": "Elite Short Stories: Patrick",
-          "season": 7,
-          "seasonYear": 2021
-        },
-        {
-          "seriesId": "tt16259804",
-          "title": "Elite Short Stories: Samuel Omar",
-          "season": 6,
-          "seasonYear": 2021
-        },
-        {
-          "seriesId": "tt16156744",
-          "title": "Elite Short Stories: Phillipe Caye Felipe",
-          "season": 5,
-          "seasonYear": 2021
-        },
-        {
-          "seriesId": "tt14976292",
-          "title": "Link Click",
-          "season": 4,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt36937503",
-          "title": "Anna Pigeon",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt27846061",
-          "title": "Ludwig",
-          "season": 2,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt39368539",
-          "title": "Monsters of God",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt38553367",
-          "title": "Blood Sacrifice",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt29566942",
-          "title": "The Dentist",
-          "season": 1,
-          "seasonYear": 2025
-        },
-        {
-          "seriesId": "tt43740196",
-          "title": "A Beautiful Obsession",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt3960394",
-          "title": "Interview with the Vampire",
-          "season": 3,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt0066630",
-          "title": "The Beachcombers",
-          "season": 18,
-          "seasonYear": 1989
-        },
-        {
-          "seriesId": "tt5189554",
-          "title": "Soy Luna",
-          "season": 4,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt43661815",
-          "title": "Lion",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt0180346",
-          "title": "Colour Blind",
-          "season": 1,
-          "seasonYear": 1998
-        },
-        {
-          "seriesId": "tt15028658",
-          "title": "Schaffrillas Productions",
-          "season": 2,
-          "seasonYear": 2019
-        },
-        {
-          "seriesId": "tt0101073",
-          "title": "Dark Justice",
-          "season": 2,
-          "seasonYear": 1992
-        },
-        {
-          "seriesId": "tt10203472",
-          "title": "Araiya-san! Ore to Aitsu ga Onnayu de!?",
-          "season": 1,
-          "seasonYear": 2019
-        },
-        {
-          "seriesId": "tt33741567",
-          "title": "Monsieur Parizot",
-          "season": 1,
-          "seasonYear": 2024
-        },
-        {
-          "seriesId": "tt39029359",
-          "title": "Unlucky Bae",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt13777138",
-          "title": "Toon in with Me",
-          "season": 6,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt6548016",
-          "title": "Ane Log: Moyako Neesan no Tomaranai Monologue",
-          "season": 1,
-          "seasonYear": 2014
-        },
-        {
-          "seriesId": "tt1443631",
-          "title": "Jungle Junction",
-          "season": 1,
-          "seasonYear": 2009
-        },
-        {
-          "seriesId": "tt16117344",
-          "title": "Rock, Paper, Scissors",
-          "season": 3,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt32640325",
-          "title": "Ultimate Price",
-          "season": 1,
-          "seasonYear": 2024
-        },
-        {
-          "seriesId": "tt38814420",
-          "title": "Ward w Shokolata",
-          "season": 1,
-          "seasonYear": 2025
-        },
-        {
-          "seriesId": "tt43675224",
-          "title": "Richard E. Grant's Very Modern Odyssey",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt44568661",
-          "title": "Bigg Boss: Agnipareeksha",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt1863526",
-          "title": "Bar Rescue",
-          "season": 10,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt7534720",
-          "title": "Pilgrimage",
-          "season": 8,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt5365760",
-          "title": "Guldur Guldur Show",
-          "season": 10,
-          "seasonYear": 2021
-        },
-        {
-          "seriesId": "tt5365760",
-          "title": "Guldur Guldur Show",
-          "season": 13,
-          "seasonYear": 2024
-        },
-        {
-          "seriesId": "tt5365760",
-          "title": "Guldur Guldur Show",
-          "season": 14,
-          "seasonYear": 2025
-        },
-        {
-          "seriesId": "tt2049323",
-          "title": "The Jonathan Ross Show",
-          "season": 21,
-          "seasonYear": 2024
-        },
-        {
-          "seriesId": "tt1236227",
-          "title": "Hero Ships",
-          "season": 1,
-          "seasonYear": 2008
-        },
-        {
-          "seriesId": "tt15028658",
-          "title": "Schaffrillas Productions",
-          "season": 5,
-          "seasonYear": 2022
-        },
-        {
-          "seriesId": "tt11800464",
-          "title": "Fra bølle til bestevenn",
-          "season": 5,
-          "seasonYear": 2025
-        },
-        {
-          "seriesId": "tt2537956",
-          "title": "Wives with Knives",
-          "season": 3,
-          "seasonYear": 2014
-        },
-        {
-          "seriesId": "tt2537956",
-          "title": "Wives with Knives",
-          "season": 4,
-          "seasonYear": 2015
-        },
-        {
-          "seriesId": "tt27551225",
-          "title": "Iconic America: Our Symbols and Stories with David Rubenstein",
-          "season": 1,
-          "seasonYear": 2023
-        },
-        {
-          "seriesId": "tt30786033",
-          "title": "Lakay Nou",
-          "season": 1,
-          "seasonYear": 2024
-        },
-        {
-          "seriesId": "tt43539972",
-          "title": "Sumud",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt42694084",
-          "title": "Roast My Rental",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt7529134",
-          "title": "Jo Frost: Nanny on Tour",
-          "season": 1,
-          "seasonYear": 2016
-        }
-      ],
-      "removed": [
-        {
-          "seriesId": "tt14675560",
-          "title": "Elite Short Stories: Carla Samuel",
-          "season": 1,
-          "seasonYear": 2021
-        },
-        {
-          "seriesId": "tt14671790",
-          "title": "Elite Short Stories: Nadia Guzmán",
-          "season": 1,
-          "seasonYear": 2021
-        },
-        {
-          "seriesId": "tt14676004",
-          "title": "Elite Short Stories: Omar Ander Alexis",
-          "season": 1,
-          "seasonYear": 2021
-        },
-        {
-          "seriesId": "tt16306836",
-          "title": "Elite Short Stories: Patrick",
-          "season": 1,
-          "seasonYear": 2021
-        },
-        {
-          "seriesId": "tt16259804",
-          "title": "Elite Short Stories: Samuel Omar",
-          "season": 1,
-          "seasonYear": 2021
-        },
-        {
-          "seriesId": "tt16156744",
-          "title": "Elite Short Stories: Phillipe Caye Felipe",
-          "season": 1,
-          "seasonYear": 2021
-        },
-        {
-          "seriesId": "tt41515375",
-          "title": "Soy Luna. Volver a rodar",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt11470580",
-          "title": "Science grand format",
-          "season": 6,
-          "seasonYear": 2020
-        },
-        {
-          "seriesId": "tt0169424",
-          "title": "Ciresarii",
-          "season": 1,
-          "seasonYear": 1972
-        }
-      ],
-      "ratingSwings": [
-        {
-          "seriesId": "tt2339980",
-          "title": "Kaijudo: Rise of the Duel Masters",
-          "season": 1,
-          "from": 5.4,
-          "to": 6.7,
-          "delta": 1.3
-        },
-        {
-          "seriesId": "tt2339980",
-          "title": "Kaijudo: Rise of the Duel Masters",
-          "season": 2,
-          "from": 3.86,
-          "to": 5.16,
-          "delta": 1.3
-        },
-        {
-          "seriesId": "tt0126169",
-          "title": "Popular Mechanics for Kids",
-          "season": 1,
-          "from": 8.53,
-          "to": 7.37,
-          "delta": -1.16
-        },
-        {
-          "seriesId": "tt31860531",
-          "title": "Catching Up",
-          "season": 1,
-          "from": 8.2,
-          "to": 7.27,
-          "delta": -0.93
-        },
-        {
-          "seriesId": "tt31012986",
-          "title": "Bahar",
-          "season": 3,
-          "from": 5.78,
-          "to": 6.62,
-          "delta": 0.84
-        },
-        {
-          "seriesId": "tt11899080",
-          "title": "I huvudet på en gärningsman",
-          "season": 1,
-          "from": 6.17,
-          "to": 6.98,
-          "delta": 0.81
-        },
-        {
-          "seriesId": "tt3645318",
-          "title": "If Loving You Is Wrong",
-          "season": 2,
-          "from": 6.28,
-          "to": 7.05,
-          "delta": 0.77
-        },
-        {
-          "seriesId": "tt14489144",
-          "title": "Build Divide: Code Black",
-          "season": 1,
-          "from": 6.64,
-          "to": 7.36,
-          "delta": 0.72
-        },
-        {
-          "seriesId": "tt5365760",
-          "title": "Guldur Guldur Show",
-          "season": 9,
-          "from": 5.68,
-          "to": 4.98,
-          "delta": -0.7
-        },
-        {
-          "seriesId": "tt1198372",
-          "title": "Mujeres asesinas",
-          "season": 3,
-          "from": 8.17,
-          "to": 7.48,
-          "delta": -0.69
-        }
-      ],
-      "modifiedCounts": {
-        "seriesVotes": 29930,
-        "avgRating": 2313,
-        "shapes": 895,
-        "seriesRating": 548,
-        "episodeCount": 182,
-        "poster": 3,
-        "overview": 4,
-        "providers": 1
       }
     }
   ]
