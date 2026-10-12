@@ -4324,3 +4324,30 @@ live APIs on 2026-10-11:
   whole near-term run, that single day made the request 400 and every day of
   that city fell back to "Typical". `forecastEligible` takes the UTC date as an
   optional third argument and `loadWeatherForDays` passes it.
+
+## The assistant, verified against live Gemini (2026-10-12)
+
+Real requests, with the owner's go-ahead to spend credits:
+
+- **Through production**, the hosted assistant answered a "one dinner near my
+  hotel" turn twice (1280 and 390) with HTTP 200 in 5.6-7.1 s; the reply
+  carried a `tripActions` block that `validateTripAction` accepts, and the UI
+  rendered it as a proposal card (the right venue type, date and time). Places
+  was stubbed out for the test (a separate paid API), and the UI fell back to
+  "Verify on Google Maps" as designed.
+- **Directly**, with the configured key never printed: the server's exact
+  configuration (`gemini-3.1-flash-lite`, `thinkingLevel: 'low'`,
+  `maxOutputTokens` 12000) and the "My API key" request shape on
+  `gemini-3.5-flash` both returned 200 / STOP. OpenAI's "My API key" path was
+  not exercised (no OpenAI key available).
+
+What Gemini answers when something is wrong, measured the same day: an invalid
+key is **400** `INVALID_ARGUMENT` with reason `API_KEY_INVALID`; a missing key
+403 `PERMISSION_DENIED`; an unsupported parameter or a malformed body **400**
+`INVALID_ARGUMENT` with no reason; an unknown model 404 `NOT_FOUND`. Both
+paths used to treat every 400 as a bad key. The hosted path now reports a 400
+as `auth` only with `API_KEY_INVALID` and as the new `request` class otherwise
+(`upstreamReason`; the UI's advice for it is the same "retrying will not help"
+as auth and model). The "My API key" path reads the body too
+(`TripLogic.byokErrorMessage`), so a refused request no longer tells the
+traveller their working key looks invalid.

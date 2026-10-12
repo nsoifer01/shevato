@@ -327,6 +327,7 @@ export function archiveCoverageFailures({
   bootstrap, manifest, now, gate = GATE,
   preDueHours = gate.preWindowHours - 2, postDueHours = gate.postHours + 1, postWatchHours = 30,
 }) {
+  if (manifest && !Array.isArray(manifest.entries)) return ['the staged manifest is malformed: it has no entries list'];
   const t = Date.parse(now);
   const { next, prev } = deadlineContext(bootstrap, now);
   const out = [];

@@ -237,3 +237,10 @@ test('an unreadable staged archive fails the archive check rather than passing i
   const f = r.failed.find((x) => x.name === 'the deadline archive holds the captures due by now');
   assert.ok(f && /could not read the staged archive: blobs unavailable/.test(f.saw), JSON.stringify(r.failed));
 });
+
+test('a corrupt staged manifest fails the archive check rather than reading as healthy', async () => {
+  const corrupt = { async getWithMetadata() { return { data: { archive: 'x' }, etag: 'e1' }; } };
+  const r = await runScheduledProbe({ store: memoryStore(), fetchImpl: production(), now: () => NOW, archiveStore: corrupt });
+  const f = r.failed.find((x) => x.name === 'the deadline archive holds the captures due by now');
+  assert.ok(f && /the staged manifest is malformed: it has no entries list/.test(f.saw), JSON.stringify(r.failed));
+});

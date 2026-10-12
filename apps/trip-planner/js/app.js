@@ -23,7 +23,7 @@
   // js/app.js, in index.html and in sw.js's PRECACHE list alike. Bumping the
   // cache-buster without bumping this number is what made "build 31" outlive
   // v=32..38 and stop identifying anything.
-  const TP_BUILD = 87;
+  const TP_BUILD = 88;
   const LS_KEY = 'trip-planner:v1';
   // Which trip THIS DEVICE has open. Navigation, not data: it is not part of
   // the synced value and is deliberately absent from app-sync-init.js's key
@@ -131,7 +131,7 @@
     // assistant contract and the tests, and are deliberately not read here.
     isMealKind, mealLabel, splitMealTitle, itemMealKind, normalizeMealItem,
     weatherKey, summarizeClimate, weatherLine, weatherRange, pickMonthSamples, docGuard,
-    FORECAST_DAYS, forecastEligible, climateEndYear, forecastKey, forecastFresh, freshForecasts, summarizeForecast, forecastLine, forecastChipParts,
+    byokErrorMessage, FORECAST_DAYS, forecastEligible, climateEndYear, forecastKey, forecastFresh, freshForecasts, summarizeForecast, forecastLine, forecastChipParts,
     extractTripActions, validateTripAction, buildAssistPackage, buildAssistSystemPrompt,
     planReplyIncomplete, PLAN_REPAIR_REQUEST,
     buildPlanRequest, groupProposals, linkifySegments, parseMarkdown,
@@ -9259,7 +9259,8 @@
   // Model ids and CORS verified 2026-07-19: both providers echo the request
   // Origin on an OPTIONS preflight, so browser-to-provider calls work with no
   // proxy. Gemini rejects a bad key with HTTP 400 (API_KEY_INVALID), not 401,
-  // so callByokProvider maps 400/401/403 to the invalid-key message.
+  // but also answers 400 for a request it refuses, so callByokProvider reads
+  // the body before blaming the key (TripLogic.byokErrorMessage).
   const PROVIDER_META = {
     openai: {
       label: 'OpenAI',
@@ -9929,10 +9930,7 @@
       // diagnostics for the console: full provider response, masked key only
       console.error('[assistant] provider error',
         { provider, url: res.url, status: res.status, key: maskKey(key), body: rawBody.slice(0, 2000) });
-      if (res.status === 400 || res.status === 401 || res.status === 403) throw assistError('That API key looks invalid (' + res.status + '). Double-check it and try again.');
-      if (res.status === 429) throw assistError("You've hit your provider's rate limit or quota (429). Wait a bit or check your plan.");
-      if (res.status === 404) throw assistError('The provider says this model does not exist (404). Pick another model and try again.');
-      throw assistError('The provider returned an error (' + res.status + '). Try again in a moment.');
+      throw assistError(byokErrorMessage(res.status, rawBody));
     }
     let data;
     try { data = JSON.parse(rawBody); } catch { throw assistError('Network error, check your connection and try again.'); }
@@ -10010,6 +10008,7 @@
     network: 'The shared assistant could not be reached. Try again in a moment, or use Copy & paste.',
     auth: "The site's free assistant is not working right now, and retrying will not help. Use Copy & paste, or add your own API key.",
     model: "The site's free assistant is not working right now, and retrying will not help. Use Copy & paste, or add your own API key.",
+    request: "The site's free assistant is not working right now, and retrying will not help. Use Copy & paste, or add your own API key.",
     empty: 'The shared assistant came back with nothing. Try rephrasing your request, or use Copy & paste.',
     upstream: 'The shared assistant could not answer right now. Try again, or use Copy & paste.',
   };
