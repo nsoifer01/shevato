@@ -297,6 +297,8 @@ export function resolveGeminiKey(cfg, env) {
 //   network   - the request never reached Google
 //   auth      - the key is missing, revoked, or not entitled: retrying cannot help
 //   model     - the pinned model is gone (see the retirement note in the header)
+//   request   - Google refused the request itself (a 400 without API_KEY_INVALID:
+//               an unsupported parameter or a malformed body); retrying cannot help
 //   upstream  - Google answered with a server error
 //   empty     - Google answered with nothing usable (a safety block, or a turn
 //               that spent its whole budget thinking)
@@ -305,7 +307,11 @@ export function upstreamReason(err) {
   const name = (err && err.name) || '';
   if (name === 'TimeoutError' || name === 'AbortError') return 'timeout';
   const status = Number(err && err.status);
-  if (status === 400 || status === 401 || status === 403) return 'auth';
+  // 400 is only a key problem when Google says so (API_KEY_INVALID); any
+  // other 400 is a request Google refused (an unsupported parameter, a
+  // malformed body), which no key change would fix.
+  if (status === 400) return err.keyInvalid ? 'auth' : 'request';
+  if (status === 401 || status === 403) return 'auth';
   if (status === 404) return 'model';
   if (status >= 500) return 'upstream';
   if (name === 'TypeError') return 'network';
@@ -406,6 +412,10 @@ async function callGemini(key, sys, contents) {
     // minute from a retired model. Carried on the error rather than logged and
     // forgotten, which is what made every one of them look the same.
     err.status = res.status;
+    // Gemini answers 400 for a bad key AND for a bad request; only the error
+    // detail says which (an invalid key carries reason API_KEY_INVALID,
+    // measured 2026-10-12). Read here, where the body is in hand.
+    err.keyInvalid = /API_KEY_INVALID/.test(body);
     // Google's free tier caps requests per minute as well as per day, so a
     // busy minute is a capacity problem, not a broken assistant. Flagged here
     // so the handler can answer 429 and the UI can say "at capacity" rather

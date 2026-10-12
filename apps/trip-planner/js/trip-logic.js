@@ -3589,6 +3589,24 @@ const TripLogic = (() => {
     return tempSpan(summary.lo, summary.hi);
   }
 
+  // ---------- "My API key" provider errors ----------
+  // The sentence for a provider's non-2xx answer to the traveller's own key.
+  // A 400 is NOT always the key: Gemini answers 400 for an invalid key (reason
+  // API_KEY_INVALID) and also for a request it refuses (an unsupported
+  // parameter, a malformed body); OpenAI's 400 is invalid_request_error and
+  // its bad key is 401. Measured against Gemini 2026-10-12. Every 400 used to
+  // read "That API key looks invalid", sending the traveller to a working key.
+  function byokErrorMessage(status, rawBody) {
+    const body = typeof rawBody === 'string' ? rawBody : '';
+    if (status === 401 || status === 403 || (status === 400 && /API_KEY_INVALID|invalid_api_key/.test(body))) {
+      return 'That API key looks invalid (' + status + '). Double-check it and try again.';
+    }
+    if (status === 400) return 'The provider refused the request (400). This is not a problem with your key; pick another model, or use Copy & paste.';
+    if (status === 429) return "You've hit your provider's rate limit or quota (429). Wait a bit or check your plan.";
+    if (status === 404) return 'The provider says this model does not exist (404). Pick another model and try again.';
+    return 'The provider returned an error (' + status + '). Try again in a moment.';
+  }
+
   // ---------- near-term forecast ----------
   // Open-Meteo's free, keyless forecast reaches 16 days out, counting today.
   // A trip day past that horizon has no forecast to show and keeps the climate
@@ -11122,6 +11140,7 @@ const TripLogic = (() => {
     departureOrigin, suggestedPassport, passportAssumptionParts,
     coveringStay, timelineGroups,
     defaultPlanDay, planDayGroups, weatherKey, summarizeClimate, weatherLine, weatherRange, pickMonthSamples, docGuard,
+    byokErrorMessage,
     FORECAST_DAYS, FORECAST_TTL_MS, forecastEligible, climateEndYear, forecastKey, forecastFresh, freshForecasts, summarizeForecast, forecastLine,
     FORECAST_CONDITIONS, forecastConditionKey, forecastCondition, forecastChipParts,
     setTempUnit, getTempUnit, tempSpan,

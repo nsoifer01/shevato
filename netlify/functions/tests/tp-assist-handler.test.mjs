@@ -346,3 +346,38 @@ test('step 4: a store whose config read throws answers 503 store_unavailable, no
   assert.deepEqual(await res.json(), { error: 'store_unavailable' });
   assert.equal(fetchCalls.length, 0);
 });
+
+// Gemini answers HTTP 400 for BOTH a bad key and a bad request; only the
+// error detail tells them apart (measured live 2026-10-12: an invalid key is
+// 400 INVALID_ARGUMENT with reason API_KEY_INVALID; an unsupported
+// thinking_level or a malformed `contents` is 400 INVALID_ARGUMENT with no
+// reason). Every 400 used to be reported as `auth`, sending whoever reads it
+// to the key when the request was what Google refused.
+const GOOGLE_400 = (message, reason) => ({ error: {
+  code: 400, message, status: 'INVALID_ARGUMENT',
+  ...(reason ? { details: [{ '@type': 'type.googleapis.com/google.rpc.ErrorInfo', reason, domain: 'googleapis.com' }] } : {}),
+} });
+
+for (const [label, status, body, reason] of [
+  ['an invalid key (400 API_KEY_INVALID)', 400, GOOGLE_400('API key not valid. Please pass a valid API key.', 'API_KEY_INVALID'), 'auth'],
+  ['a refused request parameter (400, no key reason)', 400, GOOGLE_400("Invalid value at 'generation_config.thinking_config.thinking_level'"), 'request'],
+  ['a missing or unpermitted key (403)', 403, { error: { code: 403, status: 'PERMISSION_DENIED', message: 'unregistered callers' } }, 'auth'],
+  ['an unknown model (404)', 404, { error: { code: 404, status: 'NOT_FOUND', message: 'models/x is not found' } }, 'model'],
+  ['a service failure (503)', 503, { error: { code: 503, status: 'UNAVAILABLE', message: 'overloaded' } }, 'upstream'],
+]) {
+  test(`step 7: ${label} is reported as reason "${reason}"`, opts, async () => {
+    seedBlobs({ config: { geminiKeyV2: 'k' } });
+    stubGemini(status, body);
+    const res = await handler(req(goodBody()));
+    assert.equal(res.status, 502);
+    assert.deepEqual(await res.json(), { error: 'upstream', reason });
+  });
+}
+
+test('step 7: a 200 whose body is not JSON is an upstream failure, not a crash', opts, async () => {
+  seedBlobs({ config: { geminiKeyV2: 'k' } });
+  stubGemini(200, '<html>gateway</html>');
+  const res = await handler(req(goodBody()));
+  assert.equal(res.status, 502);
+  assert.deepEqual(await res.json(), { error: 'upstream', reason: 'upstream' });
+});

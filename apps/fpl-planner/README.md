@@ -1290,7 +1290,11 @@ On a schedule it runs on Netlify, not GitHub: `netlify/functions/fpl-health.mjs`
 (`41 */6 * * *`, so 00:41, 06:41, 12:41 and 18:41 UTC) probes production
 through the proxy, at most once per six-hour slot, and stores the result in the
 `fpl-health` blob store. A run is the 21 invariants plus "the previous scheduled
-run recorded its result", about 2 seconds locally and 13.5 on Netlify (its
+run recorded its result" and "the deadline archive holds the captures due by
+now" (a pre capture once the next deadline is under 24 hours away, a post
+capture from 4 to 30 hours after the last one, read from the `fpl-archive`
+staging store; `archiveCoverageFailures` in `scripts/lib/archive.mjs`), about
+2 seconds locally and 13.5 on Netlify (its
 limit is 30). `/.netlify/functions/fpl-health-status` serves it: 200 when the
 last run passed and is under 7 hours old; 503 when it failed, when no run has
 landed for 7 hours, when a run claimed its slot and never stored a result, or

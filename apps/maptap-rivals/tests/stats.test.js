@@ -266,6 +266,57 @@ test('mapTapHistoryToRounds: parses the web/legacy roundData shape with city coo
   assert.deepEqual(out['2026-06-14'].cities[0], { lat: 35.96, lng: -83.92, name: 'Knoxville, Tennessee' });
 });
 
+// MapTap's own scorer (deriveDailyScoreFromRounds in maptap.gg's js/ui.js)
+// keys every entry by its `round` (or iOS `roundNumber`) field, first entry
+// wins per round, and gives up unless all five rounds are there. Reading the
+// array by POSITION instead put an out-of-order day's scores (and cities) on
+// the wrong rounds, weighted the daily total wrongly, accepted a day with a
+// round missing and a duplicate in its place, and dropped a day whose array
+// carried a repeated round MapTap itself scores.
+const shuffled = (day, order) => ({ ...day, roundData: order.map((i) => day.roundData[i]) });
+// The weighted total MapTap derives from the round numbers themselves.
+const mapTapTotal = (arr) => {
+  const seen = new Map();
+  for (const r of arr) { const n = Number(r.round ?? r.roundNumber); if (n >= 1 && n <= 5 && !seen.has(n)) seen.set(n, Number(r.score)); }
+  return [...seen].reduce((a, [n, sc]) => a + sc * [1, 1, 2, 3, 3][n - 1], 0);
+};
+
+test('mapTapHistoryToRounds: an out-of-order roundData day is read by round number, cities moving with their scores', () => {
+  const day = shuffled(roundDataDay, [2, 0, 4, 1, 3]); // rounds 3,1,5,2,4
+  const out = mapTapHistoryToRounds({ '2026-06-14': day })['2026-06-14'];
+  assert.deepEqual(out.scores, [95, 80, 70, 90, 60]);
+  assert.deepEqual(out.cities.map((c) => c.name), roundDataDay.roundData.map((r) => r.cityName));
+  assert.equal(weightedTotal(out.scores), mapTapTotal(day.roundData));
+});
+
+test('mapTapHistoryToRounds: an out-of-order iOS rounds day is read by roundNumber', () => {
+  const day = { ...iosRoundsDay, rounds: [4, 3, 2, 1, 0].map((i) => iosRoundsDay.rounds[i]) };
+  const out = mapTapHistoryToRounds({ '2026-06-14': day })['2026-06-14'];
+  assert.deepEqual(out.scores, [95, 95, 94, 98, 95]);
+  assert.equal(out.cities[3].name, 'Bingen, Germany');
+});
+
+test('mapTapHistoryToRounds: a repeated round keeps the first entry, as MapTap scores it', () => {
+  const dup = { ...roundDataDay.roundData[1], score: 10 };
+  const day = { ...roundDataDay, roundData: [...roundDataDay.roundData.slice(0, 2), dup, ...roundDataDay.roundData.slice(2)] };
+  const out = mapTapHistoryToRounds({ '2026-06-14': day })['2026-06-14'];
+  assert.ok(out, 'a six-entry day MapTap can score is not dropped');
+  assert.deepEqual(out.scores, [95, 80, 70, 90, 60]);
+  assert.equal(weightedTotal(out.scores), mapTapTotal(day.roundData));
+});
+
+test('mapTapHistoryToRounds: a day missing a round, or a partial game, is rejected rather than misread', () => {
+  const missing5 = { ...roundDataDay, roundData: [...roundDataDay.roundData.slice(0, 4), { ...roundDataDay.roundData[1], score: 10 }] };
+  assert.equal(mapTapHistoryToRounds({ d: missing5 }).d, undefined);
+  const partial = { ...roundDataDay, roundData: roundDataDay.roundData.slice(0, 4) };
+  assert.equal(mapTapHistoryToRounds({ d: partial }).d, undefined);
+});
+
+test('mapTapHistoryToRounds: an array carrying no round numbers at all keeps its order', () => {
+  const unnumbered = { ...roundDataDay, roundData: roundDataDay.roundData.map(({ round, ...r }) => r) };
+  assert.deepEqual(mapTapHistoryToRounds({ d: unnumbered }).d.scores, [95, 80, 70, 90, 60]);
+});
+
 test('mapTapHistoryToRounds: falls back to the iOS 4.04 rounds shape when roundData is absent', () => {
   const out = mapTapHistoryToRounds({ '2026-06-14': iosRoundsDay });
   // Scores still pair, which is the whole point of the fallback.
@@ -2367,4 +2418,51 @@ test('myAvgByRound: no qualifying games yields an empty result', () => {
   assert.deepEqual(myAvgByRound([], ['a']), empty);
   assert.deepEqual(myAvgByRound(null, ['a']), empty);
   assert.deepEqual(myAvgByRound([h2h('2026-08-01', 'a', [1, 1, 1, 1, 1], [1, 1, 1, 1, 1])], []), empty);
+});
+
+// A synced row stored while rounds were still read by array position has its
+// scores AND cities in the same wrong order. The next sync re-reads the day by
+// round number; it must move the cities with the scores, or each score would
+// sit beside another round's city (and the continent figures would follow).
+test('mergeMapTapSync: re-ordered scores on a synced row bring their cities with them', () => {
+  const stale = {
+    id: 'g1', rivalId: 'r1', date: '2026-08-20', note: SYNC_NOTE, createdAt: 1,
+    myScores: [70, 95, 60, 80, 90], myScore: weightedTotal([70, 95, 60, 80, 90]),
+    theirScores: [50, 50, 50, 50, 50], theirScore: 500,
+    cities: [city(3), city(1), city(5), city(2), city(4)],
+  };
+  const out = merge({
+    existingGames: [stale],
+    mineByDate: { '2026-08-20': day([95, 80, 70, 90, 60]) },
+    theirsByDate: { '2026-08-20': day([50, 50, 50, 50, 50]) },
+  });
+  assert.equal(out.updated, 1);
+  assert.deepEqual(stale.myScores, [95, 80, 70, 90, 60]);
+  assert.equal(stale.myScore, weightedTotal([95, 80, 70, 90, 60]));
+  assert.deepEqual(stale.cities.map((c) => c.name), ['C1', 'C2', 'C3', 'C4', 'C5']);
+});
+
+// Found reviewing the fix above: my side arriving in the iOS shape (names, no
+// coordinates) must not overwrite a row's cities that DO have coordinates,
+// which came from the rival's web roundData; the day would drop out of every
+// continent figure.
+test('mergeMapTapSync: re-ordered scores never trade cities with coordinates for cities without', () => {
+  const stale = {
+    id: 'g1', rivalId: 'r1', date: '2026-08-20', note: SYNC_NOTE, createdAt: 1,
+    theirScores: [50, 50, 50, 50, 50], theirScore: 500,
+    cities: [city(1), city(2), city(3), city(4), city(5)],
+  };
+  const iosMine = { scores: [90, 90, 90, 90, 90], cities: [1, 2, 3, 4, 5].map((n) => ({ lat: NaN, lng: NaN, name: `C${n}` })) };
+  const out = merge({ existingGames: [stale], mineByDate: { '2026-08-20': iosMine }, theirsByDate: { '2026-08-20': day([50, 50, 50, 50, 50]) } });
+  assert.equal(out.updated, 1);
+  assert.deepEqual(stale.myScores, [90, 90, 90, 90, 90]);
+  assert.equal(stale.cities[0].lat, 1, 'the coordinates are kept');
+});
+
+// MapTap's scorer skips an entry whose score is not a number BEFORE first-entry
+// -wins, so a later readable entry for that round still counts.
+test('mapTapHistoryToRounds: an unreadable score does not claim its round', () => {
+  const bad = { ...roundDataDay.roundData[0], score: 'x' };
+  const dayx = { ...roundDataDay, roundData: [bad, ...roundDataDay.roundData] };
+  assert.deepEqual(mapTapHistoryToRounds({ d: dayx }).d.scores, [95, 80, 70, 90, 60]);
 });

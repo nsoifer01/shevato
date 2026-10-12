@@ -82,6 +82,13 @@ const SYNC_DAY = (scores) => ({
   finalScore: 0,
   roundData: scores.map((score, i) => ({ round: i + 1, score, cityLat: 40 + i, cityLng: 10 + i, cityName: `City${i}` })),
 });
+// The same day with its roundData entries out of order. MapTap scores an entry
+// by its `round` field, not its position, so a correct sync stores exactly
+// what SYNC_DAY stores; the position-based parser stored them shuffled.
+const SYNC_DAY_SHUFFLED = (scores) => {
+  const d = SYNC_DAY(scores);
+  return { ...d, roundData: [2, 4, 0, 3, 1].map((i) => d.roundData[i]) };
+};
 
 const SEED_KV = (f) => ({
   maptapRivalsMe: JSON.stringify('Nikita'),
@@ -742,7 +749,7 @@ export async function run({ base, cdpPort }) {
       // its sync, and the run summary the checks below read would then be
       // reporting the fixture rather than the app.
       const mine = {}; for (let i = 0; i <= 4; i++) mine[back(i)] = SYNC_DAY([80, 82, 84, 86, 88]);
-      const ari = {}; for (const i of [1, 2, 3]) ari[back(i)] = SYNC_DAY([70, 72, 74, 76, 78]);
+      const ari = {}; for (const i of [1, 2, 3]) ari[back(i)] = SYNC_DAY_SHUFFLED([70, 72, 74, 76, 78]);
       const bex = {}; bex[back(2)] = SYNC_DAY([60, 62, 64, 66, 68]);
       const cy = {}; for (const i of [1, 2, 3, 4]) cy[back(i)] = SYNC_DAY([90, 90, 90, 90, 90]);
       syncProfiles = { me_mt: mine, ari_mt: ari, bex_mt: bex, cy_mt: cy };
@@ -790,6 +797,14 @@ export async function run({ base, cdpPort }) {
           theirs: today.some(x => Array.isArray(x.theirScores)),
         });
       })()`);
+      const ariRounds = await evaluate(syncPage, `JSON.stringify(JSON.parse(localStorage.getItem('maptapRivalsGames') || '[]')
+        .filter(x => x.rivalId === 'r-ari' && Array.isArray(x.theirScores)).map(x => [x.theirScores, x.theirScore]))`);
+      // Scores and the weighted total only: on these days I played too, so
+      // the row's cities come from my in-order profile (the cities moving with
+      // a re-ordered side is pinned in tests/stats.test.js).
+      t('sync all: a rival day whose rounds arrive out of order is stored by round number, with its weighted total',
+        ariRounds === JSON.stringify([0, 1, 2].map(() => [[70, 72, 74, 76, 78], 70 + 72 + 74 * 2 + 76 * 3 + 78 * 3])), ariRounds);
+
       t('sync all: a day only I played is stored against every rival, with no rival side invented',
         /"rivals":\["r-ari","r-bex","r-cy"\]/.test(meOnly) && /"mine":true/.test(meOnly) && /"theirs":false/.test(meOnly), meOnly);
 

@@ -8001,3 +8001,20 @@ test('a place record keeps its ID for ever and its coordinates only for the perm
   assert.equal('lon' in expired, false);
   assert.equal(expired.city, 'Ko Phi Phi', 'our own note about the item is not Google content');
 });
+
+// Gemini answers 400 for an invalid key AND for a refused request; only the
+// body tells them apart (measured live 2026-10-12). Every 400 used to read
+// "That API key looks invalid", sending the traveller to a key that worked.
+test('byokErrorMessage blames the key only when the provider does', () => {
+  const geminiBadKey = JSON.stringify({ error: { code: 400, status: 'INVALID_ARGUMENT', message: 'API key not valid.', details: [{ reason: 'API_KEY_INVALID' }] } });
+  const geminiBadParam = JSON.stringify({ error: { code: 400, status: 'INVALID_ARGUMENT', message: "Invalid value at 'generation_config.thinking_config.thinking_level'" } });
+  const openaiBadKey = JSON.stringify({ error: { code: 'invalid_api_key', type: 'invalid_request_error' } });
+  assert.match(L.byokErrorMessage(400, geminiBadKey), /API key looks invalid \(400\)/);
+  assert.match(L.byokErrorMessage(400, geminiBadParam), /refused the request \(400\)\. This is not a problem with your key/);
+  assert.match(L.byokErrorMessage(400, ''), /not a problem with your key/);
+  assert.match(L.byokErrorMessage(401, openaiBadKey), /API key looks invalid \(401\)/);
+  assert.match(L.byokErrorMessage(403, ''), /API key looks invalid \(403\)/);
+  assert.match(L.byokErrorMessage(404, ''), /model does not exist \(404\)/);
+  assert.match(L.byokErrorMessage(429, ''), /rate limit or quota \(429\)/);
+  assert.match(L.byokErrorMessage(503, ''), /returned an error \(503\)\. Try again/);
+});

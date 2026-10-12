@@ -7,6 +7,7 @@
 // incident issue and emails the owner.
 
 import { HEALTH_STORE, runScheduledProbe, githubDispatchAlert } from './lib/fpl-health-run.mjs';
+import { ARCHIVE_STORE } from './lib/fpl-archive-stage.mjs';
 
 export default async () => {
   const { getStore } = await import('@netlify/blobs');
@@ -14,7 +15,7 @@ export default async () => {
     token: process.env.FPL_HEALTH_GITHUB_TOKEN,
     repo: process.env.FPL_HEALTH_GITHUB_REPO || undefined,
   });
-  const result = await runScheduledProbe({ store: getStore(HEALTH_STORE), alert });
+  const result = await runScheduledProbe({ store: getStore(HEALTH_STORE), alert, archiveStore: getStore(ARCHIVE_STORE) });
   if (result.skipped) {
     console.log('fpl-health', result.skipped);
     return new Response(result.skipped, { status: 200 });

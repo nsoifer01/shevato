@@ -310,6 +310,39 @@ export function decideCaptures({ bootstrap, manifest, now, gate = GATE }) {
   return { captures: out, idle: out.length ? null : notes.join('; ') || 'nothing to capture' };
 }
 
+/**
+ * What should already be in `manifest` by `now`, for the health probe. Pure;
+ * an empty list means the archive is keeping up. The capture runs hourly on
+ * Netlify, whose failures alert nobody, and a deadline that passes uncaptured
+ * is lost for good, so the probe (which does alert) asks this every six hours:
+ *   pre .... the next deadline is under `preDueHours` away: the first pre
+ *            capture was due at `gate.preWindowHours` before it, so two hourly
+ *            runs have had their chance;
+ *   post ... the last deadline passed between `postDueHours` and
+ *            `postWatchHours` ago: its post capture was due inside
+ *            `gate.postHours`. Older deadlines are not re-checked, so one miss
+ *            is reported for a day, not forever.
+ */
+export function archiveCoverageFailures({
+  bootstrap, manifest, now, gate = GATE,
+  preDueHours = gate.preWindowHours - 2, postDueHours = gate.postHours + 1, postWatchHours = 30,
+}) {
+  if (manifest && !Array.isArray(manifest.entries)) return ['the staged manifest is malformed: it has no entries list'];
+  const t = Date.parse(now);
+  const { next, prev } = deadlineContext(bootstrap, now);
+  const out = [];
+  if (next && (next.ms - t) / HOUR < preDueHours && capturesOf(manifest, 'pre', next.gw).length === 0) {
+    out.push(`no pre-deadline capture for GW${next.gw}, ${((next.ms - t) / HOUR).toFixed(1)}h before its deadline`);
+  }
+  if (prev) {
+    const since = (t - prev.ms) / HOUR;
+    if (since >= postDueHours && since <= postWatchHours && capturesOf(manifest, 'post', prev.gw).length === 0) {
+      out.push(`no post-deadline capture for GW${prev.gw}, ${since.toFixed(1)}h after its deadline`);
+    }
+  }
+  return out;
+}
+
 /* --------------------------------------------------------------- fetching */
 
 const sleepMs = (ms) => new Promise((r) => setTimeout(r, ms));

@@ -211,3 +211,36 @@ test('it runs every six hours on Netlify\'s scheduler, and the status endpoint i
   assert.equal(config.schedule, '41 */6 * * *');
   assert.equal((await handleStatus(req('', 'POST'), memoryStore())).status, 405);
 });
+
+// The deadline archive's own scheduled function alerts nobody when it fails,
+// and a deadline it misses is lost for good, so the probe (which alerts) also
+// checks that the staged captures due by now exist. The fixture clock is an
+// hour before the GW4 deadline, so a pre capture for GW4 is due.
+test('a missing pre-deadline capture in the staged archive fails the run; a present one passes', async () => {
+  const empty = memoryStore();
+  const missed = await runScheduledProbe({ store: memoryStore(), fetchImpl: production(), now: () => NOW, archiveStore: empty });
+  assert.equal(missed.ok, false);
+  const f = missed.failed.find((x) => x.name === 'the deadline archive holds the captures due by now');
+  assert.ok(f, JSON.stringify(missed.failed));
+  assert.match(f.saw, /no pre-deadline capture for GW4, 1\.0h before its deadline/);
+
+  const staged = memoryStore();
+  await staged.setJSON('2026-27/manifest.json', { entries: [{ phase: 'pre', gw: 4, endpoint: 'bootstrap', capturedAt: '2026-09-12T09:07:00Z' }] });
+  const kept = await runScheduledProbe({ store: memoryStore(), fetchImpl: production(), now: () => NOW, archiveStore: staged });
+  assert.equal(kept.ok, true, JSON.stringify(kept.failed));
+  assert.ok(kept.checks.some((c) => c.name === 'the deadline archive holds the captures due by now' && c.ok));
+});
+
+test('an unreadable staged archive fails the archive check rather than passing it', async () => {
+  const broken = { async getWithMetadata() { throw new Error('blobs unavailable'); } };
+  const r = await runScheduledProbe({ store: memoryStore(), fetchImpl: production(), now: () => NOW, archiveStore: broken });
+  const f = r.failed.find((x) => x.name === 'the deadline archive holds the captures due by now');
+  assert.ok(f && /could not read the staged archive: blobs unavailable/.test(f.saw), JSON.stringify(r.failed));
+});
+
+test('a corrupt staged manifest fails the archive check rather than reading as healthy', async () => {
+  const corrupt = { async getWithMetadata() { return { data: { archive: 'x' }, etag: 'e1' }; } };
+  const r = await runScheduledProbe({ store: memoryStore(), fetchImpl: production(), now: () => NOW, archiveStore: corrupt });
+  const f = r.failed.find((x) => x.name === 'the deadline archive holds the captures due by now');
+  assert.ok(f && /the staged manifest is malformed: it has no entries list/.test(f.saw), JSON.stringify(r.failed));
+});

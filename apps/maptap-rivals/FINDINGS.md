@@ -1567,3 +1567,32 @@ Cached coordinates carry `v: 2`, so entries parsed the old way are fetched
 again rather than trusted forever. Only the predictions card read those
 coordinates: synced game rows take theirs from the MapTap profile payload, so
 no stored game was affected.
+
+## Rounds are MapTap's round numbers, not array positions (2026-10-12)
+
+MapTap's own scorer (`deriveDailyScoreFromRounds`, maptap.gg `js/ui.js`) reads
+a saved day by each entry's `round` field (`roundNumber` on iOS), keeps the
+FIRST entry per round, and gives up unless all five rounds are there; its
+comments describe double-counted rounds that needed a repair script, so
+irregular arrays are a real shape of the data. `roundsFromRoundData` and
+`roundsFromRounds` read the array by POSITION, which:
+
+- put an out-of-order day's scores (and their cities) on the wrong rounds, and
+  so also weighted its daily total wrongly: the sync e2e's shuffled day was
+  stored as 74,78,70,76,72 for 736 instead of 70..78 for 752, which moves a
+  win or loss, every round average and the round band built on them;
+- accepted a day with a round missing and a repeat in its place;
+- dropped a six-entry day carrying a repeated round that MapTap itself scores.
+
+`inRoundOrder` now orders entries by round number with first-entry-wins (an
+entry whose score is unreadable does not claim its round, as in MapTap) and
+rejects anything without all five; an array with no round numbers at all
+keeps its order. A synced row stored the old way is corrected by the next
+sync: the merge re-derives its scores, and now moves the row's cities with
+them (`mergeMapTapSync`), but never replaces cities that have coordinates with
+an iOS side's name-only ones, which would drop the day from the continent
+figures. Pinned by the round-order tests in
+`tests/stats.test.js` and the "out of order" check in `e2e/quality.mjs`
+(both fail on the position-based parser). No stranger's profile was fetched
+to find this: the evidence is MapTap's public client code and synthetic
+fixtures.

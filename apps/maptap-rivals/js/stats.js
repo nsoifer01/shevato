@@ -203,9 +203,37 @@
       && scores.every(s => Number.isFinite(s) && s >= 0 && s <= MAX_RAW);
   }
 
+  // The entries in ROUND order, or null. MapTap's own scorer
+  // (deriveDailyScoreFromRounds, maptap.gg js/ui.js) keys each entry by its
+  // `round` field (`roundNumber` on iOS), keeps the first entry per round, and
+  // gives up unless all five rounds are there; position in the array means
+  // nothing to it. Reading by position put an out-of-order day's scores and
+  // cities on the wrong rounds (and so weighted its total wrongly), accepted a
+  // day with a round missing and a repeat in its place, and dropped a day
+  // carrying a duplicate MapTap still scores. An array with no round numbers
+  // at all keeps its order, which is the only thing it can mean.
+  function inRoundOrder(entries) {
+    if (!Array.isArray(entries)) return null;
+    const numberOf = (r) => {
+      const n = r && typeof r === 'object' ? Number(r.round ?? r.roundNumber) : NaN;
+      return Number.isInteger(n) ? n : null;
+    };
+    if (!entries.some(r => numberOf(r) !== null)) return entries.length === N_LOCS ? entries : null;
+    const byRound = new Map();
+    for (const r of entries) {
+      const n = numberOf(r);
+      // An unreadable score does not claim its round (MapTap skips it first).
+      if (n === null || n < 1 || n > N_LOCS || byRound.has(n) || !Number.isFinite(Number(r.score))) continue;
+      byRound.set(n, r);
+    }
+    if (byRound.size !== N_LOCS) return null;
+    return Array.from({ length: N_LOCS }, (_, i) => byRound.get(i + 1));
+  }
+
   // Web/legacy shape: roundData[] carrying answer-city coordinates.
-  function roundsFromRoundData(roundData) {
-    if (!Array.isArray(roundData) || roundData.length !== N_LOCS) return null;
+  function roundsFromRoundData(entries) {
+    const roundData = inRoundOrder(entries);
+    if (!roundData) return null;
     const scores = roundData.map(r => Number(r.score));
     if (!validRawScores(scores)) return null;
     const cities = roundData.map(r => ({
@@ -219,8 +247,9 @@
   // iOS 4.04+ shape: rounds[] with score + answer-city NAME (targetCity) but no
   // coordinates. Used only when roundData is absent. Cities keep the name and
   // get NaN coords, so continent classification falls back to 'Unknown'.
-  function roundsFromRounds(rounds) {
-    if (!Array.isArray(rounds) || rounds.length !== N_LOCS) return null;
+  function roundsFromRounds(entries) {
+    const rounds = inRoundOrder(entries);
+    if (!rounds) return null;
     const scores = rounds.map(r => Number(r.score));
     if (!validRawScores(scores)) return null;
     const cities = rounds.map(r => ({
@@ -316,6 +345,15 @@
           if (myChanged || theirChanged) {
             if (newMy) { game.myScores = newMy; game.myScore = weightedTotal(newMy); }
             if (newTheir) { game.theirScores = newTheir; game.theirScore = weightedTotal(newTheir); }
+            // The cities move with the scores: a row stored before rounds were
+            // read by round number has both in the same wrong order, and
+            // re-ordering only the scores would pair them with the wrong city.
+            // Never trades coordinates for none: an iOS side carries city
+            // names only, and the row's located cities came from the other
+            // side's web data.
+            const located = (list) => Array.isArray(list) && list.some(c => c && Number.isFinite(c.lat));
+            if (cities && JSON.stringify(game.cities) !== JSON.stringify(cities)
+                && (located(cities) || !located(game.cities))) game.cities = cities.slice();
             updated++;
           }
         }
