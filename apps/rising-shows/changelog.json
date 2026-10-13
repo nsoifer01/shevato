@@ -1,6 +1,330 @@
 {
   "updates": [
     {
+      "builtAt": "2026-10-13T14:20:48.635Z",
+      "totals": {
+        "seasons": 67206,
+        "delta": 26
+      },
+      "shapeCounts": {
+        "rebound": 10223,
+        "rising": 2661,
+        "slow-burn": 4452,
+        "big-finale": 12250,
+        "u-shaped": 3094,
+        "rollercoaster": 14240,
+        "saved-best-for-last": 1475,
+        "shape-drift": 1582,
+        "mid-peak": 4648,
+        "front-loaded": 3507,
+        "declining": 1915,
+        "bad-finale": 4686,
+        "consistent": 2653
+      },
+      "shapeDeltas": {
+        "rebound": 1,
+        "rising": 2,
+        "slow-burn": -1,
+        "big-finale": -8,
+        "u-shaped": 6,
+        "rollercoaster": 3,
+        "saved-best-for-last": -1,
+        "mid-peak": 4,
+        "front-loaded": -1,
+        "declining": 1,
+        "bad-finale": 3,
+        "consistent": -4
+      },
+      "added": [
+        {
+          "seriesId": "tt43691353",
+          "title": "Overgeared",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt31975847",
+          "title": "As a Reincarnated Aristocrat, I'll Use My Appraisal Skill to Rise in the World",
+          "season": 3,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt0221734",
+          "title": "Call of the Wild",
+          "season": 1,
+          "seasonYear": 2000
+        },
+        {
+          "seriesId": "tt38990181",
+          "title": "Dustfall",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt2334429",
+          "title": "The Voice",
+          "season": 1,
+          "seasonYear": 2012
+        },
+        {
+          "seriesId": "tt14702312",
+          "title": "Pishgoo",
+          "season": 1,
+          "seasonYear": 2021
+        },
+        {
+          "seriesId": "tt30003786",
+          "title": "The Great Indian Kapil Show",
+          "season": 5,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt42888794",
+          "title": "Baskalarinin Hayati",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt1183586",
+          "title": "Meine Liebe",
+          "season": 1,
+          "seasonYear": 2004
+        },
+        {
+          "seriesId": "tt20428144",
+          "title": "Sam and Colby Present: Hell Week",
+          "season": 6,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt2827502",
+          "title": "Lalaloopsy",
+          "season": 2,
+          "seasonYear": 2014
+        },
+        {
+          "seriesId": "tt37540577",
+          "title": "Aquel",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt37599841",
+          "title": "Skibidi Toilet Multiverse",
+          "season": 8,
+          "seasonYear": 2024
+        },
+        {
+          "seriesId": "tt37599841",
+          "title": "Skibidi Toilet Multiverse",
+          "season": 9,
+          "seasonYear": 2024
+        },
+        {
+          "seriesId": "tt0291653",
+          "title": "El pulpo negro",
+          "season": 1,
+          "seasonYear": 1985
+        },
+        {
+          "seriesId": "tt11378436",
+          "title": "Paraskevas",
+          "season": 2,
+          "seasonYear": 2019
+        },
+        {
+          "seriesId": "tt13186264",
+          "title": "Magpie Murders",
+          "season": 2,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt13186264",
+          "title": "Magpie Murders",
+          "season": 3,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt0870060",
+          "title": "Soldaty",
+          "season": 1,
+          "seasonYear": 2004
+        },
+        {
+          "seriesId": "tt28618242",
+          "title": "Forræder",
+          "season": 4,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt37599841",
+          "title": "Skibidi Toilet Multiverse",
+          "season": 5,
+          "seasonYear": 2023
+        },
+        {
+          "seriesId": "tt40250814",
+          "title": "Paul",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt41991223",
+          "title": "Sam & Ade Go Birding",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt38638875",
+          "title": "R.I.P. - Roast in Peace",
+          "season": 2,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt39205549",
+          "title": "Die Putzfrau",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt45134879",
+          "title": "Fairway of Love",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt35052365",
+          "title": "Kudrat 1968: High Council",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt43700003",
+          "title": "Cautiva",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt37350966",
+          "title": "The Reluctant Vampire",
+          "season": 1,
+          "seasonYear": 2026
+        }
+      ],
+      "removed": [
+        {
+          "seriesId": "tt35264123",
+          "title": "Manhood",
+          "season": 1,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt3962914",
+          "title": "Itch",
+          "season": 2,
+          "seasonYear": 2021
+        },
+        {
+          "seriesId": "tt13978840",
+          "title": "In Our House There Is A Robot AKA (Fe Baytena Robot)",
+          "season": 1,
+          "seasonYear": 2021
+        }
+      ],
+      "ratingSwings": [
+        {
+          "seriesId": "tt1632065",
+          "title": "Mother",
+          "season": 1,
+          "from": 8.7,
+          "to": 7.5,
+          "delta": -1.2
+        },
+        {
+          "seriesId": "tt3778408",
+          "title": "Know It All Nina",
+          "season": 1,
+          "from": 8.04,
+          "to": 6.88,
+          "delta": -1.16
+        },
+        {
+          "seriesId": "tt2827502",
+          "title": "Lalaloopsy",
+          "season": 1,
+          "from": 8.83,
+          "to": 7.72,
+          "delta": -1.11
+        },
+        {
+          "seriesId": "tt38786055",
+          "title": "Kara Kis",
+          "season": 1,
+          "from": 6.85,
+          "to": 7.71,
+          "delta": 0.86
+        },
+        {
+          "seriesId": "tt7439560",
+          "title": "Enterprice",
+          "season": 2,
+          "from": 8.06,
+          "to": 7.26,
+          "delta": -0.8
+        },
+        {
+          "seriesId": "tt0260634",
+          "title": "The Maias",
+          "season": 1,
+          "from": 8.47,
+          "to": 7.73,
+          "delta": -0.74
+        },
+        {
+          "seriesId": "tt38891054",
+          "title": "Posle Fishera. Inkvizitor",
+          "season": 1,
+          "from": 5.93,
+          "to": 5.2,
+          "delta": -0.73
+        },
+        {
+          "seriesId": "tt7439560",
+          "title": "Enterprice",
+          "season": 1,
+          "from": 8.18,
+          "to": 7.56,
+          "delta": -0.62
+        },
+        {
+          "seriesId": "tt2334429",
+          "title": "The Voice",
+          "season": 2,
+          "from": 6.14,
+          "to": 6.74,
+          "delta": 0.6
+        },
+        {
+          "seriesId": "tt1100935",
+          "title": "Inspector Manara",
+          "season": 2,
+          "from": 7.45,
+          "to": 6.85,
+          "delta": -0.6
+        }
+      ],
+      "modifiedCounts": {
+        "seriesVotes": 22345,
+        "avgRating": 1530,
+        "shapes": 241,
+        "seriesRating": 389,
+        "episodeCount": 101,
+        "poster": 1,
+        "providers": 1,
+        "overview": 1
+      }
+    },
+    {
       "builtAt": "2026-10-12T15:16:34.194Z",
       "totals": {
         "seasons": 67180,
@@ -9516,233 +9840,6 @@
         "seriesRating": 365,
         "poster": 7,
         "overview": 7
-      }
-    },
-    {
-      "builtAt": "2026-08-25T06:52:20.596Z",
-      "totals": {
-        "seasons": 66435,
-        "delta": 16
-      },
-      "shapeCounts": {
-        "mid-peak": 4634,
-        "rebound": 10112,
-        "rising": 2606,
-        "slow-burn": 4409,
-        "big-finale": 12092,
-        "u-shaped": 3084,
-        "rollercoaster": 14122,
-        "saved-best-for-last": 1504,
-        "front-loaded": 3491,
-        "declining": 1882,
-        "bad-finale": 4648,
-        "consistent": 2627,
-        "shape-drift": 1583
-      },
-      "shapeDeltas": {
-        "mid-peak": 4,
-        "rebound": -1,
-        "rising": 1,
-        "slow-burn": 4,
-        "big-finale": 2,
-        "u-shaped": 10,
-        "rollercoaster": 8,
-        "saved-best-for-last": -1,
-        "front-loaded": 2,
-        "declining": 1,
-        "bad-finale": -1,
-        "consistent": -3,
-        "shape-drift": -2
-      },
-      "added": [
-        {
-          "seriesId": "tt0364779",
-          "title": "American Chopper: The Series",
-          "season": 7,
-          "seasonYear": 2010
-        },
-        {
-          "seriesId": "tt0364779",
-          "title": "American Chopper: The Series",
-          "season": 8,
-          "seasonYear": 2011
-        },
-        {
-          "seriesId": "tt7165904",
-          "title": "Big City Greens",
-          "season": 5,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt39365311",
-          "title": "S&X",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt7318880",
-          "title": "Garage Rehab",
-          "season": 2,
-          "seasonYear": 2019
-        },
-        {
-          "seriesId": "tt1616295",
-          "title": "Kaygisizlar",
-          "season": 3,
-          "seasonYear": 1997
-        },
-        {
-          "seriesId": "tt12915960",
-          "title": "The Patrick Star Show",
-          "season": 5,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt11328426",
-          "title": "Aktivisten",
-          "season": 1,
-          "seasonYear": 2019
-        },
-        {
-          "seriesId": "tt13084120",
-          "title": "Azur Lane: Slow Ahead!",
-          "season": 2,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt15028658",
-          "title": "Schaffrillas Productions",
-          "season": 4,
-          "seasonYear": 2021
-        },
-        {
-          "seriesId": "tt15404360",
-          "title": "The Match",
-          "season": 2,
-          "seasonYear": 2022
-        },
-        {
-          "seriesId": "tt31947416",
-          "title": "Ragouj",
-          "season": 1,
-          "seasonYear": 2024
-        },
-        {
-          "seriesId": "tt30223097",
-          "title": "Salto de Fé",
-          "season": 3,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt38534436",
-          "title": "Khovaiuchy kolyshniu",
-          "season": 1,
-          "seasonYear": 2025
-        },
-        {
-          "seriesId": "tt43686384",
-          "title": "The Chase Around the World",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt43725283",
-          "title": "To Kastro",
-          "season": 1,
-          "seasonYear": 2026
-        }
-      ],
-      "removed": [],
-      "ratingSwings": [
-        {
-          "seriesId": "tt33503513",
-          "title": "SML",
-          "season": 4,
-          "from": 7.47,
-          "to": 6.7,
-          "delta": -0.77
-        },
-        {
-          "seriesId": "tt14489144",
-          "title": "Build Divide: Code Black",
-          "season": 1,
-          "from": 7.36,
-          "to": 6.64,
-          "delta": -0.72
-        },
-        {
-          "seriesId": "tt9048998",
-          "title": "Bir Litre Gözyasi",
-          "season": 1,
-          "from": 8.21,
-          "to": 7.53,
-          "delta": -0.68
-        },
-        {
-          "seriesId": "tt0302199",
-          "title": "Sweet Life",
-          "season": 1,
-          "from": 7.23,
-          "to": 7.88,
-          "delta": 0.65
-        },
-        {
-          "seriesId": "tt33503513",
-          "title": "SML",
-          "season": 5,
-          "from": 7.73,
-          "to": 7.08,
-          "delta": -0.65
-        },
-        {
-          "seriesId": "tt33503513",
-          "title": "SML",
-          "season": 3,
-          "from": 7.23,
-          "to": 6.59,
-          "delta": -0.64
-        },
-        {
-          "seriesId": "tt43597214",
-          "title": "Bock Saga",
-          "season": 1,
-          "from": 7.97,
-          "to": 8.6,
-          "delta": 0.63
-        },
-        {
-          "seriesId": "tt19414282",
-          "title": "Between Two Ferns: The Movie - Sorta Uncut Extended Interviews",
-          "season": 1,
-          "from": 6.7,
-          "to": 6.1,
-          "delta": -0.6
-        },
-        {
-          "seriesId": "tt28777411",
-          "title": "Fated to My Forbidden Alpha",
-          "season": 1,
-          "from": 8.97,
-          "to": 8.45,
-          "delta": -0.52
-        },
-        {
-          "seriesId": "tt0996557",
-          "title": "'Da Kink in My Hair",
-          "season": 2,
-          "from": 6.18,
-          "to": 5.67,
-          "delta": -0.51
-        }
-      ],
-      "modifiedCounts": {
-        "seriesVotes": 22667,
-        "avgRating": 1288,
-        "shapes": 221,
-        "episodeCount": 111,
-        "seriesRating": 348,
-        "poster": 21,
-        "overview": 19
       }
     }
   ]
