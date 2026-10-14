@@ -12,13 +12,16 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import {
-  runScheduledProbe, statusOf, slotOf, githubDispatchAlert, STALE_AFTER_HOURS, UNFINISHED_AFTER_MS,
+  runScheduledProbe, statusOf, slotOf, githubDispatchAlert, openStrongStore, HEALTH_STORE, STALE_AFTER_HOURS, UNFINISHED_AFTER_MS,
 } from '../lib/fpl-health-run.mjs';
+import { ARCHIVE_STORE } from '../lib/fpl-archive-stage.mjs';
+import { assess, readStatus, reconcile } from '../../../apps/fpl-planner/scripts/health-monitor.mjs';
 import { handleStatus } from '../fpl-health-status.mjs';
 import { config } from '../fpl-health.mjs';
 import { deadlinePayload } from '../../../apps/fpl-planner/tests/helpers/xp-calibration-fixture.mjs';
 
-const APP = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', 'apps', 'fpl-planner');
+const HERE = dirname(fileURLToPath(import.meta.url));
+const APP = join(HERE, '..', '..', '..', 'apps', 'fpl-planner');
 // The real 2026/27 gameweek 4 deadline payload (tests/fixtures/xp-calibration-2026),
 // a healthy production state. The synthetic demo sample is NOT one: it carries
 // last season's totals beside twelve finished gameweeks, which the probe
@@ -48,20 +51,23 @@ const healthyHeaders = { 'cache-control': 'no-store', 'x-fpl-stale': 'false', 'x
 
 // A fake production: the proxy serves the sample, the static site serves the
 // shipped baseline, FPL itself answers `fplStatus`.
-function production({ proxyStatus = 200, bootstrap = SAMPLE.bootstrap, fplStatus = 200 } = {}) {
+// `bootstrapHeaders` overrides the proxy's headers on bootstrap-static (a
+// stale copy); `fplFetch` replaces FPL itself.
+function production({ proxyStatus = 200, bootstrap = SAMPLE.bootstrap, fplStatus = 200, bootstrapHeaders = null, fplFetch = null } = {}) {
   const calls = [];
-  const fetchImpl = async (url) => {
+  const fetchImpl = async (url, init = {}) => {
     calls.push(url);
     if (url.includes('/.netlify/functions/fpl?path=')) {
       if (proxyStatus !== 200) return new Response('{}', { status: proxyStatus });
       const path = decodeURIComponent(url.split('path=')[1]);
       const body = path === 'bootstrap-static' ? bootstrap : SAMPLE.fixtures;
-      return new Response(JSON.stringify(body), { status: 200, headers: healthyHeaders });
+      const headers = path === 'bootstrap-static' && bootstrapHeaders ? { ...healthyHeaders, ...bootstrapHeaders } : healthyHeaders;
+      return new Response(JSON.stringify(body), { status: 200, headers });
     }
     if (url.endsWith('/apps/fpl-planner/data/opening-baseline.json')) {
       return new Response(readFileSync(join(APP, 'data', 'opening-baseline.json'), 'utf8'), { status: 200 });
     }
-    if (url.startsWith('https://fantasy.premierleague.com/')) return new Response('{}', { status: fplStatus });
+    if (url.startsWith('https://fantasy.premierleague.com/')) return fplFetch ? fplFetch(url, init) : new Response('{}', { status: fplStatus });
     throw new Error(`unexpected fetch ${url}`);
   };
   fetchImpl.calls = calls;
@@ -141,7 +147,7 @@ test('with a token, a failure starts the incident workflow at once; a healthy st
   const red = { ...green, ok: false, failed: [{ name: 'x', saw: 'a', expected: 'b' }] };
 
   assert.deepEqual(await alert({ latest: red, before: green }), { ok: true, dispatched: 'failure' });
-  assert.deepEqual(gh.calls[0], { method: 'POST', path: '/dispatches', body: { ref: 'master', inputs: { mode: 'monitor' } }, auth: 'Bearer t' });
+  assert.deepEqual(gh.calls[0], { method: 'POST', path: '/dispatches', body: { ref: 'master', inputs: { mode: 'monitor', expect_at: NOW } }, auth: 'Bearer t' });
 
   // Recovery: the run before failed, so the workflow is started to close the issue.
   assert.deepEqual(await alert({ latest: green, before: red }), { ok: true, dispatched: 'recovery-check' });
@@ -243,4 +249,152 @@ test('a corrupt staged manifest fails the archive check rather than reading as h
   const r = await runScheduledProbe({ store: memoryStore(), fetchImpl: production(), now: () => NOW, archiveStore: corrupt });
   const f = r.failed.find((x) => x.name === 'the deadline archive holds the captures due by now');
   assert.ok(f && /the staged manifest is malformed: it has no entries list/.test(f.saw), JSON.stringify(r.failed));
+});
+
+// Netlify Blobs as it behaves (its README: edge reads drift up to 60 seconds).
+// A strong store reads what was last written; the default (eventual) store
+// reads what had propagated when `propagate()` was last called.
+function laggingBlobs() {
+  const primary = memoryStore();
+  let seen = new Map();
+  const opened = [];
+  const eventual = {
+    async get(k) { return seen.has(k) ? structuredClone(seen.get(k)) : null; },
+    async getWithMetadata(k) { return seen.has(k) ? { data: structuredClone(seen.get(k)), etag: 'stale' } : null; },
+    setJSON: (...a) => primary.setJSON(...a),
+  };
+  const getStore = (opts) => {
+    opened.push(opts);
+    return opts && typeof opts === 'object' && opts.consistency === 'strong' ? primary : eventual;
+  };
+  return { getStore, opened, propagate() { seen = new Map(primary.map); } };
+}
+
+// Earlier slots: the fixture's clock is an hour before the GW4 deadline, so a
+// run after NOW would rightly fail "the next deadline is in the future".
+const slotsBefore = (n) => new Date(Date.parse(NOW) - n * 6 * 3600e3).toISOString();
+const staleBootstrap = { 'x-fpl-stale': 'true', 'x-fpl-age-seconds': '21603' };
+
+test('14 October, reproduced: an eventually consistent read serves the old failure after the recovery is stored; the strong store does not', async () => {
+  const blobs = laggingBlobs();
+  const writer = openStrongStore(blobs.getStore, HEALTH_STORE);
+  // 06:41: the proxy serves a six-hour-old stale bootstrap; the run fails.
+  const failedAt = slotsBefore(1);
+  const failed = await runScheduledProbe({ store: writer, fetchImpl: production({ bootstrapHeaders: staleBootstrap }), now: () => failedAt });
+  assert.equal(failed.ok, false);
+  blobs.propagate();
+  // 12:41: healthy, stored, and the recovery check reads 12 seconds later.
+  const recoveredAt = NOW;
+  const recovered = await runScheduledProbe({ store: writer, fetchImpl: production(), now: () => recoveredAt });
+  assert.equal(recovered.ok, true, JSON.stringify(recovered.failed));
+  const readAt = Date.parse(recoveredAt) + 27e3;
+
+  const eventual = await handleStatus(req(), blobs.getStore(HEALTH_STORE), readAt);
+  const before = await eventual.json();
+  assert.equal(eventual.status, 503, 'the old bug: the default store still shows the failure');
+  assert.equal(before.latest.at, failedAt);
+
+  const strong = await handleStatus(req(), openStrongStore(blobs.getStore, HEALTH_STORE), readAt);
+  assert.equal(strong.status, 200);
+  assert.equal((await strong.json()).latest.at, recoveredAt);
+});
+
+test('every Netlify entry point of the health probe opens its stores with strong consistency', () => {
+  const opened = [];
+  openStrongStore((o) => { opened.push(o); return {}; }, HEALTH_STORE);
+  assert.deepEqual(opened, [{ name: HEALTH_STORE, consistency: 'strong' }]);
+  // The entry points import @netlify/blobs themselves, so their wiring is read
+  // from source: no store is opened any other way.
+  for (const [file, stores] of [['fpl-health-status.mjs', ['HEALTH_STORE']], ['fpl-health.mjs', ['HEALTH_STORE', 'ARCHIVE_STORE']]]) {
+    const src = readFileSync(join(HERE, '..', file), 'utf8');
+    assert.equal((src.match(/getStore\(/g) || []).length, 0, `${file} calls getStore directly`);
+    for (const name of stores) assert.ok(src.includes(`openStrongStore(getStore, ${name})`), `${file} opens ${name} strongly`);
+  }
+  assert.equal(ARCHIVE_STORE, 'fpl-archive');
+});
+
+test('a stale proxy answer asks FPL once and puts what FPL said on the failed check; a healthy run asks FPL nothing', async () => {
+  const healthy = production();
+  await runScheduledProbe({ store: memoryStore(), fetchImpl: healthy, now: () => NOW });
+  assert.equal(healthy.calls.filter((u) => u.startsWith('https://fantasy.premierleague.com/')).length, 0);
+
+  const signals = [];
+  const stale = production({ bootstrapHeaders: staleBootstrap, fplFetch: (url, init) => { signals.push(init.signal); return new Response('<html>The game is being updated.</html>', { status: 503 }); } });
+  const r = await runScheduledProbe({ store: memoryStore(), fetchImpl: stale, now: () => NOW });
+  assert.equal(stale.calls.filter((u) => u.startsWith('https://fantasy.premierleague.com/')).length, 1);
+  assert.ok(signals[0] instanceof AbortSignal, 'the direct question is bounded by a timeout');
+  const f = r.failed.find((x) => x.name === 'the proxy serves bootstrap-static fresh and uncached by browsers');
+  assert.match(f.saw, /stale true, age 21603s; FPL itself answered 503 in \d+ ms$/);
+  assert.ok(r.lines.some((l) => /^upstream +FPL itself answered 503 in \d+ ms \(asked directly after the proxy served bootstrap-static stale\)$/.test(l)), r.lines.join('\n'));
+
+  const hung = production({ bootstrapHeaders: staleBootstrap, fplFetch: async () => { throw new DOMException('The operation was aborted due to timeout', 'TimeoutError'); } });
+  const t = await runScheduledProbe({ store: memoryStore(), fetchImpl: hung, now: () => NOW });
+  assert.match(t.failed.find((x) => x.name.startsWith('the proxy serves bootstrap-static')).saw, /FPL itself is unreachable after \d+ ms \(The operation was aborted due to timeout\)$/);
+});
+
+// The whole chain on fakes: Netlify probe -> stored status -> dispatch (with
+// expect_at) -> the monitor reading the status endpoint -> the incident issue.
+test('the chain end to end: a failure opens one incident, the recovery check closes it, and an endpoint still behind never closes it or repeats the old failure', async () => {
+  const blobs = laggingBlobs();
+  const writer = openStrongStore(blobs.getStore, HEALTH_STORE);
+  const dispatched = [];
+  const alert = githubDispatchAlert({ token: 't', repo: 'o/r', fetchImpl: async (url, init = {}) => {
+    if (url.endsWith('/dispatches')) { dispatched.push(JSON.parse(init.body).inputs); return new Response(null, { status: 204 }); }
+    return new Response('{}', { status: 200 });
+  } });
+  const issues = [];
+  const api = async (path, init = {}) => {
+    const method = init.method || 'GET';
+    const body = init.body ? JSON.parse(init.body) : null;
+    const res = (status, b) => new Response(b === undefined ? null : JSON.stringify(b), { status });
+    if (path.startsWith('/issues?state=open')) return res(200, issues.filter((i) => i.state === 'open'));
+    if (path === '/issues' && method === 'POST') { const i = { number: issues.length + 1, title: body.title, body: body.body, state: 'open', comments: [] }; issues.push(i); return res(201, i); }
+    const m = path.match(/^\/issues\/(\d+)(\/comments)?/);
+    const issue = issues.find((i) => i.number === Number(m[1]));
+    if (m[2]) { if (method === 'POST') { issue.comments.push({ body: body.body }); return res(201, {}); } return res(200, issue.comments); }
+    Object.assign(issue, body); return res(200, issue);
+  };
+  // The monitor as the workflow runs it, against an endpoint opened `opener`'s way.
+  const monitor = async (expectAt, nowMs, opener) => {
+    const statusFetch = async () => handleStatus(req(), opener(), nowMs);
+    const reading = await readStatus('https://shevato.com/.netlify/functions/fpl-health-status', statusFetch, { expectAt, sleep: async () => {} });
+    const { problems, latest } = assess({ ...reading, nowMs, expectAt });
+    return { problems, ...(await reconcile({ problems, latest, api, nowIso: new Date(nowMs).toISOString() })) };
+  };
+  const strong = () => openStrongStore(blobs.getStore, HEALTH_STORE);
+  const eventual = () => blobs.getStore(HEALTH_STORE);
+
+  // A healthy baseline, then a genuine failure: opened at once.
+  await runScheduledProbe({ store: writer, fetchImpl: production(), now: () => slotsBefore(3), alert });
+  const failAt = slotsBefore(2);
+  await runScheduledProbe({ store: writer, fetchImpl: production({ bootstrapHeaders: staleBootstrap, fplStatus: 503 }), now: () => failAt, alert });
+  assert.deepEqual(dispatched.at(-1), { mode: 'monitor', expect_at: failAt });
+  const opened = await monitor(dispatched.at(-1).expect_at, Date.parse(failAt) + 30e3, strong);
+  assert.equal(opened.action, 'opened');
+  assert.match(issues[0].body, /FPL itself answered 503/);
+  blobs.propagate();
+
+  // The recovery is stored and dispatches a recovery check.
+  const okAt = slotsBefore(1);
+  await runScheduledProbe({ store: writer, fetchImpl: production(), now: () => okAt, alert });
+  assert.deepEqual(dispatched.at(-1), { mode: 'monitor', expect_at: okAt });
+
+  // An endpoint that is still behind (the 14 October read): red, the incident
+  // stays open, and it is not told the old failure is still happening.
+  const behind = await monitor(okAt, Date.parse(okAt) + 30e3, eventual);
+  assert.deepEqual(behind.problems.map((p) => p.key), ['status-behind']);
+  assert.equal(issues[0].state, 'open');
+
+  // The strong endpoint shows the recovery: closed.
+  const closed = await monitor(okAt, Date.parse(okAt) + 30e3, strong);
+  assert.equal(closed.action, 'closed');
+  assert.equal(issues[0].state, 'closed');
+  assert.equal(issues.length, 1, 'one incident, never a duplicate');
+
+  // A recovery check never hides a failure that is still current.
+  const againAt = NOW;
+  await runScheduledProbe({ store: writer, fetchImpl: production({ proxyStatus: 503 }), now: () => againAt, alert });
+  const reopened = await monitor(dispatched.at(-1).expect_at, Date.parse(againAt) + 30e3, strong);
+  assert.equal(reopened.action, 'opened');
+  assert.equal(issues.filter((i) => i.state === 'open').length, 1);
 });

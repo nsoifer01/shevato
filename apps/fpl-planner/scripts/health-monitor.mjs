@@ -28,14 +28,26 @@
 // `[fpl-health drill]` issue, so it exercises the whole path (issue, mention,
 // red run, close) without touching a real incident.
 //
+// A run the Netlify probe dispatched knows which probe started it
+// (FPL_HEALTH_EXPECT_AT, the workflow's `expect_at` input): it waits until the
+// endpoint shows that run or a newer one, and never judges the result BEFORE
+// it. On 14 October a recovery check read the six-hour-old failure 12 seconds
+// after the pass was stored (an eventually consistent read, now strong) and
+// kept the incident open; if the endpoint ever lags like that again, the run
+// says so, red, rather than repeating an old verdict either way.
+//
 // Environment: GITHUB_TOKEN, GITHUB_REPOSITORY (owner/name), optionally
 // GITHUB_SERVER_URL + GITHUB_RUN_ID (to link the run), FPL_HEALTH_MENTION
-// (default: the repository owner), FPL_HEALTH_STATUS_URL.
+// (default: the repository owner), FPL_HEALTH_STATUS_URL, FPL_HEALTH_EXPECT_AT.
 
 import { pathToFileURL } from 'node:url';
 
 export const STATUS_URL = 'https://shevato.com/.netlify/functions/fpl-health-status';
 export const STALE_AFTER_HOURS = 7;
+// How long a dispatched run waits for the endpoint to show the probe that
+// started it: past Netlify Blobs' documented 60-second drift, with room.
+export const EXPECT_WAIT_MS = 90e3;
+export const EXPECT_POLL_MS = 10e3;
 export const MARKER = '[fpl-health]';
 export const DRILL_MARKER = '[fpl-health drill]';
 const FINGERPRINT_RE = /<!-- fpl-health:([^>]*?) -->/g;
@@ -45,7 +57,7 @@ const FINGERPRINT_RE = /<!-- fpl-health:([^>]*?) -->/g;
  * `http` is the status code (or null when the request failed), `body` the
  * parsed JSON (or null), `error` the request's failure.
  */
-export function assess({ http, body, error = null, nowMs = Date.now() }) {
+export function assess({ http, body, error = null, nowMs = Date.now(), expectAt = null }) {
   const problems = [];
   const add = (key, text, short) => problems.push({ key, text, short });
   if (http == null || !body || typeof body !== 'object') {
@@ -55,6 +67,13 @@ export function assess({ http, body, error = null, nowMs = Date.now() }) {
   const latest = body.latest || null;
   if (!latest || !latest.at) {
     add('no-run', `no probe result: ${body.reason || 'the status carries no latest run'}`, 'no probe result');
+    return { problems, latest };
+  }
+  // Behind the probe that started this run: what it shows is no longer the
+  // state of production, so neither its failures nor its passes are judged.
+  // Red, so an incident stays open and nothing reads as recovered.
+  if (isBehind(latest, expectAt)) {
+    add('status-behind', `fpl-health-status still shows the probe at ${latest.at}, not the one at ${expectAt} that started this check; the status store is serving an old result`, 'status endpoint shows an old result');
     return { problems, latest };
   }
   const ageHours = (nowMs - Date.parse(latest.at)) / 3600e3;
@@ -71,6 +90,14 @@ export function assess({ http, body, error = null, nowMs = Date.now() }) {
   if (http !== 200 && !problems.length) add('endpoint-unhealthy', `fpl-health-status answered ${http}: ${body.reason || 'no reason given'}`, 'status endpoint unhealthy');
   return { problems, latest };
 }
+
+/** A usable ISO time from the workflow input, else null (absent or junk is ignored). */
+export function parseExpectAt(raw) {
+  const ms = Date.parse(raw || '');
+  return Number.isFinite(ms) ? new Date(ms).toISOString() : null;
+}
+
+const isBehind = (latest, expectAt) => Boolean(expectAt && latest && latest.at && Date.parse(latest.at) < Date.parse(expectAt));
 
 // WHAT is wrong, not when: the same failure on the next slot is the same
 // incident and posts nothing (the red run still emails); a different set of
@@ -143,7 +170,7 @@ export function drillStatus(kind, nowIso) {
   throw new Error(`--drill takes failure or recovery, not ${kind}`);
 }
 
-async function readStatus(url, fetchImpl) {
+async function readOnce(url, fetchImpl, sleep) {
   let last = null;
   for (let attempt = 0; attempt < 3; attempt++) {
     try {
@@ -155,9 +182,23 @@ async function readStatus(url, fetchImpl) {
     } catch (err) {
       last = { http: null, body: null, error: String((err && err.message) || err) };
     }
-    await new Promise((r) => setTimeout(r, 5000));
+    await sleep(5000);
   }
   return last;
+}
+
+/**
+ * Read the status endpoint. With `expectAt`, re-read every EXPECT_POLL_MS
+ * while it still shows an older run, for up to EXPECT_WAIT_MS; what it shows
+ * then is judged by assess() (behind is a problem of its own).
+ */
+export async function readStatus(url, fetchImpl, { expectAt = null, sleep = (ms) => new Promise((r) => setTimeout(r, ms)), waitMs = EXPECT_WAIT_MS, pollMs = EXPECT_POLL_MS } = {}) {
+  let reading = await readOnce(url, fetchImpl, sleep);
+  for (let waited = 0; waited < waitMs && reading.body && isBehind(reading.body.latest, expectAt); waited += pollMs) {
+    await sleep(pollMs);
+    reading = await readOnce(url, fetchImpl, sleep);
+  }
+  return reading;
 }
 
 async function main(argv) {
@@ -168,8 +209,11 @@ async function main(argv) {
   if (!token || !repo) throw new Error('GITHUB_TOKEN and GITHUB_REPOSITORY are required');
   const nowIso = new Date().toISOString();
   const statusUrl = process.env.FPL_HEALTH_STATUS_URL || STATUS_URL;
-  const reading = drill ? drillStatus(drill, nowIso) : await readStatus(statusUrl, fetch);
-  const { problems, latest } = assess({ ...reading, nowMs: Date.parse(nowIso) });
+  const expectAt = drill ? null : parseExpectAt(process.env.FPL_HEALTH_EXPECT_AT);
+  const reading = drill ? drillStatus(drill, nowIso) : await readStatus(statusUrl, fetch, { expectAt });
+  // The clock is read after the wait, so staleness is judged as of now.
+  const judgedAt = drill ? nowIso : new Date().toISOString();
+  const { problems, latest } = assess({ ...reading, nowMs: Date.parse(judgedAt), expectAt });
   const api = (path, init = {}) => fetch(`https://api.github.com/repos/${repo}${path}`, {
     ...init,
     headers: {
@@ -179,9 +223,9 @@ async function main(argv) {
   });
   const runUrl = process.env.GITHUB_RUN_ID ? `${process.env.GITHUB_SERVER_URL || 'https://github.com'}/${repo}/actions/runs/${process.env.GITHUB_RUN_ID}` : null;
   const mention = process.env.FPL_HEALTH_MENTION || repo.split('/')[0];
-  const result = await reconcile({ problems, latest, api, marker: drill ? DRILL_MARKER : MARKER, mention, statusUrl, runUrl, nowIso });
+  const result = await reconcile({ problems, latest, api, marker: drill ? DRILL_MARKER : MARKER, mention, statusUrl, runUrl, nowIso: judgedAt });
 
-  console.log(JSON.stringify({ drill, http: reading.http, problems, ...result }, null, 2));
+  console.log(JSON.stringify({ drill, expectAt, read: latest && latest.at, http: reading.http, problems, ...result }, null, 2));
   if (problems.length) {
     for (const p of problems) console.log(`::error::${p.text}`);
     return 1;

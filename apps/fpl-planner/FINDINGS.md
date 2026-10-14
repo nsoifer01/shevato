@@ -199,6 +199,52 @@ The probe now also has a memory it never had on a CI runner: the previous
 healthy reading (`last-reading`), which arms the "best eleven has not moved
 without a reason" invariant on every scheduled run.
 
+### Incident #604 (14 October 2026): a real stale bootstrap, then a recovery that could not be seen
+
+- **06:41 UTC, real.** The probe saw the proxy serve bootstrap-static with
+  `x-fpl-stale: true` and `x-fpl-age-seconds: 21603`: the copy the 00:41 probe
+  had fetched, because nothing else asked overnight. A copy that old is past
+  TTL + `STALE_SERVE_SECONDS`, so `serveFpl` only returns it from its
+  upstream-failure path (a 5xx, the 9 s timeout, a malformed body; the quota
+  fails open). Fixtures were fetched fresh in the same run, so FPL was
+  reachable. WHY bootstrap failed is unknown and stays unknown: the reason is
+  only in the `fpl` function's log, the CLI only streams live logs, and the
+  historical log API answers `401 Analytics are disabled on this site` on
+  this plan. Nothing in the proxy changed overnight, it passed every run from
+  10 October on and has passed since, so its cache behaviour was left alone.
+  So the next one explains itself: on a stale answer the probe now asks FPL
+  directly, once, with a 5 s timeout, and records "FPL itself answered 503 in
+  840 ms" or "unreachable after 5001 ms (timeout)" on the failed check. This
+  is a second request, so it shows what FPL answers a moment later, not
+  necessarily what the proxy got. It adds at most 5 s to a run that takes
+  about 15 s, against Netlify's 30 s limit.
+- **12:41 UTC, a monitoring bug.** The probe passed, stored `latest`, then
+  dispatched the recovery check, which read the 06:41 failure 12 seconds
+  later, failed again and left #604 open on a healthy site. Cause, verified in
+  the bundled `@netlify/blobs` 10.7.13: `getStore(name)` with no
+  `consistency` reads through the cached edge URL (`edgeURL`), whose reads may
+  lag writes by up to 60 seconds (its README); only `consistency: 'strong'`
+  uses `uncachedEdgeURL`. The same lag was already measured on the proxy's own
+  cache on 2026-09-13 (see "Back-to-back requests can both miss"). Fixed two
+  ways: every health store (and the probe's read of the `fpl-archive`
+  manifest) is opened strong through `openStrongStore`, and the dispatch
+  passes `expect_at` (the run's own `at`), so the monitor waits up to 90 s for
+  the status to show that run. If it never does, the monitor fails with
+  `status-behind` and does not repeat the older result's verdict. That is
+  red, so an incident is never closed on an old pass, and an old failure is
+  never re-reported as current. The backstop passes no `expect_at`.
+- **Races checked and left as they are.** A GitHub concurrency group keeps
+  only the newest pending run, so a dispatch can be replaced by a backstop
+  run queued behind it. That is harmless, because each run reads the status
+  itself. The backstop slot 06:53 fired at 12:28 (5.5 h late) and correctly
+  re-read the 06:41 failure, because that was still current. Duplicate
+  issues are prevented by the open-issue lookup under that concurrency
+  group. Strong reads are slower, which does not matter on an endpoint read
+  a few times a day.
+- **Recovering by hand:** check `fpl-health-status` answers 200 with a fresh
+  `latest.at`, then run the workflow with mode `monitor`. That closed #604
+  at 16:08 UTC. Never close the issue by hand.
+
 ### The data layer around a deadline
 
 The TTL collapse covered the six hours BEFORE a deadline and reverted to the
