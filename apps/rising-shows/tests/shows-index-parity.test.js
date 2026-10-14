@@ -31,6 +31,7 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 
 const Finder = require('../scripts/finder-lib.js');
+const { episodeGapIndexes } = Finder;
 const Match = require('../scripts/match.js');
 const Providers = require('../scripts/providers-lib.js');
 const { buildShowsIndex, buildKometaIndex } = require('../scripts/split-data.js');
@@ -119,6 +120,9 @@ function assertParity(shipped, matches, aboveImdb, label) {
     if (r.episodeSeries) {
       assert.deepEqual(got.epRatings, r.episodeSeries.map((e) => e.rating),
         `${label}: ${r.seriesId} single-season sparkline ratings`);
+      const gaps = episodeGapIndexes(r.episodeSeries);
+      assert.deepEqual(got.epGaps || [], gaps, `${label}: ${r.seriesId} single-season sparkline gaps`);
+      if (!gaps.length) assert.equal('epGaps' in got, false, `${label}: ${r.seriesId} no gaps, no key`);
     } else {
       assert.equal(got.epRatings, undefined,
         `${label}: ${r.seriesId} multi-season shows carry no episode ratings`);
@@ -250,7 +254,10 @@ function slimify(matches) {
     rest.ratedCount = ratedCount;
     rest.ratingSum = Math.round(ratingSum * 100) / 100;
     if (seasonCount.get(m.seriesId) === 1 && eps.length) {
-      rest.epRatings = eps.filter((e) => typeof e.rating === 'number').map((e) => e.rating);
+      const rated = eps.filter((e) => typeof e.rating === 'number');
+      rest.epRatings = rated.map((e) => e.rating);
+      const gaps = episodeGapIndexes(rated);
+      if (gaps.length) rest.epGaps = gaps;
     }
     return rest;
   });

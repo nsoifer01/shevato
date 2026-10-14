@@ -196,6 +196,56 @@ function orderShapesByConfidence(shapes, confidence) {
 // `detectShapes` is the per-episode shape classifier from match.js - passed in
 // rather than required so the browser can hand over its global and a missing
 // classifier degrades to "no shapes" instead of throwing.
+// Card-sparkline gaps. A single-season show's spark is drawn from the flat
+// `epRatings` list, which carries no episode numbers, so the build also ships
+// `epGaps`: the positions in that list where the episode number skips (the
+// episodes between have no IMDb rating). General Hospital's 211 rated
+// episodes run Ep 1-9, 17, 4480 ... and its spark used to join them as one
+// unbroken run. Only shows with a skip get the field.
+function episodeGapIndexes(episodes) {
+  const out = [];
+  if (!Array.isArray(episodes)) return out;
+  for (let i = 1; i < episodes.length; i++) {
+    const a = episodes[i - 1].episode;
+    const b = episodes[i].episode;
+    if (Number.isFinite(a) && Number.isFinite(b) && b - a > 1) out.push(i);
+  }
+  return out;
+}
+
+// The spark series rebuilt from `epRatings` + `epGaps`: positional episode
+// numbers that jump by 2 at each gap, which is exactly what drawCurve's
+// markGaps reads as a skip. The numbers are never displayed (the spark has
+// no dots or tooltips); only where they skip matters.
+function sparkSeriesFromRatings(ratings, gaps) {
+  if (!Array.isArray(ratings)) return [];
+  const gapAt = new Set(Array.isArray(gaps) ? gaps : []);
+  let episode = 0;
+  return ratings.map((rating, i) => {
+    episode += gapAt.has(i) ? 2 : 1;
+    return { episode, rating, votes: 0 };
+  });
+}
+
+// The one episode-count label every surface prints (season modal, show
+// modal, share text, static pages): "13 episodes" when every listed episode
+// is rated, "211 of 11,232 episodes rated (1.9%)" when IMDb lists more. The
+// share is rounded down to a whole percent from 10% up, so a season missing
+// one episode never reads "100%"; under 10% it keeps a decimal (and "<0.1%"
+// below that), because "2%" and "0%" hide the difference between a sample
+// and nothing.
+function ratedOfListedLabel(rated, listed, unit) {
+  const r = Number.isFinite(rated) ? rated : 0;
+  const l = Number.isFinite(listed) ? listed : 0;
+  if (!(l > r)) return `${r} ${unit}`;
+  const pct = (r / l) * 100;
+  let share;
+  if (pct >= 10) share = `${Math.floor(pct)}%`;
+  else if (pct >= 0.05) share = `${pct.toFixed(1)}%`;
+  else share = '<0.1%';
+  return `${r.toLocaleString('en-US')} of ${l.toLocaleString('en-US')} ${unit} rated (${share})`;
+}
+
 function buildShowAgg(matches, detectShapes) {
   const byId = new Map();
   for (const m of matches) {
@@ -276,12 +326,11 @@ function buildShowAgg(matches, detectShapes) {
       s.episodes += seasonRated;
       // epRatings is only shipped for single-season shows, which are the only
       // ones whose card sparkline is drawn from episodes rather than season
-      // averages. Episode numbers are positional; votes are not read by the
-      // sparkline, so they are not carried.
+      // averages. Episode numbers are positional, skipping where `epGaps`
+      // says the real ones did; votes are not read by the sparkline, so they
+      // are not carried.
       if (Array.isArray(m.epRatings)) {
-        for (let i = 0; i < m.epRatings.length; i++) {
-          seasonEpisodes.push({ episode: i + 1, rating: m.epRatings[i], votes: 0 });
-        }
+        seasonEpisodes.push(...sparkSeriesFromRatings(m.epRatings, m.epGaps));
       }
     }
     s.seasonEpisodeSeries.push(seasonEpisodes);
@@ -598,6 +647,9 @@ const API = {
   showShapeConfidence,
   orderShapesByConfidence,
   buildShowAgg,
+  episodeGapIndexes,
+  sparkSeriesFromRatings,
+  ratedOfListedLabel,
   parseFinderQuery,
   serializeFinderQuery,
   passesFinderFilters,

@@ -552,3 +552,35 @@ test('index.html preloads the show index in the mode load() fetches it, so it do
   // from ~400 ms to ~1,200 ms for no throttled gain.
   assert.equal(/fetchpriority/.test(preloads[0]), false);
 });
+
+// --- card-spark gaps (General Hospital) -------------------------------------
+//
+// A single-season show's card spark is drawn from flat `epRatings`, which
+// carry no episode numbers. `epGaps` records where the numbers skipped, on the
+// season record and on the show row, and only when there is a skip.
+const GAP_SPLIT = runSplit({
+  builtAt: '2026-10-14T06:00:00.000Z',
+  contentHash: '0123456789abcdef',
+  count: 2,
+  matches: [
+    { seriesId: 'tt0056758', title: 'General Hospital', year: 1963, season: 1, genres: ['Drama'],
+      seriesRating: 6.7, seriesVotes: 6340, avgRating: 7.2, shapes: [], listedEpisodes: 11232, sparse: true,
+      episodes: [1, 2, 3, 9, 17, 4480].map((episode, i) => ({ episode, rating: 7 + (i % 2) * 0.4, votes: 9 })) },
+    { seriesId: 'tt7366338', title: 'Chernobyl', year: 2019, season: 1, genres: ['Drama'],
+      seriesRating: 9.3, seriesVotes: 900000, avgRating: 9.5, shapes: [],
+      episodes: [1, 2, 3].map((episode) => ({ episode, rating: 9.5, votes: 50000 })) },
+  ],
+});
+
+test('split-data: epGaps marks where a single-season show\'s episode numbers skip', () => {
+  const rec = (id) => GAP_SPLIT.index.matches.find((m) => m.seriesId === id);
+  assert.deepEqual(rec('tt0056758').epGaps, [3, 4, 5]);
+  assert.equal('epGaps' in rec('tt7366338'), false, 'a gapless season ships no key');
+  // The coverage fields ride through to the season index untouched.
+  assert.equal(rec('tt0056758').listedEpisodes, 11232);
+  assert.equal(rec('tt0056758').sparse, true);
+  const shows = JSON.parse(fs.readFileSync(path.join(GAP_SPLIT.appDir, 'shows-index.json'), 'utf8')).shows;
+  const row = (id) => shows.find((s) => s.seriesId === id);
+  assert.deepEqual(row('tt0056758').epGaps, [3, 4, 5]);
+  assert.equal('epGaps' in row('tt7366338'), false);
+});

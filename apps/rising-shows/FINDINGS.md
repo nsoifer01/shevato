@@ -48,9 +48,23 @@ Decisions, and why:
 - **Memory.** The per-season listed-number arrays cost ~220 MB RSS on the full
   dump (3.04 → 3.27 GB); peak heap 2.3 GB, inside the refresh workflow's
   4 GB `--max-old-space-size`. Build time unchanged (~29 s).
-- **Not changed:** the Finder card sparkline for single-season shows is drawn
-  from `epRatings` (ratings only, no episode numbers), so it cannot mark gaps;
-  the season averages and the show-level shapes still fold the rated sample.
+- **The Finder card spark, follow-up (PR after #601).** It draws a
+  single-season show from `epRatings`, which carries no episode numbers, so it
+  joined General Hospital's 211 ratings into one run. The build now ships
+  `epGaps` (positions in `epRatings` where the number skips) on the slim season
+  record and the show row, only when there is a skip: 3,672 shows, 9,678
+  entries, about 75 KB raw on a 14 MB index. `sparkSeriesFromRatings` turns it
+  back into positional numbers that skip by 2, so the spark goes through the
+  same `drawCurve` `markGaps` path as the season chart instead of a second
+  gap renderer. Real episode numbers were not shipped: the spark has no
+  tooltips, and only WHERE it breaks matters.
+- **The share is part of the count, rounded so it cannot lie.** One formatter
+  (`ratedOfListedLabel`) for every surface. Floor to a whole percent from 10%
+  up (199 of 200 reads 99%, never 100%), one decimal below 10% (General
+  Hospital 1.9%), "<0.1%" below that. Complete seasons print no share at all.
+- **Still deliberate:** season averages and the show-level shapes of a
+  multi-season show fold the rated sample, because every average in the app
+  is over rated episodes.
 
 The new fields reach the site with the next data refresh: the dataset on the
 release is built by `build-data.js` on master, so until it runs the browser

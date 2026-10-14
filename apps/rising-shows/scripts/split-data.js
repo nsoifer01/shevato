@@ -212,7 +212,12 @@ function buildShowsIndex(slimMatches, aboveImdb) {
       meanSeasonVotes: e && e.seasons ? e.voteSum / e.seasons : 0,
     };
     // Card sparkline for single-season shows: ratings only, in episode order.
-    if (s.episodeSeries) o.epRatings = s.episodeSeries.map((x) => x.rating);
+    if (s.episodeSeries) {
+      o.epRatings = s.episodeSeries.map((x) => x.rating);
+      // Where the episode numbers skip, so the card spark breaks there too.
+      const gaps = Finder.episodeGapIndexes(s.episodeSeries);
+      if (gaps.length) o.epGaps = gaps;
+    }
     if (e && e.provider) o.provider = e.provider;
     if (above.has(s.seriesId)) o.aboveImdb = true;
     if (pageIds.has(s.seriesId)) o.page = true;
@@ -350,7 +355,12 @@ function main(appDir = APP_DIR) {
     // Ratings only: the sparkline reads nothing else, and carrying votes,
     // names or episode numbers here would undo the point of the split.
     if (seasonCount.get(m.seriesId) === 1 && eps.length) {
-      rest.epRatings = eps.filter((e) => typeof e.rating === 'number').map((e) => e.rating);
+      const rated = eps.filter((e) => typeof e.rating === 'number');
+      rest.epRatings = rated.map((e) => e.rating);
+      // Positions in epRatings where the episode number skips (unrated
+      // episodes between). Only present when there is one.
+      const gaps = Finder.episodeGapIndexes(rated);
+      if (gaps.length) rest.epGaps = gaps;
     }
 
     return rest;
