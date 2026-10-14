@@ -1,6 +1,330 @@
 {
   "updates": [
     {
+      "builtAt": "2026-10-14T05:53:15.706Z",
+      "totals": {
+        "seasons": 67238,
+        "delta": 32
+      },
+      "shapeCounts": {
+        "rebound": 9757,
+        "big-finale": 11793,
+        "u-shaped": 2635,
+        "rollercoaster": 13493,
+        "mid-peak": 4362,
+        "consistent": 2511,
+        "bad-finale": 4335,
+        "front-loaded": 3066,
+        "slow-burn": 3961,
+        "declining": 1637,
+        "saved-best-for-last": 1376,
+        "shape-drift": 1396,
+        "rising": 2335
+      },
+      "shapeDeltas": {
+        "rebound": -466,
+        "rising": -326,
+        "slow-burn": -491,
+        "big-finale": -457,
+        "u-shaped": -459,
+        "rollercoaster": -747,
+        "saved-best-for-last": -99,
+        "shape-drift": -186,
+        "mid-peak": -286,
+        "front-loaded": -441,
+        "declining": -278,
+        "bad-finale": -351,
+        "consistent": -142
+      },
+      "added": [
+        {
+          "seriesId": "tt13138834",
+          "title": "Time",
+          "season": 3,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt16409202",
+          "title": "Spare Me, Great Lord!",
+          "season": 3,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt4267324",
+          "title": "Variety Studio: Actors on Actors",
+          "season": 3,
+          "seasonYear": 2015
+        },
+        {
+          "seriesId": "tt1427163",
+          "title": "Empty Can!",
+          "season": 1,
+          "seasonYear": 2009
+        },
+        {
+          "seriesId": "tt43691383",
+          "title": "So What's Wrong with Getting Reborn as a Goblin",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt4267324",
+          "title": "Variety Studio: Actors on Actors",
+          "season": 9,
+          "seasonYear": 2019
+        },
+        {
+          "seriesId": "tt1409064",
+          "title": "Saki",
+          "season": 1,
+          "seasonYear": 2009
+        },
+        {
+          "seriesId": "tt39087958",
+          "title": "Doctor of Love",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt47722400",
+          "title": "SXB Island",
+          "season": 2,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt4267324",
+          "title": "Variety Studio: Actors on Actors",
+          "season": 13,
+          "seasonYear": 2021
+        },
+        {
+          "seriesId": "tt0171992",
+          "title": "Dom",
+          "season": 3,
+          "seasonYear": 1999
+        },
+        {
+          "seriesId": "tt0081857",
+          "title": "Entertainment Tonight",
+          "season": 43,
+          "seasonYear": 2023
+        },
+        {
+          "seriesId": "tt0482076",
+          "title": "Niania",
+          "season": 1,
+          "seasonYear": 2005
+        },
+        {
+          "seriesId": "tt0124932",
+          "title": "20/20",
+          "season": 50,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt4267324",
+          "title": "Variety Studio: Actors on Actors",
+          "season": 15,
+          "seasonYear": 2022
+        },
+        {
+          "seriesId": "tt4267324",
+          "title": "Variety Studio: Actors on Actors",
+          "season": 16,
+          "seasonYear": 2022
+        },
+        {
+          "seriesId": "tt4267324",
+          "title": "Variety Studio: Actors on Actors",
+          "season": 18,
+          "seasonYear": 2023
+        },
+        {
+          "seriesId": "tt4267324",
+          "title": "Variety Studio: Actors on Actors",
+          "season": 20,
+          "seasonYear": 2024
+        },
+        {
+          "seriesId": "tt4267324",
+          "title": "Variety Studio: Actors on Actors",
+          "season": 22,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt12916790",
+          "title": "Singer",
+          "season": 2,
+          "seasonYear": 2023
+        },
+        {
+          "seriesId": "tt1692560",
+          "title": "Deadly 60",
+          "season": 5,
+          "seasonYear": 2024
+        },
+        {
+          "seriesId": "tt29064303",
+          "title": "Simon Coleman",
+          "season": 3,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt27237297",
+          "title": "Naked Dining ~ Love, Life and Liberation ~",
+          "season": 1,
+          "seasonYear": 2023
+        },
+        {
+          "seriesId": "tt37960071",
+          "title": "Crossroad Springs",
+          "season": 2,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt35674433",
+          "title": "Rise and Fall",
+          "season": 2,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt39375564",
+          "title": "Recipe for Love",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt8629424",
+          "title": "Gnomes",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt3963878",
+          "title": "Testimony of N",
+          "season": 1,
+          "seasonYear": 2014
+        },
+        {
+          "seriesId": "tt43756457",
+          "title": "Yemek Savaslari",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt45027787",
+          "title": "Dwars door de Pyreneeën",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt47722400",
+          "title": "SXB Island",
+          "season": 1,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt48648494",
+          "title": "Carrier Murder",
+          "season": 1,
+          "seasonYear": 2024
+        }
+      ],
+      "removed": [],
+      "ratingSwings": [
+        {
+          "seriesId": "tt37540577",
+          "title": "Aquel",
+          "season": 1,
+          "from": 7.6,
+          "to": 6.25,
+          "delta": -1.35
+        },
+        {
+          "seriesId": "tt7122766",
+          "title": "In the Vault",
+          "season": 2,
+          "from": 8.2,
+          "to": 6.85,
+          "delta": -1.35
+        },
+        {
+          "seriesId": "tt38946694",
+          "title": "Tomei na Yoru ni Kakeru Kimi to, Me ni Mienai Koi wo Shita",
+          "season": 1,
+          "from": 7.63,
+          "to": 6.37,
+          "delta": -1.26
+        },
+        {
+          "seriesId": "tt0096636",
+          "title": "Live with Kelly and Mark",
+          "season": 27,
+          "from": 8.93,
+          "to": 7.9,
+          "delta": -1.03
+        },
+        {
+          "seriesId": "tt10763852",
+          "title": "Noobees",
+          "season": 1,
+          "from": 9.2,
+          "to": 8.3,
+          "delta": -0.9
+        },
+        {
+          "seriesId": "tt21073922",
+          "title": "Shadow",
+          "season": 1,
+          "from": 7.48,
+          "to": 6.58,
+          "delta": -0.9
+        },
+        {
+          "seriesId": "tt4267324",
+          "title": "Variety Studio: Actors on Actors",
+          "season": 17,
+          "from": 7.63,
+          "to": 6.75,
+          "delta": -0.88
+        },
+        {
+          "seriesId": "tt20428144",
+          "title": "Sam and Colby Present: Hell Week",
+          "season": 6,
+          "from": 7.47,
+          "to": 8.17,
+          "delta": 0.7
+        },
+        {
+          "seriesId": "tt4267324",
+          "title": "Variety Studio: Actors on Actors",
+          "season": 19,
+          "from": 6.67,
+          "to": 5.98,
+          "delta": -0.69
+        },
+        {
+          "seriesId": "tt9022950",
+          "title": "The Kelly Clarkson Show",
+          "season": 2,
+          "from": 6.58,
+          "to": 5.98,
+          "delta": -0.6
+        }
+      ],
+      "modifiedCounts": {
+        "seriesVotes": 19654,
+        "avgRating": 1346,
+        "shapes": 3156,
+        "seriesRating": 260,
+        "episodeCount": 84,
+        "poster": 1,
+        "providers": 1,
+        "overview": 1
+      }
+    },
+    {
       "builtAt": "2026-10-13T14:20:48.635Z",
       "totals": {
         "seasons": 67206,
@@ -9602,244 +9926,6 @@
         "episodeCount": 134,
         "overview": 5,
         "poster": 2
-      }
-    },
-    {
-      "builtAt": "2026-08-26T06:54:48.417Z",
-      "totals": {
-        "seasons": 66451,
-        "delta": 16
-      },
-      "shapeCounts": {
-        "mid-peak": 4631,
-        "rebound": 10122,
-        "rising": 2606,
-        "slow-burn": 4402,
-        "big-finale": 12103,
-        "u-shaped": 3086,
-        "rollercoaster": 14118,
-        "saved-best-for-last": 1503,
-        "front-loaded": 3492,
-        "declining": 1880,
-        "bad-finale": 4645,
-        "consistent": 2627,
-        "shape-drift": 1588
-      },
-      "shapeDeltas": {
-        "mid-peak": -3,
-        "rebound": 10,
-        "slow-burn": -7,
-        "big-finale": 11,
-        "u-shaped": 2,
-        "rollercoaster": -4,
-        "saved-best-for-last": -1,
-        "front-loaded": 1,
-        "declining": -2,
-        "bad-finale": -3,
-        "shape-drift": 5
-      },
-      "added": [
-        {
-          "seriesId": "tt7771836",
-          "title": "Blacked",
-          "season": 2,
-          "seasonYear": 2015
-        },
-        {
-          "seriesId": "tt41991040",
-          "title": "9/11: Reunited",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt1809413",
-          "title": "1 Kadin 1 Erkek",
-          "season": 2,
-          "seasonYear": 2009
-        },
-        {
-          "seriesId": "tt4353976",
-          "title": "Antiques Road Trip",
-          "season": 17,
-          "seasonYear": 2018
-        },
-        {
-          "seriesId": "tt28224056",
-          "title": "The Mega-Brands That Built America",
-          "season": 4,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt27813193",
-          "title": "Klara",
-          "season": 1,
-          "seasonYear": 2024
-        },
-        {
-          "seriesId": "tt44280689",
-          "title": "Wiccan Chants",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt9080784",
-          "title": "Bu Gece",
-          "season": 3,
-          "seasonYear": 2020
-        },
-        {
-          "seriesId": "tt13514470",
-          "title": "Sidemen",
-          "season": 9,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt29058981",
-          "title": "Before Us",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt3247004",
-          "title": "God of Study",
-          "season": 1,
-          "seasonYear": 2010
-        },
-        {
-          "seriesId": "tt40807419",
-          "title": "Connecting to You",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt38794304",
-          "title": "Leyla Hâli",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt43617065",
-          "title": "Underage",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt43706563",
-          "title": "Bodeket",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt43721051",
-          "title": "Portugal Criminal",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt0454657",
-          "title": "Yarim Elma",
-          "season": 1,
-          "seasonYear": 2002
-        }
-      ],
-      "removed": [
-        {
-          "seriesId": "tt2548214",
-          "title": "Mako Mermaids",
-          "season": 4,
-          "seasonYear": 2016
-        }
-      ],
-      "ratingSwings": [
-        {
-          "seriesId": "tt35406274",
-          "title": "Ms. Rachel",
-          "season": 2,
-          "from": 4.63,
-          "to": 5.43,
-          "delta": 0.8
-        },
-        {
-          "seriesId": "tt38781720",
-          "title": "MrBeast Lab",
-          "season": 1,
-          "from": 5.52,
-          "to": 6.29,
-          "delta": 0.77
-        },
-        {
-          "seriesId": "tt5683292",
-          "title": "Rewrite",
-          "season": 1,
-          "from": 5.92,
-          "to": 5.16,
-          "delta": -0.76
-        },
-        {
-          "seriesId": "tt0773264",
-          "title": "House of Payne",
-          "season": 14,
-          "from": 8.96,
-          "to": 8.26,
-          "delta": -0.7
-        },
-        {
-          "seriesId": "tt0773264",
-          "title": "House of Payne",
-          "season": 12,
-          "from": 8.88,
-          "to": 8.21,
-          "delta": -0.67
-        },
-        {
-          "seriesId": "tt0773264",
-          "title": "House of Payne",
-          "season": 11,
-          "from": 8.04,
-          "to": 7.39,
-          "delta": -0.65
-        },
-        {
-          "seriesId": "tt28220415",
-          "title": "Never Have I Ever",
-          "season": 2,
-          "from": 4.51,
-          "to": 5.15,
-          "delta": 0.64
-        },
-        {
-          "seriesId": "tt43686384",
-          "title": "The Chase Around the World",
-          "season": 1,
-          "from": 6.87,
-          "to": 7.5,
-          "delta": 0.63
-        },
-        {
-          "seriesId": "tt28220415",
-          "title": "Never Have I Ever",
-          "season": 3,
-          "from": 7.16,
-          "to": 7.74,
-          "delta": 0.58
-        },
-        {
-          "seriesId": "tt0773264",
-          "title": "House of Payne",
-          "season": 13,
-          "from": 9.07,
-          "to": 8.57,
-          "delta": -0.5
-        }
-      ],
-      "modifiedCounts": {
-        "seriesVotes": 24755,
-        "avgRating": 1454,
-        "shapes": 258,
-        "episodeCount": 122,
-        "seriesRating": 365,
-        "poster": 7,
-        "overview": 7
       }
     }
   ]
