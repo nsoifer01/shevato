@@ -276,10 +276,22 @@ export async function run({ base, cdpPort }) {
         while (!ok()) { if (Date.now() > end) return false; await new Promise(r => setTimeout(r, 100)); }
         return true;
       };
-      const nav = document.querySelector('[data-view="settings"]');
-      if (nav) nav.click();
+      // The nav click is RETRIED, at most once a second, until Settings has
+      // wired its button: under load the first click could land before the
+      // app attached its nav handlers, and a single click then never opened
+      // Settings at all, so the wait ran out on a view nobody asked for
+      // (2026-10-14, shard 3, both G checks, passing 51/51 alone).
       const btn = () => document.getElementById('recheck-units-btn');
-      if (!await until(() => btn() && btn().dataset.wired === '1')) return 'recheck button never wired';
+      let lastNav = 0;
+      const settingsWired = () => {
+        if (btn() && btn().dataset.wired === '1') return true;
+        if (Date.now() - lastNav >= 1000) {
+          const nav = document.querySelector('[data-view="settings"]');
+          if (nav) { nav.click(); lastNav = Date.now(); }
+        }
+        return false;
+      };
+      if (!await until(settingsWired)) return 'recheck button never wired';
       const out = document.getElementById('recheck-units-result');
       out.textContent = '';
       btn().click();
