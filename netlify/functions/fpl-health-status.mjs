@@ -7,7 +7,7 @@
 // Read-only and public: it carries invariant names, the values they saw and a
 // summary of the plan for a built squad, nothing about any visitor.
 
-import { HEALTH_STORE, statusOf } from './lib/fpl-health-run.mjs';
+import { HEALTH_STORE, openStrongStore, statusOf } from './lib/fpl-health-run.mjs';
 
 export async function handleStatus(request, store, nowMs = Date.now()) {
   if (request.method !== 'GET') return new Response(JSON.stringify({ error: 'method_not_allowed' }), { status: 405 });
@@ -20,5 +20,5 @@ export async function handleStatus(request, store, nowMs = Date.now()) {
 
 export default async (request) => {
   const { getStore } = await import('@netlify/blobs');
-  return handleStatus(request, getStore(HEALTH_STORE));
+  return handleStatus(request, openStrongStore(getStore, HEALTH_STORE));
 };

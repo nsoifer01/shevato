@@ -5,7 +5,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { assess, reconcile, drillStatus, MARKER, DRILL_MARKER, STALE_AFTER_HOURS } from '../scripts/health-monitor.mjs';
+import { assess, reconcile, drillStatus, readStatus, parseExpectAt, MARKER, DRILL_MARKER, STALE_AFTER_HOURS, EXPECT_WAIT_MS, EXPECT_POLL_MS } from '../scripts/health-monitor.mjs';
 
 const NOW = Date.parse('2026-10-10T19:00:00Z');
 const iso = (ms) => new Date(ms).toISOString();
@@ -133,4 +133,59 @@ test('a GitHub error is thrown, not swallowed, so the run goes red', async () =>
   const api = async () => new Response('{}', { status: 500 });
   const { problems, latest: l } = assess({ ...red(), nowMs: NOW });
   await assert.rejects(reconcile({ problems, latest: l, api }), /list issues: HTTP 500/);
+});
+
+// The recovery check of 14 October: the Netlify probe stored a pass at 12:41
+// and dispatched the monitor, which read the 06:41 failure 12 seconds later.
+test('a dispatched check never judges a result older than the probe that started it: red as such, and the incident stays open', async () => {
+  const gh = fakeGithub();
+  await run(gh, red());
+  const expectAt = iso(NOW);
+  const { problems, latest: l } = assess({ ...red(), nowMs: NOW + 30e3, expectAt });
+  assert.deepEqual(problems.map((p) => p.key), ['status-behind'], 'not the old failure, and not a recovery');
+  assert.match(problems[0].text, new RegExp(`not the one at ${expectAt}`));
+  const r = await reconcile({ problems, latest: l, api: gh.api, nowIso: iso(NOW + 30e3) });
+  assert.equal(r.action, 'commented');
+  assert.equal(gh.issues[0].state, 'open');
+
+  // Caught up: judged normally, so a pass closes and a failure stays a failure.
+  const fresh = (reading) => { reading.body.latest.at = expectAt; return reading; };
+  assert.deepEqual(assess({ ...fresh(green()), nowMs: NOW + 30e3, expectAt }).problems, []);
+  assert.deepEqual(assess({ ...fresh(red()), nowMs: NOW + 30e3, expectAt }).problems.map((p) => p.key), ['check:every fixture of a finished gameweek has been played']);
+  // Newer than expected is current too; the backstop passes no expectation.
+  const newer = green(); newer.body.latest.at = iso(NOW + 60e3);
+  assert.deepEqual(assess({ ...newer, nowMs: NOW + 90e3, expectAt }).problems, []);
+  assert.deepEqual(assess({ ...red(), nowMs: NOW }).problems.map((p) => p.key), ['check:every fixture of a finished gameweek has been played']);
+});
+
+test('the monitor re-reads until the status shows the probe that started it, and gives up after its wait', async () => {
+  const expectAt = iso(NOW);
+  const answers = [red(), red(), green()];
+  answers[2].body.latest.at = expectAt;
+  let reads = 0;
+  const slept = [];
+  const fetchImpl = async () => { const a = answers[Math.min(reads++, answers.length - 1)]; return new Response(JSON.stringify(a.body), { status: a.http }); };
+  const got = await readStatus('u', fetchImpl, { expectAt, sleep: async (ms) => { slept.push(ms); } });
+  assert.equal(got.body.latest.at, expectAt);
+  assert.equal(reads, 3);
+  assert.deepEqual(slept, [EXPECT_POLL_MS, EXPECT_POLL_MS]);
+
+  let n = 0;
+  const never = async () => { n++; return new Response(JSON.stringify(red().body), { status: 503 }); };
+  const stuck = await readStatus('u', never, { expectAt, sleep: async () => {} });
+  assert.equal(n, 1 + EXPECT_WAIT_MS / EXPECT_POLL_MS);
+  assert.ok(EXPECT_WAIT_MS > 60e3, 'longer than Netlify Blobs\' documented 60-second drift');
+  assert.deepEqual(assess({ ...stuck, nowMs: NOW, expectAt }).problems.map((p) => p.key), ['status-behind']);
+
+  // Without an expectation (the backstop), one read.
+  let m = 0;
+  await readStatus('u', async () => { m++; return new Response(JSON.stringify(red().body), { status: 503 }); }, { sleep: async () => {} });
+  assert.equal(m, 1);
+});
+
+test('expect_at from the workflow input is used only when it is a time', () => {
+  assert.equal(parseExpectAt('2026-10-14T12:41:05.517Z'), '2026-10-14T12:41:05.517Z');
+  assert.equal(parseExpectAt(''), null);
+  assert.equal(parseExpectAt(undefined), null);
+  assert.equal(parseExpectAt('junk'), null);
 });

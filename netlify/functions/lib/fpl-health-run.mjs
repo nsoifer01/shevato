@@ -44,6 +44,14 @@ import { FPL_API, USER_AGENT, archiveCoverageFailures, seasonLabelFrom } from '.
 import { stagedManifest } from './fpl-archive-stage.mjs';
 
 export const HEALTH_STORE = 'fpl-health';
+
+// STRONG READS, ALWAYS (2026-10-14). getStore(name) reads through Netlify's
+// cached edge, which may serve a value up to 60 seconds old. The recovery
+// check is dispatched seconds after `latest` is written, so on 14 October it
+// read the failure from six hours before, 12 seconds after the passing result
+// was stored, and kept incident #604 open on a healthy site. Every reader of
+// this store, and the probe's read of the archive manifest, opens it here.
+export const openStrongStore = (getStore, name) => getStore({ name, consistency: 'strong' });
 export const SLOT_HOURS = 6;
 export const HISTORY_LIMIT = 120;
 export const STALE_AFTER_HOURS = 7;
@@ -53,6 +61,9 @@ export const SITE = 'https://shevato.com';
 export const UNFINISHED_AFTER_MS = 2 * 60e3;
 export const ALERT_WORKFLOW = 'fpl-health.yml';
 export const ALERT_TIMEOUT_MS = 5000;
+// The direct question to FPL below. Bounded so the run, about 15 seconds on
+// Netlify, stays inside the 30-second limit when FPL hangs.
+export const DIAGNOSE_TIMEOUT_MS = 5000;
 
 export const slotOf = (iso) => {
   const d = new Date(Date.parse(iso));
@@ -83,12 +94,20 @@ async function readPayload(name, fetchImpl, responses) {
 }
 
 // When the proxy fails, ask FPL directly so the report says WHICH side broke.
+// One request, only on a failure, with its status and how long it took: a
+// timeout and a fast 503 are different incidents. The body is never read.
 async function diagnoseUpstream(fetchImpl) {
+  const started = Date.now();
   try {
-    const res = await fetchImpl(`${FPL_API}bootstrap-static/`, { headers: { 'User-Agent': USER_AGENT, Accept: 'application/json' } });
-    return `FPL itself answered ${res.status}`;
+    const res = await fetchImpl(`${FPL_API}bootstrap-static/`, {
+      headers: { 'User-Agent': USER_AGENT, Accept: 'application/json' },
+      signal: AbortSignal.timeout(DIAGNOSE_TIMEOUT_MS),
+    });
+    const answer = `FPL itself answered ${res.status} in ${Date.now() - started} ms`;
+    if (res.body) await res.body.cancel().catch(() => {});
+    return answer;
   } catch (err) {
-    return `FPL itself is unreachable (${err.message})`;
+    return `FPL itself is unreachable after ${Date.now() - started} ms (${err.message})`;
   }
 }
 
@@ -120,6 +139,19 @@ export async function probeProduction({ fetchImpl = fetch, now = new Date().toIS
       return res.json();
     },
   });
+  // A STALE answer means the proxy's own call to FPL just failed, and why is
+  // written only to the fpl function's log, which nothing on this plan can
+  // read back (the 14 October 06:41 failure stayed unexplained for that
+  // reason). So FPL is asked once, now, and the answer joins the failed check
+  // and the report. A healthy run asks FPL nothing.
+  const stale = Object.keys(responses).filter((name) => responses[name].get('x-fpl-stale') === 'true');
+  if (stale.length) {
+    const diagnosis = await diagnoseUpstream(fetchImpl);
+    for (const c of result.checks) {
+      if (c.ok === false && stale.some((name) => c.name === `the proxy serves ${name} fresh and uncached by browsers`)) c.saw = `${c.saw}; ${diagnosis}`;
+    }
+    result.lines.push('', `upstream        ${diagnosis} (asked directly after the proxy served ${stale.join(' and ')} stale)`);
+  }
   // Handed back for the archive check below, which needs the deadlines.
   return { ...result, bootstrap };
 }
@@ -235,7 +267,9 @@ export function githubDispatchAlert({ token, repo = 'nsoifer01/shevato', ref = '
     const priorUnsettled = !before || before.ok === false || (before.alert && before.alert.ok === false)
       || nowMs - Date.parse(before.at) > STALE_AFTER_HOURS * 3600e3;
     if (!latest.ok || priorUnsettled) {
-      const res = await call('/dispatches', { method: 'POST', body: JSON.stringify({ ref, inputs: { mode: 'monitor' } }) });
+      // expect_at names this run, so the monitor waits until the status shows
+      // it (or something newer) instead of judging the result before it.
+      const res = await call('/dispatches', { method: 'POST', body: JSON.stringify({ ref, inputs: { mode: 'monitor', expect_at: latest.at } }) });
       if (res.status !== 204) throw new Error(`workflow dispatch: HTTP ${res.status}`);
       return { ok: true, dispatched: latest.ok ? 'recovery-check' : 'failure' };
     }

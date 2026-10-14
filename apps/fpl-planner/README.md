@@ -1298,14 +1298,21 @@ staging store; `archiveCoverageFailures` in `scripts/lib/archive.mjs`), about
 limit is 30). `/.netlify/functions/fpl-health-status` serves it: 200 when the
 last run passed and is under 7 hours old; 503 when it failed, when no run has
 landed for 7 hours, when a run claimed its slot and never stored a result, or
-before the first run (`?history` adds the last 120 runs).
+before the first run (`?history` adds the last 120 runs). Every reader and
+writer of the store opens it with strong consistency (`openStrongStore`), so
+the status shows a run the moment it is stored. When the proxy answers a payload
+stale, its own call to FPL has just failed, so the run asks FPL once, directly
+(5-second timeout), and adds the answer and how long it took to the failed
+check and the report; a healthy run asks FPL nothing.
 
 Alerting. A failure is logged as an error, and when `FPL_HEALTH_GITHUB_TOKEN`
 (fine-grained, Actions read/write on this repository only) is set in Netlify,
 the run starts `.github/workflows/fpl-health.yml` in mode `monitor` at once,
-on a failure and on a possible recovery. That job runs
-`scripts/health-monitor.mjs`, which reads the status endpoint, judges it by its
-own clock, keeps one `[fpl-health]` issue (opened with an @mention of the
+on a failure and on a possible recovery, with `expect_at` naming itself. That
+job runs `scripts/health-monitor.mjs`, which reads the status endpoint (waiting
+up to 90 seconds for it to show the run named by `expect_at`, and failing as
+"status endpoint shows an old result" rather than judging an older run), judges
+it by its own clock, keeps one `[fpl-health]` issue (opened with an @mention of the
 owner, silent while the same thing stays wrong, one comment when it changes,
 closed on recovery) and fails while anything is wrong, so GitHub emails the
 owner. The workflow's own schedule (`53 */6 * * *`) runs the same job as the

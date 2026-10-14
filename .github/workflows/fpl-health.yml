@@ -15,7 +15,9 @@ name: FPL health probe
 #                      Started two ways, one writer either way:
 #                        - workflow_dispatch mode `monitor`, by the Netlify probe
 #                          the moment it fails or may have recovered (needs
-#                          FPL_HEALTH_GITHUB_TOKEN in Netlify; immediate);
+#                          FPL_HEALTH_GITHUB_TOKEN in Netlify; immediate), with
+#                          `expect_at` naming that probe run, so the monitor
+#                          never judges the result from before it;
 #                        - the schedule below, the BACKSTOP: independent of
 #                          Netlify, so a stopped scheduler or a dead site is
 #                          still caught, but late by however late GitHub is.
@@ -40,6 +42,11 @@ on:
         type: choice
         default: full
         options: [full, monitor, drill-failure, drill-recovery]
+      expect_at:
+        description: 'monitor only, set by the Netlify probe: the time of the probe run that dispatched this one; the monitor waits until the status shows it'
+        required: false
+        type: string
+        default: ''
 
 # One reconciliation at a time, never cancelled: a dispatch and the backstop
 # landing together must not both open an issue. A run waiting behind another
@@ -75,6 +82,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           DRILL: ${{ startsWith(inputs.mode, 'drill-') && inputs.mode || '' }}
+          FPL_HEALTH_EXPECT_AT: ${{ inputs.expect_at || '' }}
         run: |
           if [ -n "$DRILL" ]; then
             node apps/fpl-planner/scripts/health-monitor.mjs --drill "${DRILL#drill-}"
