@@ -803,3 +803,63 @@ test('the episode-average row degrades instead of printing a nonsense number', (
   // Missing vote counts must never be read as clearing the floor.
   assert.doesNotMatch(renderEpisodeAverageRow('8.4', 8.0, undefined), /ep-delta--up/);
 });
+
+// General Hospital in miniature: IMDb lists 11,232 episodes under season 1
+// and rates a scattered 211 of them; the build marks the season `sparse`.
+const SOAP = {
+  ...BREAKING_BAD,
+  seriesId: 'tt0056758',
+  title: 'General Hospital',
+  seasons: [{
+    season: 1,
+    seasonYear: 1963,
+    episodes: [
+      { episode: 1, rating: 6.8, votes: 55 },
+      { episode: 2, rating: 6.7, votes: 13 },
+      { episode: 9, rating: 8.8, votes: 7 },
+      { episode: 17, rating: 6.0, votes: 10 },
+      { episode: 4480, rating: 6.3, votes: 9 },
+    ],
+    firstRating: 6.8,
+    lastRating: 6.3,
+    avgRating: 6.92,
+    shapes: [],
+    listedEpisodes: 11232,
+    sparse: true,
+  }],
+};
+
+test('renderShowPage: a partly rated season says rated of listed, not "N episodes"', () => {
+  const html = renderShowPage(SOAP);
+  assert.ok(html.includes('5 of 11,232 episodes rated'));
+  assert.doesNotMatch(html, /<span>5 episodes<\/span>/);
+  // A fully rated season keeps the plain count.
+  assert.ok(renderShowPage(BREAKING_BAD).includes('<span>2 episodes</span>'));
+});
+
+test('renderShowPage: each run of unrated episodes gets one table row', () => {
+  const html = renderShowPage(SOAP);
+  const gaps = [...html.matchAll(/<tr class="episode-gap"><td colspan="4">([^<]+)<\/td><\/tr>/g)].map((m) => m[1]);
+  assert.deepEqual(gaps, [
+    'Ep 3–8 · no IMDb rating',
+    'Ep 10–16 · no IMDb rating',
+    'Ep 18–4479 · no IMDb rating',
+  ]);
+  assert.doesNotMatch(renderShowPage(BREAKING_BAD), /episode-gap/);
+});
+
+test('renderShowPage: a sparse season explains itself, a full one does not', () => {
+  const html = renderShowPage(SOAP);
+  assert.match(html, /class="season-coverage-note">IMDb lists 11,232 episodes for this season and only 5 have a rating/);
+  assert.doesNotMatch(renderShowPage(BREAKING_BAD), /season-coverage-note/);
+  // Partly rated but not sparse: the count says so, no note.
+  const partial = { ...SOAP, seasons: [{ ...SOAP.seasons[0], sparse: undefined, listedEpisodes: 6 }] };
+  assert.doesNotMatch(renderShowPage(partial), /season-coverage-note/);
+  assert.ok(renderShowPage(partial).includes('5 of 6 episodes rated'));
+});
+
+test('renderShowPage: JSON-LD numberOfEpisodes is the listed length, never the rated sample', () => {
+  const html = renderShowPage(SOAP);
+  assert.match(html, /"numberOfEpisodes": 11232/);
+  assert.match(renderShowPage(BREAKING_BAD), /"numberOfEpisodes": 2/);
+});

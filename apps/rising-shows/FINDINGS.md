@@ -3,6 +3,60 @@
 A living document: best current understanding, not a diary. See the
 repo-root `CLAUDE.md` for the convention.
 
+## "211 episodes" was 211 of 11,232: rating coverage (2026-10-13)
+
+Reported: General Hospital (tt0056758) showed "Season 1 · 211 episodes" and a
+list jumping Ep 9, 17, 4480, 4757 ... 16004. Nothing in the pipeline was
+dropping episodes. Measured against the 2026-10-13 IMDb dumps:
+
+- IMDb lists 14,087 General Hospital episodes: 11,232 numbered under season 1
+  (IMDb files the whole run as one season; the numbers run to 16,068 with
+  holes), 2,855 with `\N` season and episode.
+- `title.ratings.tsv` carries 213 of them. Its minimum is 5 votes across the
+  whole 1.7M-row file, so "unrated" means "under 5 votes on IMDb", and our
+  `MIN_VOTES=5` floor is a no-op. 211 are numbered and all ship; the 2
+  unnumbered ones cannot be placed in a season.
+- So 211 was every rated episode, correctly fetched. The defects were
+  presentation and inference: the count said "episodes" for rated episodes,
+  the list and curve drew Ep 9 → Ep 17 → Ep 4480 as neighbours, and the shape
+  detectors read the 211-point sample as a season (it carried rising /
+  rollercoaster-style shapes; only the in-progress rule kept the finale ones
+  off).
+
+Not a soap-only problem. Of 67,206 seasons with 3+ rated episodes, 14,297 list
+episodes nobody has rated. Measured over the episodes listed up to each
+season's last rated one, 3,718 seasons (2,918 of them previously shaped, 1,997
+shows) are under half rated: soaps (Days of Our Lives 176/15,483, Coronation
+Street 162/11,234, EastEnders 1,570/7,430), daily talk shows (The Daily Show,
+Conan, The Colbert Report seasons of ~150), and short seasons of ordinary
+shows where only a few episodes reached 5 votes (Top Gear S43, 4 of 18).
+
+Decisions, and why:
+
+- **Count up to the last rated episode for `sparse`, not the whole season.**
+  Counting the whole season sparse-marks every airing season a few episodes
+  in (5,886 seasons by that measure); an unrated or unaired TAIL is
+  `tagInProgress`'s job. `listedEpisodes` (the label) is the whole season.
+- **Threshold 0.5.** A curve missing more than half its episodes has no shape
+  to describe. Below that, shapes describe which episodes 5 people rated.
+- **Suppress, don't invent.** No interpolation, no regrouping of a soap into
+  air-year "seasons": IMDb's season 1 stays season 1, the rated sample stays
+  the rated sample, and the UI says how big the season really is.
+- **Gap rows report runs BETWEEN rated episodes only.** The browser knows the
+  rated numbers, not the listed ones, so it cannot say whether Ep 1-2 exist
+  before a season that starts at Ep 3; the rated-of-listed count covers that.
+- **Memory.** The per-season listed-number arrays cost ~220 MB RSS on the full
+  dump (3.04 → 3.27 GB); peak heap 2.3 GB, inside the refresh workflow's
+  4 GB `--max-old-space-size`. Build time unchanged (~29 s).
+- **Not changed:** the Finder card sparkline for single-season shows is drawn
+  from `epRatings` (ratings only, no episode numbers), so it cannot mark gaps;
+  the season averages and the show-level shapes still fold the rated sample.
+
+The new fields reach the site with the next data refresh: the dataset on the
+release is built by `build-data.js` on master, so until it runs the browser
+has no `listedEpisodes` / `sparse` and shows the plain count (the gap rows and
+dashed bridges work from episode numbers and appear immediately).
+
 ## The long tail answers 410 Gone, not noindex (2026-10-06)
 
 Only the curated top 2,000 shows (by IMDb votes) get a static page now; every

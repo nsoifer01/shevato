@@ -144,6 +144,11 @@ async function loadEpisodes(series, ratings, episodeTitles, episodeYears, episod
   // one we can score, which is how match.js's tagInProgress spots a season
   // that is still airing. Roughly 376k entries for the full dump.
   const listedMaxEp = new Map();
+  // Map<seriesId, Map<seasonNumber, number[]>>: every episode number IMDb lists
+  // for the season, rated or not. findMatches turns it into the season's real
+  // episode count and its rating coverage, which is what tells General
+  // Hospital's 211 rated episodes apart from its 11,232 listed ones.
+  const listedEpisodes = new Map();
   const rl = openTsv('title.episode.tsv.gz');
   let header = true;
   for await (const line of rl) {
@@ -166,6 +171,17 @@ async function loadEpisodes(series, ratings, episodeTitles, episodeYears, episod
     }
     const listedSoFar = listedSeasons.get(season);
     if (listedSoFar === undefined || episode > listedSoFar) listedSeasons.set(season, episode);
+    let listedBySeason = listedEpisodes.get(parentTconst);
+    if (!listedBySeason) {
+      listedBySeason = new Map();
+      listedEpisodes.set(parentTconst, listedBySeason);
+    }
+    let listedNums = listedBySeason.get(season);
+    if (!listedNums) {
+      listedNums = [];
+      listedBySeason.set(season, listedNums);
+    }
+    listedNums.push(episode);
 
     const r = ratings.get(tconst);
     if (!r) continue;
@@ -190,7 +206,7 @@ async function loadEpisodes(series, ratings, episodeTitles, episodeYears, episod
     if (runtime) ep.runtime = runtime;
     arr.push(ep);
   }
-  return { bySeries: result, listedMaxEp };
+  return { bySeries: result, listedMaxEp, listedEpisodes };
 }
 
 function loadTmdbCache() {
@@ -230,7 +246,7 @@ function loadSeasonOverviews() {
   );
 
   process.stdout.write('Loading episodes... ');
-  const { bySeries: episodes, listedMaxEp } = await loadEpisodes(
+  const { bySeries: episodes, listedMaxEp, listedEpisodes } = await loadEpisodes(
     series, ratings, episodeTitles, episodeYears, episodeRuntimes,
   );
   console.log(`${episodes.size.toLocaleString()} series have rated episodes`);
@@ -244,9 +260,14 @@ function loadSeasonOverviews() {
     // episode is really its finale before anything is classified.
     listedMaxEp,
     buildYear: new Date(builtAt).getUTCFullYear(),
+    // Rating coverage: the season's listed episode count, and whether its
+    // rated episodes are too sparse to classify (match.js seasonCoverage).
+    listedEpisodes,
   });
   const shapedCount = matches.reduce((n, m) => n + (m.shapes.length > 0 ? 1 : 0), 0);
   console.log(`${matches.length.toLocaleString()} seasons (${shapedCount.toLocaleString()} with at least one shape)`);
+  const sparseCount = matches.reduce((n, m) => n + (m.sparse ? 1 : 0), 0);
+  console.log(`  ${sparseCount.toLocaleString()} sparse seasons (under half their listed episodes rated, left unshaped)`);
 
   // Tally per-shape counts for the build summary.
   const shapeCounts = {};

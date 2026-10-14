@@ -17,6 +17,7 @@ const {
   detectShapes,
   findMatches,
   tagInProgress,
+  seasonCoverage,
   tagSavedBestForLast,
   tagShapeDrift,
   shapeConfidence,
@@ -614,4 +615,110 @@ test('findMatches stamps inProgress and withholds the finale shapes end to end',
   });
   assert.equal('inProgress' in done[0], false);
   assert.ok(done[0].shapes.includes('big-finale'));
+});
+
+// --- rating coverage: listedEpisodes and sparse seasons ---------------------
+//
+// IMDb's ratings dump only carries titles with 5+ votes, so a long-running
+// daily show has a rating on a sliver of its episodes. General Hospital (the
+// 2026-10-13 dump): 11,232 episodes listed under "season 1", 211 rated, the
+// rated ones running Ep 1-9, 17, 4480, 4757 ... 16004.
+
+const range = (from, to) => Array.from({ length: to - from + 1 }, (_, i) => from + i);
+const listedNums = (entries) => new Map(entries.map(([id, bySeason]) => [
+  id, new Map(Object.entries(bySeason).map(([s, nums]) => [Number(s), nums])),
+]));
+const GH_RATED = [1, 2, 3, 4, 5, 7, 8, 9, 17, 4480, 4757, 4758, 16004];
+
+test('seasonCoverage: a scattered sample of a long season is sparse', () => {
+  const eps = GH_RATED.map((n, i) => ep(n, 6 + (i % 3)));
+  const cov = seasonCoverage(eps, range(1, 16068));
+  assert.equal(cov.listed, 16068);
+  assert.equal(cov.sparse, true);
+});
+
+test('seasonCoverage: an unrated or unaired TAIL never makes a season sparse', () => {
+  // Three rated episodes of a ten-episode season still airing: tagInProgress
+  // owns that case, and its rated run so far is complete.
+  const cov = seasonCoverage(season(7, 8, 9), range(1, 10));
+  assert.deepEqual(cov, { listed: 10, sparse: false });
+});
+
+test('seasonCoverage: the line is half of the listed episodes up to the last rated one', () => {
+  const four = [1, 3, 5, 7].map((n) => ep(n, 8));
+  assert.equal(seasonCoverage(four, range(1, 8)).sparse, false, '4 of 7 is not sparse');
+  const three = [1, 4, 7].map((n) => ep(n, 8));
+  assert.equal(seasonCoverage(three, range(1, 7)).sparse, true, '3 of 7 is');
+});
+
+test('findMatches: a sparse season ships its listed count and NO shapes', () => {
+  const series = new Map([['ttGH', { title: 'Long Soap', year: 1963, type: 'tvSeries', genres: ['Drama'] }]]);
+  // A curve every detector would love on its own: strictly rising to a peak.
+  const rated = GH_RATED.map((n, i) => ep(n, 5 + i * 0.3));
+  assert.ok(detectShapes(rated).length > 0, 'control: the sampled curve has shapes on its own');
+  const episodes = new Map([['ttGH', new Map([[1, rated]])]]);
+  const [rec] = findMatches(series, episodes, {
+    minEpisodes: 3,
+    listedEpisodes: listedNums([['ttGH', { 1: range(1, 16068) }]]),
+  });
+  assert.equal(rec.listedEpisodes, 16068);
+  assert.equal(rec.sparse, true);
+  assert.deepEqual(rec.shapes, []);
+  assert.deepEqual(rec.confidence, {});
+  assert.equal(rec.episodes.length, GH_RATED.length, 'every rated episode still ships');
+});
+
+test('findMatches: a fully rated season carries neither field, an under-rated one only the count', () => {
+  const series = new Map([['ttF', { title: 'Full', year: 2020, type: 'tvSeries', genres: [] }]]);
+  const episodes = new Map([['ttF', new Map([
+    [1, season(7.0, 7.5, 8.0, 8.5)],
+    [2, season(7.0, 7.5, 8.0, 8.5)],
+  ])]]);
+  const recs = findMatches(series, episodes, {
+    minEpisodes: 3,
+    // Season 2 lists a fifth episode nobody has rated.
+    listedEpisodes: listedNums([['ttF', { 1: range(1, 4), 2: range(1, 5) }]]),
+  });
+  const [s1, s2] = recs.sort((a, b) => a.season - b.season);
+  assert.equal('listedEpisodes' in s1, false);
+  assert.equal('sparse' in s1, false);
+  assert.equal(s2.listedEpisodes, 5);
+  assert.equal('sparse' in s2, false);
+  assert.deepEqual(s2.shapes, s1.shapes, 'the unrated tail changes no shape');
+});
+
+test('findMatches: without listedEpisodes nothing is stamped (old callers unchanged)', () => {
+  const series = new Map([['ttO', { title: 'Old', year: 2020, type: 'tvSeries', genres: [] }]]);
+  const episodes = new Map([['ttO', new Map([[1, [1, 50, 900].map((n) => ep(n, 8))]])]]);
+  const [rec] = findMatches(series, episodes, { minEpisodes: 3 });
+  assert.equal('listedEpisodes' in rec, false);
+  assert.equal('sparse' in rec, false);
+});
+
+test('tagShapeDrift and tagSavedBestForLast skip a sparse latest season', () => {
+  const build = () => [
+    seasonRec('ttS', 1, 2001, [8.5, 8.6, 8.4, 8.5]),
+    seasonRec('ttS', 2, 2002, [8.4, 8.5, 8.6, 8.5]),
+    seasonRec('ttS', 3, 2003, [7.7, 8.2, 7.9]),
+  ];
+  const control = build();
+  tagShapeDrift(control);
+  assert.ok(control[2].shapes.includes('shape-drift'), 'control: a 0.5+ drop does drift');
+  const sparse = build();
+  sparse[2].sparse = true;
+  tagShapeDrift(sparse);
+  assert.equal(sparse[2].shapes.includes('shape-drift'), false);
+
+  const best = () => [
+    seasonRec('ttB', 1, 2001, [7.0, 7.1, 7.2]),
+    seasonRec('ttB', 2, 2002, [7.5, 7.6, 7.7]),
+    seasonRec('ttB', 3, 2003, [9.0, 9.1, 9.2]),
+  ];
+  const bestControl = best();
+  tagSavedBestForLast(bestControl);
+  assert.ok(bestControl[2].shapes.includes('saved-best-for-last'), 'control');
+  const bestSparse = best();
+  bestSparse[2].sparse = true;
+  tagSavedBestForLast(bestSparse);
+  assert.equal(bestSparse[2].shapes.includes('saved-best-for-last'), false);
 });

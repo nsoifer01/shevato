@@ -419,18 +419,39 @@ function renderSeasonSection(season, seriesId) {
     : '';
   const curveSvg = renderCurve(season.episodes, { width: 720, height: 220 });
   const yearLabel = season.seasonYear ? ` (${season.seasonYear})` : '';
+  const rated = season.episodes.length;
+  const listed = Number.isFinite(season.listedEpisodes) ? season.listedEpisodes : 0;
+  // Rated vs listed, and the sparse-season note, on the app's terms
+  // (js/app.js seasonEpisodeLabel / renderCoverageNote).
+  const countLabel = listed > rated
+    ? `${rated.toLocaleString('en-US')} of ${listed.toLocaleString('en-US')} episodes rated`
+    : `${rated} episodes`;
+  const coverageNote = season.sparse === true && listed > rated
+    ? `<p class="season-coverage-note">IMDb lists ${listed.toLocaleString('en-US')} episodes for this season and only ${rated.toLocaleString('en-US')} have a rating (IMDb shows one from 5 votes). The curve and averages cover those ${rated.toLocaleString('en-US')} only, so no shape is assigned to this season.</p>`
+    : '';
+  // One row per run of unrated episodes between two rated ones.
+  const rows = [];
+  season.episodes.forEach((ep, i) => {
+    const prev = i > 0 ? season.episodes[i - 1].episode : null;
+    if (prev !== null && ep.episode - prev > 1) {
+      const range = ep.episode - prev === 2 ? `${prev + 1}` : `${prev + 1}–${ep.episode - 1}`;
+      rows.push(`<tr class="episode-gap"><td colspan="4">Ep ${range} · no IMDb rating</td></tr>`);
+    }
+    rows.push(`<tr><td>${ep.episode}</td><td>${escapeHtml(ep.name || 'Untitled')}</td><td><strong>${ep.rating.toFixed(1)}</strong></td><td>${ep.votes.toLocaleString()}</td></tr>`);
+  });
 
   return `<article class="season-section" id="season-${season.season}">
         <header class="season-head">
           <h3>Season ${season.season}<span class="muted">${yearLabel}</span></h3>
           <p class="season-summary">
             <span><strong>${season.avgRating.toFixed(2)}</strong> avg</span>
-            <span>${season.episodes.length} episodes</span>
+            <span>${countLabel}</span>
             ${season.inProgress ? '<span class="season-airing">Still airing</span>' : ''}
             <span>${season.firstRating.toFixed(1)} → ${season.lastRating.toFixed(1)}</span>
             ${season.avgRuntime ? `<span>${season.avgRuntime} min avg</span>` : ''}
           </p>
           ${shapesHtml}
+          ${coverageNote}
         </header>
         ${curveSvg}
         <div class="episode-table-wrap">
@@ -438,7 +459,7 @@ function renderSeasonSection(season, seriesId) {
           <caption>Season ${season.season} episodes - IMDb ratings</caption>
           <thead><tr><th scope="col">#</th><th scope="col">Title</th><th scope="col">Rating</th><th scope="col">Votes</th></tr></thead>
           <tbody>
-            ${season.episodes.map((ep) => `<tr><td>${ep.episode}</td><td>${escapeHtml(ep.name || 'Untitled')}</td><td><strong>${ep.rating.toFixed(1)}</strong></td><td>${ep.votes.toLocaleString()}</td></tr>`).join('\n            ')}
+            ${rows.join('\n            ')}
           </tbody>
         </table>
         </div>
@@ -728,7 +749,9 @@ function buildTvSeriesSchema({ seriesId, title, year, canonical, posterUrl, clea
   schema.containsSeason = seasons.map((s) => ({
     '@type': 'TVSeason',
     seasonNumber: s.season,
-    numberOfEpisodes: s.episodes.length,
+    // The season's real length where IMDb lists more than it rates.
+    numberOfEpisodes: Number.isFinite(s.listedEpisodes) && s.listedEpisodes > s.episodes.length
+      ? s.listedEpisodes : s.episodes.length,
     ...(s.seasonYear ? { startDate: String(s.seasonYear) } : {}),
   }));
   return schema;

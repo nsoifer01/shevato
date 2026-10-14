@@ -5,7 +5,7 @@
 // curve renders without any client JS. Keep this in sync with the browser
 // version's math so static pages and the SPA agree visually.
 function renderCurve(episodes, opts) {
-  const { width = 600, height = 200, padX = 6, padY = 10, showDots = true } = opts || {};
+  const { width = 600, height = 200, padX = 6, padY = 10, showDots = true, markGaps = true } = opts || {};
   if (!Array.isArray(episodes) || episodes.length === 0) {
     return `<svg class="season-curve" viewBox="0 0 ${width} ${height}" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"></svg>`;
   }
@@ -22,12 +22,23 @@ function renderCurve(episodes, opts) {
     return [x, y];
   });
 
-  const linePath = points
-    .map(([x, y], i) => `${i === 0 ? 'M' : 'L'}${x.toFixed(1)},${y.toFixed(1)}`)
-    .join(' ');
+  // Same rule as the browser's curvePaths: the line breaks where episode
+  // numbers skip (the episodes between have no IMDb rating), a dashed
+  // `.curve-gap` bridges each break, and the area stays one shape.
+  const fmt = ([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`;
+  const isGap = (i) => markGaps && i > 0
+    && Number.isFinite(episodes[i].episode) && Number.isFinite(episodes[i - 1].episode)
+    && episodes[i].episode - episodes[i - 1].episode > 1;
+  const linePath = points.map((p, i) => `${i === 0 || isGap(i) ? 'M' : 'L'}${fmt(p)}`).join(' ');
+  const joined = points.map((p, i) => `${i === 0 ? 'M' : 'L'}${fmt(p)}`).join(' ');
   const last = points[points.length - 1];
   const first = points[0];
-  const areaPath = `${linePath} L${last[0].toFixed(1)},${height} L${first[0].toFixed(1)},${height} Z`;
+  const areaPath = `${joined} L${last[0].toFixed(1)},${height} L${first[0].toFixed(1)},${height} Z`;
+  const gapSegs = [];
+  for (let i = 1; i < points.length; i++) {
+    if (isGap(i)) gapSegs.push(`M${fmt(points[i - 1])} L${fmt(points[i])}`);
+  }
+  const gapPath = gapSegs.join(' ');
 
   let dotsSvg = '';
   if (showDots) {
@@ -43,7 +54,7 @@ function renderCurve(episodes, opts) {
 
   return `<svg class="season-curve" viewBox="0 0 ${width} ${height}" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Episode rating trajectory">
   <path class="curve-area" d="${areaPath}"/>
-  <path class="curve-line" d="${linePath}"/>
+  ${gapPath ? `<path class="curve-gap" d="${gapPath}"/>\n  ` : ''}<path class="curve-line" d="${linePath}"/>
   <g class="curve-dots">${dotsSvg}</g>
 </svg>`;
 }

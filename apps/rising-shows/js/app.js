@@ -2211,11 +2211,21 @@ function drawCurve(svg, episodes, W, H, opts) {
     return [x, y];
   });
 
-  const linePath = points.map(([x, y], i) => `${i === 0 ? 'M' : 'L'}${x.toFixed(1)},${y.toFixed(1)}`).join(' ');
-  const areaPath = `${linePath} L${points[points.length - 1][0].toFixed(1)},${H} L${points[0][0].toFixed(1)},${H} Z`;
+  // The area stays one continuous shape; the LINE breaks wherever episode
+  // numbers skip (opts.markGaps, episode curves only), and a dashed
+  // `.curve-gap` bridges each break, so unrated episodes read as missing
+  // instead of as a straight climb from Ep 9 to Ep 4480 (curvePaths).
+  const { linePath, areaPath, gapPath } = curvePaths(points, episodes, H, opts.markGaps === true);
 
   svg.querySelector('.curve-line').setAttribute('d', linePath);
   svg.querySelector('.curve-area').setAttribute('d', areaPath);
+  let gapEl = svg.querySelector('.curve-gap');
+  if (!gapEl && gapPath && typeof svg.insertBefore === 'function') {
+    gapEl = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    gapEl.setAttribute('class', 'curve-gap');
+    svg.insertBefore(gapEl, svg.querySelector('.curve-line'));
+  }
+  if (gapEl) gapEl.setAttribute('d', gapPath);
 
   if (showAxis) drawYAxis(svg, lo, hi, padXLeft, padXRight, padY, W, H);
   else drawMiniAxisLabels(svg, ratings, padY, W, H);
@@ -2236,6 +2246,43 @@ function drawCurve(svg, episodes, W, H, opts) {
       dots.appendChild(c);
     }
   }
+}
+
+// Path data for one curve. With markGaps, an episode whose number is more
+// than one past the previous rated episode starts a new line segment, and the
+// jump between the two goes into `gapPath` instead. scripts/render-curve.js
+// draws static pages with the same rule (tests/curve-parity.test.js).
+function curvePaths(points, episodes, H, markGaps) {
+  const fmt = ([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`;
+  const isGap = (i) => markGaps && i > 0
+    && Number.isFinite(episodes[i].episode) && Number.isFinite(episodes[i - 1].episode)
+    && episodes[i].episode - episodes[i - 1].episode > 1;
+  const linePath = points.map((p, i) => `${i === 0 || isGap(i) ? 'M' : 'L'}${fmt(p)}`).join(' ');
+  const joined = points.map((p, i) => `${i === 0 ? 'M' : 'L'}${fmt(p)}`).join(' ');
+  const areaPath = `${joined} L${points[points.length - 1][0].toFixed(1)},${H} L${points[0][0].toFixed(1)},${H} Z`;
+  const gaps = [];
+  for (let i = 1; i < points.length; i++) {
+    if (isGap(i)) gaps.push(`M${fmt(points[i - 1])} L${fmt(points[i])}`);
+  }
+  return { linePath, areaPath, gapPath: gaps.join(' ') };
+}
+
+// The runs of episode numbers between two consecutive rated episodes, i.e.
+// the episodes a season's list and curve do not show because IMDb has no
+// rating for them. Leading and trailing runs are not reported: the build
+// knows how many episodes a season lists (`listedEpisodes`), but not which
+// numbers they carry at either end, and the count label already says it.
+function ratedEpisodeGaps(episodes) {
+  const gaps = [];
+  if (!Array.isArray(episodes)) return gaps;
+  for (let i = 1; i < episodes.length; i++) {
+    const prev = episodes[i - 1].episode;
+    const cur = episodes[i].episode;
+    if (Number.isFinite(prev) && Number.isFinite(cur) && cur - prev > 1) {
+      gaps.push({ beforeIndex: i, from: prev + 1, to: cur - 1 });
+    }
+  }
+  return gaps;
 }
 
 // Add lightweight shape-specific annotations to the modal episode-rating SVG.
@@ -3164,8 +3211,7 @@ async function openModal(m, opts = {}) {
   // Rated-episode count from the index record (seasonRatedFold), falling back
   // to the index's episodeCount: a failed detail fetch used to read
   // "0 episodes", and so did a season whose episodes are all still unrated.
-  const subtitleEps = seasonRatedFold(m).count || seasonEpisodeCount(m);
-  els.modalSubtitle.textContent = `Season ${m.season} · ${subtitleEps} episodes${yearStr}${m.inProgress === true ? ' · still airing' : ''} · ${m.genres.join(', ') || 'No genre listed'}`;
+  els.modalSubtitle.textContent = `Season ${m.season} · ${seasonEpisodeLabel(m, 'episodes')}${yearStr}${m.inProgress === true ? ' · still airing' : ''} · ${m.genres.join(', ') || 'No genre listed'}`;
 
   // Shape pills + streaming chips in the modal-shapes row, matching the
   // chip row rendered on every result tile. Same suppression rule as
@@ -3204,6 +3250,8 @@ async function openModal(m, opts = {}) {
       () => openModal(m, { fromHistory: true }),
     );
   }
+
+  renderCoverageNote(m);
 
   // Prefer the per-season overview when TMDB has one — it usually frames
   // *this* season's arc rather than restating the pilot premise. Falls
@@ -3245,7 +3293,7 @@ async function openModal(m, opts = {}) {
   if (els.modalCurveHeading) els.modalCurveHeading.hidden = !hasEpisodes;
   els.modalCurve.hidden = !hasEpisodes;
   if (hasEpisodes) {
-    drawCurve(els.modalCurve, m.episodes, 600, 180, { showAxis: true });
+    drawCurve(els.modalCurve, m.episodes, 600, 180, { showAxis: true, markGaps: true });
     drawCurveAnnotations(els.modalCurve, m.episodes, m.shapes);
     bindModalCurveHover(els.modalCurve, m.episodes);
     renderShapeAnnotationText(m);
@@ -3266,7 +3314,12 @@ async function openModal(m, opts = {}) {
   els.modalEpisodes.classList.toggle('has-flags', anyEpFlags);
 
   const epFrag = document.createDocumentFragment();
+  // Episodes IMDb has no rating for are absent from m.episodes; a row marks
+  // each run of them so Ep 9 is never read as followed by Ep 17.
+  const gapBefore = new Map(ratedEpisodeGaps(m.episodes).map((g) => [g.beforeIndex, g]));
   for (const [epIndex, e] of m.episodes.entries()) {
+    const gap = gapBefore.get(epIndex);
+    if (gap) epFrag.appendChild(buildEpisodeGapRow(gap));
     const li = document.createElement('li');
     // IMDb tags pre-season specials, unaired pilots, and Christmas episodes
     // as ep 0 of a given season. Flag them so the curve isn't read as a
@@ -3491,7 +3544,7 @@ async function openShowModal(seriesId, opts = {}) {
   const watchedCount = seasons.filter((m) => Watched.has(m)).length;
   const statsParts = [
     `${seasons.length} season${seasons.length === 1 ? '' : 's'}`,
-    `${totalEps} episodes`,
+    showEpisodeLabel(seasons, totalEps),
   ];
   if (typeof meta.seriesRating === 'number') {
     const votesStr = meta.seriesVotes ? ` (${meta.seriesVotes.toLocaleString()} votes)` : '';
@@ -3740,7 +3793,7 @@ function buildShowSeasonRow(m, bestSeason, worstSeason, mostRatedSeason) {
   // Rated-episode count from the index record, not from the loaded episode
   // array: a failed detail fetch used to make every row read "0 eps", and so
   // did a season whose episodes are all still unrated (seasonEpisodeCount).
-  eps.textContent = `${seasonRatedFold(m).count || seasonEpisodeCount(m)} eps${yearStr}${ssRuntimeBit}${m.inProgress === true ? ' · still airing' : ''}`;
+  eps.textContent = `${seasonEpisodeLabel(m, 'eps')}${yearStr}${ssRuntimeBit}${m.inProgress === true ? ' · still airing' : ''}`;
   meta.appendChild(eps);
   // Per-season shape labels inside the show modal's season list — these
   // belong to an individual season, not the show as a whole, so they stay
@@ -3774,7 +3827,7 @@ function buildShowSeasonRow(m, bestSeason, worstSeason, mostRatedSeason) {
   // Nothing to draw without the per-episode data; an empty framed box reads
   // as "this season has no ratings", which is not what happened.
   if (Array.isArray(m.episodes) && m.episodes.length > 0) {
-    drawCurve(sparkSvg, m.episodes, 200, 36, 0);
+    drawCurve(sparkSvg, m.episodes, 200, 36, { padX: 0, markGaps: true });
   } else {
     sparkWrap.hidden = true;
   }
@@ -3834,6 +3887,58 @@ function buildShowSeasonRow(m, bestSeason, worstSeason, mostRatedSeason) {
 function seasonEpisodeCount(m) {
   if (Array.isArray(m.episodes) && m.episodes.length > 0) return m.episodes.length;
   return Number.isFinite(m.episodeCount) ? m.episodeCount : 0;
+}
+
+// "13 episodes", or "211 of 11,232 episodes rated" when IMDb lists more
+// episodes for the season than carry a rating. `listedEpisodes` is stamped by
+// the build only in that case (match.js seasonCoverage); the rated count is
+// the index fold, as above, so a failed detail fetch still reads right.
+function seasonEpisodeLabel(m, unit) {
+  const rated = seasonRatedFold(m).count || seasonEpisodeCount(m);
+  const listed = Number.isFinite(m.listedEpisodes) ? m.listedEpisodes : 0;
+  if (listed > rated) return `${rated.toLocaleString()} of ${listed.toLocaleString()} ${unit} rated`;
+  return `${rated} ${unit}`;
+}
+
+// One list row standing in for a run of episodes with no IMDb rating.
+function buildEpisodeGapRow(gap) {
+  const li = document.createElement('li');
+  li.className = 'ep-gap';
+  const range = gap.from === gap.to ? `Ep ${gap.from}` : `Ep ${gap.from}–${gap.to}`;
+  li.textContent = `${range} · no IMDb rating`;
+  return li;
+}
+
+// The season modal's coverage note. Shown only for a season the build marked
+// `sparse` (under half of its listed episodes rated, so it carries no shape):
+// that is the case where the curve looks like a season and is not one.
+function renderCoverageNote(m) {
+  let note = els.modal.querySelector('.modal-coverage-note');
+  const listed = Number.isFinite(m.listedEpisodes) ? m.listedEpisodes : 0;
+  const rated = seasonRatedFold(m).count || seasonEpisodeCount(m);
+  if (m.sparse !== true || listed <= rated) {
+    if (note) note.hidden = true;
+    return;
+  }
+  if (!note) {
+    note = document.createElement('p');
+    note.className = 'modal-coverage-note';
+    els.modalStats.insertAdjacentElement('afterend', note);
+  }
+  note.textContent = `IMDb lists ${listed.toLocaleString()} episodes for this season and only ${rated.toLocaleString()} have a rating (IMDb shows one from 5 votes). The curve and averages cover those ${rated.toLocaleString()} only, so no shape is assigned to this season.`;
+  note.hidden = false;
+}
+
+// The show-level twin of seasonEpisodeLabel: the rated total, and the listed
+// total beside it when any season has unrated episodes IMDb still lists.
+function showEpisodeLabel(seasons, ratedTotal) {
+  let listedTotal = 0;
+  for (const m of seasons) {
+    const rated = seasonRatedFold(m).count || seasonEpisodeCount(m);
+    listedTotal += Number.isFinite(m.listedEpisodes) && m.listedEpisodes > rated ? m.listedEpisodes : rated;
+  }
+  if (listedTotal > ratedTotal) return `${ratedTotal.toLocaleString()} of ${listedTotal.toLocaleString()} episodes rated`;
+  return `${ratedTotal} episodes`;
 }
 
 // TASK D: Render "More shows like this" in the show modal.
@@ -4465,7 +4570,7 @@ const FINDER_COLUMNS = [
   { key: 'showRating', label: 'Show rating' },
   { key: 'avgEpisode', label: 'Avg episode' },
   { key: 'gap', label: 'Gap' },
-  { key: 'episodes', label: 'Episodes' },
+  { key: 'episodes', label: 'Rated eps' },
   { key: 'seasonsCount', label: 'Seasons' },
   { key: 'year', label: 'Year' },
   { key: 'votes', label: 'Votes' },
@@ -4676,7 +4781,7 @@ function buildFinderTable(page) {
       { label: 'Show rating', text: s.showRating.toFixed(1) },
       { label: 'Avg episode', text: s.avgEpisode.toFixed(2) },
       { label: 'Gap', text: gapStr, cls: gapClass },
-      { label: 'Episodes', text: s.episodes.toLocaleString() },
+      { label: 'Rated eps', text: s.episodes.toLocaleString() },
       { label: 'Seasons', text: s.seasonsCount.toLocaleString() },
       // "n/a", not an em dash: the repo bans them in every surface including UI
       // copy, and the grid card already says "runtime n/a" for the same state,
@@ -6307,7 +6412,7 @@ function buildShowShareText(seasons) {
   const totalEps = weightedRatedEpisodes(seasons);
   const overallAvg = weightedAvgEpisode(seasons);
   const avgStr = overallAvg === null ? 'n/a' : overallAvg.toFixed(2);
-  const head = `${seasons.length} season${seasons.length === 1 ? '' : 's'} · ${totalEps} episodes · avg episode ${avgStr}`;
+  const head = `${seasons.length} season${seasons.length === 1 ? '' : 's'} · ${showEpisodeLabel(seasons, totalEps)} · avg episode ${avgStr}`;
   lines.push(typeof meta.seriesRating === 'number'
     ? `${head} · IMDb ${meta.seriesRating.toFixed(1)}`
     : head);
@@ -6641,7 +6746,7 @@ function shareShowChartImage(seriesId) {
   const overallAvg = weightedAvgEpisode(seasons);
   const stats = [
     `${seasons.length} seasons`,
-    `${totalEps} episodes`,
+    showEpisodeLabel(seasons, totalEps),
     `avg episode ${overallAvg === null ? 'n/a' : overallAvg.toFixed(2)}`,
   ];
   if (typeof meta.seriesRating === 'number') stats.push(`IMDb ${meta.seriesRating.toFixed(1)}`);
@@ -7225,6 +7330,12 @@ if (typeof window !== 'undefined') {
     validateDataset,
     seasonEpisodeCount,
     shapeConfidence,
+    // Rated vs listed episodes (General Hospital: 211 of 11,232) and the
+    // unrated runs the season list and curve mark.
+    seasonEpisodeLabel,
+    showEpisodeLabel,
+    ratedEpisodeGaps,
+    curvePaths,
     // The mood presets and the pure filter state each one produces. Exported
     // so tests assert the shipped presets themselves rather than a transcribed
     // copy: every preset's first page has to clear its own stated floors.

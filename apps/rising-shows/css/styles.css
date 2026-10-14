@@ -2228,6 +2228,16 @@ button.shape-tag.is-clickable:focus-visible {
   overflow: visible;
 }
 .curve-area { fill: rgba(245, 197, 24, 0.18); stroke: none; }
+/* Bridges a break in .curve-line where rated episode numbers skip (drawCurve
+   markGaps): the episodes between have no IMDb rating. */
+.curve-gap {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 1.2;
+  stroke-dasharray: 3 4;
+  opacity: 0.55;
+  vector-effect: non-scaling-stroke;
+}
 .curve-line {
   fill: none;
   stroke: var(--accent);
@@ -3468,6 +3478,16 @@ a.cast-card-inner:focus-visible {
   letter-spacing: 0.04em;
   text-transform: uppercase;
 }
+/* A run of episodes IMDb has no rating for, standing between two rated rows
+   so the list never reads Ep 9 as followed by Ep 17. Not a link, not a grid. */
+.modal-episodes li.ep-gap {
+  display: block;
+  padding: 0.3rem 0.85rem;
+  background: none;
+  border: 1px dashed var(--border);
+  color: var(--muted-2);
+  font-size: 0.78rem;
+}
 .modal-episodes li.ep-special {
   border-color: rgba(192, 132, 252, 0.4);
   background: rgba(192, 132, 252, 0.06);
@@ -4592,6 +4612,19 @@ body.advanced-drawer-open {
   color: var(--muted);
   background: rgba(245, 197, 24, 0.06);
   border: 1px solid rgba(245, 197, 24, 0.18);
+  border-radius: var(--radius-sm);
+  padding: 0.6rem 0.9rem;
+  margin: 0;
+}
+
+/* A season most of whose listed episodes have no IMDb rating (build `sparse`).
+   Same muted panel as the drift note, neutral border: it is a fact about the
+   data, not a verdict on the show. */
+.modal-coverage-note {
+  font-size: 0.88rem;
+  color: var(--muted);
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   padding: 0.6rem 0.9rem;
   margin: 0;
