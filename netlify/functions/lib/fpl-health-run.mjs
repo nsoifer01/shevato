@@ -103,7 +103,9 @@ async function diagnoseUpstream(fetchImpl) {
       headers: { 'User-Agent': USER_AGENT, Accept: 'application/json' },
       signal: AbortSignal.timeout(DIAGNOSE_TIMEOUT_MS),
     });
-    return `FPL itself answered ${res.status} in ${Date.now() - started} ms`;
+    const answer = `FPL itself answered ${res.status} in ${Date.now() - started} ms`;
+    if (res.body) await res.body.cancel().catch(() => {});
+    return answer;
   } catch (err) {
     return `FPL itself is unreachable after ${Date.now() - started} ms (${err.message})`;
   }
