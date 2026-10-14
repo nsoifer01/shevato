@@ -538,3 +538,61 @@ test('build-data: two builds of the same TSVs hash identically, a changed rating
   });
   assert.notEqual(bumped.data.contentHash, BUILD.data.contentHash);
 });
+
+// --- rating coverage (General Hospital, 2026-10-13) --------------------------
+//
+// IMDb lists 11,232 numbered General Hospital episodes, all under season 1,
+// and rates 211 of them (the ratings dump stops below 5 votes), numbered
+// 1-9, 17, 4480 ... 16004. The fixture is that shape in miniature: 40 listed,
+// 6 rated, a curve that climbs to a "finale" which is only the last rated one.
+
+const SOAP_RATED = [[1, '6.0'], [2, '6.2'], [3, '6.5'], [17, '7.0'], [30, '7.8'], [40, '9.4']];
+const SOAP = runBuild({
+  extraRows: {
+    ratings: [
+      ['tt800', '6.7', '6000'],
+      ...SOAP_RATED.map(([n, r]) => [`tt8001${String(n).padStart(2, '0')}`, r, '12']),
+      // Rated but unnumbered: IMDb gives it no season, so no season can hold it.
+      ['tt800999', '8.0', '30'],
+    ],
+    basics: [
+      ['tt800', 'tvSeries', 'Long Soap', 'Long Soap', '0', '1963', '\\N', '\\N', 'Drama'],
+      ...Array.from({ length: 40 }, (_, i) => {
+        const id = `tt8001${String(i + 1).padStart(2, '0')}`;
+        return [id, 'tvEpisode', `Ep ${i + 1}`, `Ep ${i + 1}`, '0', '1990', '\\N', '\\N', '\\N'];
+      }),
+      ['tt800999', 'tvEpisode', 'Special', 'Special', '0', '1990', '\\N', '\\N', '\\N'],
+    ],
+    episodes: [
+      ...Array.from({ length: 40 }, (_, i) => [`tt8001${String(i + 1).padStart(2, '0')}`, 'tt800', '1', String(i + 1)]),
+      ['tt800999', 'tt800', '\\N', '\\N'],
+    ],
+  },
+});
+
+test('build-data: a long, sparsely rated season ships every rated episode plus its listed count', () => {
+  const s = seasonOf(SOAP.data, 'tt800', 1);
+  assert.deepEqual(s.episodes.map((e) => e.episode), SOAP_RATED.map(([n]) => n));
+  assert.equal(s.listedEpisodes, 40);
+  assert.equal(SOAP.data.matches.filter((m) => m.seriesId === 'tt800').length, 1,
+    'the unnumbered episode joins no season and makes none of its own');
+});
+
+test('build-data: a sparse season is marked and given no shape', () => {
+  const s = seasonOf(SOAP.data, 'tt800', 1);
+  assert.ok(detectShapes(s.episodes).length > 0, 'control: the rated sample alone looks shaped');
+  assert.equal(s.sparse, true);
+  assert.deepEqual(s.shapes, []);
+  assert.deepEqual(s.confidence, {});
+  assert.match(SOAP.stdout, /1 sparse seasons/);
+});
+
+test('build-data: fully rated seasons carry neither coverage field', () => {
+  const s = seasonOf(BUILD.data, 'tt300', 2);
+  assert.equal('listedEpisodes' in s, false);
+  assert.equal('sparse' in s, false);
+  // Alpha season 1 lists an unrated fourth episode after its three rated ones.
+  const a = seasonOf(BUILD.data, 'tt100', 1);
+  assert.equal(a.listedEpisodes, 4);
+  assert.equal('sparse' in a, false, 'an unrated tail is not sparseness');
+});

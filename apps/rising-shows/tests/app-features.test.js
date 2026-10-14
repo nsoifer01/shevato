@@ -30,6 +30,8 @@ test('vm harness: app.js exports every helper these tests drive', () => {
     'dominantShapeOf', 'dominantShapeConfidenceOf', 'makeShowShapeBadge',
     // "Still airing": the unfinished season and the label beside its badge.
     'airingSeasonOf', 'makeAiringTag',
+    // Rating coverage: rated-of-listed labels and the unrated runs.
+    'seasonEpisodeLabel', 'showEpisodeLabel', 'ratedEpisodeGaps', 'curvePaths',
   ];
   const missing = expected.filter((name) => helpers[name] == null);
   assert.deepEqual(missing, [], `js/app.js stopped exporting: ${missing.join(', ')}`);
@@ -1515,4 +1517,53 @@ test('finder suggestions: a reloaded catalogue is searched, never the index buil
   vm.runInContext('showAgg = __rows; indexShowAgg();', c);
   assert.equal(compute('dargon crown').map((s) => s.seriesId).join(','), 'tt9999999');
   assert.equal(compute('stranger').length, 0);
+});
+
+// ---------------------------------------------------------------------------
+// Rating coverage. IMDb rates 211 of the 11,232 episodes it lists for General
+// Hospital's "season 1"; the modal used to call that "211 episodes" and list
+// Ep 9 straight after Ep 17's predecessor with nothing in between.
+// ---------------------------------------------------------------------------
+
+test('seasonEpisodeLabel: rated of listed when IMDb lists more, the plain count otherwise', () => {
+  const gh = { ratedCount: 211, ratingSum: 1611.1, listedEpisodes: 11232 };
+  assert.equal(helpers.seasonEpisodeLabel(gh, 'episodes'), '211 of 11,232 episodes rated');
+  assert.equal(helpers.seasonEpisodeLabel(gh, 'eps'), '211 of 11,232 eps rated');
+  assert.equal(helpers.seasonEpisodeLabel({ ratedCount: 13, ratingSum: 100 }, 'episodes'), '13 episodes');
+  // A failed detail fetch: the index count still drives it.
+  assert.equal(helpers.seasonEpisodeLabel({ episodes: [], episodeCount: 8, listedEpisodes: 10 }, 'eps'), '8 of 10 eps rated');
+});
+
+test('showEpisodeLabel: totals listed across seasons, counting full seasons at their rated size', () => {
+  const seasons = [
+    { ratedCount: 10, ratingSum: 80 },
+    { ratedCount: 4, ratingSum: 32, listedEpisodes: 12 },
+  ];
+  assert.equal(helpers.showEpisodeLabel(seasons, 14), '14 of 22 episodes rated');
+  assert.equal(helpers.showEpisodeLabel([{ ratedCount: 10, ratingSum: 80 }], 10), '10 episodes');
+});
+
+test('ratedEpisodeGaps: one entry per run of skipped numbers, none at the ends', () => {
+  const eps = [1, 2, 3, 9, 17, 18, 4480].map((episode) => ({ episode, rating: 7, votes: 9 }));
+  const gaps = helpers.ratedEpisodeGaps(eps);
+  assert.deepEqual(JSON.parse(JSON.stringify(gaps)), [
+    { beforeIndex: 3, from: 4, to: 8 },
+    { beforeIndex: 4, from: 10, to: 16 },
+    { beforeIndex: 6, from: 19, to: 4479 },
+  ]);
+  assert.equal(helpers.ratedEpisodeGaps([{ episode: 0 }, { episode: 1 }, { episode: 2 }]).length, 0,
+    'Ep 0 then Ep 1 is consecutive');
+  assert.equal(helpers.ratedEpisodeGaps(undefined).length, 0);
+});
+
+test('curvePaths: markGaps breaks the line only, and only when asked', () => {
+  const eps = [1, 2, 9].map((episode) => ({ episode }));
+  const pts = [[0, 10], [10, 20], [20, 5]];
+  const marked = helpers.curvePaths(pts, eps, 100, true);
+  assert.equal(marked.linePath, 'M0.0,10.0 L10.0,20.0 M20.0,5.0');
+  assert.equal(marked.gapPath, 'M10.0,20.0 L20.0,5.0');
+  assert.equal(marked.areaPath, 'M0.0,10.0 L10.0,20.0 L20.0,5.0 L20.0,100 L0.0,100 Z');
+  const plain = helpers.curvePaths(pts, eps, 100, false);
+  assert.equal(plain.linePath, 'M0.0,10.0 L10.0,20.0 L20.0,5.0');
+  assert.equal(plain.gapPath, '');
 });

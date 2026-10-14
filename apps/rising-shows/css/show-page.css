@@ -304,6 +304,10 @@ a.shape-badge:hover {
   vector-effect: non-scaling-stroke;
 }
 .season-curve .curve-area { fill: var(--curve-area); stroke: none; }
+.season-curve .curve-gap {
+  fill: none; stroke: var(--curve-line); stroke-width: 1.2;
+  stroke-dasharray: 3 4; opacity: 0.55;
+}
 .season-curve .curve-dots circle { fill: var(--curve-line); }
 
 /* Episode tables carry real episode titles, and 98 pages contain a title word
@@ -338,6 +342,15 @@ a.shape-badge:hover {
 .episode-table td:nth-child(3), .episode-table td:nth-child(4),
 .episode-table th:nth-child(3), .episode-table th:nth-child(4) { text-align: right; }
 .episode-table td strong { color: var(--text); }
+/* A run of episodes with no IMDb rating between two rated rows. */
+.episode-table tr.episode-gap td {
+  width: auto; padding: 4px 10px; font-size: 12px; color: var(--muted);
+  border-bottom-style: dashed;
+}
+/* A season most of whose listed episodes have no IMDb rating. */
+.season-coverage-note {
+  margin: 8px 0 0; color: var(--muted); font-size: 13px; line-height: 1.5;
+}
 
 .page-footer-meta {
   margin-top: 26px; padding-top: 20px; border-top: 1px solid var(--border);

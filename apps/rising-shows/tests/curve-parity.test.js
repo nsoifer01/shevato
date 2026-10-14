@@ -45,6 +45,7 @@ function recordingSvg() {
     querySelector(sel) {
       if (sel === '.curve-line') return node('line');
       if (sel === '.curve-area') return node('area');
+      if (sel === '.curve-gap') return node('gap');
       return null; // no .curve-dots: the dots are markup, not geometry
     },
   };
@@ -55,7 +56,8 @@ function browserPaths(episodes) {
   const svg = recordingSvg();
   // padX is the inset on both sides; the browser default differs from the
   // static one, so it is passed explicitly and so is padY's effect via H.
-  ctx.drawCurve(svg, episodes, W, H, { padX: PAD_X });
+  // markGaps: the season modal draws with it, and the static renderer always does.
+  ctx.drawCurve(svg, episodes, W, H, { padX: PAD_X, markGaps: true });
   return svg.seen;
 }
 
@@ -64,7 +66,8 @@ function staticPaths(episodes) {
   const svg = renderCurve(episodes, { width: W, height: H, padX: PAD_X, padY: PAD_Y, showDots: false });
   const line = /class="curve-line"[^>]*\sd="([^"]+)"/.exec(svg) || /\sd="([^"]+)"[^>]*class="curve-line"/.exec(svg);
   const area = /class="curve-area"[^>]*\sd="([^"]+)"/.exec(svg) || /\sd="([^"]+)"[^>]*class="curve-area"/.exec(svg);
-  return { line: line && line[1], area: area && area[1] };
+  const gap = /class="curve-gap"[^>]*\sd="([^"]+)"/.exec(svg);
+  return { line: line && line[1], area: area && area[1], gap: gap ? gap[1] : '' };
 }
 
 const ep = (episode, rating) => ({ episode, rating, votes: 1000 });
@@ -76,6 +79,8 @@ const SEASONS = {
   'a two-episode season': [ep(1, 6.0), ep(2, 9.0)],
   'a single-episode season (xStep is zero)': [ep(1, 8.1)],
   'a season with a pre-season special': [ep(0, 6.5), ep(1, 8.0), ep(2, 8.3)],
+  // Rated episode numbers that skip: General Hospital's 1-9, 17, 4480 ...
+  'a season with unrated episodes between rated ones': [ep(1, 6.8), ep(2, 6.7), ep(9, 8.8), ep(17, 6.0), ep(4480, 6.3)],
 };
 
 for (const [name, episodes] of Object.entries(SEASONS)) {
@@ -87,6 +92,7 @@ for (const [name, episodes] of Object.entries(SEASONS)) {
       'js/app.js drawCurve() and scripts/render-curve.js disagree on the line geometry.'
       + ' They are hand-synchronised mirrors: whichever one you changed, change the other.');
     assert.equal(a.area, b.area, 'and they disagree on the filled area');
+    assert.equal(a.gap || '', b.gap, 'and on the dashed bridges over unrated episodes');
   });
 }
 
@@ -97,4 +103,15 @@ test('the static renderer still draws nothing for an empty season, like the brow
   ctx.drawCurve(svg, [], W, H, { padX: PAD_X });
   assert.deepEqual(svg.seen, {}, 'the browser renderer must set no path for an empty season');
   assert.doesNotMatch(renderCurve([], { width: W, height: H }), /\sd="/, 'and neither must the static one');
+});
+
+test('a skip in episode numbers breaks the line and is bridged by a dashed gap path', () => {
+  const eps = [ep(1, 6.8), ep(2, 6.7), ep(9, 8.8), ep(17, 6.0)];
+  const { line, area, gap } = staticPaths(eps);
+  assert.equal((line.match(/M/g) || []).length, 3, 'one run for 1-2, then a new run at 9 and at 17');
+  assert.equal((area.match(/M/g) || []).length, 1, 'the area stays one shape');
+  assert.equal((gap.match(/M/g) || []).length, 2, 'one bridge per skip');
+  const consecutive = staticPaths([ep(1, 6.8), ep(2, 6.7), ep(3, 8.8)]);
+  assert.equal(consecutive.gap, '', 'no skip, no gap path');
+  assert.doesNotMatch(renderCurve([ep(1, 6.8), ep(2, 6.7)], { width: W, height: H }), /curve-gap/);
 });

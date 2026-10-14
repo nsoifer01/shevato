@@ -374,9 +374,16 @@ function shapeConfidence(episodes, opts = {}) {
 //   minVotes    — every episode must have at least this many votes. The
 //                 default is intentionally low; the browser UI applies its
 //                 own (stricter) vote and popularity filters on top.
+//   listedEpisodes - optional Map<seriesId, Map<season, number[]>> of every
+//                 episode number IMDb LISTS, rated or not (build-data.js reads
+//                 it off title.episode.tsv). With it, a season record says how
+//                 many episodes the season really has (`listedEpisodes`, only
+//                 where that exceeds the rated count) and whether its rated
+//                 episodes are too sparse to have a shape (`sparse`).
 function findMatches(seriesById, episodesBySeries, opts = {}) {
   const minEpisodes = opts.minEpisodes ?? 4;
   const minVotes = opts.minVotes ?? 5;
+  const listedBySeries = opts.listedEpisodes || null;
 
   const seasons = []; // { seriesId, season, eps, shapes, minSeasonVotes }
 
@@ -461,11 +468,21 @@ function findMatches(seriesById, episodesBySeries, opts = {}) {
     };
     if (avgRuntime !== null) season_obj.avgRuntime = avgRuntime;
     if (lastRatedYear !== null) season_obj._lastRatedYear = lastRatedYear;
+    const listedBySeason = listedBySeries && listedBySeries.get(seriesId);
+    const listedNums = listedBySeason && listedBySeason.get(season);
+    if (listedNums) {
+      const coverage = seasonCoverage(eps, listedNums);
+      if (coverage.listed > eps.length) season_obj.listedEpisodes = coverage.listed;
+      if (coverage.sparse) season_obj.sparse = true;
+    }
     matches.push(season_obj);
   }
 
   tagInProgress(matches, opts);
   for (const m of matches) {
+    // A sparse season's rated episodes are a scattered sample of it, not its
+    // run, so no detector gets to read them as a curve (see seasonCoverage).
+    if (m.sparse) { m.shapes = []; m.confidence = {}; continue; }
     const shapeOpts = m.inProgress ? { inProgress: true } : undefined;
     m.shapes = detectShapes(m.episodes, shapeOpts);
     m.confidence = shapeConfidence(m.episodes, shapeOpts);
@@ -476,6 +493,35 @@ function findMatches(seriesById, episodesBySeries, opts = {}) {
   // Build-internal only (see _lastRatedYear above): never ships in data.json.
   for (const m of matches) delete m._lastRatedYear;
   return matches;
+}
+
+// How much of a season its rated episodes cover. IMDb's ratings dump only
+// carries titles with 5+ votes, so on a long-running daily show almost every
+// episode is unrated: General Hospital lists 11,232 numbered episodes, all of
+// them under "season 1", and 211 have a rating (2026-10-13 dump). Those 211
+// run Ep 1-9, 17, 4480, 4757 ... 16004, and every detector used to read them
+// as eleven thousand episodes' worth of trajectory, "finale" included.
+//
+// `sparse` is decided over the episodes listed UP TO the last rated one, not
+// the whole season: an unaired or unrated TAIL is tagInProgress's business,
+// and counting it here would strip the shapes off every season that is only
+// a few episodes into its run. Measured on the 2026-10-13 dump, 5,886 of the
+// 66,661 shipped seasons had under half their listed episodes rated, and
+// 4,495 of those carried a shape.
+const SPARSE_COVERAGE_RATIO = 0.5;
+
+function seasonCoverage(ratedEps, listedNums) {
+  const lastRated = ratedEps.length ? ratedEps[ratedEps.length - 1].episode : -Infinity;
+  let throughLastRated = 0;
+  for (const n of listedNums) if (n <= lastRated) throughLastRated++;
+  // Every rated episode is a listed one; the max() only guards a malformed
+  // input from claiming more than 100% coverage.
+  const listed = Math.max(listedNums.length, ratedEps.length);
+  throughLastRated = Math.max(throughLastRated, ratedEps.length);
+  return {
+    listed,
+    sparse: ratedEps.length < SPARSE_COVERAGE_RATIO * throughLastRated,
+  };
 }
 
 // A season is IN PROGRESS when this build can see that the last episode we
@@ -593,6 +639,8 @@ function tagSavedBestForLast(matches) {
     // average is a handful of episodes deep and the season is not last.
     // 61 of the 250 recent tags rested on such a season.
     if (last.inProgress) continue;
+    // Nor can a sparse one: its average is a sample of a few rated episodes.
+    if (last.sparse) continue;
     if (last.avgRating < topAvg) continue;
     const tiedAtTop = arr.filter((m) => m.avgRating === topAvg);
     if (tiedAtTop.length > 1) continue;
@@ -627,7 +675,9 @@ function tagShapeDrift(matches) {
     // neither establish a new shape nor a real rating drop, and suppressing
     // the finale-dependent shapes above makes "lost every dominant shape"
     // fire even more readily.
-    if (last.inProgress) continue;
+    // A sparse latest season has no shape to compare (seasonCoverage), so
+    // "lost every dominant shape" would fire on the missing data alone.
+    if (last.inProgress || last.sparse) continue;
     const prior = arr.slice(0, arr.length - 1);
 
     // Dominant shape across prior seasons = shape appearing in the most seasons.
@@ -704,6 +754,7 @@ const MATCH_API = {
   detectShapes,
   findMatches,
   tagInProgress,
+  seasonCoverage,
   tagSavedBestForLast,
   tagShapeDrift,
   shapeConfidence,
