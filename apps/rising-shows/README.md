@@ -25,14 +25,19 @@ The pipeline reports that rather than hiding it:
 
 | Field (season record) | When | Read by |
 | --- | --- | --- |
-| `listedEpisodes` | IMDb lists more episodes for the season than are rated | "211 of 11,232 episodes rated" in the season modal, the show modal's season rows and stats, share text, static pages; JSON-LD `numberOfEpisodes` |
+| `listedEpisodes` | IMDb lists more episodes for the season than are rated | "211 of 11,232 episodes rated (1.9%)" in the season modal, the show modal's season rows and stats, both share texts, static pages (one formatter, `finder-lib.js` `ratedOfListedLabel`); JSON-LD `numberOfEpisodes`. A fully rated season keeps the plain "13 episodes" |
 | `sparse: true` | rated < 50% of the episodes listed up to the last rated one (`match.js` `seasonCoverage`) | no shapes and no confidence at build time, skipped by `tagShapeDrift` / `tagSavedBestForLast`, and a coverage note in the season modal and on the static page |
+| `epGaps` (slim season record and show-index row) | a single-season show's rated episode numbers skip | the Finder card and list-row sparkline (`sparkSeriesFromRatings` rebuilds the series with the skips, `drawCurve` `markGaps` breaks the line); positions in `epRatings`, `finder-lib.js` `episodeGapIndexes` |
 
 Wherever rated episode numbers skip, the season modal's episode list and the
 static episode table insert a "Ep 10–16 · no IMDb rating" row, and the season
 curves (modal, show-modal season rows, static pages) break the line and bridge
 the skip with a dashed `.curve-gap` path. Both renderers use one rule, pinned by
-`tests/curve-parity.test.js`. The Finder list column reads "Rated eps".
+`tests/curve-parity.test.js`. The Finder card and list-row sparkline of a
+single-season show break the same way (`epGaps`; a multi-season spark plots
+season averages and has no gaps to mark). The Finder list column reads "Rated
+eps". The sparse-season note carries no numbers: the count label right above it
+already does.
 
 ### Payload split (what the browser actually downloads)
 
@@ -472,11 +477,11 @@ dataset is checked now".
 | File | What it covers |
 | --- | --- |
 | `tests/match.test.js` | the eleven shape detectors and `findMatches` (the vote/episode floors, the projection, `seasonYear`), plus the in-progress rule: an unfinished season never gets a finale-dependent shape, a finished short season still does; and rating coverage: `seasonCoverage`, `listedEpisodes`, a sparse season left unshaped and skipped by the drift / saved-best tags |
-| `tests/finder-lib.test.js` | `buildShowAgg` (both the full-record and the split-record input shapes), hash parsing, the filter predicates, and the sort comparator |
+| `tests/finder-lib.test.js` | `buildShowAgg` (both the full-record and the split-record input shapes), hash parsing, the filter predicates, and the sort comparator; the rating-coverage helpers `episodeGapIndexes`, `sparkSeriesFromRatings` and `ratedOfListedLabel` |
 | `tests/build-data.test.js` | the IMDb pipeline end to end: rating aggregation, the vote/episode floors, unrated episodes, `\N` season and episode numbers, `seasonYear` / `avgRuntime`, the genre and language tallies, provider normalisation, the modal side-file split, and rating coverage end to end (a General Hospital-shaped season: every rated episode shipped, the listed count, `sparse`, no shapes, an unnumbered rated episode joining no season) |
 | `tests/split-data.test.js` | the payload split: that the emitted `data-index.json` aggregates identically to the unsplit `data.json` through the real `buildShowAgg`, that index + detail rehydrates losslessly, the `aboveImdb` rules, the still-airing flag reaching the show index on the right season only, and the `<head>` preload matching the URL `load()` fetches in the mode it fetches it |
 | `tests/shows-index-parity.test.js` | that `shows-index.json` equals the pre-split boot fold field-for-field, over a synthetic catalogue (always) and the real one (when the release data is present): the aggregate, the season averages, the sparkline ratings, and the four answers that used to be scanned out of season records at boot (above-IMDb, provider chip, adult flag, best/worst season). Then the observable answers: the whole Finder pipeline (`filterAndSortRows`) over 78 filter / sort / search states including 40 seeded-random combinations, `computeShowRelated` over a 400-show spread, the suggestion index over the whole catalogue, and that the show index flags exactly the still-airing seasons the season file does |
-| `tests/finder-spark.test.js` | the Finder card/row sparkline end to end: boot rows built by the real `buildShowsIndex`, drawn by `app.js`'s own `drawFinderSpark`, plotted points counted. One-season shows draw one point per rated episode (not the fallback dot), multi-season shows one per season, a one-episode show keeps the dot; over the real catalogue too when present |
+| `tests/finder-spark.test.js` | the Finder card/row sparkline end to end: boot rows built by the real `buildShowsIndex`, drawn by `app.js`'s own `drawFinderSpark`, plotted points counted. One-season shows draw one point per rated episode (not the fallback dot), multi-season shows one per season, a one-episode show keeps the dot, and a one-season show whose episode numbers skip (`epGaps`) breaks its line with one dashed bridge per skip; over the real catalogue too when present |
 | `tests/app-harness.js` | not a suite: loads `js/app.js` into a stubbed vm context and exports its test helpers, shared by `app-features.test.js` and the parity suite |
 | `tests/build-changelog.test.js` | `diffDatasets` / `appendEntry`, plus the CLI's missing-baseline guard |
 | `tests/integrations-lib.test.js` | Kometa collection + overlay YAML, MDBList id lists, and the compare-export naming |

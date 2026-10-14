@@ -831,7 +831,7 @@ const SOAP = {
 
 test('renderShowPage: a partly rated season says rated of listed, not "N episodes"', () => {
   const html = renderShowPage(SOAP);
-  assert.ok(html.includes('5 of 11,232 episodes rated'));
+  assert.ok(html.includes('5 of 11,232 episodes rated (<0.1%)'));
   assert.doesNotMatch(html, /<span>5 episodes<\/span>/);
   // A fully rated season keeps the plain count.
   assert.ok(renderShowPage(BREAKING_BAD).includes('<span>2 episodes</span>'));
@@ -850,12 +850,14 @@ test('renderShowPage: each run of unrated episodes gets one table row', () => {
 
 test('renderShowPage: a sparse season explains itself, a full one does not', () => {
   const html = renderShowPage(SOAP);
-  assert.match(html, /class="season-coverage-note">IMDb lists 11,232 episodes for this season and only 5 have a rating/);
+  assert.match(html, /class="season-coverage-note">Most of this season&#39;s episodes have no IMDb rating/);
+  // The numbers live in the count label, once.
+  assert.doesNotMatch(html, /season-coverage-note">[^<]*11,232/);
   assert.doesNotMatch(renderShowPage(BREAKING_BAD), /season-coverage-note/);
   // Partly rated but not sparse: the count says so, no note.
   const partial = { ...SOAP, seasons: [{ ...SOAP.seasons[0], sparse: undefined, listedEpisodes: 6 }] };
   assert.doesNotMatch(renderShowPage(partial), /season-coverage-note/);
-  assert.ok(renderShowPage(partial).includes('5 of 6 episodes rated'));
+  assert.ok(renderShowPage(partial).includes('5 of 6 episodes rated (83%)'));
 });
 
 test('renderShowPage: JSON-LD numberOfEpisodes is the listed length, never the rated sample', () => {

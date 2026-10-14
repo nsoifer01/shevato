@@ -9,6 +9,7 @@ const { renderMoreFooter } = require('./render-footer.js');
 // per-season averages. Neither module requires this one, so no cycle.
 const {
   deriveShowShapes, showShapeConfidence, orderShapesByConfidence, ABOVE_IMDB_MIN_VOTES,
+  ratedOfListedLabel,
 } = require('./finder-lib.js');
 const { detectShapes, shapeConfidence } = require('./match.js');
 // Streaming-provider vocabulary is shared with the browser app for the same
@@ -423,11 +424,9 @@ function renderSeasonSection(season, seriesId) {
   const listed = Number.isFinite(season.listedEpisodes) ? season.listedEpisodes : 0;
   // Rated vs listed, and the sparse-season note, on the app's terms
   // (js/app.js seasonEpisodeLabel / renderCoverageNote).
-  const countLabel = listed > rated
-    ? `${rated.toLocaleString('en-US')} of ${listed.toLocaleString('en-US')} episodes rated`
-    : `${rated} episodes`;
+  const countLabel = ratedOfListedLabel(rated, listed, 'episodes');
   const coverageNote = season.sparse === true && listed > rated
-    ? `<p class="season-coverage-note">IMDb lists ${listed.toLocaleString('en-US')} episodes for this season and only ${rated.toLocaleString('en-US')} have a rating (IMDb shows one from 5 votes). The curve and averages cover those ${rated.toLocaleString('en-US')} only, so no shape is assigned to this season.</p>`
+    ? '<p class="season-coverage-note">Most of this season&#39;s episodes have no IMDb rating (IMDb shows one from 5 votes), so the curve and averages cover the rated ones only and no shape is assigned.</p>'
     : '';
   // One row per run of unrated episodes between two rated ones.
   const rows = [];

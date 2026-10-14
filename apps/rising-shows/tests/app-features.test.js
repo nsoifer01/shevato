@@ -706,6 +706,16 @@ test('buildSeasonShareText: a show with no static page shares its app deep link,
   assert.equal(unknown[3], 'http://localhost/apps/rising-shows/#show=tt0903747');
 });
 
+test('buildSeasonShareText: a partly rated season shares the same rated-of-listed count as the modal', () => {
+  const gh = {
+    ...SHARE_SEASON, title: 'General Hospital', season: 1, seriesId: 'tt0056758', shapes: [],
+    episodes: Array.from({ length: 211 }, () => ({ rating: 7 })), listedEpisodes: 11232, sparse: true,
+  };
+  const lines = withShowRows([], () => helpers.buildSeasonShareText(gh).split('\n'));
+  assert.match(lines[1], /· 211 of 11,232 eps rated \(1\.9%\)$/);
+  assert.equal(lines.length, 3, 'no shape line for a sparse season');
+});
+
 test('buildSeasonShareText: seasonYear beats the show year, and a missing one drops the parens', () => {
   const noSeasonYear = { ...SHARE_SEASON, seasonYear: null };
   assert.equal(helpers.buildSeasonShareText(noSeasonYear).split('\n')[0], 'Breaking Bad - Season 5 (2008)');
@@ -1527,11 +1537,11 @@ test('finder suggestions: a reloaded catalogue is searched, never the index buil
 
 test('seasonEpisodeLabel: rated of listed when IMDb lists more, the plain count otherwise', () => {
   const gh = { ratedCount: 211, ratingSum: 1611.1, listedEpisodes: 11232 };
-  assert.equal(helpers.seasonEpisodeLabel(gh, 'episodes'), '211 of 11,232 episodes rated');
-  assert.equal(helpers.seasonEpisodeLabel(gh, 'eps'), '211 of 11,232 eps rated');
+  assert.equal(helpers.seasonEpisodeLabel(gh, 'episodes'), '211 of 11,232 episodes rated (1.9%)');
+  assert.equal(helpers.seasonEpisodeLabel(gh, 'eps'), '211 of 11,232 eps rated (1.9%)');
   assert.equal(helpers.seasonEpisodeLabel({ ratedCount: 13, ratingSum: 100 }, 'episodes'), '13 episodes');
   // A failed detail fetch: the index count still drives it.
-  assert.equal(helpers.seasonEpisodeLabel({ episodes: [], episodeCount: 8, listedEpisodes: 10 }, 'eps'), '8 of 10 eps rated');
+  assert.equal(helpers.seasonEpisodeLabel({ episodes: [], episodeCount: 8, listedEpisodes: 10 }, 'eps'), '8 of 10 eps rated (80%)');
 });
 
 test('showEpisodeLabel: totals listed across seasons, counting full seasons at their rated size', () => {
@@ -1539,7 +1549,7 @@ test('showEpisodeLabel: totals listed across seasons, counting full seasons at t
     { ratedCount: 10, ratingSum: 80 },
     { ratedCount: 4, ratingSum: 32, listedEpisodes: 12 },
   ];
-  assert.equal(helpers.showEpisodeLabel(seasons, 14), '14 of 22 episodes rated');
+  assert.equal(helpers.showEpisodeLabel(seasons, 14), '14 of 22 episodes rated (63%)');
   assert.equal(helpers.showEpisodeLabel([{ ratedCount: 10, ratingSum: 80 }], 10), '10 episodes');
 });
 
@@ -1566,4 +1576,18 @@ test('curvePaths: markGaps breaks the line only, and only when asked', () => {
   const plain = helpers.curvePaths(pts, eps, 100, false);
   assert.equal(plain.linePath, 'M0.0,10.0 L10.0,20.0 L20.0,5.0');
   assert.equal(plain.gapPath, '');
+});
+
+// ---------------------------------------------------------------------------
+// The Finder card spark of a single-season show breaks where episode numbers
+// skip, like the season chart (epGaps from the build).
+// ---------------------------------------------------------------------------
+
+test('finderSparkSeries: epGaps make the series skip there, and drawFinderSpark marks it', () => {
+  const ratings = [6.8, 6.7, 8.8, 6.0, 6.3];
+  const series = helpers.finderSparkSeries({ epRatings: ratings, epGaps: [2, 4] });
+  assert.deepEqual(series.map((e) => e.episode), [1, 2, 4, 5, 7]);
+  assert.deepEqual(series.map((e) => e.rating), ratings);
+  const plain = helpers.finderSparkSeries({ epRatings: ratings });
+  assert.deepEqual(plain.map((e) => e.episode), [1, 2, 3, 4, 5], 'no epGaps, no skips');
 });

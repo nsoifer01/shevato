@@ -750,3 +750,46 @@ test('the ordering does not depend on knowing whether the newest season is airin
     orderShapesByConfidence(airing, showShapeConfidence(GOT, realShapeConfidence)),
   );
 });
+
+// --- rating coverage helpers (General Hospital) ------------------------------
+
+test('episodeGapIndexes: positions where the episode number skips', () => {
+  const { episodeGapIndexes } = require('../scripts/finder-lib.js');
+  const eps = [1, 2, 3, 9, 17, 18, 4480].map((episode) => ({ episode }));
+  assert.deepEqual(episodeGapIndexes(eps), [3, 4, 6]);
+  assert.deepEqual(episodeGapIndexes([{ episode: 0 }, { episode: 1 }]), [], 'Ep 0 then 1 is consecutive');
+  assert.deepEqual(episodeGapIndexes(undefined), []);
+});
+
+test('sparkSeriesFromRatings: positional numbers that skip exactly at the gaps', () => {
+  const { sparkSeriesFromRatings, episodeGapIndexes } = require('../scripts/finder-lib.js');
+  const series = sparkSeriesFromRatings([7, 8, 9, 6], [2]);
+  assert.deepEqual(series.map((e) => e.episode), [1, 2, 4, 5]);
+  assert.deepEqual(series.map((e) => e.rating), [7, 8, 9, 6]);
+  // Round trip: the rebuilt series has its gaps at the same positions.
+  assert.deepEqual(episodeGapIndexes(series), [2]);
+  assert.deepEqual(sparkSeriesFromRatings([7, 8]).map((e) => e.episode), [1, 2]);
+});
+
+test('buildShowAgg: epGaps on a split record reach the single-season episode series', () => {
+  const { buildShowAgg, episodeGapIndexes } = require('../scripts/finder-lib.js');
+  const rec = {
+    seriesId: 'tt0056758', title: 'General Hospital', year: 1963, season: 1, genres: [],
+    avgRating: 7, seriesRating: 6.7, seriesVotes: 6340, shapes: [],
+    ratedCount: 4, ratingSum: 28, epRatings: [7, 7, 7, 7], epGaps: [2, 3],
+  };
+  const [row] = buildShowAgg([rec], () => []);
+  assert.deepEqual(episodeGapIndexes(row.episodeSeries), [2, 3]);
+});
+
+test('ratedOfListedLabel: the plain count when complete, rated of listed with a share otherwise', () => {
+  const { ratedOfListedLabel } = require('../scripts/finder-lib.js');
+  assert.equal(ratedOfListedLabel(13, 0, 'episodes'), '13 episodes');
+  assert.equal(ratedOfListedLabel(13, 13, 'episodes'), '13 episodes');
+  assert.equal(ratedOfListedLabel(211, 11232, 'episodes'), '211 of 11,232 episodes rated (1.9%)');
+  assert.equal(ratedOfListedLabel(211, 11232, 'eps'), '211 of 11,232 eps rated (1.9%)');
+  // One unrated episode in a long season never rounds up to "100%".
+  assert.equal(ratedOfListedLabel(199, 200, 'episodes'), '199 of 200 episodes rated (99%)');
+  assert.equal(ratedOfListedLabel(10, 11, 'episodes'), '10 of 11 episodes rated (90%)');
+  assert.equal(ratedOfListedLabel(4, 10000, 'episodes'), '4 of 10,000 episodes rated (<0.1%)');
+});

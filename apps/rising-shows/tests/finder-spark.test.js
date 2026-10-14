@@ -31,10 +31,11 @@ const { drawFinderSpark, finderSparkSeries } = helpers;
 function fakeSpark() {
   const line = {};
   const area = {};
+  const gap = {};
   const dots = [];
   const classes = new Set();
   return {
-    line, area, dots, classes,
+    line, area, gap, dots, classes,
     parentElement: null,
     classList: {
       toggle(c, on) { if (on) classes.add(c); else classes.delete(c); },
@@ -43,6 +44,7 @@ function fakeSpark() {
     querySelector(sel) {
       if (sel === '.curve-line') return { setAttribute(k, v) { line[k] = v; } };
       if (sel === '.curve-area') return { setAttribute(k, v) { area[k] = v; } };
+      if (sel === '.curve-gap') return { setAttribute(k, v) { gap[k] = v; } };
       if (sel === '.finder-spark-dot') {
         return { replaceChildren() { dots.length = 0; }, appendChild(c) { dots.push(c); } };
       }
@@ -62,6 +64,9 @@ function draw(row) {
     ys: pts.map((c) => Number(c.slice(1).split(',')[1])),
     dots: svg.dots.length,
     single: svg.classes.has('finder-spark--single'),
+    // Line runs (one M each) and dashed bridges over unrated episodes.
+    runs: (svg.line.d || '').split(' ').filter((c) => c.startsWith('M')).length,
+    bridges: (svg.gap.d || '').split(' ').filter((c) => c.startsWith('M')).length,
   };
 }
 
@@ -159,4 +164,32 @@ test('finder spark (real catalogue): every one-season show with 2+ rated episode
   }
   assert.ok(checked > 1000, `sanity: ${checked} one-season shows checked`);
   assert.deepEqual(wrong.slice(0, 5), [], `${wrong.length} one-season shows did not draw their episode curve`);
+});
+
+// General Hospital's single season: rated Ep 1-3, 9, 17, 4480. The card spark
+// used to join them as one unbroken run; the build now ships `epGaps` and the
+// spark breaks where the season chart does.
+const { episodeGapIndexes } = require('../scripts/finder-lib.js');
+
+test('finder spark: a one-season show breaks its line where episode numbers skip', () => {
+  const eps = [1, 2, 3, 9, 17, 4480].map((episode, i) => ({ episode, rating: 6 + (i % 3) * 0.5 }));
+  const rec = slimSeason({ id: 'tt0056758', title: 'General Hospital', season: 1, ratings: eps.map((e) => e.rating), single: true });
+  rec.epGaps = episodeGapIndexes(eps);
+  assert.deepEqual(rec.epGaps, [3, 4, 5]);
+  const row = bootRows([rec]).get('tt0056758');
+  assert.deepEqual(row.epGaps, [3, 4, 5], 'the boot index carries the gaps through');
+  const got = draw(row);
+  assert.equal(got.points, 6, 'every rated episode is still plotted');
+  assert.equal(got.runs, 4, 'Ep 1-3, then 9, 17 and 4480 each start a run');
+  assert.equal(got.bridges, 3, 'one dashed bridge per skip');
+});
+
+test('finder spark: a gapless one-season show ships no epGaps and draws one run', () => {
+  const row = bootRows([
+    slimSeason({ id: 'tt7366338', title: 'Chernobyl', season: 1, ratings: CHERNOBYL, single: true }),
+  ]).get('tt7366338');
+  assert.equal('epGaps' in row, false);
+  const got = draw(row);
+  assert.equal(got.runs, 1);
+  assert.equal(got.bridges, 0);
 });

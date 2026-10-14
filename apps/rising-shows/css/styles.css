@@ -5547,6 +5547,7 @@ body.advanced-drawer-open {
 }
 .finder-spark--single .curve-line { stroke: #ff8519 !important; }
 .finder-spark--single .curve-area { fill: rgba(255, 133, 25, 0.16) !important; }
+.finder-spark--single .curve-gap { stroke: #ff8519 !important; fill: none !important; }
 
 /* List-view Trend column: compact sparkline sized for a table row. */
 .finder-table th.finder-col-trend,

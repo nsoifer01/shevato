@@ -3860,7 +3860,7 @@ function buildShowSeasonRow(m, bestSeason, worstSeason, mostRatedSeason) {
     const pop = document.createElement('span');
     pop.className = 'ss-watched-tag ss-most-rated';
     pop.textContent = '◆ most rated';
-    pop.title = `Most-rated season of this show (${seasonVoteTotal(m).toLocaleString()} ratings across ${m.episodes.length} episodes)`;
+    pop.title = `Most-rated season of this show (${seasonVoteTotal(m).toLocaleString()} ratings across ${m.episodes.length} rated episodes)`;
     stats.appendChild(pop);
   }
   if (Watched.has(m)) {
@@ -3889,15 +3889,15 @@ function seasonEpisodeCount(m) {
   return Number.isFinite(m.episodeCount) ? m.episodeCount : 0;
 }
 
-// "13 episodes", or "211 of 11,232 episodes rated" when IMDb lists more
-// episodes for the season than carry a rating. `listedEpisodes` is stamped by
-// the build only in that case (match.js seasonCoverage); the rated count is
-// the index fold, as above, so a failed detail fetch still reads right.
+// "13 episodes", or "211 of 11,232 episodes rated (1.9%)" when IMDb lists
+// more episodes for the season than carry a rating (finder-lib's
+// ratedOfListedLabel, shared with the static pages). `listedEpisodes` is
+// stamped by the build only in that case (match.js seasonCoverage); the rated
+// count is the index fold, as above, so a failed detail fetch still reads right.
 function seasonEpisodeLabel(m, unit) {
   const rated = seasonRatedFold(m).count || seasonEpisodeCount(m);
   const listed = Number.isFinite(m.listedEpisodes) ? m.listedEpisodes : 0;
-  if (listed > rated) return `${rated.toLocaleString()} of ${listed.toLocaleString()} ${unit} rated`;
-  return `${rated} ${unit}`;
+  return RisingShowsFinder.ratedOfListedLabel(rated, listed, unit);
 }
 
 // One list row standing in for a run of episodes with no IMDb rating.
@@ -3908,6 +3908,8 @@ function buildEpisodeGapRow(gap) {
   li.textContent = `${range} · no IMDb rating`;
   return li;
 }
+
+const SPARSE_SEASON_NOTE = 'Most of this season\'s episodes have no IMDb rating (IMDb shows one from 5 votes), so the curve and averages cover the rated ones only and no shape is assigned.';
 
 // The season modal's coverage note. Shown only for a season the build marked
 // `sparse` (under half of its listed episodes rated, so it carries no shape):
@@ -3925,7 +3927,9 @@ function renderCoverageNote(m) {
     note.className = 'modal-coverage-note';
     els.modalStats.insertAdjacentElement('afterend', note);
   }
-  note.textContent = `IMDb lists ${listed.toLocaleString()} episodes for this season and only ${rated.toLocaleString()} have a rating (IMDb shows one from 5 votes). The curve and averages cover those ${rated.toLocaleString()} only, so no shape is assigned to this season.`;
+  // The counts and the share are already in the subtitle right above, so the
+  // note only says what they mean.
+  note.textContent = SPARSE_SEASON_NOTE;
   note.hidden = false;
 }
 
@@ -3937,8 +3941,7 @@ function showEpisodeLabel(seasons, ratedTotal) {
     const rated = seasonRatedFold(m).count || seasonEpisodeCount(m);
     listedTotal += Number.isFinite(m.listedEpisodes) && m.listedEpisodes > rated ? m.listedEpisodes : rated;
   }
-  if (listedTotal > ratedTotal) return `${ratedTotal.toLocaleString()} of ${listedTotal.toLocaleString()} episodes rated`;
-  return `${ratedTotal} episodes`;
+  return RisingShowsFinder.ratedOfListedLabel(ratedTotal, listedTotal, 'episodes');
 }
 
 // TASK D: Render "More shows like this" in the show modal.
@@ -4845,9 +4848,11 @@ function buildFinderTable(page) {
 // reading it handed drawFinderSpark undefined and every one-season show
 // collapsed to the centered fallback dot. Same mapping buildShowAgg applies
 // to `epRatings`: positional episode numbers, votes unknown (never drawn).
+// `epGaps` marks where the real episode numbers skipped, and the series
+// carries those skips so drawCurve's markGaps breaks the line there.
 function finderSparkSeries(s) {
   if (!Array.isArray(s.epRatings)) return undefined;
-  return s.epRatings.map((rating, i) => ({ episode: i + 1, rating, votes: 0 }));
+  return RisingShowsFinder.sparkSeriesFromRatings(s.epRatings, s.epGaps);
 }
 
 // Show-level trajectory. Multi-season shows draw one point per season's
@@ -4864,7 +4869,7 @@ function drawFinderSpark(svg, seasonAvgs, episodeSeries, W = 300, H = 70) {
 
   if (single) {
     if (episodeSeries && episodeSeries.length > 1) {
-      drawCurve(svg, episodeSeries, W, H, 0);
+      drawCurve(svg, episodeSeries, W, H, { padX: 0, markGaps: true });
       return;
     }
     svg.querySelector('.curve-line').setAttribute('d', '');
@@ -6389,7 +6394,7 @@ function buildSeasonShareText(m) {
   const climb = m.lastRating - m.firstRating;
   const climbStr = climb >= 0 ? `+${climb.toFixed(1)}` : climb.toFixed(1);
   lines.push(
-    `Avg ${m.avgRating.toFixed(1)} · Climb ${m.firstRating.toFixed(1)} → ${m.lastRating.toFixed(1)} (${climbStr}) · ${m.episodes.length} eps`,
+    `Avg ${m.avgRating.toFixed(1)} · Climb ${m.firstRating.toFixed(1)} → ${m.lastRating.toFixed(1)} (${climbStr}) · ${seasonEpisodeLabel(m, 'eps')}`,
   );
   // Link to the show's static page (not the SPA hash) so chat apps see
   // og:image and unfurl a poster thumbnail. The season # is in the text
