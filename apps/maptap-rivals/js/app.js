@@ -1002,6 +1002,10 @@
       panel.classList.toggle('is-active', active);
       panel.hidden = !active;
     });
+    // The long intro belongs to the landing view; under every other tab it
+    // only repeats what the visitor has already scrolled past.
+    const about = document.getElementById('app-about');
+    if (about) about.hidden = view !== 'dashboard';
 
     if (view === 'dashboard') renderDashboard();
     else if (view === 'rival') renderRival();

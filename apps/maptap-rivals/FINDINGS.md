@@ -119,6 +119,13 @@ so nothing could match a search for one. It now carries a 244-word
 `assets/css/main.css` and inherits colour from the app, so the block picks up
 this app's palette rather than imposing one.
 
+It shows on the Dashboard only (2026-10-15; it used to trail every tab). It
+stays after the settings strip in the markup, and `setView()` sets its
+`hidden` to `view !== 'dashboard'`, so the Dashboard looks exactly as before
+and the identity/import/export strip is not pushed below the prose. That
+`hidden` only works because `main.css` carries `.app-about[hidden]`; the
+site's reset gives `section` `display: block`, which beats the UA rule.
+
 The block belongs on the app page itself, not on a separate "about" URL beside
 it - that shape is a doorway page and it splits link equity across two URLs.
 The copy leads with the thing MapTap.gg itself does not do (tell you whether you beat your friends), because that is the only reason this app exists and the only angle a search for it can hang on.

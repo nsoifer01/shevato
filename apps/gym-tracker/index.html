@@ -270,6 +270,34 @@
                         <!-- Will be populated by JS -->
                     </div>
                 </section>
+                <!-- Crawlable explanation of the app. The page rendered plenty of
+                     words to a crawler but they were interface micro-copy; the
+                     positioning that would actually win a search - free, no
+                     account, works offline, no ads - was never stated in prose.
+                     Sits at the end of the Dashboard view only, so it does not
+                     repeat under every other view. -->
+                <section class="app-about" aria-labelledby="about-gym-tracker">
+                  <h2 id="about-gym-tracker">A workout log with no account and no ads</h2>
+                  <p>Gym Tracker is a free workout tracker that runs in your browser and installs to your phone like an app. It works offline, it costs nothing, there are no ads, and you do not have to create an account to use any part of it. Open it, log a set, close it.</p>
+
+                  <h3>What you can track</h3>
+                  <ul>
+                    <li>Workouts set by set, with reps, weight and rest, from a database of over 500 exercises</li>
+                    <li>Programs you build yourself, including supersets and scheduled training days</li>
+                    <li>Strength progress per exercise over time, with personal-record detection</li>
+                    <li>Body measurements, and a calendar of everything you have done</li>
+                    <li>Achievements, warm-up suggestions, and a plate breakdown for the bar you are actually using</li>
+                  </ul>
+
+                  <h3>Built for the gym floor</h3>
+                  <p>Because it installs as a progressive web app and caches everything it needs, it keeps working in a basement gym with no signal - your sets are saved locally and sync later. The rest timer and personal-record cues fire while your phone is in your pocket.</p>
+
+                  <h3>Your training data is yours</h3>
+                  <p>Everything is stored in your browser by default. Sign in and it syncs across your devices; either way you can export the whole history to a file and import it back, and delete it all whenever you want. The <a href="/privacy">privacy page</a> spells out what is stored and what is sent.</p>
+
+                  <h3>Browse the exercise database</h3>
+                  <p>Every exercise in the app has a page describing the muscles it works and the equipment it needs. <a href="exercises/">Browse the exercise directory</a> by muscle group or by equipment.</p>
+                </section>
             </div>
 
             <!-- PROGRAMS VIEW -->
@@ -1242,33 +1270,6 @@
                     </button>
                 </div>
             </div>
-            <!-- Crawlable explanation of the app. The page rendered plenty of
-                 words to a crawler but they were interface micro-copy; the
-                 positioning that would actually win a search - free, no
-                 account, works offline, no ads - was never stated in prose.
-                 Sits at the end of <main>, after every view. -->
-            <section class="app-about" aria-labelledby="about-gym-tracker">
-              <h2 id="about-gym-tracker">A workout log with no account and no ads</h2>
-              <p>Gym Tracker is a free workout tracker that runs in your browser and installs to your phone like an app. It works offline, it costs nothing, there are no ads, and you do not have to create an account to use any part of it. Open it, log a set, close it.</p>
-
-              <h3>What you can track</h3>
-              <ul>
-                <li>Workouts set by set, with reps, weight and rest, from a database of over 500 exercises</li>
-                <li>Programs you build yourself, including supersets and scheduled training days</li>
-                <li>Strength progress per exercise over time, with personal-record detection</li>
-                <li>Body measurements, and a calendar of everything you have done</li>
-                <li>Achievements, warm-up suggestions, and a plate breakdown for the bar you are actually using</li>
-              </ul>
-
-              <h3>Built for the gym floor</h3>
-              <p>Because it installs as a progressive web app and caches everything it needs, it keeps working in a basement gym with no signal - your sets are saved locally and sync later. The rest timer and personal-record cues fire while your phone is in your pocket.</p>
-
-              <h3>Your training data is yours</h3>
-              <p>Everything is stored in your browser by default. Sign in and it syncs across your devices; either way you can export the whole history to a file and import it back, and delete it all whenever you want. The <a href="/privacy">privacy page</a> spells out what is stored and what is sent.</p>
-
-              <h3>Browse the exercise database</h3>
-              <p>Every exercise in the app has a page describing the muscles it works and the equipment it needs. <a href="exercises/">Browse the exercise directory</a> by muscle group or by equipment.</p>
-            </section>
         </main>
 
         <!-- Global floating workout button (desktop only via CSS). Lives at

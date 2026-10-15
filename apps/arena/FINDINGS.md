@@ -13,6 +13,12 @@ so nothing could match a search for one. It now carries a 248-word
 `assets/css/main.css` and inherits colour from the app, so the block picks up
 this app's palette rather than imposing one.
 
+Arena has four tabs, not one view, so the block lives at the end of
+`#lobby-panel` (2026-10-15; it used to sit after every view and trailed the
+Leaderboard, H2H and Profile tabs). The app already hides `#lobby-panel` when
+you enter a room, so DOM containment alone keeps it off a game in progress
+too, with no extra JS.
+
 The block belongs on the app page itself, not on a separate "about" URL beside
 it - that shape is a doorway page and it splits link equity across two URLs.
 A first draft said guest play "keeps nothing", which is stronger than `privacy.html` promises: guest play signs you in ANONYMOUSLY to Firebase and merely cannot write to the leaderboard or the head-to-head records. Corrected before shipping.

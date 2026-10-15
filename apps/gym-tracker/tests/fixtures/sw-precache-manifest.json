@@ -1,7 +1,7 @@
 {
-  "cacheVersion": "1.16.4",
+  "cacheVersion": "1.16.5",
   "files": {
-    "./": "4c6fd52ba763debf",
+    "./": "9b9b42e10bbdbd2e",
     "./manifest.webmanifest": "6c315a53fd6b2577",
     "./offline/index.html": "b76ee50b6ff0b8b5",
     "./css/gym-tracker.css": "308648aa6603d20f",

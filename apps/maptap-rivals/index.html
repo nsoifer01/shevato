@@ -605,8 +605,11 @@
     </section>
       <!-- Crawlable explanation of the app: see the note in
            apps/football-h2h/index.html. This page rendered 531 words to a
-           crawler and every one of them was a button or a column header. -->
-      <section class="app-about" aria-labelledby="about-maptap-rivals">
+           crawler and every one of them was a button or a column header.
+           Shown on the Dashboard only: setView() hides it on every other view.
+           It stays after the settings strip rather than inside the dashboard
+           panel so the import/export controls are not pushed below it. -->
+      <section class="app-about" id="app-about" aria-labelledby="about-maptap-rivals">
         <h2 id="about-maptap-rivals">The rivalry layer MapTap.gg does not have</h2>
         <p>MapTap.gg gives you a daily geography score. What it does not tell you is whether you beat your friends. MapTap Rivals is a free tracker for exactly that: add the people you play against by name, log each day's scores, and let the head-to-head record build itself.</p>
 

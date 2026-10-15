@@ -1477,6 +1477,12 @@ body > [data-include-inlined="footer"] {
   line-height: 1.65;
   text-align: left; }
 
+/* The reset above gives every `section` display:block, which beats the UA's
+   `[hidden] { display: none }`. MapTap Rivals toggles `hidden` on its block
+   so the intro shows on the Dashboard only, not under every tab. */
+.app-about[hidden] {
+  display: none; }
+
 .app-about > h2 {
   margin: 0 0 0.6rem;
   font-size: 1.35rem;
