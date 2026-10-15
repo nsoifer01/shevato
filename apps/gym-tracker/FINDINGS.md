@@ -67,6 +67,16 @@ need no equipment, which equipment dominates, which secondary muscles recur.
 That is the whole of what can be said truthfully about a group without
 inventing anything, and it is more than a list of names says on its own.
 
+## The `.app-about` intro lives on the Dashboard only
+
+The ~250-word "A workout log with no account and no ads" block sits at the end
+of `#home-view` (2026-10-15). It used to be the last child of `<main>`, after
+every view, so it trailed Programs, Calendar, Settings and every other view.
+Being inside the Dashboard view, it is shown and hidden by the same
+`.view.active` mechanism as the rest of that view, with no extra JS. Any edit
+to `index.html` changes the precached `./` entry, so it needs a `CACHE_VERSION`
+patch bump and a refreshed precache fixture (see "Service worker").
+
 ## Modal architecture: stacking is DOM order, and the picker is a child
 
 Every `.modal` overlay shares `z-index: 2000`, so **document order is the

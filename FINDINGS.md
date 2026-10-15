@@ -951,6 +951,21 @@ page: a keyword page sitting beside the app it describes is a doorway page, and
 it splits link equity across two URLs. `apps/fpl-planner/index.html` had the
 right shape all along and is the model.
 
+**Once per app, on the landing view - never under every tab.** The blocks first
+sat at the end of `<main>`, after every view, so in the tabbed apps the same
+~250 words trailed the Gym Tracker calendar, the MapTap matrix and the Arena
+leaderboard alike (removed 2026-10-15). The block now lives where a first-time
+visitor lands: Gym Tracker inside `#home-view`, Arena inside `#lobby-panel`
+(the Play tab's lobby, so not under a game in progress either), and MapTap
+Rivals after its settings strip with `setView()` toggling `hidden` so it shows
+on the Dashboard only (moving it into the dashboard panel would have pushed
+the import/export strip below 600px of prose). Single-view pages (Football
+H2H, Rising Shows, Trip Planner, whose tabs swap one panel inside one page)
+keep it at the end of `<main>`. Toggling `hidden` on a block needs
+`.app-about[hidden] { display: none }` in `main.css`: the HTML5 reset there
+gives every `section` `display: block`, which beats the UA's `[hidden]` rule,
+so without it the attribute flips and nothing disappears.
+
 Two claims in the first draft over-promised against `privacy.html`, which is
 binding: Arena guest play was described as keeping nothing (it signs you in
 anonymously to Firebase and merely cannot write to the leaderboard), and Trip
