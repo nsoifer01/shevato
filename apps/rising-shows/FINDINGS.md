@@ -58,6 +58,15 @@ Decisions, and why:
   same `drawCurve` `markGaps` path as the season chart instead of a second
   gap renderer. Real episode numbers were not shipped: the spark has no
   tooltips, and only WHERE it breaks matters.
+- **Two surfaces the first rounds missed, found by checking production
+  (2026-10-14).** (1) `build-show-pages.js` `groupBySeries` copies a FIXED list
+  of season fields and dropped `listedEpisodes` and `sparse`, so every static
+  page printed "11 episodes" for a Daily Show season IMDb lists 161 for, with
+  no note and JSON-LD `numberOfEpisodes` 11; the renderer's own tests passed
+  because they hand it seasons directly. A test now goes through
+  `groupBySeries`. Any new season field the page reads has to be added there.
+  (2) The show modal's "Seasons overlay" built its own paths and joined each
+  season straight across its unrated runs; it now goes through `curvePaths`.
 - **The share is part of the count, rounded so it cannot lie.** One formatter
   (`ratedOfListedLabel`) for every surface. Floor to a whole percent from 10%
   up (199 of 200 reads 99%, never 100%), one decimal below 10% (General

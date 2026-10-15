@@ -1591,3 +1591,59 @@ test('finderSparkSeries: epGaps make the series skip there, and drawFinderSpark 
   const plain = helpers.finderSparkSeries({ epRatings: ratings });
   assert.deepEqual(plain.map((e) => e.episode), [1, 2, 3, 4, 5], 'no epGaps, no skips');
 });
+
+// ---------------------------------------------------------------------------
+// The show modal's "Seasons overlay" draws every season's episode line. It
+// joined The Daily Show's sparse seasons straight across their unrated runs
+// (S4: 11 of 161 rated); it now uses the same gap rule as every other curve.
+// ---------------------------------------------------------------------------
+
+test('drawSeasonOverlay: a season line breaks at unrated runs, bridged in its own colour, one group per season', () => {
+  const made = [];
+  const el = (tag) => {
+    const node = {
+      tag, attrs: {}, children: [], dataset: {}, textContent: '',
+      setAttribute(k, v) { this.attrs[k] = String(v); },
+      appendChild(c) { this.children.push(c); return c; },
+    };
+    made.push(node);
+    return node;
+  };
+  // Already wrapped the way drawYAxis leaves an axis-bearing chart, so its
+  // HTML label overlay is found rather than built.
+  const labels = { firstChild: null, removeChild() {}, appendChild() {} };
+  const svg = {
+    children: [], firstChild: null,
+    parentElement: { classList: { contains: (c) => c === 'curve-with-axis' }, querySelector: () => labels },
+    querySelector: () => null,
+    insertBefore(c) { this.children.unshift(c); return c; },
+    removeChild() {},
+    appendChild(c) { this.children.push(c); return c; },
+  };
+  const original = ctx.document.createElementNS;
+  ctx.document.createElementNS = (_ns, tag) => el(tag);
+  try {
+    const ep = (episode, rating) => ({ episode, rating, votes: 9 });
+    helpers.drawSeasonOverlay(svg, [
+      { season: 3, avgRating: 6.5, episodes: [ep(1, 6), ep(2, 7), ep(3, 6.5)] },
+      { season: 4, avgRating: 5.4, episodes: [ep(1, 5), ep(2, 5.5), ep(40, 5.2), ep(161, 5.8)] },
+    ], 600, 200);
+  } finally {
+    ctx.document.createElementNS = original;
+  }
+  const groups = svg.children.filter((c) => c.tag === 'g' && c.dataset.season !== undefined);
+  assert.deepEqual(groups.map((g) => g.dataset.season), [3, 4]);
+  const paths = (g) => g.children.filter((c) => c.tag === 'path');
+  const runs = (d) => (d.match(/M/g) || []).length;
+
+  const [full, sparse] = groups;
+  assert.equal(paths(full).length, 1, 'a gapless season gets no bridge path');
+  assert.equal(runs(paths(full)[0].attrs.d), 1);
+
+  const bridge = paths(sparse).find((p) => p.attrs.class === 'overlay-gap');
+  const line = paths(sparse).find((p) => p.attrs.class !== 'overlay-gap');
+  assert.equal(runs(line.attrs.d), 3, 'Ep 1-2, then 40, then 161');
+  assert.equal(runs(bridge.attrs.d), 2, 'one bridge per skip');
+  assert.equal(bridge.attrs['stroke-dasharray'], '3 4');
+  assert.equal(bridge.attrs.stroke, line.attrs.stroke, 'bridged in the season\'s own colour');
+});

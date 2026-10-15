@@ -865,3 +865,23 @@ test('renderShowPage: JSON-LD numberOfEpisodes is the listed length, never the r
   assert.match(html, /"numberOfEpisodes": 11232/);
   assert.match(renderShowPage(BREAKING_BAD), /"numberOfEpisodes": 2/);
 });
+
+test('groupBySeries carries rating coverage through to the page (listedEpisodes, sparse)', () => {
+  // The page builder reads seasons through groupBySeries, which copies a fixed
+  // field list. It dropped both coverage fields, so production pages printed
+  // "11 episodes" for a Daily Show season IMDb lists 161 episodes for.
+  const base = { seriesId: 'tt0115147', title: 'The Daily Show', year: 1996, type: 'tvSeries', genres: ['Comedy'], seriesRating: 7.1, seriesVotes: 49917, firstRating: 5, lastRating: 5, avgRating: 5.35 };
+  const eps = [1, 2, 40, 41].map((episode) => ({ episode, rating: 5.35, votes: 9 }));
+  const [show] = groupBySeries([
+    { ...base, season: 4, seasonYear: 1999, episodes: eps, shapes: [], listedEpisodes: 161, sparse: true },
+    { ...base, season: 5, seasonYear: 2000, episodes: [1, 2, 3].map((episode) => ({ episode, rating: 6, votes: 9 })), shapes: ['rising'] },
+  ]);
+  assert.equal(show.seasons[0].listedEpisodes, 161);
+  assert.equal(show.seasons[0].sparse, true);
+  assert.equal(show.seasons[1].listedEpisodes, undefined);
+  const html = renderShowPage(show);
+  assert.ok(html.includes('4 of 161 episodes rated (2.5%)'));
+  assert.match(html, /season-coverage-note/);
+  assert.match(html, /"numberOfEpisodes": 161/);
+  assert.ok(html.includes('<span>3 episodes</span>'), 'a fully rated season keeps the plain count');
+});

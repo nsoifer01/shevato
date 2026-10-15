@@ -33,7 +33,9 @@ Wherever rated episode numbers skip, the season modal's episode list and the
 static episode table insert a "Ep 10–16 · no IMDb rating" row, and the season
 curves (modal, show-modal season rows, static pages) break the line and bridge
 the skip with a dashed `.curve-gap` path. Both renderers use one rule, pinned by
-`tests/curve-parity.test.js`. The Finder card and list-row sparkline of a
+`tests/curve-parity.test.js`. The show modal's "Seasons overlay" breaks each
+season's line the same way (line and dashed bridge in one `<g data-season>`, so
+the legend toggle hides both). The Finder card and list-row sparkline of a
 single-season show break the same way (`epGaps`; a multi-season spark plots
 season averages and has no gaps to mark). The Finder list column reads "Rated
 eps". The sparse-season note carries no numbers: the count label right above it

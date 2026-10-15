@@ -2700,21 +2700,38 @@ function drawSeasonOverlay(svg, seasons, W, H) {
       const y = padY + (1 - (e.rating - lo) / span) * (H - padY * 2);
       return [x, y];
     });
-    const d = points.map(([x, y], i) => `${i === 0 ? 'M' : 'L'}${x.toFixed(1)},${y.toFixed(1)}`).join(' ');
+    // Same gap rule as every other episode curve (curvePaths): the line breaks
+    // where rated episode numbers skip and a dashed stroke in the season's
+    // colour bridges the break. Line and bridge share one <g data-season>, so
+    // the legend toggle and the share-image export hide them together.
+    const { linePath, gapPath } = curvePaths(points, s.episodes, H, true);
+    const group = document.createElementNS(NS, 'g');
+    group.dataset.season = s.season;
+    const stroke = (el, width, opacity) => {
+      el.setAttribute('fill', 'none');
+      el.setAttribute('stroke', color);
+      el.setAttribute('stroke-width', width);
+      el.setAttribute('stroke-linecap', 'round');
+      el.setAttribute('stroke-linejoin', 'round');
+      el.setAttribute('vector-effect', 'non-scaling-stroke');
+      el.setAttribute('opacity', opacity);
+    };
+    if (gapPath) {
+      const gap = document.createElementNS(NS, 'path');
+      gap.setAttribute('class', 'overlay-gap');
+      gap.setAttribute('d', gapPath);
+      stroke(gap, '1.2', '0.5');
+      gap.setAttribute('stroke-dasharray', '3 4');
+      group.appendChild(gap);
+    }
     const path = document.createElementNS(NS, 'path');
-    path.setAttribute('d', d);
-    path.setAttribute('fill', 'none');
-    path.setAttribute('stroke', color);
-    path.setAttribute('stroke-width', '2');
-    path.setAttribute('stroke-linecap', 'round');
-    path.setAttribute('stroke-linejoin', 'round');
-    path.setAttribute('vector-effect', 'non-scaling-stroke');
-    path.setAttribute('opacity', '0.85');
-    path.dataset.season = s.season;
+    path.setAttribute('d', linePath);
+    stroke(path, '2', '0.85');
+    group.appendChild(path);
     const title = document.createElementNS(NS, 'title');
     title.textContent = `Season ${s.season} - avg ${s.avgRating.toFixed(1)}`;
-    path.appendChild(title);
-    svg.appendChild(path);
+    group.appendChild(title);
+    svg.appendChild(group);
   });
   return colors;
 }
@@ -7341,6 +7358,7 @@ if (typeof window !== 'undefined') {
     showEpisodeLabel,
     ratedEpisodeGaps,
     curvePaths,
+    drawSeasonOverlay,
     // The mood presets and the pure filter state each one produces. Exported
     // so tests assert the shipped presets themselves rather than a transcribed
     // copy: every preset's first page has to clear its own stated floors.

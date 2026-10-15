@@ -229,6 +229,12 @@ function groupBySeries(matches) {
       // Present (and true) only while the season is still airing; the page's
       // dominant-shape derivation must not read a finale off it.
       inProgress: m.inProgress,
+      // Rating coverage (match.js seasonCoverage): the season's listed length
+      // where IMDb lists more than it rates, and whether it is too sparse to
+      // carry a shape. Without these the page printed "11 episodes" for a
+      // season of 161 and never explained the missing shape.
+      listedEpisodes: m.listedEpisodes,
+      sparse: m.sparse,
     });
     // Series-level fields may be present on any season's record; fill
     // any holes from later seasons so we don't lose data if season 1
