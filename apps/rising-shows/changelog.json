@@ -1,6 +1,375 @@
 {
   "updates": [
     {
+      "builtAt": "2026-10-16T11:22:56.017Z",
+      "totals": {
+        "seasons": 67295,
+        "delta": 32
+      },
+      "shapeCounts": {
+        "rebound": 9752,
+        "big-finale": 11800,
+        "u-shaped": 2641,
+        "rollercoaster": 13495,
+        "mid-peak": 4363,
+        "consistent": 2517,
+        "bad-finale": 4333,
+        "front-loaded": 3059,
+        "slow-burn": 3962,
+        "declining": 1638,
+        "saved-best-for-last": 1377,
+        "shape-drift": 1400,
+        "rising": 2345
+      },
+      "shapeDeltas": {
+        "rebound": 2,
+        "big-finale": 6,
+        "u-shaped": 4,
+        "rollercoaster": -5,
+        "consistent": 2,
+        "bad-finale": 3,
+        "front-loaded": -3,
+        "slow-burn": -3,
+        "saved-best-for-last": 3,
+        "shape-drift": 1,
+        "rising": 5
+      },
+      "added": [
+        {
+          "seriesId": "tt0121955",
+          "title": "South Park",
+          "season": 29,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt10691770",
+          "title": "Helluva Boss",
+          "season": 3,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt0280277",
+          "title": "Mr. Bean: The Animated Series",
+          "season": 4,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt15483602",
+          "title": "Reincarnated as a Sword",
+          "season": 2,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt5684214",
+          "title": "Captain Marleau",
+          "season": 5,
+          "seasonYear": 2023
+        },
+        {
+          "seriesId": "tt0940902",
+          "title": "Notruf Hafenkante",
+          "season": 1,
+          "seasonYear": 2007
+        },
+        {
+          "seriesId": "tt0155445",
+          "title": "Rupert",
+          "season": 2,
+          "seasonYear": 1992
+        },
+        {
+          "seriesId": "tt8024248",
+          "title": "Kekko Kamen",
+          "season": 1,
+          "seasonYear": 1991
+        },
+        {
+          "seriesId": "tt6208480",
+          "title": "DBX",
+          "season": 4,
+          "seasonYear": 2019
+        },
+        {
+          "seriesId": "tt1743990",
+          "title": "Cinemassacre's Monster Madness",
+          "season": 17,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt12379170",
+          "title": "Secrets of Summer",
+          "season": 2,
+          "seasonYear": 2022
+        },
+        {
+          "seriesId": "tt0352110",
+          "title": "TV Burp",
+          "season": 4,
+          "seasonYear": 2004
+        },
+        {
+          "seriesId": "tt10307796",
+          "title": "Perfume",
+          "season": 1,
+          "seasonYear": 2019
+        },
+        {
+          "seriesId": "tt6173228",
+          "title": "Make It Right",
+          "season": 1,
+          "seasonYear": 2016
+        },
+        {
+          "seriesId": "tt11193036",
+          "title": "Cause You Are My Boy",
+          "season": 1,
+          "seasonYear": 2018
+        },
+        {
+          "seriesId": "tt8796226",
+          "title": "Checkout",
+          "season": 6,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt0481440",
+          "title": "Britain's Next Top Model",
+          "season": 8,
+          "seasonYear": 2012
+        },
+        {
+          "seriesId": "tt39168577",
+          "title": "House of Yang",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt8359446",
+          "title": "The Undateables",
+          "season": 1,
+          "seasonYear": 2018
+        },
+        {
+          "seriesId": "tt0081857",
+          "title": "Entertainment Tonight",
+          "season": 44,
+          "seasonYear": 2024
+        },
+        {
+          "seriesId": "tt8364802",
+          "title": "Kiss Me Again",
+          "season": 1,
+          "seasonYear": 2018
+        },
+        {
+          "seriesId": "tt7106722",
+          "title": "I Was Prey",
+          "season": 3,
+          "seasonYear": 2019
+        },
+        {
+          "seriesId": "tt12135844",
+          "title": "Map Men",
+          "season": 5,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt15430890",
+          "title": "Strings",
+          "season": 1,
+          "seasonYear": 2021
+        },
+        {
+          "seriesId": "tt18936622",
+          "title": "America's Secret Space Heroes",
+          "season": 1,
+          "seasonYear": 2017
+        },
+        {
+          "seriesId": "tt0481440",
+          "title": "Britain's Next Top Model",
+          "season": 7,
+          "seasonYear": 2011
+        },
+        {
+          "seriesId": "tt15173012",
+          "title": "Crush",
+          "season": 1,
+          "seasonYear": 2021
+        },
+        {
+          "seriesId": "tt27470642",
+          "title": "Walkman",
+          "season": 1,
+          "seasonYear": 2022
+        },
+        {
+          "seriesId": "tt29228117",
+          "title": "Hidden Wonders of Europe",
+          "season": 1,
+          "seasonYear": 2022
+        },
+        {
+          "seriesId": "tt30645099",
+          "title": "Africa's Hidden Wonders",
+          "season": 1,
+          "seasonYear": 2020
+        },
+        {
+          "seriesId": "tt36241763",
+          "title": "Bradley Walsh: Egypt's Cosmic Code",
+          "season": 1,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt38813375",
+          "title": "Mohalle Wala Pyaar",
+          "season": 1,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt39123226",
+          "title": "The Party",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt4768948",
+          "title": "High Society",
+          "season": 1,
+          "seasonYear": 2015
+        },
+        {
+          "seriesId": "tt48461761",
+          "title": "Eyes",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt6581070",
+          "title": "Mr. X and I",
+          "season": 1,
+          "seasonYear": 2015
+        }
+      ],
+      "removed": [
+        {
+          "seriesId": "tt0770762",
+          "title": "Happy Tree Friends",
+          "season": 4,
+          "seasonYear": 2009
+        },
+        {
+          "seriesId": "tt37399646",
+          "title": "Sew-ey's No Armor Hardcore",
+          "season": 1,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt37399646",
+          "title": "Sew-ey's No Armor Hardcore",
+          "season": 2,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt37399646",
+          "title": "Sew-ey's No Armor Hardcore",
+          "season": 3,
+          "seasonYear": 2025
+        }
+      ],
+      "ratingSwings": [
+        {
+          "seriesId": "tt0081857",
+          "title": "Entertainment Tonight",
+          "season": 40,
+          "from": 3.13,
+          "to": 5.88,
+          "delta": 2.75
+        },
+        {
+          "seriesId": "tt13557628",
+          "title": "Gando",
+          "season": 1,
+          "from": 4.01,
+          "to": 5.68,
+          "delta": 1.67
+        },
+        {
+          "seriesId": "tt48648494",
+          "title": "Carrier Murder",
+          "season": 1,
+          "from": 6.23,
+          "to": 7.52,
+          "delta": 1.29
+        },
+        {
+          "seriesId": "tt37599841",
+          "title": "Skibidi Toilet Multiverse",
+          "season": 13,
+          "from": 7.15,
+          "to": 8.4,
+          "delta": 1.25
+        },
+        {
+          "seriesId": "tt1409068",
+          "title": "Tears to Tiara",
+          "season": 1,
+          "from": 6.7,
+          "to": 7.89,
+          "delta": 1.19
+        },
+        {
+          "seriesId": "tt43088191",
+          "title": "Dive Into You",
+          "season": 1,
+          "from": 7.05,
+          "to": 5.98,
+          "delta": -1.07
+        },
+        {
+          "seriesId": "tt13557628",
+          "title": "Gando",
+          "season": 2,
+          "from": 3.13,
+          "to": 4.02,
+          "delta": 0.89
+        },
+        {
+          "seriesId": "tt0490760",
+          "title": "Uma Aventura",
+          "season": 3,
+          "from": 6.63,
+          "to": 5.76,
+          "delta": -0.87
+        },
+        {
+          "seriesId": "tt20428144",
+          "title": "Sam and Colby Present: Hell Week",
+          "season": 6,
+          "from": 8.17,
+          "to": 7.33,
+          "delta": -0.84
+        },
+        {
+          "seriesId": "tt0490760",
+          "title": "Uma Aventura",
+          "season": 2,
+          "from": 6.52,
+          "to": 5.68,
+          "delta": -0.84
+        }
+      ],
+      "modifiedCounts": {
+        "seriesVotes": 23855,
+        "avgRating": 1464,
+        "seriesRating": 314,
+        "shapes": 238,
+        "episodeCount": 103,
+        "poster": 4
+      }
+    },
+    {
       "builtAt": "2026-10-15T11:34:50.753Z",
       "totals": {
         "seasons": 67263,
@@ -8898,251 +9267,6 @@
         "seriesRating": 242,
         "episodeCount": 89,
         "poster": 1
-      }
-    },
-    {
-      "builtAt": "2026-09-02T10:31:58.687Z",
-      "totals": {
-        "seasons": 66590,
-        "delta": 19
-      },
-      "shapeCounts": {
-        "rebound": 10156,
-        "rising": 2597,
-        "slow-burn": 4406,
-        "big-finale": 12142,
-        "u-shaped": 3093,
-        "rollercoaster": 14138,
-        "mid-peak": 4630,
-        "saved-best-for-last": 1503,
-        "front-loaded": 3494,
-        "declining": 1885,
-        "bad-finale": 4653,
-        "consistent": 2626,
-        "shape-drift": 1574
-      },
-      "shapeDeltas": {
-        "rebound": -3,
-        "rising": -7,
-        "slow-burn": 1,
-        "big-finale": -4,
-        "u-shaped": -1,
-        "rollercoaster": 5,
-        "mid-peak": 2,
-        "saved-best-for-last": 1,
-        "front-loaded": 5,
-        "declining": 2,
-        "bad-finale": 4,
-        "consistent": 1,
-        "shape-drift": -3
-      },
-      "added": [
-        {
-          "seriesId": "tt13660822",
-          "title": "Avatar: Super Deformed Shorts",
-          "season": 1,
-          "seasonYear": 2007
-        },
-        {
-          "seriesId": "tt11958610",
-          "title": "Trigger Point",
-          "season": 4,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt0159881",
-          "title": "Jeopardy!",
-          "season": 20,
-          "seasonYear": 2003
-        },
-        {
-          "seriesId": "tt7047868",
-          "title": "Ring of Honor PPV",
-          "season": 10,
-          "seasonYear": 2018
-        },
-        {
-          "seriesId": "tt0470645",
-          "title": "Dennis the Menace",
-          "season": 2,
-          "seasonYear": 1998
-        },
-        {
-          "seriesId": "tt10521222",
-          "title": "The Last Cowboy",
-          "season": 4,
-          "seasonYear": 2023
-        },
-        {
-          "seriesId": "tt27618426",
-          "title": "Don't Toy with Me, Miss Nagatoro 2nd Attack Mini Anime",
-          "season": 1,
-          "seasonYear": 2023
-        },
-        {
-          "seriesId": "tt43732049",
-          "title": "Joe & David's Magical Sitcom Tour",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt43739197",
-          "title": "Somebody Knows Something",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt44899966",
-          "title": "El Qessa El Kamla",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt6267644",
-          "title": "Grand Designs New Zealand",
-          "season": 2,
-          "seasonYear": 2016
-        },
-        {
-          "seriesId": "tt1578652",
-          "title": "Great British Railway Journeys",
-          "season": 16,
-          "seasonYear": 2025
-        },
-        {
-          "seriesId": "tt27137489",
-          "title": "Road Home",
-          "season": 1,
-          "seasonYear": 2023
-        },
-        {
-          "seriesId": "tt0135733",
-          "title": "Match of the Day",
-          "season": 55,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt40217962",
-          "title": "Inside the CIA: Secrets & Spies",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt41983392",
-          "title": "The Bad Game Show",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt43723229",
-          "title": "Chaotic Kids Cooking",
-          "season": 1,
-          "seasonYear": 2022
-        },
-        {
-          "seriesId": "tt43723229",
-          "title": "Chaotic Kids Cooking",
-          "season": 2,
-          "seasonYear": 2024
-        },
-        {
-          "seriesId": "tt43035122",
-          "title": "Nour",
-          "season": 1,
-          "seasonYear": 2026
-        }
-      ],
-      "removed": [],
-      "ratingSwings": [
-        {
-          "seriesId": "tt35932159",
-          "title": "Your Third",
-          "season": 1,
-          "from": 9.26,
-          "to": 7.62,
-          "delta": -1.64
-        },
-        {
-          "seriesId": "tt14330440",
-          "title": "Tuttle Twins",
-          "season": 3,
-          "from": 6.39,
-          "to": 5.53,
-          "delta": -0.86
-        },
-        {
-          "seriesId": "tt18070984",
-          "title": "Average Joe",
-          "season": 2,
-          "from": 7.57,
-          "to": 6.9,
-          "delta": -0.67
-        },
-        {
-          "seriesId": "tt24060452",
-          "title": "Hasratein",
-          "season": 2,
-          "from": 7.12,
-          "to": 6.45,
-          "delta": -0.67
-        },
-        {
-          "seriesId": "tt31189898",
-          "title": "Drunkard Morning",
-          "season": 2,
-          "from": 5.13,
-          "to": 5.77,
-          "delta": 0.64
-        },
-        {
-          "seriesId": "tt0320037",
-          "title": "Jimmy Kimmel Live!",
-          "season": 19,
-          "from": 5.81,
-          "to": 5.18,
-          "delta": -0.63
-        },
-        {
-          "seriesId": "tt39779938",
-          "title": "Dil Dhokha Aur Desire",
-          "season": 1,
-          "from": 5.67,
-          "to": 5.05,
-          "delta": -0.62
-        },
-        {
-          "seriesId": "tt15856874",
-          "title": "Cinderella Chef",
-          "season": 3,
-          "from": 6.58,
-          "to": 7.18,
-          "delta": 0.6
-        },
-        {
-          "seriesId": "tt0112163",
-          "title": "The Single Guy",
-          "season": 1,
-          "from": 5.6,
-          "to": 6.19,
-          "delta": 0.59
-        },
-        {
-          "seriesId": "tt0112163",
-          "title": "The Single Guy",
-          "season": 2,
-          "from": 5.32,
-          "to": 5.89,
-          "delta": 0.57
-        }
-      ],
-      "modifiedCounts": {
-        "seriesVotes": 20672,
-        "avgRating": 1281,
-        "seriesRating": 276,
-        "shapes": 222,
-        "episodeCount": 107,
-        "poster": 2,
-        "overview": 1
       }
     }
   ]
