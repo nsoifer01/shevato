@@ -5,6 +5,7 @@ import {
   canonicalPath, pathKind, ttlSeconds, cacheKey, nextDeadlineFrom, serveFpl,
   TTL, DEADLINE_KEY, DEADLINE_TTL_SECONDS, UPSTREAM_BASE, ALLOWED_PATHS,
   REFUSAL_KEY, REFUSAL_BACKOFF_SECONDS, REFUSAL_BACKOFF_MAX_SECONDS,
+  retryAfterSeconds, scrubUpstreamText,
 } from '../lib/fpl-cache.mjs';
 
 // The guard tests exercise the paths that return BEFORE any Blob I/O: the
@@ -161,12 +162,31 @@ test('cache keys are distinct per endpoint', () => {
 
 // ---------------------------------------------------------------- pipeline --
 
-function memoryStore(initial = {}) {
+// Honours the contract blob-cas.mjs and the refresh lease rely on (2026-10-16):
+// getWithMetadata hands out an etag, and a conditional setJSON lands only if
+// the blob is unchanged (onlyIfMatch) or still missing (onlyIfNew), resolving
+// { modified }. `delayMs` puts every call behind a timer, so concurrent
+// callers genuinely interleave between their read and their write.
+function memoryStore(initial = {}, { delayMs = 0 } = {}) {
   const map = new Map(Object.entries(initial));
+  const etags = new Map();
+  let n = 0;
+  const tick = () => (delayMs ? new Promise((r) => setTimeout(r, delayMs)) : null);
   return {
     map,
-    async get(key) { return map.has(key) ? structuredClone(map.get(key)) : null; },
-    async setJSON(key, value) { map.set(key, structuredClone(value)); },
+    async get(key) { await tick(); return map.has(key) ? structuredClone(map.get(key)) : null; },
+    async getWithMetadata(key) {
+      await tick();
+      return map.has(key) ? { data: structuredClone(map.get(key)), etag: etags.get(key) || 'e0' } : null;
+    },
+    async setJSON(key, value, opts = {}) {
+      await tick();
+      if (opts.onlyIfNew && map.has(key)) return { modified: false };
+      if (opts.onlyIfMatch && (etags.get(key) || 'e0') !== opts.onlyIfMatch) return { modified: false };
+      map.set(key, structuredClone(value));
+      etags.set(key, `e${++n}`);
+      return { modified: true };
+    },
   };
 }
 
@@ -328,6 +348,90 @@ test('a refused manager read is recorded without the team id', async () => {
   await serveFpl({ path: 'entry/7654321/history', store, now: NOW, fetchUpstream: upstream(() => refused()) });
   assert.equal(store.map.get(REFUSAL_KEY).path, 'entry');
   assert.doesNotMatch(JSON.stringify(store.map.get(REFUSAL_KEY)), /7654321/);
+});
+
+// 2026-10-16 follow-up audit. An edge error page echoes the URL it refused,
+// and the start of that body was stored and published verbatim.
+const ECHOING_403 = '<HTML><HEAD><TITLE>Access Denied</TITLE></HEAD><BODY>You don\'t have permission to access '
+  + '"http://fantasy.premierleague.com/api/entry/7654321/history/" on this server.<P>Reference #18.abc</BODY></HTML>';
+
+test('an edge page that echoes the refused URL is stored without the team id, and still says what it was', async () => {
+  const store = memoryStore();
+  await serveFpl({ path: 'entry/7654321/history', store, now: NOW, fetchUpstream: upstream(() => new Response(ECHOING_403, { status: 403 })) });
+  const record = store.map.get(REFUSAL_KEY);
+  assert.doesNotMatch(JSON.stringify(record), /7654321/);
+  assert.match(record.bodyHead, /Access Denied/);
+  assert.match(record.bodyHead, /api\/entry\/<id>\/history/);
+  assert.match(record.bodyHead, /Reference #18\.abc/, 'the edge reference survives');
+});
+
+test('the scrub masks a team id whatever separates it from "entry", and any other long digit run', () => {
+  for (const raw of ['entry/7654321/history', 'entry%2F7654321', 'entry%2f7654321', 'entry\\/7654321', 'entry__7654321', 'entry = 7654321', 'ENTRY/123']) {
+    assert.doesNotMatch(scrubUpstreamText(raw), /\d/, raw);
+    assert.match(scrubUpstreamText(raw), /entry\/<id>/i, raw);
+  }
+  assert.equal(scrubUpstreamText('team 76543210 refused'), 'team <n> refused');
+  assert.equal(scrubUpstreamText('403 Forbidden (Reference #18.abc, retry in 1234 s)'), '403 Forbidden (Reference #18.abc, retry in 1234 s)');
+  assert.equal(scrubUpstreamText(null), '');
+});
+
+test('ten instances refused at once are all counted: the record is a compare-and-set update', async () => {
+  const store = memoryStore({}, { delayMs: 3 });
+  const blocked = upstream(() => refused());
+  await Promise.all(Array.from({ length: 10 }, (_, i) => serveFpl({ path: `entry/${100 + i}`, store, now: NOW, fetchUpstream: blocked })));
+  const record = store.map.get(REFUSAL_KEY);
+  assert.equal(blocked.calls.length, 10);
+  assert.equal(record.count, 10, 'no refusal lost to a concurrent write');
+  assert.equal(record.firstAt, new Date(NOW).toISOString());
+  assert.equal(record.until, new Date(NOW + REFUSAL_BACKOFF_SECONDS * 1000).toISOString(), 'the backoff is unchanged');
+  // And the episode keeps counting across a later concurrent burst.
+  await Promise.all(Array.from({ length: 5 }, (_, i) => serveFpl({ path: `entry/${200 + i}`, store, now: NOW + 300e3, fetchUpstream: blocked })));
+  assert.equal(store.map.get(REFUSAL_KEY).count, 15);
+  assert.equal(store.map.get(REFUSAL_KEY).firstAt, new Date(NOW).toISOString());
+});
+
+test('Retry-After is read as delta-seconds or an HTTP-date, inside the floor and the cap', async () => {
+  const at = (s) => new Date(NOW + s * 1000).toUTCString();
+  assert.equal(retryAfterSeconds('300', NOW), 300);
+  assert.equal(retryAfterSeconds(at(600), NOW), 600, 'an HTTP-date ten minutes out is ten minutes');
+  assert.equal(retryAfterSeconds(at(86400), NOW), REFUSAL_BACKOFF_MAX_SECONDS);
+  assert.equal(retryAfterSeconds('86400', NOW), REFUSAL_BACKOFF_MAX_SECONDS);
+  for (const v of ['0', '-50', at(-600), 'soon', '', null, undefined, '1.5e3']) {
+    assert.equal(retryAfterSeconds(v, NOW), REFUSAL_BACKOFF_SECONDS, String(v));
+  }
+  // Through the serve path: the date form sets the backoff.
+  const store = memoryStore();
+  await serveFpl({ path: 'fixtures', store, now: NOW, fetchUpstream: upstream(() => refused(429, { 'retry-after': at(600) })) });
+  assert.equal(store.map.get(REFUSAL_KEY).until, new Date(NOW + 600e3).toISOString());
+});
+
+test('when a backoff ends, callers of one path send one request upstream and the rest get the copy', async () => {
+  const store = memoryStore({}, { delayMs: 3 });
+  await serveFpl({ path: 'fixtures', store, fetchUpstream: upstream(() => ok([{ n: 1 }])), now: NOW });
+  // The copy expires, the refresh is refused, the backoff runs out: by then
+  // the copy is far past the stale window, where nothing used to coalesce.
+  const refusedAt = NOW + 3600e3;
+  await serveFpl({ path: 'fixtures', store, fetchUpstream: upstream(() => refused()), now: refusedAt });
+  const after = refusedAt + (REFUSAL_BACKOFF_SECONDS + 1) * 1000;
+  let release;
+  const gate = new Promise((r) => { release = r; });
+  const back = upstream(async () => { await gate; return ok([{ n: 2 }]); });
+  const burst = Promise.all(Array.from({ length: 10 }, () => serveFpl({ path: 'fixtures', store, fetchUpstream: back, now: after })));
+  await new Promise((r) => setTimeout(r, 200));
+  release();
+  const answers = await burst;
+  assert.equal(back.calls.length, 1, 'one caller refreshes');
+  assert.equal(answers.filter((a) => a.stale && a.coalesced).length, 9, 'nine are served the copy, marked stale');
+  assert.deepEqual(answers.find((a) => !a.stale).body, [{ n: 2 }]);
+  // Once refreshed, the copy is newer than the refusal and the old rules apply.
+  const next = await serveFpl({ path: 'fixtures', store, fetchUpstream: back, now: after + 1000 });
+  assert.equal(next.stale, false);
+
+  // DIFFERENT paths with nothing cached each go upstream once, which is the
+  // floor of any cache and is expected: there is no copy to hand anyone else.
+  const cold = upstream(() => ok({ id: 1 }));
+  await Promise.all(Array.from({ length: 10 }, (_, i) => serveFpl({ path: `entry/${300 + i}`, store, fetchUpstream: cold, now: after })));
+  assert.equal(cold.calls.length, 10);
 });
 
 test('a refusal more than an hour after the last one starts a new episode', async () => {

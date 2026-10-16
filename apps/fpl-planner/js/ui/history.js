@@ -30,7 +30,8 @@ export function recommendationLine(entry, gameState) {
     }
     return plan.headline;
   }
-  return plan.transferCount ? `${plan.transferCount} transfers` : 'No transfers';
+  if (!plan.transferCount) return 'No transfers';
+  return plan.transferCount === 1 ? '1 transfer' : `${plan.transferCount} transfers`;
 }
 
 // The tiles and charts above the history table. Every number here is a plain
@@ -166,7 +167,7 @@ function seasonOverviewCard(ordered, gameState) {
     }),
     stat('Hits taken', s.hitsCost ? `-${s.hitsCost} pts` : 'None', {
       className: 'fpl-tile', kClass: 'fpl-fact-k', vClass: 'fpl-tile-v',
-      note: `${s.transfers} transfers made`,
+      note: s.transfers === 1 ? '1 transfer made' : `${s.transfers} transfers made`,
     }),
     stat('Left on the bench', `${s.benchPoints} pts`, {
       className: 'fpl-tile', kClass: 'fpl-fact-k', vClass: 'fpl-tile-v',

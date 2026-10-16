@@ -134,6 +134,10 @@ test('each consistency rule fails on the contradiction it exists for', () => {
   // The headline xP of 2026-09-04: a total that is not its parts.
   failsWith(p => { p.xPointsGw += 1.5; }, /is not the sum of its parts/);
   failsWith(p => { p.bankAfterTenths += 1; }, /^bank after/);
+  // The projected chain carries the squad and the bank (2026-10-16): a week
+  // selling a player the week before does not own, or a bank that does not add up.
+  failsWith((p, b) => { b.future[0].transfersOut = [-1]; }, /sells -1, not in the GW\d+ squad/);
+  failsWith((p, b) => { b.future[0].bankAfterTenths += 3; }, /plus its sales less its buys/);
   failsWith(p => { p.freeTransfersAfter += 1; }, /free transfers after/);
   // The chip-week +1 of 2026-10-09, on the plan this manager is told to play.
   assert.equal(bundle.current.chip, 'wildcard', 'the engine recommends the Wildcard he actually played that week');

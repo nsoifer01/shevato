@@ -542,7 +542,11 @@ test('the recommendation is decided under the objective the squad is played with
 
   // Deciding on the fast objective alone (no exact re-rank) cannot separate
   // the two signings from doing nothing, so it rolls the transfer.
-  const fastOnly = search(world, { rerankCandidates: 0 });
+  // At a depth of two: from three up every depth's best are re-scored exactly
+  // whatever `rerankCandidates` says (`deepReserve`), and this file's search
+  // allows two hits, so one free transfer searches three moves since
+  // 2026-10-16 (`hitDepth`, registry 48).
+  const fastOnly = search(world, { rerankCandidates: 0, hitDepth: false });
   assert.equal(fastOnly[0].transferCount, 0, 'the fast objective sees no gain worth taking');
 
   const reranked = search(world);
@@ -625,7 +629,10 @@ test('alternatives are ranked best first and the roll is always among them', () 
   assert.ok(plans.some(p => p.isRoll), 'holding is always an option the user can see');
   // The primary recommendation is distinct from the alternatives.
   assert.equal(new Set(plans.map(p => p.key)).size, plans.length);
-  assert.ok(plans.length <= TRANSFER_DEFAULTS.maxCandidates + 1);
+  // The roll, and from a depth of three the best of every depth, are kept on
+  // top of `maxCandidates` (transfers.js, the returned list). Two free
+  // transfers and this search's two hits make the depth four.
+  assert.ok(plans.length <= TRANSFER_DEFAULTS.maxCandidates + 1 + 4, `${plans.length} plans`);
 });
 
 test('each plan reports the whole ledger the UI has to render', () => {

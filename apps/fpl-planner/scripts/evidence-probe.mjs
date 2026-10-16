@@ -38,6 +38,16 @@
 // instead of a squad the probe builds, which adds the real-entry invariants of
 // scripts/lib/plan-audit.mjs. `--entry-dir` reads them from entry.json,
 // history.json, transfers.json, picks.json and, if present, revert-picks.json.
+// `--entry none` probes without a manager, the meaning FPL_HEALTH_ENTRY=none
+// has on Netlify (the GitHub workflow passes that variable straight through,
+// and until 2026-10-16 asked FPL for entry "none", a 404 and a red run). Any
+// other ID that is not a number is refused before anything is fetched.
+//
+// EVERY FAILURE EXITS NON-ZERO, and says what failed: a failed invariant, an
+// entry FPL will not serve (404, 403, a network error: its own failed check),
+// and anything that throws (a dead network before the payloads arrive, a plan
+// that throws), which is reported as the failed check "the probe runs to
+// completion" rather than as a stack trace.
 //
 // The invariants themselves live in scripts/lib/probe.mjs, shared with the
 // scheduled Netlify function that runs them against production every six hours
@@ -86,20 +96,35 @@ const prev = existsSync(BASELINE_FILE)
   ? (() => { try { return JSON.parse(readFileSync(BASELINE_FILE, 'utf8')); } catch { return null; } })()
   : null;
 
-const bootstrap = await read('bootstrap-static', arg('bootstrap'));
-const fixtures = await read('fixtures', arg('fixtures'));
+// A failure that ends the probe before the invariants are judged.
+function fail(name, saw, expected) {
+  if (flag('json')) {
+    console.log(JSON.stringify({ checks: [{ name, ok: false, saw, expected }] }, null, 2));
+  } else {
+    console.log(`FAIL  ${name}\n        ${[].concat(saw).join('\n        ')}`);
+    console.log(`\nPROBLEM: ${name}`);
+  }
+  process.exit(1);
+}
+
+const ENTRY_ARG = arg('entry');
+const ENTRY_ID = ENTRY_ARG && ENTRY_ARG.trim().toLowerCase() !== 'none' ? ENTRY_ARG.trim() : null;
+if (ENTRY_ID && !/^\d+$/.test(ENTRY_ID)) {
+  fail('the entry to probe is an FPL team id', `--entry "${ENTRY_ARG}"`, 'a number, or "none" to probe without one');
+}
+
+let bootstrap;
+let fixtures;
+try {
+  bootstrap = await read('bootstrap-static', arg('bootstrap'));
+  fixtures = await read('fixtures', arg('fixtures'));
+} catch (err) {
+  fail('the probe runs to completion', `reading the payloads threw: ${err && err.message}`, 'bootstrap-static and fixtures read');
+}
 const fetchedAt = new Date().toISOString();
 
 const shapeFailures = payloadShapeFailures(bootstrap, fixtures);
-if (shapeFailures.length) {
-  if (flag('json')) {
-    console.log(JSON.stringify({ checks: [{ name: 'the payloads have the shape the app reads', ok: false, saw: shapeFailures, expected: 'bootstrap and fixtures arrays' }] }, null, 2));
-    process.exit(1);
-  }
-  console.log(`FAIL  the payloads have the shape the app reads\n        ${shapeFailures.join('\n        ')}`);
-  console.log(`\nPROBLEM: ${shapeFailures.length} payload shape failure${shapeFailures.length === 1 ? '' : 's'}`);
-  process.exit(1);
-}
+if (shapeFailures.length) fail('the payloads have the shape the app reads', shapeFailures, 'bootstrap and fixtures arrays');
 
 // One manager, read the way js/app.js loadTeam reads him.
 async function readEntry() {
@@ -109,7 +134,7 @@ async function readEntry() {
     const entry = f('entry.json');
     return { id: entry ? entry.id : 'files', entry, history: f('history.json'), transfers: f('transfers.json'), picks: f('picks.json'), revertPicks: f('revert-picks.json') };
   }
-  const id = arg('entry');
+  const id = ENTRY_ID;
   if (!id) return null;
   const optional = async (path) => { try { return await read(path); } catch (err) { if (/HTTP 404/.test(err.message)) return null; throw err; } };
   try {
@@ -128,10 +153,15 @@ async function readEntry() {
   }
 }
 
-const result = await runProbe({
-  bootstrap, fixtures, fetchedAt, now: arg('now'), source: SOURCE, responses, prev, entry: await readEntry(),
-  loadShipped: async () => JSON.parse(readFileSync(join(HERE, '..', 'data', 'opening-baseline.json'), 'utf8')),
-});
+let result;
+try {
+  result = await runProbe({
+    bootstrap, fixtures, fetchedAt, now: arg('now'), source: SOURCE, responses, prev, entry: await readEntry(),
+    loadShipped: async () => JSON.parse(readFileSync(join(HERE, '..', 'data', 'opening-baseline.json'), 'utf8')),
+  });
+} catch (err) {
+  fail('the probe runs to completion', `threw: ${err && err.message}`, 'no exception');
+}
 
 if (flag('json')) {
   console.log(JSON.stringify({ reading: result.reading, checks: result.checks, readiness: result.readiness, blocked: result.blocked }, null, 2));

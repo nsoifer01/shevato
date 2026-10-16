@@ -61,14 +61,15 @@ export function chipLedgerFailures({ bootstrap, history, offered, gw }) {
  * and the value check the app shows the manager. A raised `value_mismatch`
  * or `free_hit_squad` on a healthy payload is itself a defect: the first is
  * the reconstruction disagreeing with FPL, the second a Free Hit revert that
- * could not be read.
+ * could not be read. So is `history_missing` or `transfers_behind` when the
+ * payloads were read fresh: either means the three entry reads disagree.
  */
 export function squadReadFailures({ squadState, picks, rules }) {
   const out = [];
   const n = (squadState.picks || []).length;
   if (n !== rules.squadSize) out.push(`${n} players read, expected ${rules.squadSize}`);
   for (const w of squadState.warnings || []) {
-    if (w.code === 'value_mismatch' || w.code === 'free_hit_squad' || w.code === 'history_missing') out.push(`${w.code}: ${w.message}`);
+    if (['value_mismatch', 'free_hit_squad', 'history_missing', 'transfers_behind'].includes(w.code)) out.push(`${w.code}: ${w.message}`);
   }
   const eh = picks && picks.entry_history;
   const reverted = (squadState.warnings || []).some(w => w.code === 'free_hit_reverted');
@@ -144,7 +145,7 @@ export function planConsistencyFailures({ bundle, squadState, rules }) {
       out.push(`"${a.headline}" ranks ${fmt(a.deltaObjective)} above the plan and was not chosen`);
     }
     if (a.deltaHorizon >= VISIBLE && a.chip === plan.chip && a.deltaWithChipValue === null
-      && !a.belowHitMargin && !a.belowRollValue) {
+      && !a.belowHitMargin && !a.belowRollValue && !a.belowRiskPreference) {
       out.push(`"${a.headline}" projects ${fmt(a.deltaHorizon)} more and its card gives no reason it lost`);
     }
   }
@@ -167,6 +168,21 @@ export function planConsistencyFailures({ bundle, squadState, rules }) {
       out.push(`projected GW${f.gw} starts with ${startedWith} free transfers, GW${prev.gw} leaves ${prev.freeTransfersNextGw}`);
     }
     if (f.bankAfterTenths < 0) out.push(`projected GW${f.gw} ends with a negative bank`);
+    // The squad and the bank carry too (2026-10-16 follow-up audit: only the
+    // free transfers were held to the week before). A week after a projected
+    // Free Hit starts from the squad and bank the chip reverts to, not the
+    // rented ones, so it is not compared with them.
+    if (prev.chip !== 'freehit') {
+      const held = new Set(prev.squad || []);
+      const sold = (f.transfersOut || []).filter(id => !held.has(id));
+      const bought = (f.transfersIn || []).filter(id => held.has(id));
+      if (sold.length) out.push(`projected GW${f.gw} sells ${sold.join(', ')}, not in the GW${prev.gw} squad`);
+      if (bought.length) out.push(`projected GW${f.gw} buys ${bought.join(', ')}, already in the GW${prev.gw} squad`);
+      const bank = prev.bankAfterTenths + (f.moneyInTenths || 0) - (f.moneyOutTenths || 0);
+      if (Number.isFinite(bank) && bank !== f.bankAfterTenths) {
+        out.push(`projected GW${f.gw} ends with ${f.bankAfterTenths} in the bank, GW${prev.gw}'s ${prev.bankAfterTenths} plus its sales less its buys is ${bank}`);
+      }
+    }
     prev = f;
   }
   return out;

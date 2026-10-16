@@ -20,9 +20,9 @@ import { renderSquadTable } from './squad-table.js';
 import { columnChart } from './charts.js';
 import { STRENGTH_PARAMS } from '../engine/strength.js';
 import { formatFreeTransfers } from '../engine/transfer-state.js';
-import { betterLaterGw } from '../engine/chips.js';
+import { betterLaterGw, chipWindowAt } from '../engine/chips.js';
 import { openingSquadMoney, picksCarryLineup } from '../engine/squad.js';
-import { assessConfidence } from '../engine/confidence.js';
+import { assessConfidence, shownDelta } from '../engine/confidence.js';
 import { canQuoteProjections, pausedHeadline } from '../engine/readiness.js';
 import { describeModelStatus } from '../data/model.js';
 import { planBasis, sameBasis, STALE_PLAN } from '../engine/plan-basis.js';
@@ -106,13 +106,13 @@ export function heroCard({ bundle, gameState, event, now, isDraft = false, sourc
       ]),
       el('div', { class: `fpl-fact ${chip.playing ? 'is-chip' : ''}`.trim() }, [
         el('div', { class: 'fpl-fact-k', text: 'Chip' }),
-        el('div', { class: 'fpl-fact-v', text: chip.playing ? `Play ${chip.label}` : 'Hold your chips' }),
+        el('div', { class: 'fpl-fact-v', text: chip.playing ? `Play ${chip.label}` : expiringChips(bundle, gameState).length ? 'No chip this week' : 'Hold your chips' }),
         el('div', { class: 'fpl-fact-note', text: chipNote(bundle, chip, gameState) }),
       ]),
       el('div', { class: 'fpl-fact is-good' }, [
         el('div', { class: 'fpl-fact-k', text: 'Projected points' }),
         el('div', { class: 'fpl-fact-v', text: `${xp(plan.xPointsNet)} xP` }),
-        el('div', { class: 'fpl-fact-note', text: `This gameweek. ${xp(plan.xPointsHorizon)} over ${plan.horizon} gameweeks` }),
+        el('div', { class: 'fpl-fact-note', text: `This gameweek. ${xp(plan.xPointsHorizon)} over ${plan.horizon} ${plural(plan.horizon, 'gameweek')}` }),
       ]),
     ]) : el('p', { class: 'fpl-hero-withheld' }, [
       'The squad below is your real team, but the projections behind a captain pick, a chip call'
@@ -160,8 +160,37 @@ export function chipInventory(bundle, gameState) {
   };
 }
 
+// The chips in hand this gameweek that are NOT played in it and whose window
+// closes after it. The Wildcard and the Free Hit are deliberately never forced
+// (chips.js header), so in its last week one can be held, and every surface
+// then said "Hold": the owner's first-half Free Hit read "Free Hit: Hold" in
+// gameweek 19, the last week it exists (2026-10-16). Holding it there is
+// losing it, and each surface that says hold has to say so.
+export function expiringChips(bundle, gameState) {
+  const plan = bundle.current;
+  const squad = bundle.squadState || {};
+  if (!gameState || !gameState.rules) return [];
+  return (squad.chipsAvailable || []).filter((name) => {
+    if (name === plan.chip) return false;
+    const window = chipWindowAt(gameState.rules, name, plan.gw, squad.chipsUsed || []);
+    return !!window && window.to === plan.gw;
+  });
+}
+
+// "Free Hit" or "Wildcard and Free Hit", for the expiry sentences.
+function chipList(names) {
+  const labels = names.map(chipLabel);
+  return labels.length > 1 ? `${labels.slice(0, -1).join(', ')} and ${labels[labels.length - 1]}` : labels[0];
+}
+
+function expiryNote(expiring, gw) {
+  return `${chipList(expiring)} ${expiring.length > 1 ? 'expire' : 'expires'} after GW${gw}. `;
+}
+
 function chipNote(bundle, chip, gameState) {
-  if (chip.playing) return playingChipNote(bundle.current);
+  const expiring = expiringChips(bundle, gameState);
+  const lost = expiring.length ? expiryNote(expiring, bundle.current.gw) : '';
+  if (chip.playing) return lost + playingChipNote(bundle.current);
   // When the data cannot carry a chip decision the card must say that, rather
   // than reporting an inventory as though a decision had been considered and
   // declined. "Hold your chips" with a cheerful list of what is available reads
@@ -177,7 +206,7 @@ function chipNote(bundle, chip, gameState) {
   if (!inv.usableNow.length) {
     return `None usable this gameweek. ${inv.ownedCount} left this season`;
   }
-  return `Usable this gameweek: ${inv.usableNow.join(', ')}. ${inv.ownedCount} left this season`;
+  return `${lost}Usable this gameweek: ${inv.usableNow.join(', ')}. ${inv.ownedCount} left this season`;
 }
 
 // What the engine concluded about the chip it plays, and no more. This read
@@ -280,7 +309,7 @@ export function transfersCard({ bundle, gameState, now = Date.now() }) {
         el('div', { class: `fpl-gain-v ${pair.gwGain < 0 ? 'is-neg' : ''}`.trim(), text: Number.isFinite(pair.gwGain) ? `${signedXp(pair.gwGain)} pts` : '-' }),
       ]),
       el('div', {}, [
-        el('div', { class: 'fpl-gain-k', text: `Gain over ${horizon} gameweeks` }),
+        el('div', { class: 'fpl-gain-k', text: `Gain over ${horizon} ${plural(horizon, 'gameweek')}` }),
         el('div', { class: `fpl-gain-v ${pair.horizonGain < 0 ? 'is-neg' : ''}`.trim(), text: Number.isFinite(pair.horizonGain) ? `${signedXp(pair.horizonGain)} pts` : '-' }),
       ]),
       el('div', { class: 'fpl-card-sub', style: 'flex:1 1 260px;min-width:0' }, 'Later gameweeks are discounted for uncertainty, so the horizon gain is not a simple sum of the weekly ones.'),
@@ -353,13 +382,20 @@ export function chipCard({ bundle, gameState }) {
   // bar this gameweek", which is a measurement that was never made, next to a
   // list of chips it said were usable.
   const evaluated = !!perChip && Object.keys(perChip).length > 0;
+  const expiring = expiringChips(bundle, gameState);
+  // A chip whose window closes this week cannot be kept, so "Keep your chips
+  // for now" above it, or silence beside the chip that IS played, was wrong.
+  const expirySentence = !expiring.length ? ''
+    : decision.playing
+      ? ` Your ${chipList(expiring)} ${expiring.length > 1 ? 'also expire' : 'also expires'} after gameweek ${plan.gw}, and only one chip can be played a week, so ${expiring.length > 1 ? 'they go' : 'it goes'} unplayed.`
+      : ` Your ${chipList(expiring)} cannot be kept: ${expiring.length > 1 ? 'their windows close' : 'its window closes'} after gameweek ${plan.gw}, so not playing ${expiring.length > 1 ? 'them' : 'it'} this week means losing ${expiring.length > 1 ? 'them' : 'it'}.`;
 
   const body = evaluated
     ? affirm({
       mark: decision.playing ? '★' : '✓',
       tone: decision.playing ? 'is-chip' : '',
-      title: decision.playing ? `Play your ${decision.label} this gameweek` : 'Keep your chips for now',
-      body: reasons.length ? reasons.map(r => r.text).join(' ') : 'No chip clears its bar this gameweek.',
+      title: decision.playing ? `Play your ${decision.label} this gameweek` : expiring.length ? 'No chip this gameweek' : 'Keep your chips for now',
+      body: (reasons.length ? reasons.map(r => r.text).join(' ') : 'No chip clears its bar this gameweek.') + expirySentence,
     })
     : affirm({
       mark: 'i',
@@ -382,7 +418,7 @@ export function chipCard({ bundle, gameState }) {
   const detail = evaluated
     ? el('div', { class: 'fpl-kv', style: 'margin-top:14px' }, Object.values(perChip).map(entry => kv(
       chipLabel(entry.chip),
-      chipRowStatus(entry, plan),
+      chipRowStatus(entry, plan, expiring),
     )))
     : null;
 
@@ -393,10 +429,14 @@ export function chipCard({ bundle, gameState }) {
 // "Play your Wildcard this gameweek" above a row reading "Wildcard: Hold" is
 // telling the manager two different things about the same chip, and the row was
 // deciding purely on whether a better future gameweek had been identified.
-function chipRowStatus(entry, plan) {
+// A chip in its window's last week and not played (expiringChips) says it
+// expires rather than "Hold", which there means losing it.
+function chipRowStatus(entry, plan, expiring = []) {
   if (entry.available === false) return 'Used or out of window';
   if (plan.chip === entry.chip) return 'Playing it this gameweek';
-  if (entry.recommended) return 'Clears its bar this gameweek';
+  const last = expiring.includes(entry.chip);
+  if (entry.recommended) return last ? 'Clears its bar this gameweek, its last week' : 'Clears its bar this gameweek';
+  if (last) return `Not played, expires after GW${plan.gw}`;
   const later = betterLaterGw(entry, plan.gw);
   if (later !== null) return `Best around GW${later}`;
   return 'Hold';
@@ -869,12 +909,32 @@ export function futureCard({ bundle, gameState, sources = null, now = Date.now()
 
 /* ------------------------------------------------------------ alternatives */
 
+// planner.js TIMING_CHIPS: the chips whose keep value is in the objective.
+const TIMING_CHIP_SET = new Set(['bboost', '3xc']);
+
 export function alternativesCard({ bundle, open = false, onToggle = null }) {
   const alts = bundle.current.alternatives || [];
   if (!alts.length) {
     const empty = disclosure('Alternatives considered', el('p', { class: 'fpl-empty', text: 'No other legal plan came within reach of the recommendation.' }), { open });
     return empty;
   }
+
+  const plan = bundle.current;
+  const risk = bundle.dataStatus && bundle.dataStatus.risk;
+  // Only a Bench Boost or Triple Captain is credited what keeping it is worth
+  // (planner.js scoreWithTimingChip). A Wildcard or Free Hit gap carries no
+  // keep value, so "counting what the chip is worth later" beside one was false
+  // (2026-10-16); its figure is still the gap the planner ranked the two on.
+  const keepValued = (alt) => TIMING_CHIP_SET.has(plan.chip) || TIMING_CHIP_SET.has(alt.chip);
+  // Why a row shown AHEAD of the recommendation lost. Shown only when it is
+  // ahead: the flags are set on the projected gap, and a reason beside a
+  // negative figure would answer a question nobody asked.
+  const riskClause = (alt) => (risk === 'aggressive' && alt.riskPreferenceSign > 0
+    ? ', but it is steadier and your aggressive risk setting favours the riskier plan'
+    : risk === 'conservative' && alt.riskPreferenceSign < 0
+      ? ', but it is riskier and your conservative risk setting favours the steadier plan'
+      : ', but ranks lower once your risk setting is applied');
+  const ahead = (alt) => shownDelta(alt) >= 0.05;
 
   const rows = alts.map(alt => el('div', { class: 'fpl-alt' }, [
     el('div', { class: 'fpl-alt-title', text: alt.headline }),
@@ -884,34 +944,47 @@ export function alternativesCard({ bundle, open = false, onToggle = null }) {
     Number.isFinite(alt.deltaWithChipValue)
       ? el('div', { class: 'fpl-alt-delta fpl-alt-delta-sentence' }, [
         el('b', { text: `${signedXp(alt.deltaWithChipValue)} pts` }),
-        ` over ${bundle.current.horizon} gameweeks, counting what the chip is worth later`,
+        keepValued(alt)
+          ? ` over ${plan.horizon} ${plural(plan.horizon, 'gameweek')}, counting what the chip is worth later`
+          : ` over ${plan.horizon} ${plural(plan.horizon, 'gameweek')}, as the planner ranks the two plans`,
         alt.hits ? `, costs a ${alt.hitCostPoints} point hit` : '',
       ])
-      // A row that carries a sentence (the hit bar, or the free transfers it
-      // spends) wraps like the chip-value sentence above; a bare figure does not.
-      : el('div', { class: alt.belowHitMargin || alt.belowRollValue ? 'fpl-alt-delta fpl-alt-delta-sentence' : 'fpl-alt-delta' }, [
+      // A row that carries a sentence (the hit bar, the free transfers it
+      // spends, or the risk setting) wraps like the chip-value sentence above;
+      // a bare figure does not.
+      : el('div', { class: alt.belowHitMargin || alt.belowRollValue || (alt.belowRiskPreference && ahead(alt)) ? 'fpl-alt-delta fpl-alt-delta-sentence' : 'fpl-alt-delta' }, [
         el('b', { text: `${signedXp(alt.deltaHorizon)} pts` }),
-        ` over ${bundle.current.horizon} gameweeks`,
+        // The horizon is clamped to the gameweeks left (planner.js
+        // resolveOptions), so in gameweek 38 it is 1 and read "1 gameweeks".
+        ` over ${plan.horizon} ${plural(plan.horizon, 'gameweek')}`,
         alt.hits ? `, costs a ${alt.hitCostPoints} point hit` : '',
         alt.belowHitMargin ? `, short of the ${xp(alt.hitMarginPoints)}-point bar a hit must clear` : '',
         alt.belowRollValue
           ? `, but spends ${alt.transfersSpentVsPlan > 1 ? `${alt.transfersSpentVsPlan} free transfers` : 'a free transfer'} worth ${xp(alt.rollMarginPoints)} to keep`
           : '',
+        alt.belowRiskPreference && ahead(alt) ? riskClause(alt) : '',
       ]),
   ]));
   // A plan with a hit can project MORE than the recommendation and still lose,
   // because a hit must beat the best plan without one by the risk profile's
   // margin. "None of them scored higher" was false whenever that happened.
   // The same is true of a plan that spends a free transfer the recommendation
-  // keeps: it can project a little more and lose on what the kept transfer is
-  // worth next week.
-  const margin = alts.find(a => a.belowHitMargin);
-  const roll = alts.find(a => a.belowRollValue);
+  // keeps, and of one the risk setting ranks lower. Each note is keyed on a
+  // row that is actually SHOWN ahead (shownDelta, the figure the hero's
+  // confidence line also reads), so the note, the rows and the hero agree.
+  const shownAhead = alts.filter(ahead);
+  const margin = shownAhead.find(a => a.belowHitMargin);
+  const roll = shownAhead.find(a => a.belowRollValue);
+  const riskAlt = shownAhead.find(a => a.belowRiskPreference);
   const note = margin
     ? `Ranked against the recommendation over the same horizon. Each one is legal and affordable. A plan that takes a hit is only chosen when it beats the best plan without one by ${xp(margin.hitMarginPoints)} points, so one can project more and still not be recommended.`
     : roll
       ? `Ranked against the recommendation over the same horizon. Each one is legal and affordable. Each free transfer kept is worth ${xp(roll.rollPerTransfer)} points next week, so a plan that spends them can project slightly more and still not be recommended.`
-      : 'Ranked against the recommendation over the same horizon. Each one is legal and affordable; none of them scored higher.';
+      : riskAlt
+        ? 'Ranked against the recommendation over the same horizon. Each one is legal and affordable. Your risk setting weighs how much each plan\'s score could swing, so a plan can project slightly more and still not be recommended.'
+        : shownAhead.length
+          ? 'Ranked against the recommendation over the same horizon. Each one is legal and affordable.'
+          : 'Ranked against the recommendation over the same horizon. Each one is legal and affordable; none of them scored higher.';
 
   const node = disclosure(`Alternatives considered (${alts.length})`, [
     el('p', { class: 'fpl-note', style: 'margin-bottom:12px' }, note),
@@ -973,7 +1046,7 @@ export function statusCard({ bundle, sources = [], runnerMode = 'worker', modelS
       // on a payload this browser saw itself, and a reader checking the app in
       // August has to be able to tell them apart.
       ds.baselineSource === 'baseline' ? kv('Season baseline', baselineLabel(ds)) : null,
-      kv('Horizon', `${ds.horizon} gameweeks`),
+      kv('Horizon', `${ds.horizon} ${plural(ds.horizon, 'gameweek')}`),
       kv('Uncertainty discount', `${ds.discount} per gameweek`),
       kv('Risk profile', ds.risk || 'balanced'),
       kv('Home advantage', `x${STRENGTH_PARAMS.homeAdvantagePrior}`),
@@ -1037,6 +1110,9 @@ const SQUAD_WARNING_TITLES = {
   history_missing: 'Your season history could not be read',
   empty_picks: 'Your squad could not be read',
   missing_entry_history: 'Your bank and squad value could not be read',
+  // FPL's transfer list lags the season history (squad.js), so selling prices
+  // are unknown. Not a squad-value mismatch, which the fallback banner claims.
+  transfers_behind: 'Your transfer list is behind your squad',
   free_hit_squad: 'This is your Free Hit team, not the squad you keep',
   // Not a fault: the plan below is correct BECAUSE the squad was reverted, and
   // a manager who has just played a Free Hit needs to be told which fifteen he

@@ -289,6 +289,9 @@ test('a stored plan is restated as an action, never as a rationale', () => {
   assert.match(line, /^Make 1 transfer: /);
   assert.match(line, new RegExp(`${gameState.players.get(held[0]).webName} out`));
   assert.equal(recommendationLine({ plan: { headline: 'Roll your transfer', transferCount: 0, transfersOut: [], transfersIn: [] } }, gameState), 'Roll your transfer');
+  // Singular (2026-10-16): a plan saved without a headline read "1 transfers".
+  assert.equal(recommendationLine({ plan: { transferCount: 1 } }, null), '1 transfer');
+  assert.equal(recommendationLine({ plan: { transferCount: 2 } }, null), '2 transfers');
   assert.equal(recommendationLine(null, gameState), null);
 });
 

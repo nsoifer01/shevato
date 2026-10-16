@@ -115,6 +115,9 @@ jobs:
         with:
           node-version-file: '.nvmrc'
 
+      # FPL_HEALTH_ENTRY=none probes without a manager, as it does on Netlify
+      # (evidence-probe.mjs reads `--entry none` that way); any other value
+      # that is not a team id fails the run with a clear error.
       - name: Probe the live payload and a real manager's plan
         env:
           FPL_HEALTH_ENTRY: ${{ vars.FPL_HEALTH_ENTRY || '3855835' }}

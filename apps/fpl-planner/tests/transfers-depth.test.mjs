@@ -61,9 +61,14 @@ const objectiveOf = (state, transfersOut, transfersIn) => {
   });
 };
 
-test('the depth is the free transfers held, at least two and at most five, unless pinned', () => {
+test('the depth is the free transfers held plus the hits allowed, at least two and at most five, unless pinned', () => {
   assert.equal(TRANSFER_DEFAULTS.maxTransfers, null);
-  assert.deepEqual([0, 1, 2, 3, 4, 5].map(ft => resolveMaxTransfers(ft)), [2, 2, 2, 3, 4, 5]);
+  // The balanced profile allows one hit, so two free transfers search three
+  // moves (registry 48); until 2026-10-16 the hits were ignored and a hit was
+  // only ever generated with one free transfer.
+  assert.deepEqual([0, 1, 2, 3, 4, 5].map(ft => resolveMaxTransfers(ft, { maxHits: 1 })), [2, 2, 3, 4, 5, 5]);
+  assert.deepEqual([0, 1, 2, 3, 4, 5].map(ft => resolveMaxTransfers(ft, { maxHits: 0 })), [2, 2, 2, 3, 4, 5]);
+  assert.deepEqual([0, 1, 2, 3, 4, 5].map(ft => resolveMaxTransfers(ft, { maxHits: 1, hitDepth: false })), [2, 2, 2, 3, 4, 5]);
   // Unlimited is a rebuild, which squad-builder.js owns.
   assert.equal(resolveMaxTransfers(Infinity), 2);
   assert.equal(resolveMaxTransfers(5, { maxTransfers: 2 }), 2);
@@ -71,10 +76,13 @@ test('the depth is the free transfers held, at least two and at most five, unles
 });
 
 test('at two free transfers or fewer the search is exactly the two-move search it was', () => {
+  // With one hit allowed that is two moves at one free transfer; two free
+  // transfers search three since 2026-10-16 (`hitDepth`), so the old two-move
+  // search is asserted with the hit depth off (registry 48's control).
   for (const ft of [0, 1, 2]) {
     for (const bank of [working.bankTenths, 0]) {
       const state = withFt(working, ft, { bankTenths: bank });
-      const auto = search(state);
+      const auto = search(state, { hitDepth: false });
       assert.ok(auto.every(c => c.transferCount <= 2), `ft ${ft}: nothing deeper than two`);
       assert.deepStrictEqual(auto, search(state, { maxTransfers: 2 }), `ft ${ft}, bank ${bank}`);
     }
@@ -240,4 +248,11 @@ test('across banks and selling-price cuts the pair search matches the screened o
     }
   }
   assert.deepEqual(misses, []);
+});
+
+test('with two free transfers and one hit allowed, three-move plans are generated (registry 48)', () => {
+  const state = withFt(working, 2);
+  const out = search(state);
+  assert.ok(out.some(c => c.transferCount === 3), 'a third move is searched');
+  assert.ok(search(state, { hitDepth: false }).every(c => c.transferCount <= 2), 'and was not before');
 });

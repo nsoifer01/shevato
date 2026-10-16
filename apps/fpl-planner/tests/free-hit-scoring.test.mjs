@@ -52,7 +52,14 @@ function freeHitWorld({ injured = 4, blanked = 3 } = {}) {
   const clubs = [...new Set(held.map(id => gs.players.get(id).teamId))];
   const blank = new Set(clubs.slice(0, blanked));
   const fixtures = gs.fixtures.filter(f => !(f.event === gw && (blank.has(f.teamH) || blank.has(f.teamA))));
-  return { gameState: { ...gs, players, fixtures }, squadState, gw, held };
+  // ONE free transfer (2026-10-16). The sample holds two, and with two the
+  // search now reaches a three-move plan with one hit (registry 48), which
+  // projects 132.8 against the Free Hit's 125.8 and keeps the chip: the Free
+  // Hit only won here before because that plan was never generated (pinned
+  // below). With one, the depth is what it always was and the Free Hit is the
+  // genuine best (125.8 against 119.6), which is the case this file is about.
+  const oneFree = { ...squadState, freeTransfers: 1, transferState: { phase: 'season', gw, banked: 1 } };
+  return { gameState: { ...gs, players, fixtures }, squadState: oneFree, gw, held, twoFree: squadState };
 }
 
 const OPTIONS = { horizon: 5, seed: 7 };
@@ -135,4 +142,16 @@ test('B1: the Free Hit plan and its revert both pass the legality gate', async (
   const check = validatePlan(bundle.current, bundle.squadState, gameState, gameState.rules);
   assert.ok(check.ok, JSON.stringify(check.violations));
   assert.equal(bundle.current.hitCostPoints, 0, 'a Free Hit makes its transfers free');
+});
+
+test('with two free transfers the same world plays a one-hit triple and keeps the Free Hit (registry 48)', async () => {
+  const { gameState, twoFree } = freeHitWorld();
+  const now = await buildPlan({ gameState, squadState: twoFree, options: OPTIONS });
+  const old = await buildPlan({ gameState, squadState: twoFree, options: { ...OPTIONS, polish: false, transferOptions: { hitDepth: false } } });
+  assert.equal(old.current.chip, 'freehit', 'the search that ignored the hit allowance never saw the triple');
+  assert.equal(now.current.chip, null);
+  assert.equal(now.current.transferCount, 3);
+  assert.equal(now.current.hits, 1);
+  assert.ok(now.current.xPointsHorizon > old.current.xPointsHorizon + 4,
+    `${now.current.xPointsHorizon} after its hit against the Free Hit's ${old.current.xPointsHorizon}`);
 });

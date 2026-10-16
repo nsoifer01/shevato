@@ -234,6 +234,14 @@ export function resolveOptions(options, rules, gw) {
     // `{ width }` is how many of this week's candidates get a follow-up
     // search. Off in the app (experiments/configs/transfer-paths.mjs).
     pathPlanning: options.pathPlanning || null,
+    // Polish the leading transfer plans on this objective (polishTopCandidates;
+    // registry 48). false is the search as it was until 2026-10-16.
+    polish: options.polish === undefined ? true : !!options.polish,
+    // How the Triple Captain values the weeks after this one (chips.js
+    // estimateXp): 'extrapolated', one basis for every later week (registry
+    // 49, +2.4 a window), or 'mixed', projections inside the horizon and the
+    // extrapolation past it, as shipped until 2026-10-16 (the control arm).
+    tcLaterBasis: options.tcLaterBasis || 'extrapolated',
   };
 }
 
@@ -599,6 +607,17 @@ function alternativeFrom(scored, plan, primaryScored, gameState, hitMarginPoints
     rollMarginPoints,
     transfersSpentVsPlan,
     rollPerTransfer,
+    // The one remaining way to project more and rank lower with no hit, the
+    // same chip and no free transfer spent: the risk profile's variance term
+    // (`variancePreference * sd` in scoreCandidate). An aggressive profile
+    // rewards the riskier plan and a conservative one the steadier, so the
+    // runner-up lost on risk, never on "the transfer it spends". Until this
+    // existed the hero's confidence line gave that reason for it (2026-10-16).
+    belowRiskPreference: scored.acct.hits === 0 && scored.chip === primaryScored.chip
+      && !TIMING_CHIPS.has(scored.chip)
+      && deltaHorizon >= 0.05 && scored.objective <= primaryScored.objective
+      && transfersSpentVsPlan === 0,
+    riskPreferenceSign: Math.sign(primaryScored.trajectory.gws[0].sd - scored.trajectory.gws[0].sd),
     headline: alternativeHeadline(scored, gameState),
   };
 }
@@ -788,6 +807,8 @@ export async function buildPlan({ gameState, squadState, options = {}, onProgres
       // from, so readiness has to see it, not just the warning list.
       freeHitUnresolved: !!workingSquad.freeHitUnresolved,
       freeHitGw: workingSquad.freeHitGw ?? null,
+      // The transfer list behind the history: selling prices unknown.
+      transfersLagging: !!workingSquad.transfersLagging,
     },
   });
   cfg.readiness = readiness;
@@ -803,7 +824,7 @@ export async function buildPlan({ gameState, squadState, options = {}, onProgres
       ? evaluateChips({
         squadState: workingSquad, projections, gameState, rules,
         horizon: cfg.horizon, discount: cfg.discount,
-        opts: { seed: cfg.seed, ...cfg.lineupOptions },
+        opts: { seed: cfg.seed, tcLaterBasis: cfg.tcLaterBasis, ...cfg.lineupOptions },
       })
       : null;
 
@@ -844,6 +865,9 @@ export async function buildPlan({ gameState, squadState, options = {}, onProgres
         candidate: c, chip: null, squadState: workingSquad, projections, gameState, rules, cfg, gw,
       }))
       .filter(Boolean);
+    if (cfg.polish && readiness.allow.transfers) {
+      scoredList = polishTopCandidates({ scoredList, squadState: workingSquad, projections, gameState, rules, cfg, gw });
+    }
 
     // THE BENCH REPAIR. A Bench Boost is not played on a bench with a player
     // unlikely to appear (chips.js), and the move that fixes it, selling exactly
@@ -1064,6 +1088,119 @@ function pathObjectives({ scoredList, squadState, projections, gameState, rules,
   return (s) => (value.has(s) ? value.get(s) : s.objective - maxGain);
 }
 
+// THE POLISH (2026-10-16). transfers.js generates candidates and ranks them on
+// a fast proxy (squadHorizonValue: auto-subs, the top projection as captain, its
+// own roll value and hit margin), and only the best `rerankCandidates` of that
+// order are scored here exactly. The two orders disagree, so a plan that is
+// better on THIS objective can be cut before it is seen, or never generated:
+// the follow-up audit of 2026-10-16 found plans 0.1 to 1.3 points better on 10
+// of 40 squads with three to five free transfers, half of them out of reach of
+// any shortlist width. Widening the shortlist (registry 47) moves the line; it
+// does not remove it.
+//
+// So the plans that decide the recommendation, the best without a hit and the
+// best with one, are improved where they stand: each move's incoming player is
+// swapped for another of his position, and each outgoing player for another
+// owned one of his position. Every swap is legal (club limit, selling prices,
+// never a player already owned or already bought) and scored with
+// scoreCandidate itself, and the best improving swap is taken until none
+// improves or `POLISH_PASSES` is reached. The incoming choices are the
+// `POLISH_POOL` best of each position over the horizon. A pass costs at most
+// moves x (POLISH_POOL + 4) exact scores, about 1.6 ms each on a desktop.
+//
+// Replacing a whole move (selling a player of ANOTHER position) was also
+// tried: on the same 40 squads it closed none of the nine misses the narrow
+// polish leaves and doubled plan CPU, so it is not here. Those nine differ
+// from the better plan in two or more moves at once, and are 0.1 to 1.3 on
+// a five-week objective of about 200 (registry 48).
+// A polished plan can only score higher on the objective the planner ranks
+// on, so it changes the recommendation only when it is the better plan.
+const POLISH_POOL = 16;
+const POLISH_PASSES = 3;
+
+function polishTopCandidates({ scoredList, squadState, projections, gameState, rules, cfg, gw }) {
+  const players = gameState.players;
+  const held = currentSquadIds(squadState);
+  const heldSet = new Set(held);
+  const signature = c => `${c.transfersOut.slice().sort((a, b) => a - b).join(',')}>${c.transfersIn.slice().sort((a, b) => a - b).join(',')}`;
+  const seen = new Set(scoredList.map(s => signature(s.candidate)));
+
+  // The incoming pool: the best of each position over the horizon, as the
+  // planner discounts it, among the players FPL will sell.
+  const value = new Map();
+  for (const p of players.values()) {
+    if (heldSet.has(p.id) || p.status === 'u' || p.status === 'n') continue;
+    let v = 0;
+    for (let k = 0; k < cfg.horizon; k++) {
+      const row = projections.get(p.id, gw + k);
+      if (row) v += Math.pow(cfg.discount, k) * row.xPoints;
+    }
+    value.set(p.id, v);
+  }
+  const poolByPosition = new Map();
+  for (const id of value.keys()) {
+    const pos = players.get(id).position;
+    if (!poolByPosition.has(pos)) poolByPosition.set(pos, []);
+    poolByPosition.get(pos).push(id);
+  }
+  for (const list of poolByPosition.values()) list.sort((a, b) => value.get(b) - value.get(a) || a - b);
+
+  const clubsOf = (squad) => {
+    const n = new Map();
+    for (const id of squad) {
+      const t = players.get(id).teamId;
+      n.set(t, (n.get(t) || 0) + 1);
+    }
+    return n;
+  };
+  const legalSquad = (squad) => [...clubsOf(squad).values()].every(n => n <= rules.clubLimit);
+  const score = (out, inn) => {
+    const candidate = { transfersOut: out, transfersIn: inn, squad: held.filter(id => !out.includes(id)).concat(inn) };
+    if (!legalSquad(candidate.squad)) return null;
+    return scoreCandidate({ candidate, chip: null, squadState, projections, gameState, rules, cfg, gw });
+  };
+
+  const polish = (start) => {
+    let best = start;
+    for (let pass = 0; pass < POLISH_PASSES; pass++) {
+      const { transfersOut: out, transfersIn: inn } = best.candidate;
+      let improved = null;
+      const consider = (o, i) => {
+        const s = score(o, i);
+        if (!s || s.acct.hits !== best.acct.hits) return;
+        if (s.objective > (improved ? improved.objective : best.objective) + 1e-9) improved = s;
+      };
+      for (let m = 0; m < out.length; m++) {
+        const pos = players.get(out[m]).position;
+        for (const id of poolByPosition.get(pos) ? poolByPosition.get(pos).slice(0, POLISH_POOL) : []) {
+          if (inn.includes(id)) continue;
+          consider(out, inn.map((x, k) => (k === m ? id : x)));
+        }
+        for (const id of held) {
+          if (out.includes(id) || players.get(id).position !== pos) continue;
+          consider(out.map((x, k) => (k === m ? id : x)), inn);
+        }
+      }
+      if (!improved) break;
+      best = improved;
+    }
+    return best;
+  };
+
+  const leaders = [
+    scoredList.filter(s => s.transferCount > 0 && s.acct.hits === 0).sort((a, b) => b.objective - a.objective)[0],
+    scoredList.filter(s => s.acct.hits > 0).sort((a, b) => b.objective - a.objective)[0],
+  ].filter(Boolean);
+  const out = scoredList.slice();
+  for (const lead of leaders) {
+    const polished = polish(lead);
+    if (polished === lead || seen.has(signature(polished.candidate))) continue;
+    seen.add(signature(polished.candidate));
+    out.push(polished);
+  }
+  return out;
+}
+
 function benchRepairCandidates({ chipEvaluation, scoredList, squadState, projections, gameState, rules, cfg, gw }) {
   const entry = chipEvaluation && chipEvaluation.perChip && chipEvaluation.perChip.bboost;
   if (!entry || !entry.available || entry.status !== 'unusable') return [];
@@ -1142,6 +1279,7 @@ function chipCandidates({ chipEvaluation, scoredList, repairBases = [], squadSta
         : tripleCaptainDecision({
           squadIds: base.candidate.squad, captainId: first.captain, captainXp: first.captainExtra,
           projections, gameState, rules, gw, horizon: cfg.horizon, chipsUsed, openingSquad,
+          laterBasis: cfg.tcLaterBasis,
         });
       if (!decision || !decision.recommended) continue;
       const scored = scoreWithTimingChip(base, entry.chip, decision, { squadState, rules, cfg });
@@ -1183,7 +1321,12 @@ function reconcileChipEvaluation(chipEvaluation, primary, scoredList, { squadSta
   if (bestWithChip) {
     reasons.push(makeReason(
       'chip_outscored',
-      `Playing your ${chipLabel(rec.chip)} this gameweek scores {v} points below the best plan that keeps it, once what the chip is worth later is counted.`,
+      // Only a Bench Boost or Triple Captain is credited what keeping it is
+      // worth (scoreWithTimingChip); a Wildcard or Free Hit plan carries no
+      // keep value in the objective, so saying it was counted was false.
+      TIMING_CHIPS.has(rec.chip)
+        ? `Playing your ${chipLabel(rec.chip)} this gameweek scores {v} points below the best plan that keeps it, once what the chip is worth later is counted.`
+        : `Playing your ${chipLabel(rec.chip)} this gameweek scores {v} points below the best plan that keeps it.`,
       Math.max(0, primary.objective - bestWithChip.objective),
     ));
   }
@@ -1317,6 +1460,7 @@ function buildDataStatus({ gameState, squadState, cfg, projections, durationMs }
       historyMissing: !!squadState.historyMissing,
       freeHitUnresolved: !!squadState.freeHitUnresolved,
       freeHitGw: squadState.freeHitGw ?? null,
+      transfersLagging: !!squadState.transfersLagging,
     },
   });
 
