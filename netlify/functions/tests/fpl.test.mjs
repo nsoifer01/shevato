@@ -323,6 +323,13 @@ test('only a refusal backs off: an outage, a 404 or our own quota does not', asy
   }
 });
 
+test('a refused manager read is recorded without the team id', async () => {
+  const store = memoryStore();
+  await serveFpl({ path: 'entry/7654321/history', store, now: NOW, fetchUpstream: upstream(() => refused()) });
+  assert.equal(store.map.get(REFUSAL_KEY).path, 'entry');
+  assert.doesNotMatch(JSON.stringify(store.map.get(REFUSAL_KEY)), /7654321/);
+});
+
 test('a refusal more than an hour after the last one starts a new episode', async () => {
   const store = memoryStore();
   await serveFpl({ path: 'fixtures', store, now: NOW, fetchUpstream: upstream(() => refused()) });

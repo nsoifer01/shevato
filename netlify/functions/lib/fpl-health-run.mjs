@@ -331,8 +331,11 @@ export function refusalCheck(refusal, previousAt, at) {
   const end = active ? nowMs : Date.parse(refusal.at);
   const minutes = Math.round((end - first) / 60e3);
   const edge = refusal.headers && refusal.headers['x-served-by'];
+  // The report is public and promises nothing about any visitor
+  // (privacy.html), and a refused entry path carries a visitor's team id.
+  const where = /^entry(\/|$)/.test(String(refusal.path)) ? 'a manager\'s data' : refusal.path;
   const saw = `FPL answered ${refusal.status} to ${refusal.count || 1} proxy fetch(es) from ${new Date(first).toISOString()} to ${refusal.at}`
-    + ` (${minutes} min${active ? ', still backing off' : ''}; last ${refusal.path}${edge ? `, served by ${edge}` : ''}`
+    + ` (${minutes} min${active ? ', still backing off' : ''}; last ${where}${edge ? `, served by ${edge}` : ''}`
     + `${refusal.bodyHead ? `, saying "${refusal.bodyHead.slice(0, 160)}"` : ''})`;
   return { ok: minutes < REFUSAL_ALERT_MINUTES, saw, line: `refused        ${saw}` };
 }

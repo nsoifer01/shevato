@@ -519,6 +519,10 @@ test('a long refusal by FPL since the last run fails the run with what FPL said;
   // An episode still backing off counts up to now; one the previous run already saw is not reported twice.
   assert.equal(refusalCheck(record(40, 1, { until: new Date(Date.parse(NOW) + 60e3).toISOString() }), at(360), NOW).ok, false);
   assert.deepEqual(refusalCheck(record(170, 60), at(30), NOW), { ok: true, line: null });
+  // The public report never carries a visitor's team id.
+  const visitor = refusalCheck(record(170, 60, { path: 'entry/7654321/history' }), at(360), NOW);
+  assert.doesNotMatch(visitor.saw, /7654321/);
+  assert.match(visitor.saw, /last a manager's data/);
   assert.equal(REFUSAL_ALERT_MINUTES, 30);
 });
 

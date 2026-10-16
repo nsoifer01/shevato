@@ -375,7 +375,10 @@ async function recordRefusal(store, path, res, now) {
     at: new Date(now).toISOString(), until: new Date(now + seconds * 1000).toISOString(),
     firstAt: continues ? prev.firstAt : new Date(now).toISOString(),
     count: continues ? (Number(prev.count) || 1) + 1 : 1,
-    path, status: res.status, headers, bodyHead,
+    // Never a visitor's team id (privacy.html: the store holds copies of
+    // public FPL responses, nothing about a visitor): an entry path is kept
+    // as its kind.
+    path: pathKind(path) === 'entry' ? 'entry' : path, status: res.status, headers, bodyHead,
   };
   console.error('fpl upstream refused', JSON.stringify(record));
   try {
