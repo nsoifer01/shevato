@@ -13,7 +13,7 @@
 // rebuilt from what they actually own and the wording says so neutrally. There
 // is no copy in this file that tells anyone they were wrong.
 
-import { makeReason, fmtValue, squadTrajectory, chipLabel, xpOf, discountWeights } from './chips.js';
+import { makeReason, fmtValue, squadTrajectory, chipLabel, xpOf, discountWeights, betterLaterGw } from './chips.js';
 import { hitCost, transferStateOf, isUnlimited } from './transfer-state.js';
 import { openingSquadMoney } from './squad.js';
 import { CAPTAIN_PARAMS } from './captain.js';
@@ -444,17 +444,19 @@ function chipReason(plan, ctx) {
     decision: rec.decision,
     chip: rec.chip,
     value: rec.value,
-    alternativeGw: entry ? entry.bestGw : bestHoldGw(evaluation),
+    alternativeGw: entry ? entry.bestGw : bestHoldGw(evaluation, plan.gw),
     perChip: evaluation.perChip,
     reasons: rec.reasons,
   };
 }
 
-function bestHoldGw(evaluation) {
+function bestHoldGw(evaluation, gw) {
   let best = null;
   let bestValue = -Infinity;
   for (const entry of Object.values(evaluation.perChip || {})) {
-    if (!entry.available || entry.bestGw === null) continue;
+    // Only a week that is genuinely better than this one (chips.js
+    // betterLaterGw): a chip held on a tie has no better week to point at.
+    if (!entry.available || betterLaterGw(entry, gw) === null) continue;
     const value = entry.bestValue === null ? 0 : entry.bestValue;
     if (value > bestValue) {
       bestValue = value;

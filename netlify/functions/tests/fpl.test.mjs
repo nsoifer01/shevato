@@ -4,6 +4,7 @@ import handler from '../fpl.mjs';
 import {
   canonicalPath, pathKind, ttlSeconds, cacheKey, nextDeadlineFrom, serveFpl,
   TTL, DEADLINE_KEY, DEADLINE_TTL_SECONDS, UPSTREAM_BASE, ALLOWED_PATHS,
+  REFUSAL_KEY, REFUSAL_BACKOFF_SECONDS, REFUSAL_BACKOFF_MAX_SECONDS,
 } from '../lib/fpl-cache.mjs';
 
 // The guard tests exercise the paths that return BEFORE any Blob I/O: the
@@ -253,6 +254,89 @@ test('a 500 from upstream is an outage too', async () => {
   });
   assert.equal(res.stale, true);
   assert.deepEqual(res.body, [{ n: 1 }]);
+});
+
+// 2026-10-16: FPL's edge answered every proxy fetch 403 for up to two hours,
+// the log kept only "upstream 403", and every visitor past the stale window
+// asked again.
+const refused = (status = 403, headers = {}) => new Response('<html><body>Access denied (ref 18.abc)</body></html>', {
+  status, headers: { 'x-served-by': 'cache-iad-kiad7000001-IAD', server: 'Varnish', ...headers },
+});
+
+test('a 403 from FPL is recorded with what the edge said, and nobody asks again until the backoff ends', async () => {
+  const store = memoryStore();
+  await serveFpl({ path: 'fixtures', store, fetchUpstream: upstream(() => ok([{ n: 1 }])), now: NOW });
+  const later = NOW + 3600 * 1000;
+  const blocked = upstream(() => refused());
+  const first = await serveFpl({ path: 'fixtures', store, fetchUpstream: blocked, now: later });
+  assert.equal(first.stale, true);
+  assert.deepEqual(first.body, [{ n: 1 }]);
+  const record = store.map.get(REFUSAL_KEY);
+  assert.equal(record.status, 403);
+  assert.equal(record.path, 'fixtures');
+  assert.equal(record.headers['x-served-by'], 'cache-iad-kiad7000001-IAD');
+  assert.match(record.bodyHead, /Access denied \(ref 18\.abc\)/);
+  assert.equal(record.until, new Date(later + REFUSAL_BACKOFF_SECONDS * 1000).toISOString());
+  assert.equal(record.count, 1);
+  assert.equal(record.firstAt, record.at);
+
+  // Inside the backoff: other paths too, because FPL refuses the caller, not a path.
+  const quiet = upstream(() => ok([{ n: 2 }]));
+  const a = await serveFpl({ path: 'fixtures', store, fetchUpstream: quiet, now: later + 60e3 });
+  const b = await serveFpl({ path: 'bootstrap-static', store, fetchUpstream: quiet, now: later + 60e3 });
+  assert.equal(quiet.calls.length, 0, 'no upstream request during the backoff');
+  assert.equal(a.stale, true);
+  assert.deepEqual(a.body, [{ n: 1 }]);
+  assert.equal(b.status, 503, 'nothing cached: a labelled 503, never invented data');
+
+  // After it, the next caller asks again; a second refusal continues the episode.
+  const again = await serveFpl({ path: 'fixtures', store, fetchUpstream: blocked, now: later + 600e3 });
+  assert.equal(again.stale, true);
+  assert.equal(blocked.calls.length, 2);
+  assert.equal(store.map.get(REFUSAL_KEY).count, 2);
+  assert.equal(store.map.get(REFUSAL_KEY).firstAt, record.at);
+
+  // And a 200 after that is served fresh.
+  const back = await serveFpl({ path: 'fixtures', store, fetchUpstream: quiet, now: later + 1200e3 });
+  assert.equal(back.stale, false);
+  assert.deepEqual(back.body, [{ n: 2 }]);
+});
+
+test('a 429 honours Retry-After, up to the cap', async () => {
+  const store = memoryStore();
+  await serveFpl({ path: 'fixtures', store, now: NOW, fetchUpstream: upstream(() => refused(429, { 'retry-after': '300' })) });
+  assert.equal(store.map.get(REFUSAL_KEY).until, new Date(NOW + 300e3).toISOString());
+  const capped = memoryStore();
+  await serveFpl({ path: 'fixtures', store: capped, now: NOW, fetchUpstream: upstream(() => refused(429, { 'retry-after': '86400' })) });
+  assert.equal(capped.map.get(REFUSAL_KEY).until, new Date(NOW + REFUSAL_BACKOFF_MAX_SECONDS * 1000).toISOString());
+});
+
+test('only a refusal backs off: an outage, a 404 or our own quota does not', async () => {
+  for (const fetchUpstream of [
+    upstream(() => new Response('boom', { status: 503 })),
+    upstream(() => new Response('nf', { status: 404 })),
+    upstream(() => { throw new Error('fpl quota exceeded: network'); }),
+  ]) {
+    const store = memoryStore();
+    await serveFpl({ path: 'entry/1', store, fetchUpstream, now: NOW });
+    assert.equal(store.map.has(REFUSAL_KEY), false);
+  }
+});
+
+test('a refused manager read is recorded without the team id', async () => {
+  const store = memoryStore();
+  await serveFpl({ path: 'entry/7654321/history', store, now: NOW, fetchUpstream: upstream(() => refused()) });
+  assert.equal(store.map.get(REFUSAL_KEY).path, 'entry');
+  assert.doesNotMatch(JSON.stringify(store.map.get(REFUSAL_KEY)), /7654321/);
+});
+
+test('a refusal more than an hour after the last one starts a new episode', async () => {
+  const store = memoryStore();
+  await serveFpl({ path: 'fixtures', store, now: NOW, fetchUpstream: upstream(() => refused()) });
+  await serveFpl({ path: 'fixtures', store, now: NOW + 2 * 3600e3, fetchUpstream: upstream(() => refused()) });
+  const r = store.map.get(REFUSAL_KEY);
+  assert.equal(r.count, 1);
+  assert.equal(r.firstAt, new Date(NOW + 2 * 3600e3).toISOString());
 });
 
 test('an outage with nothing cached says so instead of inventing data', async () => {

@@ -42,6 +42,8 @@
 import { runProbe, payloadShapeFailures } from '../../../apps/fpl-planner/scripts/lib/probe.mjs';
 import { FPL_API, USER_AGENT, archiveCoverageFailures, seasonLabelFrom } from '../../../apps/fpl-planner/scripts/lib/archive.mjs';
 import { stagedManifest } from './fpl-archive-stage.mjs';
+import { freeHitPicksInfo } from '../../../apps/fpl-planner/js/engine/squad.js';
+import { REFUSAL_KEY } from './fpl-cache.mjs';
 
 export const HEALTH_STORE = 'fpl-health';
 
@@ -59,11 +61,31 @@ export const SITE = 'https://shevato.com';
 // A run that claimed its slot this long ago and stored nothing is dead:
 // Netlify kills a scheduled function at 30 seconds.
 export const UNFINISHED_AFTER_MS = 2 * 60e3;
+// The run's own time, judged before it is stored. 10.3 to 19.0 s over the 25
+// runs to 2026-10-16 (the 12:41 UTC slot is the slowest every day): a run past
+// this is still stored, and says it is near the kill, rather than the first
+// sign being a run that stored nothing.
+export const SLOW_RUN_MS = 24e3;
 export const ALERT_WORKFLOW = 'fpl-health.yml';
 export const ALERT_TIMEOUT_MS = 5000;
 // The direct question to FPL below. Bounded so the run, about 15 seconds on
 // Netlify, stays inside the 30-second limit when FPL hangs.
 export const DIAGNOSE_TIMEOUT_MS = 5000;
+// A refusal episode (fpl-cache.mjs REFUSAL_KEY) this long is an incident even
+// when it has ended by the time the run looks: on 2026-10-16 FPL refused the
+// proxy for up to two hours between two green runs and nothing said so.
+export const REFUSAL_ALERT_MINUTES = 30;
+// The real manager every run plans, read through the proxy exactly as the app
+// reads him (2026-10-16). Every manager-state defect of 2026/27 (free
+// transfers, the Free Hit revert, the value check, the alternatives card)
+// lived on that path, which the probe's built squad cannot reach. 3855835 is
+// the site owner's own public FPL entry; FPL_HEALTH_ENTRY overrides it, and
+// "none" turns it off.
+export const DEFAULT_HEALTH_ENTRY = '3855835';
+export const healthEntryId = (env = globalThis.process ? process.env : {}) => {
+  const v = String((env && env.FPL_HEALTH_ENTRY) || DEFAULT_HEALTH_ENTRY).trim();
+  return /^\d+$/.test(v) ? v : null;
+};
 
 export const slotOf = (iso) => {
   const d = new Date(Date.parse(iso));
@@ -103,8 +125,16 @@ async function diagnoseUpstream(fetchImpl) {
       headers: { 'User-Agent': USER_AGENT, Accept: 'application/json' },
       signal: AbortSignal.timeout(DIAGNOSE_TIMEOUT_MS),
     });
-    const answer = `FPL itself answered ${res.status} in ${Date.now() - started} ms`;
-    if (res.body) await res.body.cancel().catch(() => {});
+    let answer = `FPL itself answered ${res.status} in ${Date.now() - started} ms`;
+    if (res.ok) {
+      if (res.body) await res.body.cancel().catch(() => {});
+    } else {
+      // Which edge answered and what it said: the difference between a block
+      // by address, by rate and an FPL outage.
+      const edge = res.headers.get('x-served-by');
+      const body = (await res.text().catch(() => '')).replace(/\s+/g, ' ').trim().slice(0, 200);
+      answer += `${edge ? `, served by ${edge}` : ''}${body ? `, saying "${body}"` : ''}`;
+    }
     return answer;
   } catch (err) {
     return `FPL itself is unreachable after ${Date.now() - started} ms (${err.message})`;
@@ -113,16 +143,57 @@ async function diagnoseUpstream(fetchImpl) {
 
 const failure = (name, saw, expected) => ({ name, ok: false, saw, expected });
 
+// One manager's payloads, as js/app.js loadTeam reads them: entry, history and
+// transfers, the picks of the current gameweek (a 404 before the first
+// deadline is pre-season, not an error), and when those picks are a Free Hit
+// already played, the squad the chip reverts to. Never throws: a failed read
+// comes back as `{ id, error }` and is reported as its own failed check.
+export async function readEntry(id, bootstrapReady, fetchImpl, responses = {}) {
+  const get = async (path, { optional = false } = {}) => {
+    const res = await fetchImpl(`${SITE}/.netlify/functions/fpl?path=${encodeURIComponent(path)}`, {
+      headers: { Origin: SITE, Accept: 'application/json' },
+    });
+    if (optional && res.status === 404) return null;
+    if (!res.ok) throw new Error(`${path}: proxy HTTP ${res.status}`);
+    responses[path] = res.headers;
+    return res.json();
+  };
+  // Started together with the bootstrap read (the three do not depend on it);
+  // only the picks wait for it, to know the current gameweek.
+  const base = Promise.all([get(`entry/${id}`), get(`entry/${id}/history`), get(`entry/${id}/transfers`)]);
+  base.catch(() => {});
+  try {
+    const bootstrap = await bootstrapReady;
+    const current = (bootstrap.events || []).find((e) => e.is_current);
+    const [[entry, history, transfers], picks] = await Promise.all([
+      base,
+      current ? get(`entry/${id}/event/${current.id}/picks`, { optional: true }) : null,
+    ]);
+    let revertPicks = null;
+    const fh = freeHitPicksInfo({ picks, history });
+    const next = (bootstrap.events || []).find((e) => e.is_next);
+    if (picks && fh.isFreeHit && fh.event > 1 && next && next.id > fh.event) {
+      revertPicks = await get(`entry/${id}/event/${fh.event - 1}/picks`, { optional: true });
+    }
+    return { id, entry, history, transfers, picks, revertPicks };
+  } catch (err) {
+    return { id, error: err && err.message ? err.message : String(err) };
+  }
+}
+
 /** One probe of production. Pure apart from `fetchImpl` and the clock. */
-export async function probeProduction({ fetchImpl = fetch, now = new Date().toISOString(), prev = null } = {}) {
+export async function probeProduction({ fetchImpl = fetch, now = new Date().toISOString(), prev = null, entryId = healthEntryId() } = {}) {
   const responses = {};
   let bootstrap;
   let fixtures;
+  // In parallel: the reads are independent, and on Netlify every second
+  // counts against the 30-second limit.
+  const bootstrapRead = readPayload('bootstrap-static', fetchImpl, responses);
+  bootstrapRead.catch(() => {});
+  const entryRead = entryId ? readEntry(entryId, bootstrapRead, fetchImpl, responses) : null;
   try {
-    // In parallel: the two reads are independent, and on Netlify every
-    // second counts against the 30-second limit.
     [bootstrap, fixtures] = await Promise.all([
-      readPayload('bootstrap-static', fetchImpl, responses),
+      bootstrapRead,
       readPayload('fixtures', fetchImpl, responses),
     ]);
   } catch (err) {
@@ -130,8 +201,11 @@ export async function probeProduction({ fetchImpl = fetch, now = new Date().toIS
   }
   const shape = payloadShapeFailures(bootstrap, fixtures);
   if (shape.length) return { checks: [failure('the payloads have the shape the app reads', shape.join('; '), 'bootstrap and fixtures arrays')], reading: null, lines: [] };
+  const entry = entryRead ? await entryRead : null;
   const result = await runProbe({
-    bootstrap, fixtures, fetchedAt: now, now, source: 'proxy', responses, prev,
+    // The real entry's squad state is checked; his plan is the GitHub
+    // workflow's (see planEntry in scripts/lib/probe.mjs).
+    bootstrap, fixtures, fetchedAt: now, now, source: 'proxy', responses, prev, entry, planEntry: false,
     // What a first-time visitor's browser fetches (js/data/opening-baseline.js).
     loadShipped: async () => {
       const res = await fetchImpl(`${SITE}/apps/fpl-planner/data/opening-baseline.json`, { headers: { Accept: 'application/json' } });
@@ -160,7 +234,7 @@ export async function probeProduction({ fetchImpl = fetch, now = new Date().toIS
  * The scheduled run: claim the slot, probe, store, alert. Returns what was
  * stored (or `{ skipped }`).
  */
-export async function runScheduledProbe({ store, fetchImpl = fetch, now = () => new Date().toISOString(), alert = null, archiveStore = null } = {}) {
+export async function runScheduledProbe({ store, fetchImpl = fetch, now = () => new Date().toISOString(), alert = null, archiveStore = null, entryId = healthEntryId(), proxyStore = null, slowRunMs = SLOW_RUN_MS } = {}) {
   const at = now();
   const slot = slotOf(at);
   const before = await store.get('latest', { type: 'json' });
@@ -171,7 +245,7 @@ export async function runScheduledProbe({ store, fetchImpl = fetch, now = () => 
   const prev = await store.get('last-reading', { type: 'json' });
   let result;
   try {
-    result = await probeProduction({ fetchImpl, now: at, prev });
+    result = await probeProduction({ fetchImpl, now: at, prev, entryId });
   } catch (err) {
     result = { checks: [failure('the probe runs to completion', `threw: ${err && err.message}`, 'no exception')], reading: null, lines: [] };
   }
@@ -196,6 +270,22 @@ export async function runScheduledProbe({ store, fetchImpl = fetch, now = () => 
       result.checks.push(failure(name, `could not read the staged archive: ${err && err.message}`, 'a readable fpl-archive manifest'));
     }
   }
+  if (proxyStore) {
+    const name = 'FPL has not refused the proxy for long since the last run';
+    try {
+      const refusal = await proxyStore.get(REFUSAL_KEY, { type: 'json' });
+      const check = refusalCheck(refusal, before && before.at, at);
+      result.checks.push(check.ok ? { name, ok: true } : failure(name, check.saw, `no refusal episode of ${REFUSAL_ALERT_MINUTES} minutes or more`));
+      if (check.line) result.lines.push('', check.line);
+    } catch (err) {
+      result.checks.push(failure(name, `could not read the proxy's refusal record: ${err && err.message}`, 'a readable fpl-planner store'));
+    }
+  }
+  const elapsed = Date.now() - started;
+  const slowName = 'the run finishes well inside Netlify\'s 30-second limit';
+  result.checks.push(elapsed > slowRunMs
+    ? failure(slowName, `${(elapsed / 1000).toFixed(1)} s`, `under ${slowRunMs / 1000} s`)
+    : { name: slowName, ok: true });
   const failed = result.checks.filter((c) => c.ok === false);
   const latest = {
     at, slot, ok: failed.length === 0, durationMs: Date.now() - started,
@@ -224,6 +314,30 @@ export async function runScheduledProbe({ store, fetchImpl = fetch, now = () => 
     await store.setJSON('latest', latest);
   }
   return latest;
+}
+
+/**
+ * The proxy's last refusal by FPL, judged: anything since the previous run
+ * is reported as a line, and an episode of REFUSAL_ALERT_MINUTES or more (or
+ * one still in its backoff now and started that long ago) fails the run.
+ */
+export function refusalCheck(refusal, previousAt, at) {
+  if (!refusal || typeof refusal.at !== 'string') return { ok: true, line: null };
+  const nowMs = Date.parse(at);
+  const since = Date.parse(previousAt);
+  if (Number.isFinite(since) && Date.parse(refusal.at) <= since) return { ok: true, line: null };
+  const first = Date.parse(refusal.firstAt) || Date.parse(refusal.at);
+  const active = Date.parse(refusal.until) > nowMs;
+  const end = active ? nowMs : Date.parse(refusal.at);
+  const minutes = Math.round((end - first) / 60e3);
+  const edge = refusal.headers && refusal.headers['x-served-by'];
+  // The report is public and promises nothing about any visitor
+  // (privacy.html), and a refused entry path carries a visitor's team id.
+  const where = /^entry(\/|$)/.test(String(refusal.path)) ? 'a manager\'s data' : refusal.path;
+  const saw = `FPL answered ${refusal.status} to ${refusal.count || 1} proxy fetch(es) from ${new Date(first).toISOString()} to ${refusal.at}`
+    + ` (${minutes} min${active ? ', still backing off' : ''}; last ${where}${edge ? `, served by ${edge}` : ''}`
+    + `${refusal.bodyHead ? `, saying "${refusal.bodyHead.slice(0, 160)}"` : ''})`;
+  return { ok: minutes < REFUSAL_ALERT_MINUTES, saw, line: `refused        ${saw}` };
 }
 
 /**

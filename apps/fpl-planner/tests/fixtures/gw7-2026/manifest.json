@@ -1,0 +1,16 @@
+{
+  "source": "public FPL API, 2026-10-16 (before the GW7 deadline 2026-10-17T10:00Z)",
+  "derivedBy": "scripts/derive-gw7-fixtures.mjs",
+  "pool": 667,
+  "sha256": {
+    "bootstrap": "f851c53cd5a2c0eb2eb76183ab3cf29e4b5d5771d1843796c0cc9ab2a30df8ed",
+    "fixtures": "b121c2fd7b37939bad7d204f6543a29c532e6a3a87660fe573702d1577a7e7df"
+  },
+  "entries": [
+    "bench-boost",
+    "deep-search",
+    "free-hit",
+    "owner",
+    "triple-captain-tie"
+  ]
+}

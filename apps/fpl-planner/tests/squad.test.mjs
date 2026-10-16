@@ -8,6 +8,7 @@ import { sellingPrice } from '../js/engine/rules.js';
 import {
   historyIsMissing, UnknownPlayerError,
   buildSquadState, reconstructPurchasePrices, computeFreeTransfers, chipsRemaining,
+  originalPicks, joinPriceFloors,
 } from '../js/engine/squad.js';
 import { UNLIMITED, isUnlimited } from '../js/engine/transfer-state.js';
 import { assembleSampleBundle } from '../js/data/sample.js';
@@ -75,6 +76,52 @@ test('a player never transferred in falls back to his price when the squad was c
     const player = gameState.players.get(id);
     assert.equal(prices.get(id), player.nowCost - player.costChangeStart);
   }
+});
+
+// A squad created after GW1 (rule 3). Watkins, as on a real GW2 joiner
+// (2026-10-16): 8.0 at the start, 7.9 by GW2, when the squad was built.
+test('a late joiner\'s original pick is priced no higher than his lowest price up to the joining week', () => {
+  const neverIn = originalPicks({ picks, transfers, history });
+  const id = neverIn[0];
+  const player = gameState.players.get(id);
+  const start = player.nowCost - player.costChangeStart;
+  const summaries = new Map([[id, { history: [
+    { round: 1, value: start }, { round: 2, value: start - 1 }, { round: 3, value: start - 3 },
+  ] }]]);
+  const floors = joinPriceFloors({ summaries, startedEvent: 2 });
+  assert.equal(floors.get(id), start - 1, 'round 3 is after he joined and says nothing about what he paid');
+  assert.equal(reconstructPurchasePrices({ picks, transfers, gameState, priceFloors: floors }).get(id), start - 1);
+  // A floor above the start price never raises it.
+  const up = new Map([[id, start + 4]]);
+  assert.equal(reconstructPurchasePrices({ picks, transfers, gameState, priceFloors: up }).get(id), start);
+  // Nothing for a GW1 squad, whose start price is exact, or without rows.
+  assert.equal(joinPriceFloors({ summaries, startedEvent: 1 }).size, 0);
+  assert.equal(joinPriceFloors({ summaries: new Map([[id, { history: [] }]]), startedEvent: 2 }).size, 0);
+});
+
+test('the floor reaches the selling price only for a squad created after GW1', () => {
+  const id = originalPicks({ picks, transfers, history })[0];
+  const player = gameState.players.get(id);
+  const start = player.nowCost - player.costChangeStart;
+  const floors = new Map([[id, start - 5]]);
+  const sell = (e) => buildSquadState({ entry: e, history, transfers, picks, gameState, gw: PLAN_GW, priceFloors: floors })
+    .picks.find(p => p.playerId === id);
+  const early = sell({ ...entry, started_event: 1 });
+  const late = sell({ ...entry, started_event: 3 });
+  assert.equal(early.purchaseTenths, start);
+  assert.equal(late.purchaseTenths, start - 5);
+  assert.equal(late.sellingTenths, sellingPrice(start - 5, player.nowCost, rules));
+  assert.ok(late.sellingTenths <= early.sellingTenths, 'a lower purchase price can only lower what a sale raises');
+});
+
+test('original picks are the held players no surviving transfer bought; a Free Hit week\'s buys do not count', () => {
+  const ids = originalPicks({ picks, transfers, history });
+  const bought = new Set(transfers.map(t => t.element_in));
+  assert.deepEqual(ids, picks.picks.map(p => p.element).filter(x => !bought.has(x)));
+  const rented = { ...transfers[0], event: 3, element_in: ids[0] };
+  const fhHistory = { ...history, chips: [...(history.chips || []), { name: 'freehit', event: 3 }] };
+  assert.ok(originalPicks({ picks, transfers: [...transfers, rented], history: fhHistory }).includes(ids[0]));
+  assert.ok(!originalPicks({ picks, transfers: [...transfers, rented], history }).includes(ids[0]));
 });
 
 // -------------------------------------------------------- selling prices ----
@@ -358,6 +405,35 @@ test('a missing or empty season history in-season is flagged, and no chip is off
   // The real history, by contrast, is read as before.
   assert.equal(squadState.historyMissing, false);
   assert.ok(squadState.chipsAvailable.length > 0);
+});
+
+// Regression 2026-10-16 (GW7 rollover audit). History and picks are cached
+// separately, so just after FPL moves the gameweek on, the picks can be the new
+// week's while the history still ends a week earlier. The missing week then
+// passed the banked count through: 2 banked, 2 spent, and the next gameweek
+// read 2 free transfers where FPL gives 1, with no warning. A chip played that
+// week was missing too, and was offered again.
+test('a history one gameweek behind the picks is completed from the picks, not guessed', () => {
+  // GW4 made no transfers, so GW5 opens with 2; GW5 spends both under a Bench Boost.
+  const caughtUp = structuredClone(history);
+  caughtUp.current.find(r => r.event === 4).event_transfers = 0;
+  caughtUp.current.find(r => r.event === 4).event_transfers_cost = 0;
+  Object.assign(caughtUp.current.find(r => r.event === 5), { event_transfers: 2, event_transfers_cost: 0 });
+  caughtUp.chips.push({ name: 'bboost', event: 5 });
+  const gw5Picks = {
+    ...picks,
+    active_chip: 'bboost',
+    entry_history: { ...picks.entry_history, event_transfers: 2, event_transfers_cost: 0 },
+  };
+  const lagging = { ...caughtUp, current: caughtUp.current.filter(r => r.event !== 5), chips: caughtUp.chips.filter(c => c.event !== 5) };
+
+  const truth = buildSquadState({ entry, history: caughtUp, transfers: [], picks: gw5Picks, gameState, gw: PLAN_GW });
+  const lagged = buildSquadState({ entry, history: lagging, transfers: [], picks: gw5Picks, gameState, gw: PLAN_GW });
+  assert.equal(truth.freeTransfers, 1, 'two banked, two spent, one arrives');
+  assert.equal(lagged.freeTransfers, truth.freeTransfers, 'the lagging history reads what FPL says, not 2');
+  assert.deepEqual(lagged.chipsAvailable.sort(), truth.chipsAvailable.sort(), 'the Bench Boost just played is not offered again');
+  assert.ok(!lagged.chipsAvailable.includes('bboost'));
+  assert.ok(!lagged.warnings.some(w => w.code === 'history_missing'));
 });
 
 test('an empty history before the season starts is not degenerate', () => {

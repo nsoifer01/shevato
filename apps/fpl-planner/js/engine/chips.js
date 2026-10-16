@@ -1071,34 +1071,59 @@ export function evaluateChips({ squadState, projections, gameState, rules, horiz
   };
 }
 
+// The later gameweek a held chip is better in, or null when there is none.
+//
+// For the Bench Boost and the Triple Captain `bestGw` is just the best LATER
+// week, which may well be worth less than this one: a chip held because the
+// two weeks are within its margin is held on a tie, not because the later
+// week is better. Until 2026-10-16 every surface printed "looks better around
+// gameweek N" and "Best around GWN" whenever bestGw differed from this week,
+// so 8 of 61 real managers sampled were told GW16 was better while the
+// sentence before it said this week's 7.2 beat GW16's 6.1. The Wildcard and
+// Free Hit carry no value (bestValue null): their best week is a structural
+// claim (where the squad breaks hardest), and stands as it is.
+export function betterLaterGw(entry, gw) {
+  if (!entry || entry.bestGw === null || entry.bestGw === undefined || entry.bestGw === gw) return null;
+  if (entry.bestValue === null || entry.bestValue === undefined) return entry.bestGw;
+  return entry.bestValue > entry.valueNow ? entry.bestGw : null;
+}
+
 // Holding is the normal answer, so it gets real content: for each chip in hand,
 // what it is worth this week and what it needs to be worth.
 export function holdReasons(perChip, gw) {
   const reasons = [];
   const inHand = Object.values(perChip).filter(c => c.available);
-  reasons.push(makeReason(
-    'chips_in_hand',
-    'You have {v} chips playable this gameweek, and none of them clears its bar.',
-    inHand.length,
-    'count',
-  ));
+  // Only when there is a chip to hold: with none it read "You have 0 chips
+  // playable this gameweek, and none of them clears its bar" above "You have
+  // 0 chips available", and with one, "You have 1 chips ... none of them".
+  if (inHand.length) {
+    reasons.push(makeReason(
+      'chips_in_hand',
+      inHand.length === 1
+        ? 'You have {v} chip playable this gameweek, and it does not clear its bar.'
+        : 'You have {v} chips playable this gameweek, and none of them clears its bar.',
+      inHand.length,
+      'count',
+    ));
+  }
   for (const entry of inHand) {
     // Each chip writes its own sentence, because each chip has its own bar: an
     // absolute gain for the wildcard and the free hit, a margin over the best
     // later week of the window for the bench boost and the triple captain. One
     // shared sentence for all four would have to state at least one wrongly.
     if (entry.holdReason) reasons.push(entry.holdReason);
-    if (entry.bestGw !== null && entry.bestGw !== gw) {
+    const later = betterLaterGw(entry, gw);
+    if (later !== null) {
       reasons.push(makeReason(
         `hold_${entry.chip}_better`,
         `${chipLabel(entry.chip)} looks better around gameweek {v}.`,
-        entry.bestGw,
+        later,
         'gw',
       ));
     }
   }
   if (!inHand.length) {
-    reasons.push(makeReason('no_chips', 'You have {v} chips available this gameweek.', 0, 'count'));
+    reasons.push(makeReason('no_chips', 'You have {v} chips you can play this gameweek.', 0, 'count'));
   }
   return reasons;
 }

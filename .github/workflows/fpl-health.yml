@@ -26,7 +26,15 @@ name: FPL health probe
 #                      `[fpl-health drill]` issue: proves the alert reaches the
 #                      owner without breaking production.
 #   full (default) ... the whole probe on a runner, straight against FPL
-#                      (`--direct`), the manual diagnostic.
+#                      (`--direct`), planning a REAL manager (`--entry`, the
+#                      owner's public entry unless the FPL_HEALTH_ENTRY
+#                      variable names another): his free transfers against
+#                      every hit FPL charged, his chips, squad and value, and
+#                      his plan against its own numbers. Also on the schedule
+#                      (2026-10-16): Netlify's run checks his squad state every
+#                      six hours, but his PLAN costs up to 4.5 s of CPU locally,
+#                      about 30 s on Netlify, so it is planned here, where a
+#                      failure fails the run and GitHub emails the owner.
 #
 # Scheduled workflows run only from the default branch. It commits nothing and
 # never triggers a Netlify build.
@@ -91,7 +99,7 @@ jobs:
           fi
 
   probe:
-    if: github.event_name == 'workflow_dispatch' && (inputs.mode == 'full' || inputs.mode == '')
+    if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && (inputs.mode == 'full' || inputs.mode == ''))
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -107,5 +115,7 @@ jobs:
         with:
           node-version-file: '.nvmrc'
 
-      - name: Probe the live payload
-        run: node apps/fpl-planner/scripts/evidence-probe.mjs --direct
+      - name: Probe the live payload and a real manager's plan
+        env:
+          FPL_HEALTH_ENTRY: ${{ vars.FPL_HEALTH_ENTRY || '3855835' }}
+        run: node apps/fpl-planner/scripts/evidence-probe.mjs --direct --entry "$FPL_HEALTH_ENTRY"

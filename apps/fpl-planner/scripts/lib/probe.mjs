@@ -10,7 +10,7 @@
 // shipped previous-season asset.
 
 import { buildGameState } from '../../js/engine/normalize.js';
-import { buildSquadState } from '../../js/engine/squad.js';
+import { buildSquadState, historyCaughtUp } from '../../js/engine/squad.js';
 import { buildPlan, projectionRowsFor } from '../../js/engine/planner.js';
 import { openingBaselineApplies, resolveGameState } from '../../js/engine/world.js';
 import { buildStrength } from '../../js/engine/strength.js';
@@ -20,6 +20,10 @@ import { goalkeeperPositionId, validatePlan } from '../../js/engine/validate.js'
 import { gameweekLifecycle } from '../../js/engine/lifecycle.js';
 import { assessBaseline } from '../../js/engine/baseline.js';
 import { assertShape } from './archive.mjs';
+import {
+  freeTransferWitnessFailures, chipLedgerFailures, squadReadFailures, planConsistencyFailures,
+} from './plan-audit.mjs';
+import { DEFAULT_SETTINGS } from '../../js/ui/store.js';
 import { spearman } from './archive-scorecard.mjs';
 import {
   assessReadiness, projectionVitals, MIN_EVER_PRESENT_START_MEDIAN, MAX_APPEARANCE_INVERSION_SHARE,
@@ -39,6 +43,9 @@ export const DEADLINE_GRACE_HOURS = 3;
 // see a level fault: an order-preserving compression keeps every rank, which
 // is what the best-eleven and top-median invariants are for.
 export const MIN_EP_NEXT_SPEARMAN = 0.6;
+// The seed js/app.js planOptions() hands every plan; with DEFAULT_SETTINGS it
+// makes the probe's plan for a real entry the plan a visitor sees.
+export const APP_PLAN_SEED = 7;
 
 /**
  * Shape first: everything else assumes it, and a payload without these arrays
@@ -64,9 +71,15 @@ export function payloadShapeFailures(bootstrap, fixtures) {
  * @param {object} [p.responses]           response headers by endpoint, for the proxy checks
  * @param {object|null} [p.prev]           the previous reading, for change detection
  * @param {() => Promise<object|null>} p.loadShipped  the shipped previous-season asset
+ * @param {object|null} [p.entry]  a real manager to plan, as the app reads him:
+ *   `{ id, entry, history, transfers, picks, revertPicks }`, or `{ id, error }`
+ *   when his payloads could not be read. `picks: null` (pre-season) falls back
+ *   to the built squad.
+ * @param {boolean} [p.planEntry]  plan that manager (true) or only check his
+ *   squad state and plan the built squad (false: the Netlify run's budget)
  * @returns {Promise<{ reading, checks, readiness, blocked, failed, usable, lines }>}
  */
-export async function runProbe({ bootstrap, fixtures, fetchedAt, now = null, source, responses = {}, prev = null, loadShipped }) {
+export async function runProbe({ bootstrap, fixtures, fetchedAt, now = null, source, responses = {}, prev = null, loadShipped, entry = null, planEntry = true }) {
   const first = buildGameState(bootstrap, fixtures, { fetchedAt });
   const shipped = openingBaselineApplies(first) ? await loadShipped() : null;
   const { gameState, resolution } = resolveGameState(first, { bootstrap, fixtures, fetchedAt, kept: null, shipped });
@@ -99,6 +112,39 @@ export async function runProbe({ bootstrap, fixtures, fetchedAt, now = null, sou
     baselineComplete: baseline.complete,
     finishedGameweeks: gameState.events.filter(e => e.finished).length,
   };
+
+  // The real manager's squad state, read exactly as the app reads it for the
+  // gameweek the app plans, and judged against FPL's own witnesses. Cheap (no
+  // plan), and independent of whether the payload can be projected from.
+  let realSquad = null;
+  let entryVerdict = null;
+  let entryError = entry && entry.error ? entry.error : null;
+  if (entry && !entry.error && entry.picks) {
+    try {
+      const planGw = gameState.nextEvent ?? gameState.currentEvent ?? gw;
+      realSquad = buildSquadState({
+        entry: entry.entry, history: entry.history, transfers: entry.transfers,
+        picks: entry.picks, revertPicks: entry.revertPicks || null, gameState, gw: planGw,
+      });
+      // The history the engine replayed, so a witness never disagrees with
+      // the planner over a week the picks have and the history does not yet.
+      const history = historyCaughtUp(entry.history, entry.picks);
+      entryVerdict = {
+        id: entry.id,
+        gw: planGw,
+        freeTransfers: realSquad.freeTransfers,
+        offered: realSquad.chipsAvailable || [],
+        witness: freeTransferWitnessFailures({ history, rules }),
+        chips: chipLedgerFailures({ bootstrap, history, offered: realSquad.chipsAvailable, gw: planGw }),
+        squad: squadReadFailures({ squadState: realSquad, picks: realSquad.freeHitGw ? entry.revertPicks : entry.picks, rules }),
+        planned: false,
+        consistency: [],
+      };
+      reading.entry = { id: entry.id, gw: planGw, freeTransfers: realSquad.freeTransfers };
+    } catch (err) {
+      entryError = `reading the squad threw: ${err && err.message ? err.message : String(err)}`;
+    }
+  }
 
   let vitals = null;
   let captainPosition = null;
@@ -161,11 +207,28 @@ export async function runProbe({ bootstrap, fixtures, fetchedAt, now = null, sou
     medianStart = ps.length ? ps[Math.floor(ps.length / 2)] : null;
     pinnedHigh = ps.filter(v => v >= 0.9999).length;
 
-    const squadState = buildSquadState({ entry: null, history: null, transfers: null, picks: null, gameState, gw });
+    // A REAL manager, planned exactly as the app plans him, when the caller
+    // asks for it (`planEntry`): his plan is what every manager-state defect
+    // of 2026/27 reached the owner through. A manager holding a Wildcard and a
+    // Free Hit costs about three times the built squad's plan (4.5 s against
+    // 1.4 s of CPU locally, measured 2026-10-16), which Netlify's 30-second
+    // limit cannot carry, so the scheduled function checks his squad state
+    // below and plans the built squad, and the GitHub workflow plans him.
+    const planReal = !!(realSquad && planEntry);
+    const squadState = planReal
+      ? realSquad
+      : buildSquadState({ entry: null, history: null, transfers: null, picks: null, gameState, gw });
+    const options = planReal
+      ? { horizon: DEFAULT_SETTINGS.horizon, risk: DEFAULT_SETTINGS.risk, seed: APP_PLAN_SEED }
+      : { horizon: 3 };
     const t0 = performance.now();
-    const plan = await buildPlan({ gameState, squadState, options: { horizon: 3 } });
+    const plan = await buildPlan({ gameState, squadState, options });
     planSeconds = (performance.now() - t0) / 1000;
     planVerdict = validatePlan(plan.current, squadState, gameState, rules);
+    if (planReal) {
+      entryVerdict.planned = true;
+      entryVerdict.consistency = planConsistencyFailures({ bundle: plan, squadState, rules });
+    }
     const captain = gameState.players.get(plan.current.captain);
     captainPosition = captain ? captain.position : null;
     reading.planXp = plan.current.xPointsGw;
@@ -310,11 +373,30 @@ export async function runProbe({ bootstrap, fixtures, fetchedAt, now = null, sou
       epSpearman === null ? 'n/a' : `Spearman ${epSpearman.toFixed(3)} over ${epCompared}`,
       `at least ${MIN_EP_NEXT_SPEARMAN}`, { skip: epSpearman === null });
     if (planVerdict) {
-      check('the plan for a built squad passes validatePlan',
+      check(entryVerdict && entryVerdict.planned ? `the plan for entry ${entryVerdict.id} passes validatePlan` : 'the plan for a built squad passes validatePlan',
         planVerdict.ok,
         planVerdict.ok ? `valid, built in ${planSeconds.toFixed(1)}s` : planVerdict.violations.map((v) => v.code).join(', '),
         'no violations');
     }
+  }
+  if (entryVerdict) {
+    const e = entryVerdict;
+    const said = (list) => (list.length ? list.slice(0, 4).join('; ') : 'holds');
+    check(`entry ${e.id}: the free-transfer replay reproduces every hit FPL charged`,
+      !e.witness.length, said(e.witness),
+      'event_transfers_cost equal to 4 x max(0, transfers - free) in every gameweek (0 under a Wildcard or Free Hit)');
+    check(`entry ${e.id}: the chips offered are the ones left in their half`,
+      !e.chips.length, said(e.chips), 'the bootstrap chip windows less history.chips');
+    check(`entry ${e.id}: the squad, bank and value read agree with FPL`,
+      !e.squad.length, said(e.squad), `${rules.squadSize} players, FPL's bank, no value_mismatch`);
+    if (e.planned) {
+      check(`entry ${e.id}: the plan agrees with its own numbers`,
+        !e.consistency.length, said(e.consistency),
+        'no runner-up above it, money, free transfers and headline consistent');
+    }
+  }
+  if (entryError) {
+    check(`the proxy serves entry ${entry.id}`, false, entryError, 'HTTP 200 for entry, history, transfers and picks, and a squad read from them');
   }
 
   // The proxy's own promises (README, "The data layer"): browsers never cache
@@ -344,7 +426,9 @@ export async function runProbe({ bootstrap, fixtures, fetchedAt, now = null, sou
     lines.push(`readiness       ${readiness.level}   display=${readiness.allow.display} lineup=${readiness.allow.lineup} transfers=${readiness.allow.transfers} chips=${readiness.allow.chips}`);
     for (const b of readiness.blocked) lines.push(`                blocked ${b.code} (ceiling ${b.ceiling})`);
     if (evidence.usable) {
-      lines.push(`plan            ${reading.planXp.toFixed(1)} xP for GW${gw}   captain ${reading.captain}   chip ${reading.chip}   transfers ${reading.transfers}   built in ${planSeconds.toFixed(1)}s`);
+      const planned = entryVerdict && entryVerdict.planned;
+      lines.push(`plan            ${planned ? `entry ${entryVerdict.id}` : 'built squad'}   ${reading.planXp.toFixed(1)} xP for GW${planned ? entryVerdict.gw : gw}   captain ${reading.captain}   chip ${reading.chip}   transfers ${reading.transfers}   built in ${planSeconds.toFixed(1)}s`);
+      if (entryVerdict) lines.push(`entry           ${entryVerdict.id}   GW${entryVerdict.gw}   free transfers ${entryVerdict.freeTransfers}   chips ${entryVerdict.offered.join(', ') || 'none'}`);
       if (epSpearman !== null) lines.push(`ep_next         Spearman ${epSpearman.toFixed(3)} over ${epCompared} players with a GW${gw} fixture`);
       lines.push(`pool            best-11 ${reading.best11.toFixed(1)}   top-median gap ${reading.topMedianGap.toFixed(2)}   median start ${medianStart.toFixed(3)}   pinned ${pinnedHigh}`);
       if (reading.everPresent) {

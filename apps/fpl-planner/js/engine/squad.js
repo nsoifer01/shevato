@@ -72,9 +72,18 @@ export function freeHitPicksInfo({ picks, history } = {}) {
 // in. A player bought at 7.0, sold, and re-bought at 7.6 was paid 7.6 for.
 // Rule 2 (never transferred in, i.e. an original pick): his price when the
 // squad was created, recovered as nowCost - costChangeStart. That is exact for
-// a squad created before GW1, which is every squad that still holds an original
-// pick, and it is the closest the public API gets for one created later.
-export function reconstructPurchasePrices({ picks, transfers, gameState, ignoreGws = null }) {
+// a squad created before GW1.
+// Rule 3, a squad created LATER (`entry.started_event` > 1): the price the
+// manager paid is the price on the day he built it, which nothing public
+// states. The season-start price can be ABOVE it (a player who fell before he
+// joined), and then a riser since is sold for more than FPL will pay, so a
+// transfer is offered that FPL refuses. `priceFloors` (joinPriceFloors) holds
+// each such player's lowest listed price up to the joining gameweek, and the
+// lower of the two is used: never above what was paid, so affordability is
+// never overstated. Measured 2026-10-16 on 12 real GW2 joiners: their prices at
+// the joining gameweek summed to FPL's own squad value exactly (12 of 12),
+// while the start prices were 0.0 to 0.5m below it.
+export function reconstructPurchasePrices({ picks, transfers, gameState, ignoreGws = null, priceFloors = null }) {
   const list = pickList(picks) || [];
   const latestIn = new Map();
   // `ignoreGws` carries the gameweeks whose transfers were UNDONE, which today
@@ -95,7 +104,31 @@ export function reconstructPurchasePrices({ picks, transfers, gameState, ignoreG
       continue;
     }
     const player = gameState.players.get(id);
-    out.set(id, player ? player.nowCost - player.costChangeStart : 0);
+    const start = player ? player.nowCost - player.costChangeStart : 0;
+    const floor = priceFloors && priceFloors.get(id);
+    out.set(id, Number.isFinite(floor) && floor > 0 ? Math.min(start, floor) : start);
+  }
+  return out;
+}
+
+// The held players whose purchase price is NOT on record (rule 2 or 3 above):
+// never bought by a transfer that stuck. Only a late joiner's need a floor.
+export function originalPicks({ picks, transfers, history }) {
+  const ignore = freeHitGameweeks({ history });
+  const bought = new Set(sortedTransfers(transfers).filter(t => !ignore.has(t.event)).map(t => t.element_in));
+  return (pickList(picks) || []).map(p => p.element).filter(id => !bought.has(id));
+}
+
+// Each player's lowest listed price from the start of the season up to and
+// including `startedEvent`, read from his element-summary `history` rows (one
+// per fixture, `value` the price at kickoff). `summaries` maps player id to an
+// element-summary payload; a player with no usable rows gets no floor.
+export function joinPriceFloors({ summaries, startedEvent }) {
+  const out = new Map();
+  if (!(startedEvent > 1) || !summaries) return out;
+  for (const [id, summary] of summaries) {
+    const rows = ((summary && summary.history) || []).filter(r => r && r.round <= startedEvent && Number.isFinite(r.value) && r.value > 0);
+    if (rows.length) out.set(id, Math.min(...rows.map(r => r.value)));
   }
   return out;
 }
@@ -217,10 +250,41 @@ export class UnknownPlayerError extends Error {
   }
 }
 
-export function buildSquadState({ entry, history, transfers, picks, gameState, gw, source, revertPicks = null }) {
+// A history that has not caught up with the picks, completed from the picks.
+//
+// `entry/{id}/history` and `entry/{id}/event/{gw}/picks` are cached under
+// separate keys at the proxy, the edge and the browser, so in the minutes after
+// FPL moves the gameweek on the picks can already be the new gameweek's while
+// the history in hand still ends a week earlier. The missing week then replays
+// as "not recorded", which passes the banked count through unchanged: right
+// only if that week made no transfers, and one or more free transfers too many
+// otherwise (2026-10-16 rollover audit: 2 banked, 2 made, 2 shown, FPL 1).
+// The picks payload carries FPL's own row for its gameweek (`entry_history`:
+// event_transfers, event_transfers_cost, bank, value) and the chip played in
+// it (`active_chip`), so the gap is filled with FPL's numbers rather than
+// guessed. A history with no rows at all is left alone: one week cannot stand
+// in for a season, and `history_missing` says so.
+export function historyCaughtUp(history, picks) {
+  const row = picks && picks.entry_history;
+  if (!history || !Array.isArray(history.current) || !history.current.length) return history;
+  if (!row || !Number.isInteger(row.event)) return history;
+  const hasRow = history.current.some(r => r.event === row.event);
+  const chips = Array.isArray(history.chips) ? history.chips : [];
+  const chip = picks.active_chip || null;
+  const hasChip = !chip || chips.some(c => c.event === row.event);
+  if (hasRow && hasChip) return history;
+  return {
+    ...history,
+    current: hasRow ? history.current : [...history.current, { ...row }].sort((a, b) => a.event - b.event),
+    chips: hasChip ? chips : [...chips, { name: chip, event: row.event }],
+  };
+}
+
+export function buildSquadState({ entry, history: historyIn, transfers, picks, gameState, gw, source, revertPicks = null, priceFloors = null }) {
   const rules = gameState.rules;
   const targetGw = gw ?? gameState.nextEvent ?? gameState.currentEvent;
   const warnings = [];
+  const history = historyCaughtUp(historyIn, picks);
 
   // FREE HIT. The frozen picks of a Free Hit gameweek are a team the manager
   // RENTED for that gameweek; at the next deadline FPL hands his own squad
@@ -327,6 +391,7 @@ export function buildSquadState({ entry, history, transfers, picks, gameState, g
   // nothing about what the persistent squad cost.
   const purchases = reconstructPurchasePrices({
     picks: effective, transfers, gameState, ignoreGws: freeHitGameweeks({ history }),
+    priceFloors: entry && entry.started_event > 1 ? priceFloors : null,
   });
   // Bank and squad value come from whichever picks the squad came FROM. Taking
   // them from the Free Hit payload while the fifteen came from the reverted one

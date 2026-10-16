@@ -152,6 +152,9 @@ const DEFAULT_HORIZON = 5;
 
 // How many ranked alternatives the UI is offered below the primary pick.
 const MAX_ALTERNATIVES = 3;
+// The chips played on a squad the transfers chose, credited at their net
+// value in the objective (chips.js), as opposed to the two that rebuild it.
+const TIMING_CHIPS = new Set(['bboost', '3xc']);
 
 // Data older than this is called out in dataStatus. It is not an error and the
 // plan is still produced: FPL prices and news move daily, not hourly.
@@ -569,7 +572,15 @@ function alternativeFrom(scored, plan, primaryScored, gameState, hitMarginPoints
     // alone overstate the gap: a plan that keeps a Bench Boost gives up this
     // week's bench but keeps the chip for later. This is the same comparison
     // the planner ranked them on, which counts what keeping the chip is worth.
-    deltaWithChipValue: scored.chip !== primaryScored.chip ? scored.objective - primaryScored.objective : null,
+    // The same holds when both play a Bench Boost or Triple Captain: each is
+    // credited the chip's NET value on its own squad (its bench or armband
+    // less what keeping the chip is worth there), not the raw points in
+    // xPointsHorizon, so the horizon gap is not the ranking gap. Until
+    // 2026-10-16 a same-chip alternative read "+0.52 pts" while ranking 0.43
+    // below the plan, under a note saying none scored higher.
+    deltaWithChipValue: scored.chip !== primaryScored.chip || TIMING_CHIPS.has(scored.chip)
+      ? scored.objective - primaryScored.objective
+      : null,
     // Ranked ABOVE the recommendation and still not chosen: it takes a hit and
     // does not clear the risk profile's margin over the best plan without one.
     // The card must say so rather than claim nothing scored higher.
@@ -597,10 +608,15 @@ function alternativeHeadline(scored, gameState) {
     const p = gameState.players.get(id);
     return p ? p.webName : `player ${id}`;
   };
-  if (scored.chip) return `Play your ${chipLabel(scored.chip)}`;
-  if (!scored.transferCount) return 'Roll your transfer';
   const pairs = scored.candidate.transfersOut.map((out, i) => `${name(out)} to ${name(scored.candidate.transfersIn[i])}`);
   const hitNote = scored.acct.hits ? ` (-${scored.acct.hitCostPoints})` : '';
+  // A Wildcard or Free Hit is a rebuild, named by the chip. A Bench Boost or
+  // Triple Captain is played on a squad its transfers chose, and three plans
+  // that boost three different benches are three different plans: titled
+  // "Play your Bench Boost" alone, they read as one plan listed three times.
+  if (scored.chip && (!TIMING_CHIPS.has(scored.chip) || !pairs.length)) return `Play your ${chipLabel(scored.chip)}`;
+  if (scored.chip) return `Play your ${chipLabel(scored.chip)}: ${pairs.join(', ')}${hitNote}`;
+  if (!scored.transferCount) return 'Roll your transfer';
   return `${pairs.join(', ')}${hitNote}`;
 }
 
@@ -906,8 +922,23 @@ export async function buildPlan({ gameState, squadState, options = {}, onProgres
   };
   plan.explanation = explainPlan(plan, explainContext);
 
+  // Each projected gameweek is planned the way the planner will plan it when
+  // that deadline comes round: over the full horizon from THAT week. Planned
+  // off this week's projections, gameweek gw+k saw only horizon-k weeks, so the
+  // last one was a one-week decision and the card showed churn the planner
+  // would never make (2026-10-16: Tarkowski bought in GW10 and sold in GW11 for
+  // a one-week +0.9, when GW11-15 favour keeping him by 0.7). Its own
+  // projections reach further; this week's decision never reads them. Injected
+  // projections (tests, experiments) are used as they are.
+  const futureProjections = cfg.futureTransfers && !cfg.projections && cfg.horizon > 1
+    ? buildProjections({
+      gameState, strength, gwFrom: gw,
+      gwTo: Math.min(rules.totalEvents, gw + 2 * (cfg.horizon - 1)),
+      model: cfg.model, modelOptions: cfg.modelOptions,
+    })
+    : projections;
   const future = buildFuturePlans({
-    plan, squadState: workingSquad, projections, gameState, rules, cfg, gw, chipEvaluation,
+    plan, squadState: workingSquad, projections: futureProjections, gameState, rules, cfg, gw, chipEvaluation,
   });
 
   const violations = [];
@@ -1172,7 +1203,9 @@ function buildFuturePlans({ plan, squadState, projections, gameState, rules, cfg
   for (let k = 1; k < cfg.horizon; k++) {
     const futureGw = gw + k;
     const state = projectedSquadState(prevPlan, prevState, rules, futureGw, prevPlan.chip, gameState);
-    const remaining = cfg.horizon - k;
+    // The horizon the planner will use at that deadline, bounded by the
+    // season and by how far the projections reach.
+    const remaining = Math.max(1, Math.min(cfg.horizon, projections.gwTo - futureGw + 1));
     const futureCfg = { ...cfg, horizon: remaining };
 
     const held = currentSquadIds(state);

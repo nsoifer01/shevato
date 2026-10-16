@@ -14,6 +14,203 @@ tables.
 
 ---
 
+## Why every pre-gameweek audit found something (2026-10-16, before GW7)
+
+**The answer: nothing automated ever looked at a real manager.** Of the 21
+user-facing defects between GW1 and GW7 of 2026/27, the owner or a manual
+pre-gameweek audit found 19, the health probe one and CI none. Production
+monitoring judged FPL's payload and a plan for a squad the probe BUILT
+(`buildSquadState({ entry: null, ... })`); CI ran one trimmed real history
+and otherwise synthetic squads. So every defect on the manager-state path
+(free transfers, the Free Hit revert, the value check, chip weeks) and every
+"the words contradict the plan" defect could only be found by someone opening
+the app on a real team, which is what the pre-gameweek audits were. Each fix
+then pinned the one state it came from, so the class came back elsewhere.
+
+**What now runs without anyone asking:**
+
+- **Every six hours on Netlify** (`fpl-health`): the owner's entry
+  (`FPL_HEALTH_ENTRY`, default 3855835; `none` turns it off) is read through
+  the production proxy exactly as the app reads it, and three checks run on
+  it: the free-transfer replay reproduces every hit FPL charged
+  (`chargedHitDisagreements`, the independent witness that caught the
+  2026-10-09 chip-week +1), the chips offered equal the raw catalogue less the
+  chips played, and the squad, bank and value read agree with FPL. Its PLAN is
+  not built there: a manager holding a Wildcard and a Free Hit costs 4.5 s of
+  plan CPU locally against 1.4 s for the built squad, about 30 s on Netlify's
+  seven-times-slower CPU, over the 30-second limit (measured; the run already
+  takes 10 to 19 s).
+- **Every six hours on GitHub** (`fpl-health.yml`, now also on the schedule):
+  `evidence-probe.mjs --direct --entry` plans that manager with the app's
+  default settings and holds the plan to its own numbers
+  (`scripts/lib/plan-audit.mjs` `planConsistencyFailures`: no runner-up ranked
+  above it unless the hit bar overruled it, none projecting visibly more with
+  no flag, the expected points equal their parts, money, free transfers in
+  normal and chip weeks, the headline, the projected chain). A failure fails
+  the run, which emails the owner. Late by however late GitHub is, which is
+  acceptable for a check that matters days before a deadline.
+- **In CI**: `tests/real-deadline-gw7.test.mjs` plans five real managers on the
+  real GW7 deadline payload (`tests/fixtures/gw7-2026`, `derive-gw7-fixtures.mjs`)
+  and runs every plan-audit check on each; `tests/transfer-state-real.test.mjs`
+  holds the replay to all 2,454 charged hits of 411 real managers, and shows
+  the witness rejects the pre-2024 chip rule (49 disagreements) and a cap of two
+  (41). Run on the engine as it was before this round, the GW7 file fails five
+  of twelve tests, one of them the generic consistency check on its own.
+
+**When adding a capture**: a new deadline fixture with real managers is the
+cheapest protection this app has. Derive it the way `derive-gw7-fixtures.mjs`
+does (identities removed, picks/history/transfers kept exactly), choose
+managers for the paths that are live that week (a chip just played, banked
+transfers, a doubtful player), and add them to the loop in the test.
+
+### What the audit verified, and on how much
+
+- **411 managers** (top 200, 210 random from rank 50k to 9M, the owner), every
+  witness FPL publishes: 0 free-transfer disagreements over 2,055 gameweeks
+  (325 under a Wildcard or Free Hit), 0 value-check mismatches on 402 squads,
+  0 GW1 start-price mismatches on 399, 0 chip-ledger errors, 0 squad-chain
+  breaks, every GW6 Free Hit reverted to its GW5 squad and bank. FPL added no
+  free transfer across the three-week GW5-GW6 break.
+- **61 managers' plans**, recomputed independently: the transfer argmax over
+  every legal single (and pairs, and three-move neighbourhoods), the XI by
+  brute force over formations, captain and vice from captain.js's own formulas
+  (and 4,000 random elevens: the captain explanation fired exactly when owed),
+  the bench order by full auto-sub enumeration, determinism. For the owner, Hall
+  to Gabriel is the best of 2,346 legal single transfers and Gonzalo is the top
+  projection in the eleven.
+
+### What it found, and fixed
+
+1. **A history one gameweek behind the picks over-counted free transfers.**
+   History and picks are cached under separate keys at the proxy, the edge and
+   the browser, so just after FPL moves the gameweek on the picks can be the
+   new week's while the history ends a week earlier. The missing week passed
+   the banked count through (`transfer-state.js` `recorded: false`), which is
+   only right when it made no transfers: 2 banked and 2 spent read 2 for the
+   next week where FPL gives 1, silently, and a chip played that week was
+   offered again. The picks payload carries FPL's own row for its gameweek
+   (`entry_history`) and its chip (`active_chip`), so `historyCaughtUp` in
+   squad.js fills the gap with FPL's numbers before anything replays. The
+   comment and test that claimed a missing week "never inflates the count"
+   were wrong for any week with transfers, and now say so.
+2. **The projected weeks were planned on a shrinking horizon.** Week gw+k was
+   planned over the 5-k weeks left in this week's projections, so the last card
+   was a one-week decision: the owner's GW11 sold Tarkowski, bought in GW10,
+   for a one-week +0.9, when GW11-15 favour keeping him by 0.7. Each projected
+   week now gets projections of its own reaching its full horizon; this week's
+   decision never reads them (pinned bit-identical) and the replay, which turns
+   future transfers off, is untouched. About 10% more plan CPU.
+3. **A better three-move plan was cut before the planner ranked it** (+0.31 on
+   its own objective, a real manager with 3 free transfers). The exact re-score
+   shortlist is 24 rather than 16 (registry 47).
+4. **A Triple Captain held on a tie was told a worse week "looks better"**:
+   "Tripling Haaland adds 7.2 ..., the best week left is worth 6.1" followed by
+   "Triple Captain looks better around gameweek 16", on 8 of 61 managers, and
+   the chip row read "Best around GW16". `betterLaterGw` in chips.js is now the
+   one answer to "is a later week genuinely better" for the sentence, the row
+   and the chip note; a Wildcard or Free Hit's best week (no value, a
+   structural claim) stands as before.
+5. **Bench Boost alternatives printed the wrong gap.** A same-chip alternative
+   read "+0.52 pts" while ranking 0.43 below the plan, under "none of them
+   scored higher", because `deltaWithChipValue` was only set when the chips
+   differed, and a Bench Boost or Triple Captain is credited its NET value per
+   squad. Same-chip timing alternatives now show the ranking gap, and are
+   titled with their own moves ("Play your Bench Boost: Wissa to Gonzalo, ...")
+   instead of three identical "Play your Bench Boost".
+6. **Copy.** "You have 0 chips playable this gameweek, and none of them clears
+   its bar" above "You have 0 chips available" for a manager with no chips, and
+   "You have 1 chips ... none of them"; the data status listed "Your squad"
+   once per gameweek the History tab read, up to eight identical rows, and now
+   names the gameweek.
+7. **A late joiner's selling prices could be OVERSTATED.** A squad created
+   after GW1 had its original picks priced at the season-start price. That
+   was recorded as "safe, it only understates", which is false: selling price
+   rises with the purchase price, so a player who FELL before the manager
+   joined and has risen since is sold for more than FPL pays, and a transfer
+   FPL refuses can be recommended. Measured on the 12 GW2 joiners among the
+   411: their picks' prices at the joining gameweek's first fixture plus the
+   bank equal FPL's own squad value for that week, 12 of 12, while the start
+   prices sit 0.0 to 0.5m below it; one pick (8.0 at the start, 7.9 at GW2)
+   had fallen before joining. The exact price paid is the price on the day the
+   squad was built, which nothing public states, so `reconstructPurchasePrices`
+   rule 3 takes the lower of the start price and the player's lowest listed
+   price up to the joining gameweek (`joinPriceFloors`, from element-summary).
+   Never above what was paid; still possibly below it. app.js reads those
+   summaries only for a late joiner's original picks, as quiet reads (no data
+   status row, nothing stored on the device; a failure keeps the start price).
+   The health probe's entry is the owner's, a GW1 squad, so it does not read
+   them.
+8. **A check skipped on every run.** The optimizer-consistency case "forcing in
+   a club already at the limit" skipped because the sample's built squad never
+   holds three from one club. It runs on the real GW7 payload (two clubs at
+   three), and an empty class now fails instead of skipping.
+
+### FPL refused the proxy (2026-10-16, 16:50 to before 18:41 UTC)
+
+From about 16:50 UTC FPL answered every production proxy fetch with a 403 in
+200 to 280 ms (28 of 28 in the function log), so shevato.com served its last
+copies marked stale. By 18:41 the health run read everything fresh, and the
+proxy was fetching fresh at 19:42. What was measured:
+
+- **Not our User-Agent.** The same UA got a 200 from a residential address
+  throughout, the proxy itself was fetching fine at 16:39, and at 19:43 an
+  isolated draft function (no store access, token-gated, deleted afterwards)
+  got a 200 from Netlify with our UA, a browser UA and no UA alike. Changing
+  the UA would have fixed nothing.
+- **Not our quota or our volume.** Our own quota refusal logs "fpl quota
+  exceeded", and the proxy makes roughly one upstream call per path per TTL.
+- **FPL's edge is Fastly** (`via: ... varnish`, `x-served-by: cache-...`), and
+  the functions run in AWS us-east-1 (egress 44.212.97.248 at 19:43), an
+  address shared with every other Lambda customer there. A fast 403 from the
+  edge to that range, while a home address passes, fits a block by address
+  reputation or by a shared address's request rate, which other tenants can
+  trigger. It cannot be proven now: the log kept only "upstream 403".
+
+What changed, so the next one is both gentler and explained (fpl-cache.mjs):
+a 403 or 429 is recorded as `meta:upstream-refusal` with the status, the edge
+headers and the start of the body, and for 120 s (or Retry-After, up to
+900 s) no caller goes upstream at all: the cached copy is served marked stale,
+or a 503 when there is none. Before, every visitor past the 60-second stale
+window asked again, which answers a rate block with more requests. The health
+run reads that record and fails when a refusal episode (refusals no more than
+an hour apart) lasted 30 minutes or more since the previous run, naming what
+FPL said; shorter ones are printed in its report. Its direct question to FPL
+now also records the edge and the body of a non-200. If refusals persist, the
+remaining options are FPL's to grant, not ours to route around: no rotating
+egress, no disguised UA.
+
+### Known and left, with the reason
+
+- **A late joiner's purchase price is a floor, not the price paid** (item 7
+  above): the lower of the start price and the lowest listed price up to the
+  joining week. It can understate what a sale raises (a transfer that is
+  affordable may be missed), never overstate it.
+- **The header's overall rank and History's "after Gameweek N" differ, and
+  that is correct.** The header is `entry.summary_overall_rank`, which FPL
+  keeps recalculating with no football played (the owner's moved 6,172,276 to
+  6,172,268 on 2026-10-16 while his GW6 row stayed 6,172,364; the event rank
+  likewise, 10,860,893 against 10,861,332). History's tile is labelled "after
+  Gameweek N" and is that frozen row. FPL's own pages show the same two
+  numbers in the same two places, so neither is changed.
+- **FPL may flip the gameweek more than an hour after a deadline.** The page
+  stops its 75-second re-reads and the TTL collapse ends at deadline + 1 h; GW1
+  flipped between 15 and 73 minutes after. An open tab then waits for "Check
+  for changes" or the base TTLs (up to about 20 minutes); the plan is marked as
+  past its deadline meanwhile, so nothing wrong is actionable.
+- **The health run's margin**: 10.3 to 19.0 s over the 25 runs to
+  2026-10-16, no trend; the 12:41 UTC run is the slowest every day (Netlify's
+  busy hour) and the built-squad plan is most of it. A run past 24 s now fails
+  ("the run finishes well inside Netlify's 30-second limit") while it can
+  still store its result; one killed at 30 s is reported by the next run's
+  "previous scheduled run recorded its result" and by the status endpoint
+  within two minutes.
+- **`plan.squadValueAfterTenths` is at LISTED prices** (`planner.js`
+  `planFromScored`) while transfers.js and the sandbox use selling prices. No
+  surface shows it; the replay carries it forward. Left alone rather than move
+  replay numbers for a field nobody reads.
+
+---
+
 ## The 2026-10-09 backend audit, and what its fixes taught (found and FIXED 2026-10-09)
 
 A full backend audit (`.reports/fpl-planner-session-report-2026-10-09-1638.md`,
@@ -916,6 +1113,8 @@ inherit it.
 | The season-statistics rollover collapses every projection | every projection is a finite number | that a gameweek total was ever near 50 rather than 20 |
 | Every GW4 match window projected a 6.4 point best eleven | every probability legal, and the pause fired | that the two match counts the classifier compared described the same matches |
 | Every nailed starter projected to start 64-76% of the time, best eleven 38 | spread, best eleven 30-100, attackers above defenders | that a league of projections matched the gameweek that then happened |
+| 19 of 21 live-season defects reached the owner first (2026-10-16) | the payload, and a plan for a squad the probe built | a REAL manager's squad state against FPL's witnesses, and his plan against its own numbers |
+| A Bench Boost alternative read "+0.52" while ranking 0.43 below | each card's sentence on hand-built alternatives | that the figure a card prints is the gap the planner ranked on |
 
 The last two are 2026-08-12 and they are the same joke as the first three: the
 whole suite passed, because a probability of exactly 1 is a legal probability.
@@ -935,6 +1134,12 @@ The test classes that catch this, all present and to be maintained:
    gameweek that happened, in bands (`tests/xp-calibration-guard.test.mjs`,
    `calibration-report.mjs --check`), because a compressed league is legal,
    ordered and wrong.
+7. **Real managers against FPL's witnesses**: real squads at a real deadline,
+   held to the hits FPL charged, its chip ledger and its values, and their plans
+   to their own numbers (`tests/real-deadline-gw7.test.mjs`,
+   `tests/transfer-state-real.test.mjs`, and the health probe's pinned entry),
+   because a state machine checked only against its author's walks is checked
+   against its author's reading.
 
 Raw test count is not evidence of correctness. Do not report it as if it were.
 

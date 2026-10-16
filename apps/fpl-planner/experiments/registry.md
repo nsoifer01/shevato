@@ -1707,6 +1707,36 @@ xG/xA rate quality, and early-window squad construction where a wrong opening
 channel; running more weights is known to be useless, because no flat weight
 can satisfy three seasons whose optima genuinely differ.
 
+## 47. The exact re-score shortlist, 16 to 24: ACCEPT as a search correction
+
+- **Date:** 2026-10-16
+- **Decision: ACCEPT** at 24 (`transfers.js` `rerankCandidates`), under the
+  pre-registered rule in `experiments/configs/rerank-width.mjs` (the
+  transfer-depth standard of entry 35: kept unless it loses with t <= -2.0 or
+  any season loses more than 15 a window).
+- **Why it was run.** A sweep of 61 real managers before the GW7 deadline found
+  one (3 free transfers) whose recommended three-move plan was beaten by a legal
+  neighbour (sell Konsa rather than Dedić) by 0.31 on the planner's own
+  objective. The better plan was generated, then cut when the search kept the
+  top 16 of the fast lineup proxy for exact re-scoring; the planner only ranks
+  what survives. 20 or more finds it. A wider shortlist can only raise the
+  planner's own objective (it chooses the best of a superset), so this is a
+  correction of the search, not a change of strategy, and points were measured
+  as a guard.
+
+| arm | per window | se | t | W-L-T | 2023-24 | 2024-25 | 2025-26 |
+| --- | ---: | ---: | ---: | --- | ---: | ---: | ---: |
+| rerank-24 | -0.2 | 0.2 | -1.46 | 0-2-13 | -0.4 | -0.3 | +0.0 |
+| rerank-32 | -1.4 | 2.2 | -0.64 | 3-2-10 | -4.6 | +0.3 | +0.0 |
+
+Thirteen of fifteen windows are identical at 24: the shortlist rarely binds on
+the archive, whose seasons replay few three-to-five transfer weeks. Neither
+arm trips a stopping condition. 32 is not taken: it moves more windows in both
+directions for nothing. Plan CPU on the live pool rose about 10%, and
+`tests/perf-live-size.test.mjs` passes. Pinned by `tests/real-deadline-gw7.test.mjs`
+("deep-search"), which also shows the width of 16 misses the plan on that
+manager's real squad.
+
 ## 46. A start calibrator fitted on the engine's own start probability: REJECT
 
 - **Date:** 2026-10-10

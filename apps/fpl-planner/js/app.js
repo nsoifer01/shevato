@@ -18,7 +18,7 @@ import { fplApi, NotFoundError, ProxyUnavailableError, deadlineRetryDelayMs } fr
 import { isDemoRequested, loadSampleData } from './data/sample.js';
 import { loadModel } from './data/model.js';
 import { buildGameState } from './engine/normalize.js';
-import { buildSquadState, picksCarryLineup, freeHitPicksInfo } from './engine/squad.js';
+import { buildSquadState, picksCarryLineup, freeHitPicksInfo, originalPicks, joinPriceFloors } from './engine/squad.js';
 import { gameweekLifecycle, GW_PHASE } from './engine/lifecycle.js';
 import { saveSnapshotIfBetter, BASELINE_KEY } from './engine/baseline.js';
 import { resolveGameState } from './engine/world.js';
@@ -333,6 +333,22 @@ async function loadTeam({ force = false } = {}) {
       }
     }
   }
+
+  // A squad created after GW1 holds original picks whose purchase price
+  // nothing public states (squad.js reconstructPurchasePrices, rule 3). Their
+  // match histories bound it from below, so a selling price is never
+  // overstated. Only for a late joiner, only the players not bought since, and
+  // shared and cached by the proxy; a summary that fails leaves that player on
+  // the season-start price, the rule that applied before.
+  state.priceFloors = null;
+  const startedEvent = state.entry && state.entry.started_event;
+  if (state.picks && startedEvent > 1) {
+    const ids = originalPicks({ picks: state.revertPicks || state.picks, transfers: state.transfers, history: state.history });
+    const read = await Promise.allSettled(ids.map(id => fplApi.getElementSummary(id, { quiet: true })));
+    const summaries = new Map();
+    read.forEach((r, i) => { if (r.status === 'fulfilled') summaries.set(ids[i], r.value.data); });
+    state.priceFloors = joinPriceFloors({ summaries, startedEvent });
+  }
 }
 
 /* ------------------------------------------------------------------- model */
@@ -546,6 +562,7 @@ async function connectAndPlan({ reason = 'first-calculation' } = {}) {
       transfers: state.transfers,
       picks: state.picks,
       revertPicks: state.revertPicks,
+      priceFloors: state.priceFloors,
       gameState: state.gameState,
       gw: state.planGw,
     });
@@ -673,7 +690,7 @@ async function refreshInputs() {
     }
     const squadState = buildSquadState({
       entry: state.entry, history: state.history, transfers: state.transfers,
-      picks: state.picks, revertPicks: state.revertPicks,
+      picks: state.picks, revertPicks: state.revertPicks, priceFloors: state.priceFloors,
       gameState: state.gameState, gw: state.planGw,
     });
     const next = inputFingerprint(squadState, state.gameState, null, fingerprintScope(state.fingerprint));
@@ -1455,7 +1472,7 @@ async function reactToDeadline({ retry = false } = {}) {
       scheduleDeadlineRetry();
       const squadState = buildSquadState({
         entry: state.entry, history: state.history, transfers: state.transfers,
-        picks: state.picks, revertPicks: state.revertPicks,
+        picks: state.picks, revertPicks: state.revertPicks, priceFloors: state.priceFloors,
         gameState: state.gameState, gw: state.planGw,
       });
       const next = inputFingerprint(squadState, state.gameState, null, fingerprintScope(state.fingerprint));

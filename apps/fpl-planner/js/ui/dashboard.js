@@ -20,6 +20,7 @@ import { renderSquadTable } from './squad-table.js';
 import { columnChart } from './charts.js';
 import { STRENGTH_PARAMS } from '../engine/strength.js';
 import { formatFreeTransfers } from '../engine/transfer-state.js';
+import { betterLaterGw } from '../engine/chips.js';
 import { openingSquadMoney, picksCarryLineup } from '../engine/squad.js';
 import { assessConfidence } from '../engine/confidence.js';
 import { canQuoteProjections, pausedHeadline } from '../engine/readiness.js';
@@ -396,7 +397,8 @@ function chipRowStatus(entry, plan) {
   if (entry.available === false) return 'Used or out of window';
   if (plan.chip === entry.chip) return 'Playing it this gameweek';
   if (entry.recommended) return 'Clears its bar this gameweek';
-  if (entry.bestGw && entry.bestGw !== plan.gw) return `Best around GW${entry.bestGw}`;
+  const later = betterLaterGw(entry, plan.gw);
+  if (later !== null) return `Best around GW${later}`;
   return 'Hold';
 }
 

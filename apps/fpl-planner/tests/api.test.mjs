@@ -254,7 +254,8 @@ test('data status reports every source the app has asked for', async () => {
     assert.equal(s.ageSeconds, 0);
     assert.equal(s.error, null);
   }
-  assert.equal(labelFor('entry/1/event/6/picks'), 'Your squad');
+  assert.equal(labelFor('entry/1/event/6/picks'), 'Your squad, gameweek 6', 'each gameweek read is its own row');
+  assert.notEqual(labelFor('entry/1/event/5/picks'), labelFor('entry/1/event/6/picks'));
   assert.equal(labelFor('something-else'), 'something-else');
 });
 
@@ -774,4 +775,19 @@ test('the production deadlines are bounded and ordered sensibly', () => {
     createFplApi({ fetchImpl: () => {}, storage: fakeStorage() }).deadlines(),
     { attemptTimeoutMs: ATTEMPT_TIMEOUT_MS, totalDeadlineMs: TOTAL_DEADLINE_MS }
   );
+});
+
+// A late joiner's price floors (app.js loadTeam) read up to fifteen player
+// histories that only bound a price from below: they must neither tell the
+// manager his data is old nor fill the device's storage.
+test('a quiet read neither joins the data status nor is stored on the device', async () => {
+  const storage = fakeStorage();
+  const fetchImpl = recorder(() => proxyResponse({ history: [{ round: 1, value: 50 }] }, { stale: true }));
+  const api = createFplApi({ fetchImpl, storage, now: () => NOW });
+  const res = await api.getElementSummary(7, { quiet: true });
+  assert.deepEqual(res.data, { history: [{ round: 1, value: 50 }] });
+  assert.equal(api.getDataStatus().sources.length, 0);
+  assert.equal(storage._map.size, 0);
+  await assert.rejects(createFplApi({ fetchImpl: recorder(() => proxyResponse({ error: 'x' }, { status: 503 })), storage, now: () => NOW })
+    .getElementSummary(7, { quiet: true }));
 });

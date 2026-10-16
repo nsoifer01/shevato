@@ -275,7 +275,11 @@ test('a manager who joins late starts his own pre-season, then one per gameweek'
   assert.equal(freeTransfersFor(replayTransferState({ history, rules, upToGw: 10 })), 3);
 });
 
-test('a gameweek missing from history never inflates the count', () => {
+// The claim is about weeks that made no transfers. A missing week that SPENT
+// banked transfers is passed through at the banked count and over-reads, which
+// is why buildSquadState fills the one gap production has (the newest week,
+// after a rollover) from the picks payload; tests/squad.test.mjs pins that.
+test('a missing gameweek that made no transfers never inflates the count', () => {
   const complete = {
     current: [
       { event: 1, event_transfers: 0 },
