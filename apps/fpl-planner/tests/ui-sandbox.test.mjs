@@ -341,6 +341,27 @@ test('a recommended chip does not read as "Hold" on its own row', () => {
   assert.match(text, /Used or out of window/);
 });
 
+test('a chip held on a tie does not read "Best around" a week worth less (2026-10-16)', () => {
+  const gw = inSeasonPlan.current.gw;
+  const bundle = {
+    ...inSeasonPlan,
+    current: { ...inSeasonPlan.current, chip: null,
+      explanation: { ...inSeasonPlan.current.explanation,
+        chipReason: {
+          reasons: [{ text: 'Keep your chips.' }],
+          perChip: {
+            wildcard: { chip: 'wildcard', available: false, recommended: false, bestGw: null },
+            freehit: { chip: 'freehit', available: false, recommended: false, bestGw: null },
+            bboost: { chip: 'bboost', available: false, recommended: false, bestGw: null },
+            '3xc': { chip: '3xc', available: true, recommended: false, valueNow: 7.2, bestGw: gw + 9, bestValue: 6.1 },
+          },
+        } } },
+  };
+  const text = textOf(chipCard({ bundle, gameState }));
+  assert.doesNotMatch(text, /Best around GW/, 'this week is worth more than the later one');
+  assert.match(text, /Triple Captain\s*Hold/);
+});
+
 test('a chip that clears its bar but is not the plan says so plainly', () => {
   const gw = inSeasonPlan.current.gw;
   const bundle = {

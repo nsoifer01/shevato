@@ -124,7 +124,6 @@ const CLASSES = [
   ['premium defenders', take(excluded.filter(p => p.position === 2).sort(byCost), 2)],
   ['goalkeepers', take(excluded.filter(p => p.position === 1), 2)],
   ['cheap enablers', take(excluded.slice().sort((a, b) => a.nowCost - b.nowCost || a.id - b.id), 2)],
-  ['a club already at the limit', take(excluded.filter(p => (clubCounts.get(p.teamId) || 0) >= rules.clubLimit), 2)],
   ['same price as a player already picked', take(
     excluded.filter(p => unconstrained.squad.some(id => player(id).position === p.position && player(id).nowCost === p.nowCost)),
     2,
@@ -190,16 +189,13 @@ test('buildSquad reports the exact objective of the squad it returns', () => {
 /* ------------------------------------------------- the invariant, by class */
 
 for (const [label, ids] of CLASSES) {
-  test(`forcing in ${label} never beats the unconstrained build`, (t) => {
+  test(`forcing in ${label} never beats the unconstrained build`, () => {
     // Every class is a property of the squad the optimizer actually builds, so
-    // a class can legitimately empty out when projections change (the club
-    // limit only binds if the built squad holds three from one club). Skipping
-    // visibly is honest; asserting would fail for a reason that has nothing to
-    // do with the invariant under test.
-    if (!ids.length) {
-      t.skip(`the sample dataset offers no ${label} outside the built squad`);
-      return;
-    }
+    // a class can empty out when projections change. That is a lost check, so
+    // it fails here rather than skipping: the club-limit class skipped on
+    // every run until 2026-10-16, because the sample's built squad never holds
+    // three from one club, and it now runs on the real GW7 payload below.
+    assert.ok(ids.length, `the sample dataset offers no ${label} outside the built squad`);
     for (const id of ids) {
       const forced = buildSquad({ ...BUILD, lockedIds: [id] });
       assert.ok(forced.squad.includes(id), `${player(id).webName} was not actually forced in`);
@@ -221,6 +217,35 @@ test('the invariant holds for every one of the twenty best excluded players', ()
       unconstrainedValue >= forcedValue - TOLERANCE,
       `forcing ${p.webName} in scored ${forcedValue.toFixed(4)} against an unconstrained ${unconstrainedValue.toFixed(4)}`,
     );
+  }
+});
+
+// The club limit binds only when the built squad holds three from one club,
+// which the sample's never does and the real GW7 payload's does (two clubs).
+// A player from such a club needs a DIFFERENT position sold to make room.
+test('forcing in a club already at the limit never beats the unconstrained build (real GW7 payload)', async () => {
+  const { GAME_STATE, PLAN_GW } = await import('./helpers/gw7-fixture.mjs');
+  const gs = GAME_STATE;
+  const r = gs.rules;
+  const proj = buildProjections({ gameState: gs, strength: buildStrength(gs, { asOfGw: PLAN_GW - 1 }), gwFrom: PLAN_GW, gwTo: PLAN_GW + HORIZON - 1 });
+  const build = { projections: proj, gameState: gs, rules: r, gw: PLAN_GW, horizon: HORIZON, budgetTenths: r.budgetTenths, opts: { discount: DISCOUNT, seed: SEED } };
+  const val = squad => squadObjective(squad, proj, PLAN_GW, r, { gameState: gs, horizon: HORIZON, discount: DISCOUNT, mode: 'exact' }).total;
+  const base = buildSquad(build);
+  const counts = new Map();
+  for (const id of base.squad) { const t = gs.players.get(id).teamId; counts.set(t, (counts.get(t) || 0) + 1); }
+  const xp = (id) => { let s = 0; for (let k = 0; k < HORIZON; k++) { const row = proj.get(id, PLAN_GW + k); if (row) s += Math.pow(DISCOUNT, k) * row.xPoints; } return s; };
+  const ids = [...gs.players.values()]
+    .filter(p => buyable(p) && !base.squad.includes(p.id) && (counts.get(p.teamId) || 0) >= r.clubLimit)
+    .sort((a, b) => xp(b.id) - xp(a.id) || a.id - b.id).slice(0, 2).map(p => p.id);
+  assert.equal(ids.length, 2, 'the real payload\'s built squad holds a club at the limit');
+  const baseValue = val(base.squad);
+  for (const id of ids) {
+    const forced = buildSquad({ ...build, lockedIds: [id] });
+    assert.ok(forced.squad.includes(id), `${gs.players.get(id).webName} was not actually forced in`);
+    const fc = forced.squad.filter(x => gs.players.get(x).teamId === gs.players.get(id).teamId).length;
+    assert.ok(fc <= r.clubLimit, 'the forced build respects the club limit');
+    assert.ok(baseValue >= val(forced.squad) - TOLERANCE,
+      `forcing ${gs.players.get(id).webName} in scored ${val(forced.squad).toFixed(4)} against an unconstrained ${baseValue.toFixed(4)}`);
   }
 });
 

@@ -8,6 +8,7 @@
 
 import { HEALTH_STORE, openStrongStore, runScheduledProbe, githubDispatchAlert } from './lib/fpl-health-run.mjs';
 import { ARCHIVE_STORE } from './lib/fpl-archive-stage.mjs';
+import { STORE_NAME } from './lib/fpl-cache.mjs';
 
 export default async () => {
   const { getStore } = await import('@netlify/blobs');
@@ -15,7 +16,7 @@ export default async () => {
     token: process.env.FPL_HEALTH_GITHUB_TOKEN,
     repo: process.env.FPL_HEALTH_GITHUB_REPO || undefined,
   });
-  const result = await runScheduledProbe({ store: openStrongStore(getStore, HEALTH_STORE), alert, archiveStore: openStrongStore(getStore, ARCHIVE_STORE) });
+  const result = await runScheduledProbe({ store: openStrongStore(getStore, HEALTH_STORE), alert, archiveStore: openStrongStore(getStore, ARCHIVE_STORE), proxyStore: openStrongStore(getStore, STORE_NAME) });
   if (result.skipped) {
     console.log('fpl-health', result.skipped);
     return new Response(result.skipped, { status: 200 });

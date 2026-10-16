@@ -820,6 +820,35 @@ test('the sample dataset produces a validated plan through the real projection m
   }
 });
 
+// Regression 2026-10-16 (entry 3855835, GW7). Each projected gameweek was
+// planned over the weeks left in THIS week's horizon (4, 3, 2, 1), so the last
+// card was a one-week decision: it sold Tarkowski a week after buying him for
+// +0.9 in GW11, when GW11-15 favour keeping him. The card claims to show what
+// the planner will do at that deadline, and at that deadline it looks five
+// weeks ahead.
+test('every projected gameweek is planned over the full horizon, and this week does not depend on it', async () => {
+  const { gameState, squadState } = sampleInputs();
+  const bundle = await buildPlan({ gameState, squadState, options: { horizon: 5, seed: 7 } });
+  assert.deepEqual(bundle.future.map(p => p.horizon), [5, 5, 5, 5]);
+  for (const plan of bundle.future) {
+    const bullet = plan.explanation.transferReasons?.[0]?.reasons.find(r => r.code === 'transfer_horizon_gain');
+    if (bullet) assert.match(bullet.text, /next 5 gameweeks/, 'the sentence names the horizon the decision used');
+  }
+
+  // This week's decision never reads the longer projections.
+  const alone = await buildPlan({ gameState, squadState, options: { horizon: 5, seed: 7, futureTransfers: false } });
+  const strip = p => ({ ...p, computedAt: null, durationMs: 0 });
+  assert.deepEqual(strip(alone.current), strip(bundle.current));
+
+  // At the end of the season the horizon still stops at the last gameweek.
+  const late = buildSquadState({
+    entry: sampleBundle.entry, history: sampleBundle.history, transfers: sampleBundle.transfers,
+    picks: sampleBundle.picks, gameState, gw: gameState.rules.totalEvents - 3,
+  });
+  const end = await buildPlan({ gameState, squadState: late, options: { horizon: 5, seed: 7 } });
+  assert.deepEqual(end.future.map(p => p.horizon), [3, 2, 1]);
+});
+
 test('live data is never marked as sample data', async () => {
   // The synthetic world is built the way live data arrives, with no sample
   // stamp anywhere, and the flag has to stay off: a fabricated squad presented

@@ -1,0 +1,251 @@
+{
+ "note": "A real manager at the 2026/27 GW4 deadline (captured 2026-10-16 from the public FPL API; identity removed): history and transfers through GW3, the GW3 picks. Pairs with tests/fixtures/xp-calibration-2026 deadlinePayload(4), whose prices are as served after GW4, so picks.entry_history.value is restated at those prices (FPL served 997; the capture prices the same fifteen plus bank at 993). chips is the 2026/27 catalogue, which that capture lacks. Used by netlify/functions/tests/fpl-health.test.mjs and tests/plan-audit.test.mjs.",
+ "chips": [
+  {
+   "id": 1,
+   "name": "wildcard",
+   "number": 1,
+   "start_event": 2,
+   "stop_event": 19,
+   "chip_type": "transfer"
+  },
+  {
+   "id": 2,
+   "name": "wildcard",
+   "number": 1,
+   "start_event": 20,
+   "stop_event": 38,
+   "chip_type": "transfer"
+  },
+  {
+   "id": 3,
+   "name": "freehit",
+   "number": 1,
+   "start_event": 2,
+   "stop_event": 19,
+   "chip_type": "transfer"
+  },
+  {
+   "id": 4,
+   "name": "bboost",
+   "number": 1,
+   "start_event": 1,
+   "stop_event": 19,
+   "chip_type": "team"
+  },
+  {
+   "id": 5,
+   "name": "3xc",
+   "number": 1,
+   "start_event": 1,
+   "stop_event": 19,
+   "chip_type": "team"
+  },
+  {
+   "id": 6,
+   "name": "freehit",
+   "number": 1,
+   "start_event": 20,
+   "stop_event": 38,
+   "chip_type": "transfer"
+  },
+  {
+   "id": 7,
+   "name": "bboost",
+   "number": 1,
+   "start_event": 20,
+   "stop_event": 38,
+   "chip_type": "team"
+  },
+  {
+   "id": 8,
+   "name": "3xc",
+   "number": 1,
+   "start_event": 20,
+   "stop_event": 38,
+   "chip_type": "team"
+  }
+ ],
+ "entry": {
+  "id": 1000001,
+  "name": "Fixture XI",
+  "player_first_name": "",
+  "player_last_name": "",
+  "started_event": 1,
+  "summary_overall_points": 180,
+  "summary_overall_rank": 4861143,
+  "current_event": 3
+ },
+ "history": {
+  "current": [
+   {
+    "event": 1,
+    "points": 44,
+    "total_points": 44,
+    "bank": 0,
+    "value": 1000,
+    "event_transfers": 0,
+    "event_transfers_cost": 0,
+    "points_on_bench": 11
+   },
+   {
+    "event": 2,
+    "points": 99,
+    "total_points": 143,
+    "bank": 0,
+    "value": 999,
+    "event_transfers": 1,
+    "event_transfers_cost": 0,
+    "points_on_bench": 0
+   },
+   {
+    "event": 3,
+    "points": 37,
+    "total_points": 180,
+    "bank": 0,
+    "value": 997,
+    "event_transfers": 0,
+    "event_transfers_cost": 0,
+    "points_on_bench": 1
+   }
+  ],
+  "past": [],
+  "chips": []
+ },
+ "transfers": [
+  {
+   "element_in": 229,
+   "element_in_cost": 60,
+   "element_out": 200,
+   "element_out_cost": 60,
+   "event": 2,
+   "time": "2026-08-28T05:33:00.415850Z"
+  }
+ ],
+ "picks": {
+  "active_chip": null,
+  "automatic_subs": [],
+  "entry_history": {
+   "event": 3,
+   "points": 37,
+   "total_points": 180,
+   "rank": 9502808,
+   "rank_sort": 9526788,
+   "overall_rank": 4861143,
+   "percentile_rank": 95,
+   "overall_rank_percentage": "47",
+   "bank": 0,
+   "value": 993,
+   "event_transfers": 0,
+   "event_transfers_cost": 0,
+   "points_on_bench": 1
+  },
+  "picks": [
+   {
+    "element": 1,
+    "position": 1,
+    "multiplier": 1,
+    "is_captain": false,
+    "is_vice_captain": false
+   },
+   {
+    "element": 4,
+    "position": 2,
+    "multiplier": 1,
+    "is_captain": false,
+    "is_vice_captain": false
+   },
+   {
+    "element": 229,
+    "position": 3,
+    "multiplier": 1,
+    "is_captain": false,
+    "is_vice_captain": false
+   },
+   {
+    "element": 388,
+    "position": 4,
+    "multiplier": 1,
+    "is_captain": false,
+    "is_vice_captain": false
+   },
+   {
+    "element": 84,
+    "position": 5,
+    "multiplier": 1,
+    "is_captain": false,
+    "is_vice_captain": false
+   },
+   {
+    "element": 368,
+    "position": 6,
+    "multiplier": 1,
+    "is_captain": false,
+    "is_vice_captain": false
+   },
+   {
+    "element": 426,
+    "position": 7,
+    "multiplier": 2,
+    "is_captain": true,
+    "is_vice_captain": false
+   },
+   {
+    "element": 481,
+    "position": 8,
+    "multiplier": 1,
+    "is_captain": false,
+    "is_vice_captain": false
+   },
+   {
+    "element": 155,
+    "position": 9,
+    "multiplier": 1,
+    "is_captain": false,
+    "is_vice_captain": false
+   },
+   {
+    "element": 13,
+    "position": 10,
+    "multiplier": 1,
+    "is_captain": false,
+    "is_vice_captain": false
+   },
+   {
+    "element": 106,
+    "position": 11,
+    "multiplier": 1,
+    "is_captain": false,
+    "is_vice_captain": true
+   },
+   {
+    "element": 497,
+    "position": 12,
+    "multiplier": 0,
+    "is_captain": false,
+    "is_vice_captain": false
+   },
+   {
+    "element": 498,
+    "position": 13,
+    "multiplier": 0,
+    "is_captain": false,
+    "is_vice_captain": false
+   },
+   {
+    "element": 346,
+    "position": 14,
+    "multiplier": 0,
+    "is_captain": false,
+    "is_vice_captain": false
+   },
+   {
+    "element": 441,
+    "position": 15,
+    "multiplier": 0,
+    "is_captain": false,
+    "is_vice_captain": false
+   }
+  ]
+ }
+}

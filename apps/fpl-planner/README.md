@@ -23,7 +23,7 @@ Plans are scored over a rolling horizon, and the default is **5 gameweeks**. It 
   says so and withholds transfer and chip advice rather than planning against a
   team you do not own. The live pitch still shows the Free Hit team, because
   those are the players actually scoring.
-- It does **not** publish selling prices. `now_cost` is the wrong number to spend against: FPL takes half the profit on any player who has risen since you bought him. Purchase prices are reconstructed from `entry/{id}/transfers` and the sell-on rule is applied on top (`js/engine/squad.js`).
+- It does **not** publish selling prices. `now_cost` is the wrong number to spend against: FPL takes half the profit on any player who has risen since you bought him. Purchase prices are reconstructed from `entry/{id}/transfers` and the sell-on rule is applied on top (`js/engine/squad.js`). A player never bought by a transfer is priced at his season-start price, exact for a squad built before GW1; for a squad built later (`entry.started_event` > 1) the price paid is published nowhere, so the app reads those players' `element-summary` histories and uses the lower of the start price and the lowest listed price up to the joining gameweek, which can understate a sale but never overstate it.
 - Its `entry_history.value` is the fifteen at their **listed** prices plus the bank, as a **snapshot frozen at that gameweek's deadline**: it is not what the squad would sell for, and it does not move when prices do. SQUAD VALUE in the header is therefore the reconstructed total (the fifteen at their selling prices, plus the bank), which sits below FPL's figure whenever an owned player has risen since purchase. The `value_mismatch` check compares like with like: the fifteen at their listed prices rolled back to the deadline with `cost_change_event` (raw listed prices when the picks are not the current gameweek's), plus the bank, against `value`. An owned riser and an ordinary overnight move are therefore silent, while a squad or bank that disagrees with FPL (a transfer missing from the payload) is reported. It checks the fifteen and the bank only: `value` carries no purchase prices, so nothing FPL serves can validate the selling-price reconstruction. The frozen figure is used for display in one case only: an in-season payload that arrives with no picks, where there is nothing to reconstruct from.
 - It does **not** publish your free transfer count. That is replayed from `entry/{id}/history` by `js/engine/transfer-state.js`, the ONE module allowed to know the transfer arithmetic: unlimited before the GW1 deadline (a state, not a number), then 1 per gameweek, rolling to a cap of 5, with wildcard and free hit weeks preserving the banked count and consuming that week's +1 (the next gameweek starts with exactly what was banked before the chip; a chip-week +1 showed entry 3855835 two free transfers when FPL said one, fixed 2026-10-09). Every other module (planner, transfer search, chips, replay, UI wording) consumes it rather than re-deriving it; the off-by-one that lived in the scattered copies contaminated every replay until 2026-08-11.
 - It does **not** show a gameweek's transfers or chip until that gameweek's deadline. `entry/{id}/transfers` and `history.chips` list a move or an activated chip only once its deadline has passed (measured 2026-09-13), so transfers made, or a Wildcard or Free Hit activated, for the gameweek being planned are invisible to the app. See "The squad you own, not the squad you fielded".
@@ -314,7 +314,7 @@ Every module under `js/engine/` is a pure ES module with no DOM access, so `node
 
 `netlify/functions/fpl.mjs` fronts an anchored allowlist of read-only endpoints (`bootstrap-static`, `fixtures`, `event-status`, `entry/<id>`, `entry/<id>/history`, `entry/<id>/transfers`, `entry/<id>/event/<gw>/picks`, `element-summary/<id>`, `event/<gw>/live`). Anything else is refused with 400 before it can reach upstream, and requests from an origin other than shevato.com or local dev are refused with 403.
 
-Responses are cached in Netlify Blobs, so a thousand visitors cost roughly one upstream fetch per TTL window: 10 minutes for the bootstrap, 30 for fixtures, 5 for entry endpoints, 15 for a player summary, 1 for live scores and `event-status`, and a day for the picks of a gameweek before the current one (they can no longer change). Inside the six hours before a deadline AND the hour after the most recent one every TTL collapses to 2 minutes: before, because that is when prices and injury news move; after, because that is when FPL moves the gameweek on, and until 2026-10-09 a copy fetched just before the deadline was served as fresh for up to ten minutes after it (thirty for fixtures). A 200 whose body is not the shape its endpoint serves (bootstrap without `elements`/`events`/`teams` arrays, fixtures that are not an array, and so on) is never cached: the last good copy is served as stale, or the client gets `502 upstream_malformed`. If upstream fails, the last cached copy is served with `x-fpl-stale: true` and its age in seconds; only when there is no cached copy at all does the function return 503. An unknown team id passes through as a 404 and is never cached. The CDN in front of the function may repeat a fresh answer, but only for that answer's remaining TTL (collapsed near a deadline in the same way), and a stale answer, an error or a 429 is never edge-cached. Because the edge replays `x-fpl-age-seconds` unchanged, the client adds the response `Age` header to it, so a repeated copy never reads as younger than it is.
+Responses are cached in Netlify Blobs, so a thousand visitors cost roughly one upstream fetch per TTL window: 10 minutes for the bootstrap, 30 for fixtures, 5 for entry endpoints, 15 for a player summary, 1 for live scores and `event-status`, and a day for the picks of a gameweek before the current one (they can no longer change). Inside the six hours before a deadline AND the hour after the most recent one every TTL collapses to 2 minutes: before, because that is when prices and injury news move; after, because that is when FPL moves the gameweek on, and until 2026-10-09 a copy fetched just before the deadline was served as fresh for up to ten minutes after it (thirty for fixtures). A 200 whose body is not the shape its endpoint serves (bootstrap without `elements`/`events`/`teams` arrays, fixtures that are not an array, and so on) is never cached: the last good copy is served as stale, or the client gets `502 upstream_malformed`. If upstream fails, the last cached copy is served with `x-fpl-stale: true` and its age in seconds; only when there is no cached copy at all does the function return 503. When FPL REFUSES the proxy (a 403 or a 429, as its Fastly edge did from 16:50 UTC on 2026-10-16) the refusal is stored as `meta:upstream-refusal` with the status, the edge headers and the start of the body, and nobody goes upstream for 120 seconds (or Retry-After, up to 900): every caller is served the cached copy marked stale, or a 503, instead of answering a block with more requests. An unknown team id passes through as a 404 and is never cached. The CDN in front of the function may repeat a fresh answer, but only for that answer's remaining TTL (collapsed near a deadline in the same way), and a stale answer, an error or a 429 is never edge-cached. Because the edge replays `x-fpl-age-seconds` unchanged, the client adds the response `Age` header to it, so a repeated copy never reads as younger than it is.
 
 `js/data/api.js` wraps that with a memory and `localStorage` cache under the `fpl-planner:cache:` prefix, per-endpoint TTLs, and single-flight de-duplication so a dashboard asking four components for the bootstrap downloads it once. Those cache keys are deliberately **not** in the app's sync namespace: they are large, identical for every user and fully derivable.
 
@@ -776,13 +776,21 @@ below has its evidence in a comment beside the constant.
 - **Wildcard and Free Hit** keep their 12-point bars, priced in hits, and are
   never forced by a closing window: forced ones realized from -55 to +47 points
   in the chips-on replays, and nothing measured them beforehand.
+- **"Better later" means worth more.** A Bench Boost or Triple Captain held
+  because a later week sits inside its margin is held on a tie, and is never
+  told that week "looks better" or shown "Best around GWn" unless that week is
+  worth more than this one (`betterLaterGw` in `chips.js`, the one answer for
+  the sentence, the chip row and the chip note).
 - **What a chip plan is credited with.** Not the chip's raw points, which no
   transfer could ever beat, but what the chip adds now less what keeping it is
   worth: for a Triple Captain its lead over the best later week, for a Bench
   Boost the bench less the larger of the bar and the best near week less 5.0.
   Both are above zero exactly when the chip's rule says play. The chip card is
   rewritten to describe the chip the plan actually plays, and an alternative
-  that differs in its chip shows the gap "counting what the chip is worth later".
+  that differs in its chip, or plays the same Bench Boost or Triple Captain on
+  another squad (each squad is credited its own net value), shows the gap the
+  planner ranked on, "counting what the chip is worth later", under a title
+  that names its moves.
 - **A Free Hit plan is scored as FPL pays it**: the rented squad for its one
   gameweek, then the squad the manager keeps for the rest of the horizon
   (`candidateTrajectory` in `planner.js`), exactly as the week after it is
@@ -838,6 +846,14 @@ count through `transfer-state.js`. Without it the planner would recommend a move
 that has already been made and understate a hit by four points for every free
 transfer already used.
 
+**A history a gameweek behind the picks** is completed from the picks
+(`historyCaughtUp` in `engine/squad.js`). The two are cached separately, so for
+a few minutes after FPL moves the gameweek on the picks can be the new week's
+while the history still ends a week earlier; the picks payload carries FPL's
+own row for its week (`entry_history`) and the chip played in it
+(`active_chip`), which fill the gap rather than a guess that over-counted free
+transfers whenever that week made any.
+
 **What it cannot see.** FPL's public `entry/{id}/transfers` and
 `entry/{id}/history` do not list a gameweek's transfers or its chip until that
 gameweek's deadline has passed (measured 2026-09-13; FINDINGS "What the public
@@ -866,8 +882,19 @@ one case of fourteen tight-budget variants the search still missed (a 1.0m
 bank with selling prices cut to three quarters: Gabriel to Senesi and Garner to
 Zubimendi, 174.49, two players ranked 9th to 24th by value who are the best
 pair only once the money is counted); 20 of 20 variants now match a screened
-optimum. Deterministic throughout; a full plan costs about one
-second of CPU on a live-sized pool against a ten-second budget.
+optimum. The search ranks its candidates on a fast lineup proxy and re-scores
+the best 24 exactly before the planner ranks them (16 until 2026-10-16, when a
+real manager's better three-move plan was cut at 16; registry 47).
+Deterministic throughout; a full plan costs one to two seconds of CPU on a
+live-sized pool against a ten-second budget, up to about five for a manager
+holding a Wildcard and a Free Hit.
+
+The projected future plan plans each later gameweek the way the planner will
+when its deadline comes round, over the full horizon from that week, with
+projections of its own that reach that far. It used to inherit this week's
+projections and plan gameweek gw+k over the 5-k weeks left in them, so the last
+card was a one-week decision that could sell a player bought the week before.
+This week's decision never reads the longer projections.
 
 The roll is valued by the risk profile's `rollBonus` per transfer carried into
 next week, and the explanation quotes the value of each transfer a roll keeps
@@ -1191,6 +1218,17 @@ calibration bands against what those gameweeks produced; the model that shipped
 before 2026-09-16 breaks them, and the test proves the bands are not vacuous by
 compressing today's projections the same way.
 
+`tests/fixtures/gw7-2026/` is the whole league as served the day before the
+GW7 deadline of 2026/27 with five REAL managers beside it (identities removed),
+each chosen for a path that broke or was found broken that day: the owner, a
+three-free-transfer squad, a Bench Boost plan, a Triple Captain held on a tie
+and a GW6 Free Hit. `tests/real-deadline-gw7.test.mjs` plans each exactly as the
+app does and runs every `plan-audit.mjs` check on it; it is derived by
+`scripts/derive-gw7-fixtures.mjs`. `tests/fixtures/real-histories-2026-gw6.json`
+is 411 real managers' season histories reduced to transfers, charged hits and
+chips; `tests/transfer-state-real.test.mjs` holds the free-transfer replay to
+every one of those 2,454 charges.
+
 `tests/fixtures/gw4-2026/` is the payload served on 2026-09-13 with MUN v MCI in
 play, plus that gameweek's live stats per player, derived by
 `scripts/derive-gw4-fixtures.mjs`. `tests/live-match-window.test.mjs` rebuilds
@@ -1268,6 +1306,7 @@ node apps/fpl-planner/scripts/evidence-probe.mjs             # live proxy
 node apps/fpl-planner/scripts/evidence-probe.mjs --bootstrap FILE --fixtures FILE
 node apps/fpl-planner/scripts/evidence-probe.mjs --record    # save this reading
 node apps/fpl-planner/scripts/evidence-probe.mjs --json
+node apps/fpl-planner/scripts/evidence-probe.mjs --entry 3855835  # also plan a real manager
 ```
 
 It resolves the payload exactly as the app does for a first-time visitor
@@ -1286,16 +1325,36 @@ plan built from the payload passes `validatePlan`. `--direct` reads FPL itself
 saved files. The invariants live in `scripts/lib/probe.mjs`, shared by this CLI
 and the scheduled run.
 
+**A real manager, not only a built squad** (2026-10-16). `--entry ID` (or
+`--entry-dir DIR` for saved payloads) reads one manager's entry, history,
+transfers and current picks, and the revert squad after a Free Hit, the way
+`js/app.js` `loadTeam` does, and adds the checks of
+`scripts/lib/plan-audit.mjs`: his free-transfer replay reproduces every hit FPL
+charged (`chargedHitDisagreements` in `transfer-state.js`), the chips offered
+equal the raw bootstrap catalogue less the chips he played, the squad, bank and
+value read agree with FPL, and his plan, built with the app's default
+settings, agrees with its own numbers (no runner-up ranked above it unless the
+hit bar overruled it, none projecting visibly more without its card saying
+why, the expected points equal their parts, money, free transfers, the
+headline and the projected chain). Until then nothing automated ever read a
+real manager, which is why 19 of the 21 live-season defects reached the owner
+first (FINDINGS, "Why every pre-gameweek audit found something").
+
 On a schedule it runs on Netlify, not GitHub: `netlify/functions/fpl-health.mjs`
 (`41 */6 * * *`, so 00:41, 06:41, 12:41 and 18:41 UTC) probes production
 through the proxy, at most once per six-hour slot, and stores the result in the
-`fpl-health` blob store. A run is the 21 invariants plus "the previous scheduled
+`fpl-health` blob store. A run is the payload invariants plus "the previous scheduled
 run recorded its result" and "the deadline archive holds the captures due by
 now" (a pre capture once the next deadline is under 24 hours away, a post
 capture from 4 to 30 hours after the last one, read from the `fpl-archive`
-staging store; `archiveCoverageFailures` in `scripts/lib/archive.mjs`), about
-2 seconds locally and 13.5 on Netlify (its
-limit is 30). `/.netlify/functions/fpl-health-status` serves it: 200 when the
+staging store; `archiveCoverageFailures` in `scripts/lib/archive.mjs`), and the
+real-entry squad-state checks above on the manager `FPL_HEALTH_ENTRY` names
+(default the owner's 3855835, `none` turns it off), read through the proxy,
+about 2 seconds locally and 10 to 19 on Netlify (its limit is 30). That run
+plans the built squad, not the manager: a manager holding a Wildcard and a Free
+Hit costs about three times the plan CPU, which the limit cannot carry, so his
+plan and its consistency checks run in the workflow's `full` mode, which also
+runs on its schedule. `/.netlify/functions/fpl-health-status` serves it: 200 when the
 last run passed and is under 7 hours old; 503 when it failed, when no run has
 landed for 7 hours, when a run claimed its slot and never stored a result, or
 before the first run (`?history` adds the last 120 runs). Every reader and
@@ -1303,7 +1362,13 @@ writer of the store opens it with strong consistency (`openStrongStore`), so
 the status shows a run the moment it is stored. When the proxy answers a payload
 stale, its own call to FPL has just failed, so the run asks FPL once, directly
 (5-second timeout), and adds the answer and how long it took to the failed
-check and the report; a healthy run asks FPL nothing.
+check and the report (for a non-200, also the edge that answered and the start
+of its body); a healthy run asks FPL nothing. Two more checks close the run:
+"FPL has not refused the proxy for long since the last run" reads the proxy's
+refusal record (below) and fails on an episode of 30 minutes or more, printing
+shorter ones in the report, and "the run finishes well inside Netlify's
+30-second limit" fails past 24 seconds, so a run drifting towards the kill says
+so while it can still store a result.
 
 Alerting. A failure is logged as an error, and when `FPL_HEALTH_GITHUB_TOKEN`
 (fine-grained, Actions read/write on this repository only) is set in Netlify,
@@ -1316,8 +1381,10 @@ it by its own clock, keeps one `[fpl-health]` issue (opened with an @mention of 
 owner, silent while the same thing stays wrong, one comment when it changes,
 closed on recovery) and fails while anything is wrong, so GitHub emails the
 owner. The workflow's own schedule (`53 */6 * * *`) runs the same job as the
-independent, late backstop. By hand: mode `full` runs the probe on a runner
-with `--direct`; `drill-failure` and `drill-recovery` rehearse the alert on a
+independent, late backstop, and the same schedule runs mode `full`: the probe
+on a runner with `--direct --entry`, failing (and so emailing the owner) when
+the manager's plan or squad state breaks a check. By hand: mode `full` runs it
+on demand; `drill-failure` and `drill-recovery` rehearse the alert on a
 synthetic status against a separate `[fpl-health drill]` issue. Why it is built
 this way, and Netlify's limits: FINDINGS, "GitHub's scheduler cannot carry a
 deadline archive".

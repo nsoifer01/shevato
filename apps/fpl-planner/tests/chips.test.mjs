@@ -27,7 +27,7 @@ import { buildPlan } from '../js/engine/planner.js';
 import { assembleSampleBundle } from '../js/data/sample.js';
 import {
   evaluateChips, squadTrajectory, discountWeights, chipLabel, fmtValue, makeReason, CHIP_PARAMS, xpOf,
-  benchBoostDecision, tripleCaptainDecision, chipWindowAt, dueChipsAt,
+  benchBoostDecision, tripleCaptainDecision, chipWindowAt, dueChipsAt, holdReasons, betterLaterGw,
 } from '../js/engine/chips.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -420,7 +420,9 @@ test('hold comes back with real numbers when no chip clears its bar', () => {
   const inHand = reasonOf({ reasons: rec.reasons }, 'chips_in_hand');
   const available = Object.values(evaluation.perChip).filter(c => c.available);
   assert.equal(inHand.value, available.length);
-  assert.equal(inHand.text, `You have ${available.length} chips playable this gameweek, and none of them clears its bar.`);
+  assert.equal(inHand.text, available.length === 1
+    ? 'You have 1 chip playable this gameweek, and it does not clear its bar.'
+    : `You have ${available.length} chips playable this gameweek, and none of them clears its bar.`);
 
   for (const entry of available) {
     const held = rec.reasons.find(r => r.code === `hold_${entry.chip}`);
@@ -1068,7 +1070,7 @@ test('a bench player who cannot play is sold before the bench is boosted, never 
   }
 });
 
-test('an alternative that plays a different chip is compared on the objective, and one playing the same chip is not', async () => {
+test('an alternative that plays a different chip, or the same Bench Boost or Triple Captain, is compared on the objective', async () => {
   const GW = 10;
   const fixtures = makeFixtures({ gwTo: RULES.totalEvents, doubles: { [GW]: SQUAD_CLUBS } });
   const gameState = makeGameState(fixtures, GW);
@@ -1080,9 +1082,36 @@ test('an alternative that plays a different chip is compared on the objective, a
   const plan = bundle.current;
   assert.ok(plan.alternatives.length > 0);
   for (const alt of plan.alternatives) {
-    if (alt.chip === plan.chip) assert.equal(alt.deltaWithChipValue, null);
+    const timing = alt.chip === 'bboost' || alt.chip === '3xc';
+    if (alt.chip === plan.chip && !timing) assert.equal(alt.deltaWithChipValue, null);
     else assert.ok(Number.isFinite(alt.deltaWithChipValue), `${alt.headline}: ${alt.deltaWithChipValue}`);
+    // Either way the figure the card prints is never above the plan unless
+    // the hit bar overruled it, so "none scored higher" is never false.
+    const shown = Number.isFinite(alt.deltaWithChipValue) ? alt.deltaWithChipValue : alt.deltaHorizon;
+    if (!alt.belowHitMargin && !alt.belowRollValue) assert.ok(shown < 0.05, `${alt.headline}: ${shown}`);
   }
+});
+
+// Regression 2026-10-16 (a real manager, 2 FT, Bench Boost plan): a same-chip
+// alternative printed "+0.52 pts" while ranking 0.43 below the plan, and all
+// three alternatives were titled "Play your Bench Boost".
+test('a same Bench Boost alternative shows its ranking gap and names its own moves', async () => {
+  const GW = 10;
+  const fixtures = makeFixtures({ gwTo: RULES.totalEvents, doubles: { [GW]: SQUAD_CLUBS } });
+  const gameState = makeGameState(fixtures, GW);
+  const projections = makeProjections(gameState, GW, GW + 8, flat);
+  const squadState = makeSquadState({ gw: GW, freeTransfers: 2 });
+  const bundle = await buildPlan({
+    gameState, squadState, options: { horizon: 5, seed: 3, projections, strength: {} },
+  });
+  const same = bundle.current.alternatives.filter(a => a.chip && a.chip === bundle.current.chip && (a.chip === 'bboost' || a.chip === '3xc'));
+  assert.ok(same.length > 0, `the double gameweek makes the plan a Bench Boost with same-chip runners-up (${bundle.current.chip})`);
+  for (const alt of same) {
+    assert.ok(Math.abs(alt.deltaWithChipValue - alt.deltaObjective) < 1e-12, 'the printed gap is the ranking gap');
+    if (alt.transfersOut.length) assert.match(alt.headline, /^Play your (Bench Boost|Triple Captain): .+ to .+/);
+  }
+  const titles = bundle.current.alternatives.map(a => a.headline);
+  assert.equal(new Set(titles).size, titles.length, `distinct plans carry distinct titles: ${JSON.stringify(titles)}`);
 });
 
 test('before the first deadline a squad still being chosen is not told to play a Bench Boost or Triple Captain', async () => {
@@ -1149,4 +1178,34 @@ test('a chip already played is never planned again', async () => {
   });
   assert.notEqual(bundle.current.chip, 'bboost');
   assert.deepEqual(bundle.validation, { ok: true, violations: [] });
+});
+
+// Regression 2026-10-16 (61 real managers before GW7). A Triple Captain held
+// because this week and the best later one are within the 2.0 margin was told
+// "Triple Captain looks better around gameweek 16" right after "Tripling
+// Haaland adds 7.2 points this gameweek, and the best week left is worth 6.1".
+// A tie is a tie: only a later week worth MORE is "better".
+test('a chip held on a tie never claims a later week is better', () => {
+  const tc = (valueNow, bestValue) => ({
+    chip: '3xc', available: true, valueNow, bestGw: 16, bestValue,
+    holdReason: makeReason('hold_3xc', 'held', valueNow),
+  });
+  const codes = (entry) => holdReasons({ '3xc': entry }, 7).map(r => r.code);
+  assert.ok(!codes(tc(7.2, 6.1)).includes('hold_3xc_better'), 'this week is worth more: no "better later"');
+  assert.equal(betterLaterGw(tc(7.2, 6.1), 7), null);
+  assert.ok(codes(tc(5.2, 6.1)).includes('hold_3xc_better'), 'a genuinely better week is still named');
+  assert.equal(betterLaterGw(tc(5.2, 6.1), 7), 16);
+  // A structural best week (Wildcard, Free Hit) carries no value and stands.
+  assert.equal(betterLaterGw({ chip: 'freehit', available: true, valueNow: 3, bestGw: 12, bestValue: null }, 7), 12);
+  assert.equal(betterLaterGw({ chip: 'freehit', available: true, valueNow: 3, bestGw: 7, bestValue: null }, 7), null);
+});
+
+test('the chips-in-hand sentence counts properly, and is not written when there is nothing in hand', () => {
+  const held = (chip) => ({ chip, available: true, valueNow: 1, bestGw: null, bestValue: null, holdReason: null });
+  const none = holdReasons({ wildcard: { chip: 'wildcard', available: false } }, 7);
+  assert.deepEqual(none.map(r => r.code), ['no_chips']);
+  assert.equal(none[0].text, 'You have 0 chips you can play this gameweek.');
+  assert.equal(holdReasons({ '3xc': held('3xc') }, 7)[0].text, 'You have 1 chip playable this gameweek, and it does not clear its bar.');
+  assert.equal(holdReasons({ '3xc': held('3xc'), freehit: held('freehit') }, 7)[0].text,
+    'You have 2 chips playable this gameweek, and none of them clears its bar.');
 });

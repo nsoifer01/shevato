@@ -142,6 +142,11 @@ const SOURCE_LABELS = [
 ];
 
 export function labelFor(path) {
+  // The History tab reads every recent gameweek's picks for its captain
+  // column, so "Your squad" alone listed the same row up to eight times in the
+  // data status (seen 2026-10-16); each carries its gameweek.
+  const picks = /^entry\/\d+\/event\/(\d+)\/picks$/.exec(path);
+  if (picks) return `Your squad, gameweek ${picks[1]}`;
   const hit = SOURCE_LABELS.find(([re]) => re.test(path));
   return hit ? hit[1] : path;
 }
@@ -598,8 +603,17 @@ export function createFplApi({
     return age >= DEADLINE_TTL_SECONDS && age < longest;
   }
 
-  async function fetchPath(path, { force = false } = {}) {
+  // `quiet`: a supporting read (a late joiner's price floors, app.js
+  // loadTeam) that neither joins the data status nor is stored on the device;
+  // its failure only falls back to a rule that needs no data, so it must not
+  // tell the manager his data is old, and fifteen player histories must not
+  // push the bootstrap out of storage.
+  async function fetchPath(path, { force = false, quiet = false } = {}) {
     if (sampleBundle) return sampleRead(path);
+    if (quiet) {
+      const fresh = await load(path, now() + totalDeadlineMs);
+      return { data: fresh.data, fetchedAt: fresh.fetchedAt, stale: !!fresh.stale };
+    }
 
     const cached = readCache(path);
     if (cached && !force && awaitsDeadline(path, cached)) {

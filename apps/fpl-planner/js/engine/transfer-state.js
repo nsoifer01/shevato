@@ -82,11 +82,15 @@ export function freeTransfersFor(state) {
 // The state going into the NEXT gameweek, given what happened in this one.
 //
 // `recorded: false` means the gameweek is missing from the manager's history: a
-// payload that has not caught up yet. It neither banks nor spends, because a
-// gameweek we have no record of must never be allowed to INFLATE the count. The
-// alternative the old code used, replaying an unknown gameweek as zero
-// transfers, hands out a free transfer for a gameweek that may well have been
-// spent.
+// payload that has not caught up yet. It neither banks nor spends. Replaying an
+// unknown gameweek as zero transfers (the old code) handed out a free transfer
+// for a gameweek that may well have been spent; passing the count through is
+// smaller, but it is NOT a bound in general: a missing week that made two
+// transfers from two banked reads two where FPL says one. The one gap that
+// happens in production, the newest gameweek after a rollover, is therefore
+// filled from the picks payload's own `entry_history` before replaying
+// (`historyCaughtUp` in squad.js), and this branch is only what is left for a
+// gap FPL has given us nothing about.
 export function advance(state, { gw, transfersMade = 0, chipPlayed = null, rules, recorded = true } = {}) {
   const at = gw === undefined || gw === null ? state.gw : gw;
   const nextGw = at === null || at === undefined ? null : at + 1;
@@ -197,6 +201,35 @@ export function replayTransferState({ history, rules, upToGw }) {
     });
   }
   return state;
+}
+
+// The replay against FPL's own witness. FPL never publishes a free-transfer
+// count, but every gameweek row carries `event_transfers_cost`, the hit it
+// actually charged, and that is set by the count FPL held: N transfers into
+// B free cost 4 * max(0, N - B), and nothing under a Wildcard or Free Hit.
+// Every gameweek whose charge the replay cannot reproduce is returned. This is
+// the check that caught the chip-week +1 on 68 real managers (2026-10-09) and
+// that the sequence tests, which encode their author's reading of the rules,
+// could not; the scheduled health probe runs it on a real entry, so a rule FPL
+// changes (a top-up of free transfers, a new chip) shows up within six hours
+// of the first gameweek it is charged under.
+export function chargedHitDisagreements({ history, rules }) {
+  const rows = (history && history.current) || [];
+  const chipByEvent = new Map(((history && history.chips) || []).map(c => [c.event, c.name]));
+  const out = [];
+  for (const row of rows) {
+    if (!Number.isInteger(row.event) || !Number.isFinite(row.event_transfers_cost)) continue;
+    const state = replayTransferState({ history, rules, upToGw: row.event });
+    const chip = chipByEvent.get(row.event) || null;
+    const expected = hitCost(state, row.event_transfers || 0, rules, chip);
+    if (expected !== row.event_transfers_cost) {
+      out.push({
+        gw: row.event, transfers: row.event_transfers || 0, free: freeTransfersFor(state), chip,
+        expected, charged: row.event_transfers_cost,
+      });
+    }
+  }
+  return out;
 }
 
 // Display only, called at the UI edge, and it takes the VALUE rather than the

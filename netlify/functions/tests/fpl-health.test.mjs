@@ -13,7 +13,9 @@ import { fileURLToPath } from 'node:url';
 
 import {
   runScheduledProbe, statusOf, slotOf, githubDispatchAlert, openStrongStore, HEALTH_STORE, STALE_AFTER_HOURS, UNFINISHED_AFTER_MS,
+  healthEntryId, DEFAULT_HEALTH_ENTRY, refusalCheck, REFUSAL_ALERT_MINUTES, SLOW_RUN_MS,
 } from '../lib/fpl-health-run.mjs';
+import { REFUSAL_KEY } from '../lib/fpl-cache.mjs';
 import { ARCHIVE_STORE } from '../lib/fpl-archive-stage.mjs';
 import { assess, readStatus, reconcile } from '../../../apps/fpl-planner/scripts/health-monitor.mjs';
 import { handleStatus } from '../fpl-health-status.mjs';
@@ -28,6 +30,21 @@ const APP = join(HERE, '..', '..', '..', 'apps', 'fpl-planner');
 // rightly calls an in-season payload read as last season.
 const SAMPLE = deadlinePayload(4);
 const NOW = SAMPLE.fetchedAt;
+// A real manager at that deadline (identity removed), and the season's chip
+// catalogue the capture lacks: what the run reads through the proxy for
+// FPL_HEALTH_ENTRY.
+const REAL_ENTRY = JSON.parse(readFileSync(join(APP, 'tests', 'fixtures', 'real-entry-gw4.json'), 'utf8'));
+SAMPLE.bootstrap.chips = REAL_ENTRY.chips;
+const ENTRY_ID = String(REAL_ENTRY.entry.id);
+// Every run in this file reads that manager, as production reads the owner's.
+process.env.FPL_HEALTH_ENTRY = ENTRY_ID;
+const entryBodies = (over = {}) => ({
+  [`entry/${ENTRY_ID}`]: REAL_ENTRY.entry,
+  [`entry/${ENTRY_ID}/history`]: REAL_ENTRY.history,
+  [`entry/${ENTRY_ID}/transfers`]: REAL_ENTRY.transfers,
+  [`entry/${ENTRY_ID}/event/3/picks`]: REAL_ENTRY.picks,
+  ...over,
+});
 
 function memoryStore() {
   const map = new Map();
@@ -53,13 +70,19 @@ const healthyHeaders = { 'cache-control': 'no-store', 'x-fpl-stale': 'false', 'x
 // shipped baseline, FPL itself answers `fplStatus`.
 // `bootstrapHeaders` overrides the proxy's headers on bootstrap-static (a
 // stale copy); `fplFetch` replaces FPL itself.
-function production({ proxyStatus = 200, bootstrap = SAMPLE.bootstrap, fplStatus = 200, bootstrapHeaders = null, fplFetch = null } = {}) {
+function production({ proxyStatus = 200, bootstrap = SAMPLE.bootstrap, fplStatus = 200, bootstrapHeaders = null, fplFetch = null, entries = entryBodies() } = {}) {
   const calls = [];
   const fetchImpl = async (url, init = {}) => {
     calls.push(url);
     if (url.includes('/.netlify/functions/fpl?path=')) {
       if (proxyStatus !== 200) return new Response('{}', { status: proxyStatus });
       const path = decodeURIComponent(url.split('path=')[1]);
+      if (path.startsWith('entry/')) {
+        const body = entries[path];
+        if (body === undefined) return new Response('{"error":"not_found"}', { status: 404 });
+        if (body instanceof Response) return body;
+        return new Response(JSON.stringify(body), { status: 200, headers: healthyHeaders });
+      }
       const body = path === 'bootstrap-static' ? bootstrap : SAMPLE.fixtures;
       const headers = path === 'bootstrap-static' && bootstrapHeaders ? { ...healthyHeaders, ...bootstrapHeaders } : healthyHeaders;
       return new Response(JSON.stringify(body), { status: 200, headers });
@@ -305,7 +328,7 @@ test('every Netlify entry point of the health probe opens its stores with strong
   assert.deepEqual(opened, [{ name: HEALTH_STORE, consistency: 'strong' }]);
   // The entry points import @netlify/blobs themselves, so their wiring is read
   // from source: no store is opened any other way.
-  for (const [file, stores] of [['fpl-health-status.mjs', ['HEALTH_STORE']], ['fpl-health.mjs', ['HEALTH_STORE', 'ARCHIVE_STORE']]]) {
+  for (const [file, stores] of [['fpl-health-status.mjs', ['HEALTH_STORE']], ['fpl-health.mjs', ['HEALTH_STORE', 'ARCHIVE_STORE', 'STORE_NAME']]]) {
     const src = readFileSync(join(HERE, '..', file), 'utf8');
     assert.equal((src.match(/getStore\(/g) || []).length, 0, `${file} calls getStore directly`);
     for (const name of stores) assert.ok(src.includes(`openStrongStore(getStore, ${name})`), `${file} opens ${name} strongly`);
@@ -324,8 +347,9 @@ test('a stale proxy answer asks FPL once and puts what FPL said on the failed ch
   assert.equal(stale.calls.filter((u) => u.startsWith('https://fantasy.premierleague.com/')).length, 1);
   assert.ok(signals[0] instanceof AbortSignal, 'the direct question is bounded by a timeout');
   const f = r.failed.find((x) => x.name === 'the proxy serves bootstrap-static fresh and uncached by browsers');
-  assert.match(f.saw, /stale true, age 21603s; FPL itself answered 503 in \d+ ms$/);
-  assert.ok(r.lines.some((l) => /^upstream +FPL itself answered 503 in \d+ ms \(asked directly after the proxy served bootstrap-static stale\)$/.test(l)), r.lines.join('\n'));
+  // A refusal names the edge that answered and what it said (2026-10-16).
+  assert.match(f.saw, /stale true, age 21603s; FPL itself answered 503 in \d+ ms, saying "<html>The game is being updated\.<\/html>"$/);
+  assert.ok(r.lines.some((l) => /^upstream +FPL itself answered 503 in \d+ ms, saying ".+" \(asked directly after the proxy served bootstrap-static stale\)$/.test(l)), r.lines.join('\n'));
 
   const hung = production({ bootstrapHeaders: staleBootstrap, fplFetch: async () => { throw new DOMException('The operation was aborted due to timeout', 'TimeoutError'); } });
   const t = await runScheduledProbe({ store: memoryStore(), fetchImpl: hung, now: () => NOW });
@@ -397,4 +421,112 @@ test('the chain end to end: a failure opens one incident, the recovery check clo
   const reopened = await monitor(dispatched.at(-1).expect_at, Date.parse(againAt) + 30e3, strong);
   assert.equal(reopened.action, 'opened');
   assert.equal(issues.filter((i) => i.state === 'open').length, 1);
+});
+
+// ------------------------------------------------- the real entry (2026-10-16)
+
+const entryChecks = (r) => r.checks.filter((c) => c.name.startsWith(`entry ${ENTRY_ID}:`) || c.name === `the proxy serves entry ${ENTRY_ID}`);
+
+test('every run reads a real manager through the proxy and checks his squad state against FPL', async () => {
+  const fetchImpl = production();
+  const r = await runScheduledProbe({ store: memoryStore(), fetchImpl, now: () => NOW });
+  assert.equal(r.ok, true, JSON.stringify(r.failed));
+  assert.deepEqual(entryChecks(r).map((c) => [c.name.replace(`entry ${ENTRY_ID}: `, ''), c.ok]), [
+    ['the free-transfer replay reproduces every hit FPL charged', true],
+    ['the chips offered are the ones left in their half', true],
+    ['the squad, bank and value read agree with FPL', true],
+  ]);
+  assert.deepEqual(r.reading.entry, { id: ENTRY_ID, gw: 4, freeTransfers: 2 });
+  // Read exactly as the app reads him: these four, through the proxy.
+  for (const path of ['', '/history', '/transfers', '/event/3/picks']) {
+    assert.ok(fetchImpl.calls.some((u) => decodeURIComponent(u).endsWith(`path=entry/${ENTRY_ID}${path}`)), `read entry${path}`);
+  }
+  assert.ok(r.checks.some((c) => c.name === `the proxy serves entry/${ENTRY_ID}/history fresh and uncached by browsers` && c.ok));
+  // His plan is the GitHub workflow's: Netlify's 30 seconds cannot carry it.
+  assert.ok(!r.checks.some((c) => /plan agrees with its own numbers/.test(c.name)));
+  assert.ok(r.checks.some((c) => c.name === 'the plan for a built squad passes validatePlan'));
+});
+
+test('a free-transfer count FPL contradicts turns the run red, naming the gameweek', async () => {
+  // GW2 opens with one free transfer. Two transfers there that FPL charged
+  // nothing for mean the count FPL held is not the one replayed (a top-up, a
+  // rule change, a replay bug), and the run must say so.
+  const history = structuredClone(REAL_ENTRY.history);
+  Object.assign(history.current.find((row) => row.event === 2), { event_transfers: 2, event_transfers_cost: 0 });
+  const r = await runScheduledProbe({ store: memoryStore(), fetchImpl: production({ entries: entryBodies({ [`entry/${ENTRY_ID}/history`]: history }) }), now: () => NOW });
+  assert.equal(r.ok, false);
+  const witness = r.failed.find((f) => /free-transfer replay/.test(f.name));
+  assert.ok(witness, JSON.stringify(r.failed));
+  assert.match(witness.saw, /^GW2: 2 transfers on 1 free should cost 4, FPL charged 0/);
+});
+
+test('an entry the proxy cannot serve is its own failed check, and the rest of the run still judges', async () => {
+  const r = await runScheduledProbe({
+    store: memoryStore(),
+    fetchImpl: production({ entries: entryBodies({ [`entry/${ENTRY_ID}/history`]: new Response('{}', { status: 502 }) }) }),
+    now: () => NOW,
+  });
+  assert.equal(r.ok, false);
+  assert.deepEqual(r.failed.map((f) => f.name), [`the proxy serves entry ${ENTRY_ID}`]);
+  assert.match(r.failed[0].saw, /history: proxy HTTP 502/);
+  assert.ok(r.checks.length >= 15, 'the payload invariants still ran');
+});
+
+test('before the first deadline (picks 404) the entry has no squad, which is not a failure', async () => {
+  const pre = entryBodies();
+  delete pre[`entry/${ENTRY_ID}/event/3/picks`];
+  const r = await runScheduledProbe({ store: memoryStore(), fetchImpl: production({ entries: pre }), now: () => NOW });
+  assert.equal(r.ok, true, JSON.stringify(r.failed));
+  assert.deepEqual(entryChecks(r), []);
+});
+
+test('the pinned entry is the owner\'s by default, overridable, and "none" turns it off', async () => {
+  assert.equal(healthEntryId({}), DEFAULT_HEALTH_ENTRY);
+  assert.equal(healthEntryId({ FPL_HEALTH_ENTRY: ' 42 ' }), '42');
+  assert.equal(healthEntryId({ FPL_HEALTH_ENTRY: 'none' }), null);
+  const fetchImpl = production();
+  const r = await runScheduledProbe({ store: memoryStore(), fetchImpl, now: () => NOW, entryId: null });
+  assert.equal(r.ok, true);
+  assert.deepEqual(entryChecks(r), []);
+  assert.ok(!fetchImpl.calls.some((u) => u.includes('path=entry')), 'no entry is read');
+});
+
+// 2026-10-16: FPL refused the proxy for up to two hours between two green runs.
+test('a long refusal by FPL since the last run fails the run with what FPL said; a blip is only reported', async () => {
+  const at = (min) => new Date(Date.parse(NOW) - min * 60e3).toISOString();
+  const record = (firstMin, lastMin, extra = {}) => ({
+    firstAt: at(firstMin), at: at(lastMin), until: at(lastMin - 2), count: 14, path: 'bootstrap-static', status: 403,
+    headers: { 'x-served-by': 'cache-iad-kiad7000001-IAD' }, bodyHead: 'Access denied', ...extra,
+  });
+  const proxy = (rec) => { const s = memoryStore(); if (rec) s.map.set(REFUSAL_KEY, rec); return s; };
+  const name = 'FPL has not refused the proxy for long since the last run';
+
+  const long = await runScheduledProbe({ store: memoryStore(), fetchImpl: production(), now: () => NOW, proxyStore: proxy(record(170, 60)) });
+  const f = long.failed.find((x) => x.name === name);
+  assert.ok(f, JSON.stringify(long.failed));
+  assert.match(f.saw, /^FPL answered 403 to 14 proxy fetch\(es\) from .+ \(110 min; last bootstrap-static, served by cache-iad-kiad7000001-IAD, saying "Access denied"\)$/);
+  assert.ok(long.lines.some((l) => l.startsWith('refused ')));
+
+  const blip = await runScheduledProbe({ store: memoryStore(), fetchImpl: production(), now: () => NOW, proxyStore: proxy(record(70, 60)) });
+  assert.ok(blip.ok, JSON.stringify(blip.failed));
+  assert.ok(blip.checks.some((c) => c.name === name && c.ok));
+  assert.ok(blip.lines.some((l) => /^refused .+\(10 min;/.test(l)));
+
+  const none = await runScheduledProbe({ store: memoryStore(), fetchImpl: production(), now: () => NOW, proxyStore: proxy(null) });
+  assert.ok(none.ok);
+  assert.ok(!none.lines.some((l) => l.startsWith('refused ')));
+
+  // An episode still backing off counts up to now; one the previous run already saw is not reported twice.
+  assert.equal(refusalCheck(record(40, 1, { until: new Date(Date.parse(NOW) + 60e3).toISOString() }), at(360), NOW).ok, false);
+  assert.deepEqual(refusalCheck(record(170, 60), at(30), NOW), { ok: true, line: null });
+  assert.equal(REFUSAL_ALERT_MINUTES, 30);
+});
+
+test('a run near Netlify\'s 30-second kill fails while it can still say so', async () => {
+  assert.equal(SLOW_RUN_MS, 24e3);
+  const name = 'the run finishes well inside Netlify\'s 30-second limit';
+  const fine = await runScheduledProbe({ store: memoryStore(), fetchImpl: production(), now: () => NOW });
+  assert.ok(fine.checks.some((c) => c.name === name && c.ok));
+  const slow = await runScheduledProbe({ store: memoryStore(), fetchImpl: production(), now: () => NOW, slowRunMs: 0 });
+  assert.match(slow.failed.find((f) => f.name === name).saw, /^\d+\.\d s$/);
 });

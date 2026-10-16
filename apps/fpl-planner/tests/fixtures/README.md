@@ -157,3 +157,18 @@ payload, with those gameweeks' fixtures unplayed and the event flags of the week
 before. Injury flags cannot be rebuilt (the capture carries GW5's), so every
 player is read as available at both deadlines. The per-90 fields are not kept:
 the engine does not read them.
+
+## Real managers (added 2026-10-16)
+
+Until this date CI planned no real manager: every squad here was synthetic or
+replayed forward by hand, and 19 of the 21 live-season defects reached the
+owner first (FINDINGS, "Why every pre-gameweek audit found something"). These
+three carry real managers' data from the public FPL API with every identity
+removed (entry ids replaced, names, regions and leagues dropped); picks,
+transfers and history rows are kept exactly, because they are the test.
+
+| File | What it is | Read by |
+| --- | --- | --- |
+| `gw7-2026/` | The whole league the day before the 2026/27 GW7 deadline (players as a column table), the full fixture list, and five managers: the owner, three free transfers, a Bench Boost plan, a Triple Captain held on a tie, a GW6 Free Hit (with the GW5 squad it reverts to). Derived by `scripts/derive-gw7-fixtures.mjs`; `tests/helpers/gw7-fixture.mjs` loads it. Plans from it are identical to plans from the untrimmed capture. | `real-deadline-gw7.test.mjs` |
+| `real-entry-gw4.json` | One manager at the GW4 deadline (history and transfers through GW3, the GW3 picks), paired with `xp-calibration-2026`'s `deadlinePayload(4)`, plus the season's chip catalogue that capture lacks. Its frozen `value` is restated at that capture's prices (see its `note`). | `plan-audit.test.mjs`, `netlify/functions/tests/fpl-health.test.mjs` |
+| `real-histories-2026-gw6.json` | 411 managers' seasons through GW6 (top 200 overall, 210 random from rank 50k to 9M, one more), reduced to `[event, event_transfers, event_transfers_cost]` and `[chip, event]`, shuffled. | `transfer-state-real.test.mjs` |

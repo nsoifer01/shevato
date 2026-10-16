@@ -20,6 +20,8 @@
 //   node apps/fpl-planner/scripts/evidence-probe.mjs --json          # machine readable
 //   node apps/fpl-planner/scripts/evidence-probe.mjs --direct        # FPL itself, not the proxy (CI)
 //   node apps/fpl-planner/scripts/evidence-probe.mjs --now ISO       # judge freshness at this time
+//   node apps/fpl-planner/scripts/evidence-probe.mjs --entry 3855835 # also plan a real manager
+//   node apps/fpl-planner/scripts/evidence-probe.mjs --entry-dir DIR # ... from saved files
 //
 // With no arguments it reads the live proxy. With files it reads a captured
 // pair, which is how a payload saved during a gameweek is diagnosed afterwards.
@@ -30,6 +32,12 @@
 // skipped for files without it: a captured pair is old by definition).
 // `--record` writes the reading to .data/probe-baseline.json so the next run
 // can compare against it.
+//
+// `--entry ID` reads one manager's entry, history, transfers and current picks
+// (and the revert squad after a Free Hit) the way the app does and plans HIM
+// instead of a squad the probe builds, which adds the real-entry invariants of
+// scripts/lib/plan-audit.mjs. `--entry-dir` reads them from entry.json,
+// history.json, transfers.json, picks.json and, if present, revert-picks.json.
 //
 // The invariants themselves live in scripts/lib/probe.mjs, shared with the
 // scheduled Netlify function that runs them against production every six hours
@@ -47,6 +55,7 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { USER_AGENT, FPL_API } from './lib/archive.mjs';
 import { runProbe, payloadShapeFailures } from './lib/probe.mjs';
+import { freeHitPicksInfo } from '../js/engine/squad.js';
 
 const PROXY = 'https://shevato.com/.netlify/functions/fpl?path=';
 const arg = (name) => {
@@ -92,8 +101,35 @@ if (shapeFailures.length) {
   process.exit(1);
 }
 
+// One manager, read the way js/app.js loadTeam reads him.
+async function readEntry() {
+  const dir = arg('entry-dir');
+  if (dir) {
+    const f = (n) => (existsSync(join(dir, n)) ? JSON.parse(readFileSync(join(dir, n), 'utf8')) : null);
+    const entry = f('entry.json');
+    return { id: entry ? entry.id : 'files', entry, history: f('history.json'), transfers: f('transfers.json'), picks: f('picks.json'), revertPicks: f('revert-picks.json') };
+  }
+  const id = arg('entry');
+  if (!id) return null;
+  const optional = async (path) => { try { return await read(path); } catch (err) { if (/HTTP 404/.test(err.message)) return null; throw err; } };
+  try {
+    const current = bootstrap.events.find((e) => e.is_current);
+    const [entry, history, transfers, picks] = await Promise.all([
+      read(`entry/${id}`), read(`entry/${id}/history`), read(`entry/${id}/transfers`),
+      current ? optional(`entry/${id}/event/${current.id}/picks`) : null,
+    ]);
+    const fh = freeHitPicksInfo({ picks, history });
+    const next = bootstrap.events.find((e) => e.is_next);
+    const revertPicks = picks && fh.isFreeHit && fh.event > 1 && next && next.id > fh.event
+      ? await optional(`entry/${id}/event/${fh.event - 1}/picks`) : null;
+    return { id, entry, history, transfers, picks, revertPicks };
+  } catch (err) {
+    return { id, error: err.message };
+  }
+}
+
 const result = await runProbe({
-  bootstrap, fixtures, fetchedAt, now: arg('now'), source: SOURCE, responses, prev,
+  bootstrap, fixtures, fetchedAt, now: arg('now'), source: SOURCE, responses, prev, entry: await readEntry(),
   loadShipped: async () => JSON.parse(readFileSync(join(HERE, '..', 'data', 'opening-baseline.json'), 'utf8')),
 });
 

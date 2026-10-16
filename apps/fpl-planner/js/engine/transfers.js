@@ -241,7 +241,11 @@ export const TRANSFER_DEFAULTS = Object.freeze({
   // lineup objective before the winner and the alternatives are chosen. Each
   // one costs a full exact lineup per gameweek of the horizon, so this is the
   // knob that trades search time for agreement with how the squad is played.
-  rerankCandidates: 16,
+  // 24 since 2026-10-16 (registry 47): at 16 a real manager's better legal
+  // three-move plan (+0.31 on the planner's own objective) was generated and
+  // cut before the planner could rank it. Points-neutral on the replay
+  // (-0.2 a window, t -1.46, 13 of 15 windows identical), about 10% more CPU.
+  rerankCandidates: 24,
   // Points a hit must beat ON TOP of rules.hitCost before it is recommended.
   hitMargin: 1.5,
   // What one banked free transfer is worth as an option on a future move.

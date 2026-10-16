@@ -81,6 +81,25 @@ export const STALE_SERVE_SECONDS = 60;
 export const REFRESH_LEASE_SECONDS = 20;
 export const leaseKey = (key) => `lease:${key}`;
 
+// WHEN FPL REFUSES US (a 403 or a 429), WHAT IT SAID, AND HOW LONG WE KEEP OFF.
+//
+// On 2026-10-16 from about 16:50 UTC FPL's edge (Fastly) answered every proxy
+// fetch with a 403 in 200-280 ms, while the same request with the same
+// User-Agent got a 200 from a residential address, and from Netlify again by
+// 18:41 (FINDINGS, "FPL refused the proxy"). Two things made it worse than it
+// had to be. The log said only "upstream 403", so the cause could not be read
+// back once it ended. And past STALE_SERVE_SECONDS every visitor's request went
+// straight upstream, so a refusal that is rate-based was answered with more
+// requests. Now the first refusal is recorded here (status, the edge headers
+// and the start of the body) and, until `until`, no caller goes upstream: the
+// cached copy is served marked stale, or a 503 when there is none. The health
+// run reports the record. Retry-After is honoured up to the cap.
+export const REFUSAL_KEY = 'meta:upstream-refusal';
+export const REFUSAL_BACKOFF_SECONDS = 120;
+export const REFUSAL_BACKOFF_MAX_SECONDS = 900;
+const REFUSAL_STATUSES = new Set([403, 429]);
+const REFUSAL_HEADERS = ['server', 'via', 'x-served-by', 'x-cache', 'retry-after', 'content-type'];
+
 // Strips a leading/trailing slash and rejects anything not on the allowlist.
 // Returns the canonical path, or null.
 export function canonicalPath(raw) {
@@ -253,7 +272,10 @@ export async function serveFpl({ path, store, fetchUpstream, now, leaseId }) {
   }
 
   try {
+    const refused = await readRefusal(store);
+    if (refused && Date.parse(refused.until) > now) throw new UpstreamBackoffError(refused);
     const res = await fetchUpstream(UPSTREAM_BASE + path + '/');
+    if (REFUSAL_STATUSES.has(res.status)) await recordRefusal(store, path, res, now);
     // A 404 means two different things and they need different answers.
     //
     // With NO cached copy it is the real one: an unknown team id, which the
@@ -314,6 +336,52 @@ export async function serveFpl({ path, store, fetchUpstream, now, leaseId }) {
       return { status: 502, body: { error: 'upstream_malformed' }, cache: 'miss', fetchedAt: new Date(now).toISOString(), stale: false, ageSeconds: 0 };
     }
     return { status: 503, body: { error: 'upstream_unavailable' }, cache: 'miss', fetchedAt: new Date(now).toISOString(), stale: false, ageSeconds: 0 };
+  }
+}
+
+class UpstreamBackoffError extends Error {
+  constructor(refused) {
+    super(`backing off until ${refused.until} after upstream ${refused.status} at ${refused.at}`);
+    this.name = 'UpstreamBackoffError';
+  }
+}
+
+// Reads the refusal record; a missing or unreadable one is "not refused", so a
+// store failure can only cost the old behaviour (going upstream), never data.
+export async function readRefusal(store) {
+  try {
+    const r = await store.get(REFUSAL_KEY, { type: 'json' });
+    return r && typeof r === 'object' && typeof r.until === 'string' ? r : null;
+  } catch (err) {
+    console.error('fpl refusal read failed', String(err && err.message));
+    return null;
+  }
+}
+
+async function recordRefusal(store, path, res, now) {
+  const headers = {};
+  for (const h of REFUSAL_HEADERS) { const v = res.headers.get(h); if (v) headers[h] = v.slice(0, 200); }
+  const bodyHead = (await res.text().catch(() => '')).replace(/\s+/g, ' ').trim().slice(0, 300);
+  const retryAfter = Number(headers['retry-after']);
+  const seconds = Math.min(REFUSAL_BACKOFF_MAX_SECONDS,
+    Math.max(REFUSAL_BACKOFF_SECONDS, Number.isFinite(retryAfter) ? retryAfter : 0));
+  // One episode is refusals no more than an hour apart (a quiet night can
+  // leave long gaps between visitors); its start and count are kept, so the
+  // health run can tell a blip from an hour of stale data.
+  const prev = await readRefusal(store);
+  const continues = prev && Date.parse(prev.at) > now - 3600 * 1000
+    && Number.isFinite(Date.parse(prev.firstAt));
+  const record = {
+    at: new Date(now).toISOString(), until: new Date(now + seconds * 1000).toISOString(),
+    firstAt: continues ? prev.firstAt : new Date(now).toISOString(),
+    count: continues ? (Number(prev.count) || 1) + 1 : 1,
+    path, status: res.status, headers, bodyHead,
+  };
+  console.error('fpl upstream refused', JSON.stringify(record));
+  try {
+    await store.setJSON(REFUSAL_KEY, record);
+  } catch (err) {
+    console.error('fpl refusal write failed', String(err && err.message));
   }
 }
 
