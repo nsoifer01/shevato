@@ -8,7 +8,7 @@ name: ci
 #   |                    pull request? (scripts/ci-already-tested.mjs)
 #   +- lint ............ ESLint correctness rules (npm run lint)
 #   +- test-shard x2 ... every node:test file (unit, integration, static),
-#   |  |                 split by node's own --test-shard
+#   |  |                 packed by measured cost (scripts/test-shard.mjs)
 #   |  +- test ......... one verdict for both halves
 #   +- browser-shard x8  the CDP browser estate, packed by measured cost
 #   |  +- browser ...... one verdict for the eight shards
@@ -98,13 +98,14 @@ jobs:
 
   # TWO HALVES (2026-10-17). One job was 414 s median and 649 s at worst over
   # the 25 PR runs to 2026-10-17, second only to the browser shards on the
-  # critical path, and the FPL planner's heavy files keep growing. Node's own
-  # --test-shard splits the file list deterministically; the two halves
-  # together run every file exactly once (981 of 981 tests over sync-system and
-  # tests/static, measured), and `npm test` stays the one definition of what
-  # runs. The halves are not balanced by cost: a file lands by its index, so
-  # either half can draw two of the three heaviest files, which is why the
-  # timeout below is unchanged.
+  # critical path, and the FPL planner's heavy files keep growing.
+  # scripts/test-shard.mjs packs the files of `npm test` longest-first by
+  # measured cost and runs its share with the script's own flags, so `npm test`
+  # stays the one definition of what runs and the halves together run every
+  # file once (4,122 + 3,344 = all 7,466 tests, measured). Node's own
+  # --test-shard was tried first: it splits by file position, the three
+  # heaviest files sort together, and its slow half took 327 s and 488 s on
+  # this PR's first two runs, no faster than the single job.
   test-shard:
     needs: plan
     if: ${{ !cancelled() && (github.event_name != 'push' || needs.plan.result != 'success' || needs.plan.outputs.run == 'true') }}
@@ -140,10 +141,10 @@ jobs:
       # creeping toward the bound shows on a green run before it is killed.
       # Passed through NODE_OPTIONS so `npm test` stays the single definition
       # of what runs (no test in the estate spawns `node --test` itself).
-      - name: Unit, integration and static tests
+      - name: Unit, integration and static tests (share ${{ matrix.shard }})
         env:
-          NODE_OPTIONS: --test-shard=${{ matrix.shard }}/${{ strategy.job-total }} --test-reporter=dot --test-reporter-destination=stdout --test-reporter=junit --test-reporter-destination=unit-tests.junit.xml --test-reporter=./scripts/test-file-times.mjs --test-reporter-destination=unit-file-times.md
-        run: npm test
+          NODE_OPTIONS: --test-reporter=dot --test-reporter-destination=stdout --test-reporter=junit --test-reporter-destination=unit-tests.junit.xml --test-reporter=./scripts/test-file-times.mjs --test-reporter-destination=unit-file-times.md
+        run: node scripts/test-shard.mjs ${{ matrix.shard }}/${{ strategy.job-total }}
       # On EVERY outcome: `dot` prints no totals, so on a green run this line is
       # the evidence of how many tests actually executed (and how many were
       # skipped or quarantined as todo). Printed to the log and the run summary.

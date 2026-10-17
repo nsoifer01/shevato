@@ -817,8 +817,16 @@ export async function run({ base, cdpPort, base2 = null }) {
       t('emulator: all 5 rounds were playable (pick -> ask -> answer/timeout -> advance)', played === 5, `played=${played}`);
 
       // End stage on both, scores present, positive and consistent.
-      t('emulator: game end reaches both clients',
-        (await waitForExpr(A, endUp, { timeout: 25000 })) && (await waitForExpr(B, endUp, { timeout: 25000 })));
+      // The room's own state and each client's stage on the record
+      // (2026-10-17): this failed once on CI with no detail, which could not
+      // say whether the room never finished or the clients never drew it.
+      const endA = await waitForExpr(A, endUp, { timeout: 25000 });
+      const endB = await waitForExpr(B, endUp, { timeout: 25000 });
+      const endRoom = await roomState(code);
+      const visibleStage = "(()=>['stage-lobby','stage-picking','stage-game','stage-end'].filter(id=>{const e=document.getElementById(id);return e&&!e.hidden})[0]||'none')()";
+      t('emulator: game end reaches both clients', endA && endB,
+        `room status=${endRoom.status} idx=${endRoom.idx} played=${(endRoom.played || []).length} reveal=${endRoom.reveal} `
+        + `stages A=${await evaluate(A, visibleStage)} B=${await evaluate(B, visibleStage)}`);
       await sleep(800);
       const boardA = await boardOf(A);
       const boardB = await boardOf(B);

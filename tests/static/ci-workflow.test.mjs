@@ -128,14 +128,12 @@ test('the retired per-suite workflows stay retired', () => {
   }
 });
 
-// 2026-10-17: the unit estate runs as two halves. Node's --test-shard takes
-// its total from the matrix, as the browser shards do, so adding a half can
-// never leave files that no half runs; and every half still runs `npm test`,
-// the one definition of what the estate is.
-test('the unit halves split npm test by node\'s own --test-shard, with the total from the matrix', () => {
+// 2026-10-17: the unit estate runs as two cost-packed halves of `npm test`
+// (scripts/test-shard.mjs), with the share total taken from the matrix, as the
+// browser shards do, so adding a half can never leave files no half runs.
+test('the unit halves run scripts/test-shard.mjs with the total from the matrix', () => {
   assert.match(J['test-shard'], /^ {8}shard: \[1, 2\]$/m);
-  assert.match(J['test-shard'], /NODE_OPTIONS: --test-shard=\$\{\{ matrix\.shard \}\}\/\$\{\{ strategy\.job-total \}\} /);
-  assert.match(J['test-shard'], /^ {8}run: npm test$/m);
+  assert.match(J['test-shard'], /^ {8}run: node scripts\/test-shard\.mjs \$\{\{ matrix\.shard \}\}\/\$\{\{ strategy\.job-total \}\}$/m);
+  assert.doesNotMatch(J['test-shard'], /--test-shard=/, 'node\'s positional shard put the three heaviest files in one half');
   assert.match(J['test-shard'], /name: unit-tests-junit-\$\{\{ matrix\.shard \}\}/, 'one artifact per half, or the second upload collides');
 });
-

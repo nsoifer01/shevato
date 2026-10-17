@@ -372,7 +372,7 @@ Fixing the product bug is a separate change from the test that documents it.
 - CI (`.github/workflows/`):
   - `ci` is the whole pull-request gate, one workflow: `lint`, the
     `test-shard` pair with its `test` verdict (every `node:test` file, split in
-    two by node's `--test-shard`, with the Rising Shows dataset present, so the
+    two by measured cost by `scripts/test-shard.mjs`, with the Rising Shows dataset present, so the
     real-catalogue tests run; `dot` output plus a summary on every run that
     states the totals and names every skipped test), the
     `browser-shard` matrix (eight shards) with its `browser` verdict, and the
