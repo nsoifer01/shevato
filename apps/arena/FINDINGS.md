@@ -111,6 +111,21 @@ Gotchas that cost time, so they are recorded:
   Not a package.json devDependency on purpose: `npm ci` in the other
   workflows stays fast and the push/PR CI stays dependency-free.
 
+## A group-2 run that failed with nothing to explain it (2026-10-17)
+
+PR #617's first CI run (39065460835) failed every group-2 scenario from S6's
+first step ("start enters the first location": the room never left the
+lobby) through S10, with `fetch failed` against the local servers from S8 on,
+and took 22 minutes against the usual 4 to 6. The same tree passed S6 alone
+(9/9, 71 s) and all of group 2 (35/35, 253 s) locally, on the same runner
+image, JDK and firebase-tools as the ten green full group-2 runs before it
+(2026-09-21 to 2026-10-17, 250 to 347 s). The PR changed no Arena input; the
+suite ran only because `ci.yml` is one. Everything failing at once and the
+servers refusing fetches reads as the emulator or the runner going away early
+in S6, but it cannot be proven: the job kept no logs. Since then a failed
+group uploads `*-debug.log` (the Firestore emulator's own log) and
+`.screenshots/` as `arena-group-<n>-diagnostics`, so the next one is evidence.
+
 ## Two-client e2e gotchas (apps/arena/e2e/emulator.mjs)
 
 - **The rAF loops are RENDER-only since 2026-08-23.** Game progression

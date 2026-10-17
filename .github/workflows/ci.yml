@@ -484,6 +484,23 @@ jobs:
           ARENA_E2E_GROUP: ${{ matrix.group }}
         run: npm run test:arena:emulator
 
+      # What the emulator and the pages said, kept when a group fails
+      # (2026-10-17). Run 39065460835 failed every group-2 scenario from S6's
+      # first step on, passed 35/35 locally and in every one of the ten full
+      # group-2 runs before it, and left nothing to explain itself: the
+      # Firestore emulator writes firestore-debug.log to the repo root, which
+      # the runner discarded.
+      - name: Keep the emulator logs and screenshots
+        if: failure() && steps.scope.outputs.run == '1'
+        uses: actions/upload-artifact@v7
+        with:
+          name: arena-group-${{ matrix.group }}-diagnostics
+          path: |
+            *-debug.log
+            .screenshots/
+          if-no-files-found: ignore
+          retention-days: 14
+
   # One verdict for both Arena groups, under the name branch protection
   # requires. `if: always()` for the same reason as `browser`: a failed or
   # cancelled group must not leave the required check skipped.
