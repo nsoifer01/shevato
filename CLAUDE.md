@@ -44,6 +44,43 @@ For the FPL Planner specifically, also read the Methodology section of
 experiment, and record every experiment there with an explicit ACCEPT or
 REJECT, whichever way it goes.
 
+### FPL Planner: regression prevention (binding, owner 2026-10-17)
+
+Two audits before GW7 2026/27 found 31 defects past thousands of green tests,
+none by CI or monitoring, because tests reproduced the engine's own numbers
+and every fix was pinned to the one state that exposed it. The ledger and the
+categories are in `apps/fpl-planner/FINDINGS.md` "Regression prevention".
+Every change to the planner follows these, unprompted:
+
+- **Fix the category, not the case.** For every defect, name its category
+  (R1 to R6 in the ledger) and test the NEIGHBOURING states, not the reported
+  one: 0, 1 and the cap of free transfers; one and several weeks of lag; every
+  chip at its window's first and last week and the week after it was played;
+  every surface that shows the same number. Extend the category's property
+  test (`manager-state-properties`, `optimizer-reference`,
+  `surface-consistency`) rather than adding a one-off case.
+- **Independent oracles only.** A test that asserts an engine number must get
+  the expected value from somewhere the engine does not: FPL's own witnesses
+  (charged hits, chip ledger, listed values), a calculator written from the
+  rules inside the test, an exhaustive enumeration, or a second code path that
+  answers the same question. Re-running the engine and comparing it to itself
+  is not a test of correctness.
+- **Every new or fixed test is shown to fail on the defect.** Run it against
+  the defective code (a scratch copy or `git show <base>:<file>`) and say so in
+  the PR. Any change to a rule the mutation table guards runs `npm run
+  test:mutation:fpl`, and a rule the table does not guard gets a row.
+- **Fixtures are held to real-data invariants.** Every fixture, the demo and
+  the e2e states pass the same checks as a real manager (`historyGaps`,
+  `transfersBehind`, the plan-audit chain). An impossible fixture is a defect.
+- **Ledger.** Every defect found, by anyone, gets a row in that ledger with
+  "found by" stated honestly (owner, audit, CI, monitor) and the guard added.
+- **Readiness is automatic.** The GitHub `fpl-health.yml` probe plans the
+  owner's team and a rotating sample of real managers every six hours and
+  separates upstream failures (exit 2) from application failures (exit 1);
+  Netlify's `fpl-health` checks the proxy and the owner's state. Before a
+  deadline, read their latest results before starting any manual audit, and
+  turn anything an audit finds into a guard here, not just a fix.
+
 ## Repo conventions (the ones that bite)
 
 - **This checkout is shared with other sessions, so check `git status` immediately

@@ -1195,6 +1195,9 @@ test('a chip held on a tie never claims a later week is better', () => {
   assert.equal(betterLaterGw(tc(7.2, 6.1), 7), null);
   assert.ok(codes(tc(5.2, 6.1)).includes('hold_3xc_better'), 'a genuinely better week is still named');
   assert.equal(betterLaterGw(tc(5.2, 6.1), 7), 16);
+  // The tie itself: the cases above are 1.1 apart either way, so `>=` passed
+  // them all (mutation-check.mjs, chips-better-later-on-tie, 2026-10-16).
+  assert.equal(betterLaterGw(tc(6.1, 6.1), 7), null, 'an exact tie is not a better week');
   // A structural best week (Wildcard, Free Hit) carries no value and stands.
   assert.equal(betterLaterGw({ chip: 'freehit', available: true, valueNow: 3, bestGw: 12, bestValue: null }, 7), 12);
   assert.equal(betterLaterGw({ chip: 'freehit', available: true, valueNow: 3, bestGw: 7, bestValue: null }, 7), null);

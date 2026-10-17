@@ -23,6 +23,7 @@
     "test:gym": "node --test \"apps/gym-tracker/tests/**/*.test.*\"",
     "test:football": "node --test \"apps/football-h2h/tests/**/*.test.*\"",
     "test:fpl-planner": "node --test \"apps/fpl-planner/tests/**/*.test.*\"",
+    "test:mutation:fpl": "node apps/fpl-planner/scripts/mutation-check.mjs",
     "test:rising-shows": "node --test \"apps/rising-shows/tests/**/*.test.*\"",
     "test:mario-kart": "node --test \"apps/mario-kart/tests/**/*.test.*\"",
     "test:arena": "node --test \"apps/arena/tests/**/*.test.*\"",

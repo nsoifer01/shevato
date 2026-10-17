@@ -80,6 +80,88 @@ export function payloadShapeFailures(bootstrap, fixtures) {
 }
 
 /**
+ * The payload resolved exactly as js/app.js resolves it for a first-time
+ * visitor. Exported so the CLI's sample of managers (evidence-probe.mjs
+ * `--sample`) plans them against the same world runProbe judged.
+ */
+export async function resolveProbeWorld({ bootstrap, fixtures, fetchedAt, loadShipped }) {
+  const first = buildGameState(bootstrap, fixtures, { fetchedAt });
+  const shipped = openingBaselineApplies(first) ? await loadShipped() : null;
+  const { gameState, resolution } = resolveGameState(first, { bootstrap, fixtures, fetchedAt, kept: null, shipped });
+  return { first, gameState, resolution };
+}
+
+/**
+ * One real manager's squad state, read as the app reads it for the gameweek
+ * the app plans, and judged against FPL's own witnesses. Throws when the
+ * squad cannot be read. Shared by runProbe (the monitored entry) and the CLI's
+ * sample, so every manager is judged by the same code.
+ *
+ * @param {object} p.entry  `{ id, entry, history, transfers, picks, revertPicks }`
+ * @returns {{ squadState, verdict }}
+ */
+export function entrySquadVerdict({ entry, gameState, bootstrap, gw }) {
+  const rules = gameState.rules;
+  const planGw = gameState.nextEvent ?? gameState.currentEvent ?? gw;
+  const squadState = buildSquadState({
+    entry: entry.entry, history: entry.history, transfers: entry.transfers,
+    picks: entry.picks, revertPicks: entry.revertPicks || null, gameState, gw: planGw,
+  });
+  // The history the engine replayed, so a witness never disagrees with
+  // the planner over a week the picks have and the history does not yet.
+  const history = historyCaughtUp(entry.history, entry.picks);
+  const verdict = {
+    id: entry.id,
+    gw: planGw,
+    freeTransfers: squadState.freeTransfers,
+    offered: squadState.chipsAvailable || [],
+    witness: freeTransferWitnessFailures({ history, rules }),
+    chips: chipLedgerFailures({ bootstrap, history, offered: squadState.chipsAvailable, gw: planGw }),
+    squad: squadReadFailures({ squadState, picks: squadState.freeHitGw ? entry.revertPicks : entry.picks, rules }),
+    planned: false,
+    consistency: [],
+  };
+  return { squadState, verdict };
+}
+
+/**
+ * That manager planned exactly as the app plans him (DEFAULT_SETTINGS and
+ * the app's seed), validated, and held to its own numbers. Fills
+ * `verdict.planned` and `verdict.consistency`.
+ */
+export async function planEntryVerdict({ gameState, squadState, verdict }) {
+  const rules = gameState.rules;
+  const t0 = performance.now();
+  const plan = await buildPlan({
+    gameState, squadState,
+    options: { horizon: DEFAULT_SETTINGS.horizon, risk: DEFAULT_SETTINGS.risk, seed: APP_PLAN_SEED },
+  });
+  const seconds = (performance.now() - t0) / 1000;
+  const planVerdict = validatePlan(plan.current, squadState, gameState, rules);
+  verdict.planned = true;
+  verdict.consistency = planConsistencyFailures({ bundle: plan, squadState, rules });
+  return { plan, planVerdict, seconds };
+}
+
+/** The named checks one manager's verdict makes, in runProbe's words. */
+export function entryVerdictChecks(e, rules) {
+  const said = (list) => (list.length ? list.slice(0, 4).join('; ') : 'holds');
+  const out = [
+    { name: `entry ${e.id}: the free-transfer replay reproduces every hit FPL charged`, ok: !e.witness.length, saw: said(e.witness),
+      expected: 'event_transfers_cost equal to 4 x max(0, transfers - free) in every gameweek (0 under a Wildcard or Free Hit)' },
+    { name: `entry ${e.id}: the chips offered are the ones left in their half`, ok: !e.chips.length, saw: said(e.chips),
+      expected: 'the bootstrap chip windows less history.chips' },
+    { name: `entry ${e.id}: the squad, bank and value read agree with FPL`, ok: !e.squad.length, saw: said(e.squad),
+      expected: `${rules.squadSize} players, FPL's bank, no value_mismatch` },
+  ];
+  if (e.planned) {
+    out.push({ name: `entry ${e.id}: the plan agrees with its own numbers`, ok: !e.consistency.length, saw: said(e.consistency),
+      expected: 'no runner-up above it, money, free transfers and headline consistent' });
+  }
+  return out;
+}
+
+/**
  * Judge one payload pair.
  *
  * @param {object} p
@@ -99,9 +181,7 @@ export function payloadShapeFailures(bootstrap, fixtures) {
  * @returns {Promise<{ reading, checks, readiness, blocked, failed, usable, lines }>}
  */
 export async function runProbe({ bootstrap, fixtures, fetchedAt, now = null, source, responses = {}, prev = null, loadShipped, entry = null, planEntry = true }) {
-  const first = buildGameState(bootstrap, fixtures, { fetchedAt });
-  const shipped = openingBaselineApplies(first) ? await loadShipped() : null;
-  const { gameState, resolution } = resolveGameState(first, { bootstrap, fixtures, fetchedAt, kept: null, shipped });
+  const { first, gameState, resolution } = await resolveProbeWorld({ bootstrap, fixtures, fetchedAt, loadShipped });
   const rules = gameState.rules;
 
   const evidence = seasonEvidence(gameState);
@@ -140,26 +220,8 @@ export async function runProbe({ bootstrap, fixtures, fetchedAt, now = null, sou
   let entryError = entry && entry.error ? entry.error : null;
   if (entry && !entry.error && entry.picks) {
     try {
-      const planGw = gameState.nextEvent ?? gameState.currentEvent ?? gw;
-      realSquad = buildSquadState({
-        entry: entry.entry, history: entry.history, transfers: entry.transfers,
-        picks: entry.picks, revertPicks: entry.revertPicks || null, gameState, gw: planGw,
-      });
-      // The history the engine replayed, so a witness never disagrees with
-      // the planner over a week the picks have and the history does not yet.
-      const history = historyCaughtUp(entry.history, entry.picks);
-      entryVerdict = {
-        id: entry.id,
-        gw: planGw,
-        freeTransfers: realSquad.freeTransfers,
-        offered: realSquad.chipsAvailable || [],
-        witness: freeTransferWitnessFailures({ history, rules }),
-        chips: chipLedgerFailures({ bootstrap, history, offered: realSquad.chipsAvailable, gw: planGw }),
-        squad: squadReadFailures({ squadState: realSquad, picks: realSquad.freeHitGw ? entry.revertPicks : entry.picks, rules }),
-        planned: false,
-        consistency: [],
-      };
-      reading.entry = { id: entry.id, gw: planGw, freeTransfers: realSquad.freeTransfers };
+      ({ squadState: realSquad, verdict: entryVerdict } = entrySquadVerdict({ entry, gameState, bootstrap, gw }));
+      reading.entry = { id: entry.id, gw: entryVerdict.gw, freeTransfers: realSquad.freeTransfers };
     } catch (err) {
       entryError = `reading the squad threw: ${err && err.message ? err.message : String(err)}`;
     }
@@ -234,19 +296,15 @@ export async function runProbe({ bootstrap, fixtures, fetchedAt, now = null, sou
     // limit cannot carry, so the scheduled function checks his squad state
     // below and plans the built squad, and the GitHub workflow plans him.
     const planReal = !!(realSquad && planEntry);
-    const squadState = planReal
-      ? realSquad
-      : buildSquadState({ entry: null, history: null, transfers: null, picks: null, gameState, gw });
-    const options = planReal
-      ? { horizon: DEFAULT_SETTINGS.horizon, risk: DEFAULT_SETTINGS.risk, seed: APP_PLAN_SEED }
-      : { horizon: 3 };
-    const t0 = performance.now();
-    const plan = await buildPlan({ gameState, squadState, options });
-    planSeconds = (performance.now() - t0) / 1000;
-    planVerdict = validatePlan(plan.current, squadState, gameState, rules);
+    let plan;
     if (planReal) {
-      entryVerdict.planned = true;
-      entryVerdict.consistency = planConsistencyFailures({ bundle: plan, squadState, rules });
+      ({ plan, planVerdict, seconds: planSeconds } = await planEntryVerdict({ gameState, squadState: realSquad, verdict: entryVerdict }));
+    } else {
+      const squadState = buildSquadState({ entry: null, history: null, transfers: null, picks: null, gameState, gw });
+      const t0 = performance.now();
+      plan = await buildPlan({ gameState, squadState, options: { horizon: 3 } });
+      planSeconds = (performance.now() - t0) / 1000;
+      planVerdict = validatePlan(plan.current, squadState, gameState, rules);
     }
     const captain = gameState.players.get(plan.current.captain);
     captainPosition = captain ? captain.position : null;
@@ -399,20 +457,7 @@ export async function runProbe({ bootstrap, fixtures, fetchedAt, now = null, sou
     }
   }
   if (entryVerdict) {
-    const e = entryVerdict;
-    const said = (list) => (list.length ? list.slice(0, 4).join('; ') : 'holds');
-    check(`entry ${e.id}: the free-transfer replay reproduces every hit FPL charged`,
-      !e.witness.length, said(e.witness),
-      'event_transfers_cost equal to 4 x max(0, transfers - free) in every gameweek (0 under a Wildcard or Free Hit)');
-    check(`entry ${e.id}: the chips offered are the ones left in their half`,
-      !e.chips.length, said(e.chips), 'the bootstrap chip windows less history.chips');
-    check(`entry ${e.id}: the squad, bank and value read agree with FPL`,
-      !e.squad.length, said(e.squad), `${rules.squadSize} players, FPL's bank, no value_mismatch`);
-    if (e.planned) {
-      check(`entry ${e.id}: the plan agrees with its own numbers`,
-        !e.consistency.length, said(e.consistency),
-        'no runner-up above it, money, free transfers and headline consistent');
-    }
+    for (const c of entryVerdictChecks(entryVerdict, rules)) check(c.name, c.ok, c.saw, c.expected);
   }
   if (entryError) {
     check(`the proxy serves entry ${entry.id}`, false, entryError, 'HTTP 200 for entry, history, transfers and picks, and a squad read from them');

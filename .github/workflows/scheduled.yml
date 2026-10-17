@@ -15,6 +15,13 @@ name: scheduled
 #                    and coverage moves over weeks.
 #   cross-browser .. Firefox + WebKit smoke of every page and app. Engine
 #                    regressions arrive with browser releases, not with commits.
+#   mutation ....... the FPL Planner's curated mutation check: breaks each
+#                    guarded rule on purpose and expects its tests to go red
+#                    (apps/fpl-planner/scripts/mutation-check.mjs). A test that
+#                    cannot fail looks exactly like one that passes, and every
+#                    mutant is a full test-file run, so it is weekly; the table
+#                    itself is checked on every pull request by
+#                    apps/fpl-planner/tests/mutation-check.test.mjs.
 #
 # Formerly three separate schedules (test.yml's coverage job on Wednesday,
 # arena-rules.yml on Tuesday, cross-browser.yml on Monday); one run means one
@@ -80,3 +87,19 @@ jobs:
         env:
           CROSS_BROWSER_REQUIRE: '1'
         run: npm run test:cross-browser
+
+  mutation:
+    runs-on: ubuntu-latest
+    # About two and a half minutes on 11 local workers (2026-10-16); the slowest
+    # mapped file (chips.test.mjs) is 70 s on its own and a 4-core runner runs
+    # two mutants at a time, so 20 leaves headroom without hiding a hang. Plain
+    # node, no npm install: the check copies the app into a temp dir and runs
+    # `node --test` there.
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: '.nvmrc'
+      - name: FPL Planner mutation check
+        run: npm run test:mutation:fpl

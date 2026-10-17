@@ -14,6 +14,90 @@ tables.
 
 ---
 
+## Regression prevention: the defect ledger (since 2026-10-16)
+
+Two "comprehensive" pre-GW7 audits found 8 and then 23 defects, every one past
+thousands of green tests, none by CI or monitoring. The cause was never effort.
+It was method: **tests reproduced the engine's own calculations, and each fix
+was pinned to the single state that exposed it**, so the neighbouring states
+(two weeks of lag, not one; the hero beside the card; two free transfers, not
+one; the week after a Free Hit) stayed untested and broke next. The rules that
+follow from it are in the repository `CLAUDE.md` ("FPL Planner: regression
+prevention"); this ledger is how they are measured.
+
+**Every defect found from now on gets a row**, whoever finds it, with "found
+by" set honestly. The trend to watch is the share found by `CI` or `monitor`;
+a row found by `owner` or `audit` means a guard was missing, and its last
+column names the guard added so the whole category is covered, not the case.
+
+| # | Defect | Found by | Category | Guard now |
+| --- | --- | --- | --- | --- |
+| 1 | History 1 week behind picks over-counted free transfers, re-offered a played chip | audit (#611) | R1 coherence | historyCaughtUp; manager-state-properties |
+| 2 | Projected weeks planned on a shrinking horizon (buy then sell) | audit (#611) | R2 search | planner horizon test; optimizer-reference |
+| 3 | Better 3-move plan cut by the 16-wide shortlist | audit (#611) | R2 search | registry 47/48; optimizer-reference |
+| 4 | Triple Captain "looks better" on a tie | audit (#611) | R3 claim vs number | betterLaterGw; surface-consistency |
+| 5 | Bench Boost alternative printed +0.52 while ranking 0.43 below | audit (#611) | R3 claim vs number | deltaWithChipValue; surface-consistency |
+| 6 | "0 chips ... none of them", "1 chips", eight identical "Your squad" rows | audit (#611) | R4 boundary copy | surface-consistency copy lint |
+| 7 | Late joiner's selling prices overstated | audit (#611) | R1 coherence | rule 3 floor (limit documented) |
+| 8 | A consistency case skipped on every run | audit (#611) | R5 dead test | empty class fails; mutation-check |
+| 9 | History 2+ weeks behind still over-counted (fix #1 incomplete) | audit (#613) | R1 coherence | historyGaps; manager-state-properties |
+| 10 | Transfer list behind history mispriced recent buys | audit (#613) | R1 coherence | transfersBehind; manager-state-properties |
+| 11 | A previous team's data status lowered the next team's confidence | audit (#613) | R1 coherence | forgetEntryStatus; gw7-audit-followup-ui |
+| 12 | Hits never searched with 2+ free transfers | audit (#613) | R2 search | hitDepth (registry 48); optimizer-reference; mutation-check |
+| 13 | Fast proxy and objective disagree; better plans missed | audit (#613) | R2 search | polish (registry 48); search-corrections |
+| 14 | "Why not" routes deeper than the planner searches | lead, fixing #12 | R2 search | profile maxHits; optimizer-reference differential |
+| 15 | Hero confidence line contradicted the alternatives card | audit (#613) | R3 claim vs number | shownDelta; surface-consistency |
+| 16 | Triple Captain later weeks valued on two scales | audit (#613) | R3 claim vs number | registry 49 |
+| 17 | "Counting what the chip is worth later" on Wildcard/Free Hit | audit (#613) | R3 claim vs number | surface-consistency |
+| 18 | Projected chain checked free transfers only, not squad or bank | audit (#613) | R3 oracle gap | plan-audit chain checks |
+| 19 | Expiring chip shown as "Hold" in its last week | audit (#613) | R4 boundary | expiringChips; surface-consistency |
+| 20 | "2 player", "over 1 gameweeks", "1 transfers" | audit (#613) | R4 boundary copy | surface-consistency copy lint |
+| 21 | Health run red on correct data after a Free Hit | audit (#613) | R6 ops path | freshLimitSeconds; probe-freshness |
+| 22 | Team id could reach the public health report | audit (#613) | R6 ops path | scrubUpstreamText; mutation-check |
+| 23 | Concurrent refusals lost from the count | audit (#613) | R6 ops path | CAS record; fpl.test |
+| 24 | Retry-After as a date ignored | audit (#613) | R6 ops path | retryAfterSeconds; mutation-check |
+| 25 | Every caller went upstream as a backoff ended | audit (#613) | R6 ops path | recovery lease; fpl.test |
+| 26 | `--entry none` failed on GitHub | audit (#613) | R6 ops path | probe-freshness |
+| 27 | A throw before the probe stored no result; history write cost the alert | audit (#613) | R6 ops path | fpl-health.test |
+| 28 | GW7 brute force filtered on a field that does not exist | audit (#613) | R5 dead test | fixed; mutation-check |
+| 29 | Demo dataset internally inconsistent | lead, via #10 | R5 fixture realism | demo held to real-data checks |
+| 30 | e2e GW1 states impossible for any manager | CI (#613) | R5 fixture realism | GW1 states rebuilt |
+| 31 | Late-joiner floor documented as never above the price paid | audit (#613) | R5 unverified claim | claim corrected |
+| 32 | A transfer list ending before a Wildcard week priced Wildcard buys at their start price, silently (5.9 for 5.5) | CI: manager-state-properties (new, 2026-10-17) | R1 coherence | squad.js unexplainedPlayers (every held player is in the starting squad or a listed buy; 0 false flags on 21 real managers and 1,000 generated seasons); mutation-check |
+| 33 | With 2 free transfers a free pair 0.18 and 0.40 better than the plan is never generated (it differs in both moves, beyond the one-swap polish) | CI: optimizer-reference (new) | R2 search | OPEN: two `todo` tests pin it; follow-up is a pair-level polish, measured as registry 48 was |
+| 34 | The "held on a tie" test never tested a tie (`>=` survived) | mutation-check (new) | R5 dead test | tie assertion in chips.test |
+| 35 | The search's own club-limit check was unguarded; illegal plans could crowd the shortlist and a legal +15 upgrade be dropped for a roll | mutation-check (new) | R5 dead test | crowded-shortlist case in transfers.test |
+
+**Open question (not yet a defect):** the first rotating real-manager sample
+(2026-10-17, 12 managers) recommended a Wildcard at GW7 to all 7 who still
+held the first-half one, including a manager ranked 661st. A squad the planner
+rebuilds always scores best under its own projections (the optimizer's curse),
+so the Wildcard's gain over any human squad is overstated, and the replay
+cannot measure it: it only replays squads the planner built. Needs an
+instrument that starts from real managers' squads before the bar is judged.
+
+Categories, and the one guard that covers each WHOLE category:
+
+- **R1, endpoints that disagree** (stale, lagging, partial or contradictory
+  manager data): property tests that PERTURB real-shaped payloads and require
+  the engine to return the truth or withhold, never a different number
+  (`tests/manager-state-properties.test.mjs`).
+- **R2, a search that does not optimise what it reports**: an exact reference
+  on enumerable problems, differential checks between paths that answer the
+  same question, metamorphic properties (`tests/optimizer-reference.test.mjs`).
+- **R3, a number or claim on screen that is not the computed one**: render
+  REAL plans across a matrix of managers, risk profiles, horizons and chip
+  states and assert the surfaces agree (`tests/surface-consistency.test.mjs`).
+- **R4, lifecycle and boundary states**: the same matrix, enumerated at the
+  boundaries (0, 1, the cap; a window's last week; the week after a chip), plus
+  a copy lint over all rendered text.
+- **R5, tests and fixtures that cannot fail**: `npm run test:mutation:fpl`
+  (weekly, and before any engine change ships), and every fixture held to the
+  real-data invariants (`historyGaps`, `transfersBehind`, the chain checks).
+- **R6, operational failure paths**: fault-injected tests of each dependency
+  failing realistically, and the readiness gate's upstream versus application
+  classification (`evidence-probe.mjs --sample`).
+
 ## The follow-up audit of #611 (2026-10-16, evening, before GW7)
 
 An independent audit of PR #611 the same evening, by four disjoint auditors
