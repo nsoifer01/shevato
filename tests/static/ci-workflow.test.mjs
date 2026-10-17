@@ -53,7 +53,7 @@ test('a gated job is skipped only when plan positively decided the tree already 
   // other than a successful "already tested" answer would wave a pull request
   // through untested. The only skip path: a push, plan succeeded, run=false.
   const GATE = "${{ !cancelled() && (github.event_name != 'push' || needs.plan.result != 'success' || needs.plan.outputs.run == 'true') }}";
-  for (const id of ['lint', 'test', 'browser-shard', 'rules-shard']) {
+  for (const id of ['lint', 'test-shard', 'browser-shard', 'rules-shard']) {
     assert.equal(ifOf(id), GATE, `job "${id}" must use the fail-open gate`);
     assert.match(J[id], /^ {4}needs: plan$/m, `job "${id}" reads plan's answer`);
   }
@@ -61,7 +61,7 @@ test('a gated job is skipped only when plan positively decided the tree already 
 });
 
 test('each required verdict runs whatever happened to its shards', () => {
-  for (const [verdict, shards] of [['browser', 'browser-shard'], ['rules', 'rules-shard']]) {
+  for (const [verdict, shards] of [['test', 'test-shard'], ['browser', 'browser-shard'], ['rules', 'rules-shard']]) {
     assert.equal(ifOf(verdict), 'always()',
       `without always() a failed or cancelled ${shards} leaves the required check SKIPPED, which reads as passing`);
     assert.match(J[verdict], new RegExp(`SHARDS: \\$\\{\\{ needs\\.${shards}\\.result \\}\\}`));
@@ -113,8 +113,8 @@ test('the unit job reports each test file\'s cost against the per-file bound, on
   // --test-timeout bounds whole files. PR #542 took it for a per-test bound,
   // and nothing showed how close any file ran until the weekly coverage job
   // killed two (2026-09-14).
-  assert.match(J.test, /--test-reporter=\.\/scripts\/test-file-times\.mjs --test-reporter-destination=unit-file-times\.md/);
-  const summarize = J.test.slice(J.test.indexOf('- name: Summarize results'));
+  assert.match(J['test-shard'], /--test-reporter=\.\/scripts\/test-file-times\.mjs --test-reporter-destination=unit-file-times\.md/);
+  const summarize = J['test-shard'].slice(J['test-shard'].indexOf('- name: Summarize results'));
   assert.match(summarize, /^ {8}if: always\(\)$/m);
   assert.match(summarize, /unit-file-times\.md \| tee -a "\$GITHUB_STEP_SUMMARY"/);
 });
@@ -127,3 +127,15 @@ test('the retired per-suite workflows stay retired', () => {
     assert.equal(existsSync(join(REPO_ROOT, '.github/workflows', f)), false, `${f} was folded into ci.yml / scheduled.yml`);
   }
 });
+
+// 2026-10-17: the unit estate runs as two halves. Node's --test-shard takes
+// its total from the matrix, as the browser shards do, so adding a half can
+// never leave files that no half runs; and every half still runs `npm test`,
+// the one definition of what the estate is.
+test('the unit halves split npm test by node\'s own --test-shard, with the total from the matrix', () => {
+  assert.match(J['test-shard'], /^ {8}shard: \[1, 2\]$/m);
+  assert.match(J['test-shard'], /NODE_OPTIONS: --test-shard=\$\{\{ matrix\.shard \}\}\/\$\{\{ strategy\.job-total \}\} /);
+  assert.match(J['test-shard'], /^ {8}run: npm test$/m);
+  assert.match(J['test-shard'], /name: unit-tests-junit-\$\{\{ matrix\.shard \}\}/, 'one artifact per half, or the second upload collides');
+});
+

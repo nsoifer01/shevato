@@ -3,6 +3,19 @@
 A living document: best current understanding, not a diary. See the
 repo-root `CLAUDE.md` for the convention.
 
+## The page build had no test, and took the coverage floor with it (2026-10-17)
+
+The weekly coverage run failed on 2026-10-12 with Rising Shows at 86.72% of
+lines against its floor of 88 (87.07% on 2026-10-17). The cause was one file:
+`scripts/build-show-pages.js` at 47.7%, because its `main()` (which shows get
+a page, the 410 tail, the A-Z, the hubs, the sitemap, `--only`) only ever ran
+as a subprocess (the browser shards' `--only=tt0903747`, the Netlify build),
+where V8 coverage cannot see it, and it grew with #582 and #609. Lowering the
+floor would have hidden exactly the code those PRs changed. Now `main` takes
+an injectable `root` and `showPageLimit`, and `tests/build-show-pages.test.js`
+runs the whole build on a three-show fixture in a temp dir (91.6% of the file;
+writing the tail's pages, or skipping the rebuild's wipe, each fails it).
+
 ## "211 episodes" was 211 of 11,232: rating coverage (2026-10-13)
 
 Reported: General Hospital (tt0056758) showed "Season 1 · 211 episodes" and a

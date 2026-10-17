@@ -263,8 +263,8 @@ npm run test:browser       # full browser estate: site, apps, a11y, visual, perf
                            #   across a six-job matrix, `-- --shard=<i>/<n>`, and the shards are
                            #   packed by MEASURED cost). Never touches the internet: third-party
                            #   requests are served from tests/browser/vendor/third-party/
-npm run test:browser:parallel  # the same estate, 4 shards at once on this machine (11.1
-                           #   minutes, measured 2026-09-14). Each shard gets its own port pair, static server, Chrome
+npm run test:browser:parallel  # the same estate, 6 shards at once on this machine (8.0
+                           #   minutes, measured twice 2026-10-17; 12.0 at 4). Each shard gets its own port pair, static server, Chrome
                            #   and profile, so it is the same isolation CI gets. `-- --shards=<n>`
                            #   to change the width; it refuses to start if a port is busy.
 npm run test:all           # "is this change safe to merge": lint, then npm test, then test:browser
@@ -370,11 +370,12 @@ Fixing the product bug is a separate change from the test that documents it.
   check counts for every harness-owned suite (see EXPECTED_CHECKS in
   run.mjs), so a crashed block cannot silently shrink the denominator.
 - CI (`.github/workflows/`):
-  - `ci` is the whole pull-request gate, one workflow: `lint`, `test` (every
-    `node:test` file with the Rising Shows dataset present, so the
+  - `ci` is the whole pull-request gate, one workflow: `lint`, the
+    `test-shard` pair with its `test` verdict (every `node:test` file, split in
+    two by node's `--test-shard`, with the Rising Shows dataset present, so the
     real-catalogue tests run; `dot` output plus a summary on every run that
     states the totals and names every skipped test), the
-    `browser-shard` matrix (six shards) with its `browser` verdict, and the
+    `browser-shard` matrix (eight shards) with its `browser` verdict, and the
     `rules-shard` pair with its `rules` verdict (the Arena rules suite and the
     multi-client e2e against the emulators, split across two machines and
     scoped to changes that can move them). They all start together. The required status checks

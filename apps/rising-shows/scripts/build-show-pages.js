@@ -29,17 +29,26 @@ const {
 } = require('./render-sitemap.js');
 
 const ROOT = path.join(__dirname, '..');
-const DATA_FILE = path.join(ROOT, 'data.json');
-const EXTRAS_FILE = path.join(ROOT, 'data', 'show-modal-extras.json');
-const SHOWS_DIR = path.join(ROOT, 'shows');
-const SITEMAP_FILE = path.join(ROOT, 'sitemap-shows.xml');
+
+// Every file the build reads or writes, under one app root. `root` is
+// injectable so tests/build-show-pages.test.js runs the whole build against a
+// fixture catalogue in a temporary directory (2026-10-17): the orchestration
+// below had no unit test at all, and its growth (#582's 410 tail, #609) took
+// the Rising Shows area under its coverage floor.
+const pathsFor = (root) => ({
+  DATA_FILE: path.join(root, 'data.json'),
+  EXTRAS_FILE: path.join(root, 'data', 'show-modal-extras.json'),
+  SHOWS_DIR: path.join(root, 'shows'),
+  SITEMAP_FILE: path.join(root, 'sitemap-shows.xml'),
+});
 
 // `only` (a series id) renders exactly one show page, byte-identical to what
 // the full build writes for it, and touches nothing else: no wipe of shows/,
 // no index, hubs or sitemap. CI uses it for the single built page the Rising
 // Shows browser suite visits, which the full ~34k-page build would otherwise
 // have to produce on every browser shard.
-function main({ only = null } = {}) {
+function main({ only = null, root = ROOT, showPageLimit = SHOW_PAGE_LIMIT } = {}) {
+  const { DATA_FILE, EXTRAS_FILE, SHOWS_DIR, SITEMAP_FILE } = pathsFor(root);
   if (!fs.existsSync(DATA_FILE)) {
     throw new Error(`data.json not found at ${DATA_FILE}. Run \`npm run build:rising-shows\` first.`);
   }
@@ -71,7 +80,7 @@ function main({ only = null } = {}) {
   // of it, so the tail is no longer written: its URLs answer 410 Gone
   // (netlify.toml) and every link to a tail show points into the app.
   // `hasPage` is what the renderers read to decide where a link goes.
-  const pageIds = selectShowPageIds(data.matches, SHOW_PAGE_LIMIT);
+  const pageIds = selectShowPageIds(data.matches, showPageLimit);
   // Whether the app's Finder lists the show at all, so a show without a page
   // links to a deep link that opens something (showHref). Same function the
   // browser builds its grid with; shapes do not affect membership.
@@ -80,7 +89,7 @@ function main({ only = null } = {}) {
     s.hasPage = pageIds.has(s.seriesId);
     s.inApp = inAppIds.has(s.seriesId);
   }
-  const sitemapSeries = selectSitemapSeries(series.filter((s) => s.hasPage), SHOW_PAGE_LIMIT);
+  const sitemapSeries = selectSitemapSeries(series.filter((s) => s.hasPage), showPageLimit);
 
   // Decided before rendering too: only the shows that make the gap hub link
   // out to it from their recommendations block.
@@ -117,7 +126,7 @@ function main({ only = null } = {}) {
     const one = series.find((s) => s.seriesId === only);
     if (!one) throw new Error(`--only=${only}: data.json has no series with that id`);
     const dir = writeShowPage(one);
-    console.log(`[build-show-pages] --only: wrote ${path.relative(ROOT, dir)}/index.html and nothing else`);
+    console.log(`[build-show-pages] --only: wrote ${path.relative(root, dir)}/index.html and nothing else`);
     return;
   }
 
@@ -345,4 +354,4 @@ if (require.main === module) {
   }
 }
 
-module.exports = { groupBySeries, computeDominantShape, buildShapeIndex, computeRelatedShows };
+module.exports = { main, groupBySeries, computeDominantShape, buildShapeIndex, computeRelatedShows };

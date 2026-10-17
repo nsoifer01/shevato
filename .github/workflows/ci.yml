@@ -7,9 +7,11 @@ name: ci
 #   +- plan ............ push only: has this exact tree already passed on its
 #   |                    pull request? (scripts/ci-already-tested.mjs)
 #   +- lint ............ ESLint correctness rules (npm run lint)
-#   +- test ............ every node:test file: unit, integration, static
-#   +- browser-shard x6  the CDP browser estate, packed by measured cost
-#   |  +- browser ...... one verdict for the six shards
+#   +- test-shard x2 ... every node:test file (unit, integration, static),
+#   |  |                 split by node's own --test-shard
+#   |  +- test ......... one verdict for both halves
+#   +- browser-shard x8  the CDP browser estate, packed by measured cost
+#   |  +- browser ...... one verdict for the eight shards
 #   +- dataset-cache ... push only: keeps the Rising Shows dataset cache warm
 #   |                    on master, where every pull request can restore it
 #   +- rules-shard x2 .. Arena's Firestore rules suite + multi-client e2e against
@@ -27,8 +29,8 @@ name: ci
 # that had already passed. Now the question is asked once, correctly, in
 # `plan`, and every job reads the answer.
 #
-# Nothing here waits on anything it does not need: lint, test, the six browser
-# shards and both Arena groups all start together. On a pull request `plan` is skipped outright
+# Nothing here waits on anything it does not need: lint, both test halves, the
+# eight browser shards and both Arena groups all start together. On a pull request `plan` is skipped outright
 # and costs nothing.
 #
 # WHAT IS NEVER DONE HERE: retries of a failed check, continue-on-error on a
@@ -94,10 +96,23 @@ jobs:
       - run: npm ci
       - run: npm run lint
 
-  test:
+  # TWO HALVES (2026-10-17). One job was 414 s median and 649 s at worst over
+  # the 25 PR runs to 2026-10-17, second only to the browser shards on the
+  # critical path, and the FPL planner's heavy files keep growing. Node's own
+  # --test-shard splits the file list deterministically; the two halves
+  # together run every file exactly once (981 of 981 tests over sync-system and
+  # tests/static, measured), and `npm test` stays the one definition of what
+  # runs. The halves are not balanced by cost: a file lands by its index, so
+  # either half can draw two of the three heaviest files, which is why the
+  # timeout below is unchanged.
+  test-shard:
     needs: plan
     if: ${{ !cancelled() && (github.event_name != 'push' || needs.plan.result != 'success' || needs.plan.outputs.run == 'true') }}
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2]
     # About four minutes on a runner. The cap exists so a hung test fails in
     # minutes with a name instead of holding a runner for GitHub's six-hour
     # default: package.json sets --test-timeout, which bounds each test FILE
@@ -127,7 +142,7 @@ jobs:
       # of what runs (no test in the estate spawns `node --test` itself).
       - name: Unit, integration and static tests
         env:
-          NODE_OPTIONS: --test-reporter=dot --test-reporter-destination=stdout --test-reporter=junit --test-reporter-destination=unit-tests.junit.xml --test-reporter=./scripts/test-file-times.mjs --test-reporter-destination=unit-file-times.md
+          NODE_OPTIONS: --test-shard=${{ matrix.shard }}/${{ strategy.job-total }} --test-reporter=dot --test-reporter-destination=stdout --test-reporter=junit --test-reporter-destination=unit-tests.junit.xml --test-reporter=./scripts/test-file-times.mjs --test-reporter-destination=unit-file-times.md
         run: npm test
       # On EVERY outcome: `dot` prints no totals, so on a green run this line is
       # the evidence of how many tests actually executed (and how many were
@@ -141,10 +156,36 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v7
         with:
-          name: unit-tests-junit
+          name: unit-tests-junit-${{ matrix.shard }}
           path: unit-tests.junit.xml
           if-no-files-found: ignore
           retention-days: 14
+
+  # One verdict for both halves, under the name branch protection requires.
+  # `if: always()` for the same reason as `browser`: a failed or cancelled
+  # half must not leave the required check skipped.
+  test:
+    needs: [plan, test-shard]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Verify both halves passed
+        env:
+          EVENT: ${{ github.event_name }}
+          PLAN: ${{ needs.plan.result }}
+          PLAN_RUN: ${{ needs.plan.outputs.run }}
+          SHARDS: ${{ needs.test-shard.result }}
+        run: |
+          if [ "$EVENT" = push ] && [ "$PLAN" = success ] && [ "$PLAN_RUN" = false ]; then
+            echo "this tree already passed the unit estate on its pull request"
+            exit 0
+          fi
+          echo "test-shard result: $SHARDS"
+          if [ "$SHARDS" != success ]; then
+            echo "::error::the unit estate did not pass (halves: $SHARDS)"
+            exit 1
+          fi
 
   browser-shard:
     needs: plan
@@ -152,14 +193,18 @@ jobs:
     runs-on: ubuntu-latest
     # One shard failing must not cancel its siblings: the estate exists to say
     # everything that is broken, not the first thing.
-    # SIX shards: packed by the measured costs in tests/browser/run.mjs, six
-    # land within 1.5% of each other at about 470 s of suites each (four were
-    # about 710 s). The single heaviest suite, perf.mjs, is about 350 s, so
-    # more shards would buy little and cost more concurrent jobs per PR.
+    # EIGHT shards (2026-10-17): packed by the measured costs in
+    # tests/browser/run.mjs, from GitHub-runner medians of three PR runs, eight
+    # land at 361-367 s of suites each (six at 482-491 s; the stale table had
+    # drifted to 532 s on its slowest). The heaviest suite, perf.mjs, is about
+    # 326 s, so eight is where more shards stop paying. The repository is
+    # public, so runner minutes are free; the cost is concurrent jobs, 13 at
+    # once per pull request against GitHub's 20, so two pushes at the same
+    # moment briefly queue.
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2, 3, 4, 5, 6]
+        shard: [1, 2, 3, 4, 5, 6, 7, 8]
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@v6
@@ -245,7 +290,7 @@ jobs:
   # side effect of re-running the estate on every push; pushes now skip the
   # shards when the tree already passed (plan), so without this job nothing on
   # master would save the key and every pull request's first run would download
-  # and split the dataset on all six shards. Measured 2026-09-14 (PR #542): a
+  # and split the dataset on every shard. Measured 2026-09-14 (PR #542): a
   # miss costs each shard 8-13 s (download, split, save), a hit restores in
   # 2-4 s. Not gated on plan: its whole job is the run that plan skips.
   #

@@ -711,11 +711,11 @@ it must anchor to the element it cares about, never to the document.
   locally (90/90, the same check count CI runs), and a probe that reproduced
   exactly that state (example trip loaded, Days view, axe over the document)
   six times at settles of 300-2500 ms found no violation at all. Nothing in
-  the app was changed for it. If it ever repeats, the suite's own record is
-  too thin to work from (`suites/a11y.mjs` keeps only rule id plus target, so
-  "span" is all you get); capture `n.html` and the `any[].data` colours from
-  `axe.run` for that scan first, because the fix depends on which element and
-  which two colours Chrome measured.
+  the app was changed for it. Not seen again in the 60 green PR runs since, to
+  2026-10-17. Since 2026-10-17 a new violation's failure message carries the
+  first three nodes' HTML and, for color-contrast, the foreground, background,
+  ratio and font axe measured (`suites/a11y.mjs` `evidence`), so a repeat
+  names the element and the two colours instead of just "span".
 
 ## An optional field pair is two questions, not one (`legArrival`, fixed 2026-09-11)
 

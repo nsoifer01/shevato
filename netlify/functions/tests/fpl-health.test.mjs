@@ -12,7 +12,7 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import {
-  runScheduledProbe, statusOf, slotOf, githubDispatchAlert, openStrongStore, HEALTH_STORE, STALE_AFTER_HOURS, UNFINISHED_AFTER_MS,
+  runScheduledProbe, statusOf, slotOf, slotFor, githubDispatchAlert, openStrongStore, HEALTH_STORE, STALE_AFTER_HOURS, UNFINISHED_AFTER_MS,
   healthEntryId, DEFAULT_HEALTH_ENTRY, refusalCheck, REFUSAL_ALERT_MINUTES, SLOW_RUN_MS,
 } from '../lib/fpl-health-run.mjs';
 import { REFUSAL_KEY, serveFpl } from '../lib/fpl-cache.mjs';
@@ -73,11 +73,16 @@ const healthyHeaders = { 'cache-control': 'no-store', 'x-fpl-stale': 'false', 'x
 // stale copy); `fplFetch` replaces FPL itself.
 function production({ proxyStatus = 200, bootstrap = SAMPLE.bootstrap, fplStatus = 200, bootstrapHeaders = null, fplFetch = null, entries = entryBodies() } = {}) {
   const calls = [];
+  const reads = {};
   const fetchImpl = async (url, init = {}) => {
     calls.push(url);
     if (url.includes('/.netlify/functions/fpl?path=')) {
       if (proxyStatus !== 200) return new Response('{}', { status: proxyStatus });
       const path = decodeURIComponent(url.split('path=')[1]);
+      // A function answers each read of its path in turn: (n) => Response,
+      // n counting from 0, for a proxy whose answer changes between reads.
+      const n = (reads[path] = (reads[path] ?? -1) + 1);
+      if (typeof entries[path] === 'function') return entries[path](n);
       if (path.startsWith('entry/')) {
         const body = entries[path];
         if (body === undefined) return new Response('{"error":"not_found"}', { status: 404 });
@@ -237,8 +242,8 @@ test('a run whose alert fails still stores its result', async () => {
   assert.deepEqual(store.map.get('latest').alert, { ok: false, error: 'GitHub down' });
 });
 
-test('it runs every six hours on Netlify\'s scheduler, and the status endpoint is read-only', async () => {
-  assert.equal(config.schedule, '41 */6 * * *');
+test('it is invoked hourly on Netlify\'s scheduler (probing every six hours, hourly only while red), and the status endpoint is read-only', async () => {
+  assert.equal(config.schedule, '41 * * * *');
   assert.equal((await handleStatus(req('', 'POST'), memoryStore())).status, 405);
 });
 
@@ -616,3 +621,114 @@ test('a throw anywhere between the claim and the result is stored as a failed ru
   assert.equal(store2.map.get('latest').ok, false);
   assert.deepEqual(store2.map.get('latest').alert, { ok: true, dispatched: 'failure' });
 });
+
+// ------------------------------------------------- 2026-10-17, issue #616 ---
+// FPL refused ONE proxy read at 12:41. The run failed, #616 was opened and
+// stayed open six hours, and the GitHub backstop re-reported it at 15:58,
+// while the proxy had been answering fresh since a minute after the refusal.
+// The app retries such a read once (js/data/api.js); the run now reads as the
+// app reads, and while red it re-checks every hour instead of every six.
+
+const degraded = (cause, { status = 200, body = REAL_ENTRY.transfers } = {}) => new Response(JSON.stringify(status === 200 ? body : { error: 'upstream_unavailable' }), {
+  status, headers: { ...healthyHeaders, ...(status === 200 ? { 'x-fpl-stale': 'true', 'x-fpl-age-seconds': '21600' } : {}), 'x-fpl-upstream': cause },
+});
+const fresh = (body) => new Response(JSON.stringify(body), { status: 200, headers: healthyHeaders });
+const TRANSFERS = `entry/${ENTRY_ID}/transfers`;
+const PICKS = `entry/${ENTRY_ID}/event/3/picks`;
+
+test('an answer FPL degraded once is read again, as the app retries it, and the run passes saying so', async () => {
+  const store = memoryStore();
+  const entries = entryBodies({
+    [TRANSFERS]: (n) => (n === 0 ? degraded('refused') : fresh(REAL_ENTRY.transfers)),
+    [PICKS]: (n) => (n === 0 ? degraded('backoff', { status: 503 }) : fresh(REAL_ENTRY.picks)),
+  });
+  const r = await runScheduledProbe({ store, fetchImpl: production({ entries }), now: () => NOW, rereadDelayMs: 0 });
+  assert.equal(r.ok, true, JSON.stringify(r.failed));
+  assert.equal(r.transient, 2);
+  assert.ok(r.lines.some((l) => l === `transient       ${TRANSFERS}: a stale copy (refused), re-read 0 s later: fresh`), r.lines.join('\n'));
+  assert.ok(r.lines.some((l) => l === `transient       ${PICKS}: HTTP 503 (backoff), re-read 0 s later: fresh`), r.lines.join('\n'));
+  assert.equal(store.map.get('history').at(-1).transient, 2, 'the history keeps how often FPL blipped');
+});
+
+test('a second degraded answer fails the check exactly as one did before, with both reads reported', async () => {
+  for (const [label, first, again] of [
+    ['a block that lasts', () => degraded('backoff', { status: 503 }), () => degraded('backoff', { status: 503 })],
+    ['an FPL outage over a copy', () => degraded('error'), () => degraded('error')],
+  ]) {
+    const entries = entryBodies({ [PICKS]: (n) => (n === 0 ? first() : again()), [TRANSFERS]: (n) => (n === 0 ? first() : again()) });
+    const r = await runScheduledProbe({ store: memoryStore(), fetchImpl: production({ entries }), now: () => NOW, rereadDelayMs: 0 });
+    assert.equal(r.ok, false, label);
+    assert.ok(r.failed.some((f) => f.name === `the proxy serves entry ${ENTRY_ID}` || /fresh and uncached/.test(f.name)), `${label}: ${JSON.stringify(r.failed)}`);
+    assert.ok(r.lines.some((l) => l.startsWith('transient ') && !l.endsWith(': fresh')), `${label}: ${r.lines.join('\n')}`);
+  }
+});
+
+test('an answer degraded for our own reasons is never re-read: no cause, our quota, or a status FPL did not cause', async () => {
+  for (const [label, answer] of [
+    ['stale with no cause', () => new Response(JSON.stringify(REAL_ENTRY.transfers), { status: 200, headers: { ...healthyHeaders, 'x-fpl-stale': 'true', 'x-fpl-age-seconds': '21600' } })],
+    ['our quota', () => degraded('quota')],
+    ['a 500 that names FPL', () => degraded('error', { status: 500 })],
+  ]) {
+    const entries = entryBodies({ [TRANSFERS]: (n) => (n === 0 ? answer() : fresh(REAL_ENTRY.transfers)) });
+    const proxy = production({ entries });
+    const r = await runScheduledProbe({ store: memoryStore(), fetchImpl: proxy, now: () => NOW, rereadDelayMs: 0 });
+    assert.equal(r.ok, false, label);
+    assert.equal(proxy.calls.filter((u) => u.includes(encodeURIComponent(TRANSFERS))).length, 1, `${label}: read once`);
+    assert.equal(r.transient, 0, label);
+  }
+});
+
+test('while the last result is red the run re-checks every hour; while green it waits for the next six-hour slot', () => {
+  const red = { ok: false };
+  const green = { ok: true };
+  // The six-hour slot not yet probed: an ordinary run, whatever came before.
+  assert.deepEqual(slotFor('2026-10-17T12:41:00Z', '2026-10-17T06', green), { slot: '2026-10-17T12', recheck: false });
+  assert.deepEqual(slotFor('2026-10-17T12:41:00Z', null, null), { slot: '2026-10-17T12', recheck: false });
+  // Inside a probed slot: only while red, on the hour's own id.
+  assert.equal(slotFor('2026-10-17T13:41:00Z', '2026-10-17T12', green), null);
+  assert.deepEqual(slotFor('2026-10-17T13:41:00Z', '2026-10-17T12', red), { slot: '2026-10-17T13', recheck: true });
+  assert.deepEqual(slotFor('2026-10-17T17:41:00Z', '2026-10-17T16', red), { slot: '2026-10-17T17', recheck: true });
+  // A recheck never stands in for the next slot, across midnight too.
+  assert.deepEqual(slotFor('2026-10-17T18:41:00Z', '2026-10-17T17', red), { slot: '2026-10-17T18', recheck: false });
+  assert.deepEqual(slotFor('2026-10-18T00:41:00Z', '2026-10-17T23', red), { slot: '2026-10-18T00', recheck: false });
+  // A six-hour run the scheduler skipped is made up an hour later.
+  assert.deepEqual(slotFor('2026-10-17T07:41:00Z', '2026-10-17T00', green), { slot: '2026-10-17T06', recheck: false });
+});
+
+test('the hour after a failure, a recovered proxy closes the incident: the recheck passes and starts the recovery check', async () => {
+  const store = memoryStore();
+  const gh = github();
+  const alert = githubDispatchAlert({ token: 't', repo: 'o/r', fetchImpl: gh });
+  const failed = await runScheduledProbe({ store, fetchImpl: production({ proxyStatus: 503 }), now: () => NOW, alert, rereadDelayMs: 0 });
+  assert.equal(failed.ok, false);
+  const hourLater = new Date(Date.parse(NOW) + 3600e3).toISOString();
+  const recheck = await runScheduledProbe({ store, fetchImpl: production(), now: () => hourLater, alert, rereadDelayMs: 0 });
+  assert.equal(recheck.ok, true, JSON.stringify(recheck.failed));
+  assert.equal(recheck.slot, slotOf(hourLater, 1));
+  assert.equal(recheck.alert.dispatched, 'recovery-check');
+  assert.equal((await handleStatus(req(), store, Date.parse(hourLater) + 60e3)).status, 200);
+  // Green again: the hour after asks nobody anything.
+  const idle = production();
+  const quiet = await runScheduledProbe({ store, fetchImpl: idle, now: () => new Date(Date.parse(NOW) + 2 * 3600e3).toISOString(), alert });
+  assert.match(quiet.skipped, /already probed, and the last result passed/);
+  assert.deepEqual(idle.calls, []);
+});
+
+test('an hourly recheck that fails exactly as before starts no workflow run, so an incident is not an email an hour', async () => {
+  const gh = github();
+  const alert = githubDispatchAlert({ token: 't', repo: 'o/r', fetchImpl: gh });
+  const at = (h) => new Date(Date.parse(NOW) + h * 3600e3).toISOString();
+  const red = (h, names, extra = {}) => ({ at: at(h), slot: `s${h}`, ok: false, failed: names.map((name) => ({ name, saw: 'a', expected: 'b' })), ...extra });
+  const first = red(0, ['x', 'y']);
+  assert.equal((await alert({ latest: first, before: { at: at(-6), ok: true, failed: [] } })).dispatched, 'failure');
+  const n = gh.calls.length;
+  // Same failures, in any order: only the token check.
+  assert.deepEqual(await alert({ latest: red(1, ['y', 'x']), before: { ...first, alert: { ok: true } } }), { ok: true, dispatched: null });
+  assert.deepEqual(gh.calls.slice(n).map((c) => c.method), ['GET']);
+  // Something else broke, or the last alert did not go through: dispatched.
+  assert.equal((await alert({ latest: red(2, ['x', 'z']), before: { ...red(1, ['x', 'y']), alert: { ok: true } } })).dispatched, 'failure');
+  assert.equal((await alert({ latest: red(2, ['x', 'y']), before: { ...red(1, ['x', 'y']), alert: { ok: false, error: 'HTTP 401' } } })).dispatched, 'failure');
+  // Recovery always is.
+  assert.equal((await alert({ latest: { at: at(3), slot: 's3', ok: true, failed: [] }, before: red(2, ['x', 'y']) })).dispatched, 'recovery-check');
+});
+

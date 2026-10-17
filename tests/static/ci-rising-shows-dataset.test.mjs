@@ -131,9 +131,9 @@ function ciJob(id) {
 }
 
 test('every job that needs the real catalogue prepares it through the one action', () => {
-  // browser-shard: three suites; test: the real-catalogue parity tests, which
+  // browser-shard: three suites; test-shard: the real-catalogue parity tests, which
   // never ran on CI before; dataset-cache: keeps the entry warm.
-  for (const id of ['browser-shard', 'test', 'dataset-cache']) {
+  for (const id of ['browser-shard', 'test-shard', 'dataset-cache']) {
     assert.match(ciJob(id), /uses: \.\/\.github\/actions\/rising-shows-dataset\s*$/m, `${id} must use the dataset action`);
   }
   assert.doesNotMatch(read(WORKFLOW), /actions\/cache\/(restore|save)@[^\n]*\n[\s\S]{0,400}rising-shows-dataset-/,

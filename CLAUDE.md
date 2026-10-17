@@ -103,8 +103,8 @@ Every change to the planner follows these, unprompted:
   Open the PR as soon as the work is committed and let this run alongside CI
   rather than waiting on it first (owner, 2026-09-28: waiting twice wastes the
   round); never merge until both are green, and if either goes red, fix, push
-  and rewrite the PR body. About eleven minutes (11.1, measured 2026-09-14),
-  four shards at once; budget it into the round. It never touches the
+  and rewrite the PR body. About eight minutes (8.0, measured twice 2026-10-17),
+  six shards at once; budget it into the round. It never touches the
   internet: third-party requests are answered from
   `tests/browser/vendor/third-party/`, and when
   `npm test` says the mirror is missing an asset, run

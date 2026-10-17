@@ -6,7 +6,7 @@
 // WHY THIS EXISTS
 // ---------------
 // Every merge to master used to run the whole pull-request estate a second
-// time: unit tests, lint, four browser shards and the Arena emulator suites,
+// time: unit tests, lint, the browser shards and the Arena emulator suites,
 // about 64 runner-minutes, on a tree that had gone green minutes earlier. The
 // old guard compared `HEAD^{tree}` with `HEAD^2^{tree}`, which only works for
 // a MERGE commit. This repository squash-merges, and a squash commit has one

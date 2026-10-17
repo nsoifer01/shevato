@@ -16,7 +16,7 @@
 //   D. reload and repeated boots never drift
 //   E. flipping the display unit converts, and flipping back returns the
 //      original numbers exactly
-import { newPage, closePage, goto } from '../../../tests/browser/cdp.mjs';
+import { newPage, closePage, goto, waitForExpr } from '../../../tests/browser/cdp.mjs';
 
 /** Independently computed: 65 x 0.45359237. Not derived from app code. */
 const KG_FOR_65_LB = 29.48350405;
@@ -321,6 +321,16 @@ export async function run({ base, cdpPort }) {
   await withPage('gym-units H', async (s) => {
     await boot(s, legacyProfile('lb', 65));
     const canonical = await storedWeight(s);
+    // The remote-change listener is registered at the END of app.init(), after
+    // the async view setup, and the sync pill is mounted on the next line
+    // (js/app.js setupSyncListeners, mountSyncStatusPill). boot()'s fixed
+    // settle did not prove init had got that far: on 2026-09-07 one CI run read
+    // the stale 135 back unrepaired, the event having been dispatched to
+    // nobody. So wait for the pill, then for the repair itself, instead of a
+    // flat 2.2 s that was both a guess and the whole cost of this check.
+    const listening = await waitForExpr(s,
+      `!!document.querySelector('[data-sync-status-slot] > *, [data-sync-status-dot][data-state]')`, { timeout: 15000 });
+    t('gym-units H: the app finished booting and listens for remote changes', listening, '');
 
     // An older device pushes an un-migrated session in, exactly as
     // applyRemoteChange() does: raw setItem, then the remote event.
@@ -332,7 +342,9 @@ export async function run({ base, cdpPort }) {
       window.dispatchEvent(new CustomEvent('localStorageSync',
         { detail: { key: 'gymTrackerSessions', value: list, source: 'remote' } }));
       return true; })()`);
-    await new Promise(r => setTimeout(r, 2200));
+    // The handler is debounced 750 ms; the repair rewrites the stored record.
+    await waitForExpr(s, `Math.abs(JSON.parse(localStorage.getItem('gymTrackerSessions'))[1]
+      .exercises[0].sets[0].weight - 61.23496995) < 1e-9`, { timeout: 10000 });
 
     const out = await evaluate(s, `JSON.parse(localStorage.getItem('gymTrackerSessions'))
       .map(x => x.exercises[0].sets[0].weight)`);

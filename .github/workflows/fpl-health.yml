@@ -1,8 +1,9 @@
 name: FPL health probe
 
 # THE PROBE ITSELF RUNS ON NETLIFY (since 2026-10-10): netlify/functions/fpl-health.mjs,
-# every six hours (00:41, 06:41, 12:41, 18:41 UTC), against production through
-# the proxy, with every invariant of scripts/lib/probe.mjs. GitHub fires this
+# every six hours (00:41, 06:41, 12:41, 18:41 UTC) and every hour while its
+# last result is red, against production through the proxy, with every
+# invariant of scripts/lib/probe.mjs. GitHub fires this
 # repository's schedules hours late or not at all, so it carries nothing
 # time-sensitive. This workflow keeps the incident and the manual diagnostic:
 #
