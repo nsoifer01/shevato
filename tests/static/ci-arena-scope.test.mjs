@@ -56,11 +56,12 @@ function scopeScript() {
 }
 
 const SCRIPT = scopeScript();
+const CI = read(WORKFLOW);
 
 // A git stub, so the test never depends on the checkout's history. CI checks
 // out at fetch-depth 1, which is exactly where a history-dependent test would
 // start failing for a reason that has nothing to do with the logic.
-function runScope({ event, before = 'a'.repeat(40), after = 'b'.repeat(40), files = [], missing = '', diffFails = false }) {
+function runScope({ event, before = 'a'.repeat(40), after = 'b'.repeat(40), files = [], missing = '', diffFails = false, ciOld = null, ciNew = null }) {
   const dir = mkdtempSync(join(tmpdir(), 'arena-scope-'));
   const bin = join(dir, 'bin');
   mkdirSync(bin);
@@ -77,12 +78,26 @@ function runScope({ event, before = 'a'.repeat(40), after = 'b'.repeat(40), file
     diffFails ? '  exit 128' : '  cat "$FAKE_FILES"',
     '  exit 0',
     'fi',
+    'if [ "$1" = "merge-base" ]; then echo "$2"; exit 0; fi',
+    '# The workflow at a commit: the head reads the new copy, anything else the old.',
+    'if [ "$1" = "show" ]; then',
+    '  case "$2" in',
+    `    ${after}:*) cat "$FAKE_CI_NEW" ;;`,
+    '    *) cat "$FAKE_CI_OLD" ;;',
+    '  esac',
+    '  exit 0',
+    'fi',
     'exit 0',
     '',
   ].join('\n');
   writeFileSync(join(bin, 'git'), gitStub);
   chmodSync(join(bin, 'git'), 0o755);
 
+  const ciOldPath = join(dir, 'ci-old.yml');
+  const ciNewPath = join(dir, 'ci-new.yml');
+  // By default the workflow changed in its arena job, which is an input.
+  writeFileSync(ciOldPath, ciOld ?? CI);
+  writeFileSync(ciNewPath, ciNew ?? CI.replace(/^ {2}rules-shard:$/m, '  rules-shard:\n    # touched'));
   const fakeFiles = join(dir, 'files.txt');
   writeFileSync(fakeFiles, files.length ? `${files.join('\n')}\n` : '');
   const outPath = join(dir, 'gh-output');
@@ -102,6 +117,8 @@ function runScope({ event, before = 'a'.repeat(40), after = 'b'.repeat(40), file
       PATH: `${bin}:${process.env.PATH}`,
       GITHUB_OUTPUT: outPath,
       FAKE_FILES: fakeFiles,
+      FAKE_CI_OLD: ciOldPath,
+      FAKE_CI_NEW: ciNewPath,
       EVENT: event,
       PR_BASE: event === 'pull_request' ? before : '',
       PR_HEAD: event === 'pull_request' ? after : '',
@@ -150,7 +167,10 @@ const RUNS = {
   'the third-party mirror the e2e pages load the SDK from': ['tests/browser/vendor/third-party/manifest.json'],
   'the scripts this job runs': ['package.json'],
   'the node version it runs them on': ['.nvmrc'],
-  'the workflow itself': ['.github/workflows/ci.yml'],
+  'the arena job in the workflow': ['.github/workflows/ci.yml'],
+  'a shared script the arena page loads': ['assets/js/main.js'],
+  'a shared stylesheet the arena page loads': ['assets/css/main.css'],
+  'the header partial the arena page includes': ['partials/header.html'],
   'one arena file among many unrelated ones': ['index.html', 'apps/gym-tracker/js/app.js', 'apps/arena/README.md'],
 };
 
@@ -280,3 +300,54 @@ for (const [what, opts] of Object.entries(FAIL_SAFE)) {
     assert.match(log, /Running both suites:/);
   });
 }
+
+// ---------------------------------------------------------------------------
+// The workflow is an input only where it can move the arena job (2026-10-17).
+// ---------------------------------------------------------------------------
+test('a workflow change outside the arena job and the header skips the suites', () => {
+  const other = CI.replace(/^ {2}lint:$/m, '  lint:\n    # an unrelated job changed');
+  assert.notEqual(other, CI);
+  const { run, log } = runScope({ event: 'pull_request', files: ['.github/workflows/ci.yml'], ciNew: other });
+  assert.equal(run, '0', log);
+  assert.match(log, /not an input/);
+  // The same edit beside an arena input still runs them.
+  assert.equal(runScope({ event: 'pull_request', files: ['.github/workflows/ci.yml', 'firestore.rules'], ciNew: other }).run, '1');
+});
+
+test('a workflow change to its header (triggers, concurrency, permissions) runs the suites', () => {
+  const header = CI.replace(/^permissions:$/m, '# touched\npermissions:');
+  assert.notEqual(header, CI);
+  assert.equal(runScope({ event: 'pull_request', files: ['.github/workflows/ci.yml'], ciNew: header }).run, '1');
+});
+
+test('the arena part of the workflow is its last two jobs, as the scope script assumes', () => {
+  const jobs = [...CI.slice(CI.indexOf('\njobs:\n')).matchAll(/^ {2}([a-z][a-z0-9-]*):$/gm)].map((m) => m[1]);
+  assert.deepEqual(jobs.slice(-2), ['rules-shard', 'rules'],
+    'arena_part() reads from `rules-shard:` to the end of the file; a job added after them would count as arena');
+});
+
+// ---------------------------------------------------------------------------
+// Derived from the PAGE (2026-10-17). The two import walks above see only
+// `import` statements, so every shared file the arena page loads by
+// <script src>, <link href> or data-include (assets/js, assets/css, the header
+// partial) could change with `rules` reporting green unrun.
+// ---------------------------------------------------------------------------
+test('every first-party file the arena page loads by tag or include is an input', () => {
+  const html = read('apps/arena/index.html');
+  const refs = new Set();
+  for (const m of html.matchAll(/\b(?:src|href)="([^"#?]+)/g)) {
+    const ref = m[1];
+    if (/^(https?:|mailto:|data:|\/\/)/.test(ref) || !/\.(js|mjs|css)$/.test(ref)) continue;
+    const rel = ref.startsWith('/') ? ref.slice(1) : relative(REPO_ROOT, resolve(REPO_ROOT, 'apps/arena', ref)).split('\\').join('/');
+    if (!rel.startsWith('apps/arena/')) refs.add(rel);
+  }
+  for (const m of html.matchAll(/data-include="([a-z0-9-]+)"/g)) refs.add(`partials/${m[1]}.html`);
+  for (const must of ['assets/js/main.js', 'firebase-config.js', 'partials/header.html']) {
+    assert.ok(refs.has(must), `expected the page to load ${must}; found ${[...refs].join(', ')}`);
+  }
+  for (const path of refs) {
+    assert.equal(runScope({ event: 'pull_request', files: [path] }).run, '1',
+      `${path} is loaded by the arena page but does not trigger the emulator suites`);
+  }
+});
+

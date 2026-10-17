@@ -296,7 +296,12 @@ export async function run({ base, cdpPort, base2 = null }) {
       if (!s) continue;
       try {
         if (await evaluate(s, lobbyVisible)) continue;
-        if (await leaveRoom(s)) continue;
+        // Only a page that can leave tries to. A page on the end screen has
+        // no Leave button, and leaveRoom waited out 10 s for the button,
+        // 10 s for the confirm and 25 s for the lobby before falling through
+        // to the reload below: 90 s of every group-1 run after S1, measured
+        // with WAIT_TRACE=1 (2026-10-17).
+        if (await evaluate(s, visible('leave-room-btn')) && await leaveRoom(s)) continue;
       } catch { /* fall through to the hard reset */ }
       try {
         await goto(s, (s.__base || base) + '/apps/arena/', { settle: 800 });
@@ -919,6 +924,9 @@ export async function run({ base, cdpPort, base2 = null }) {
       await clickSel(A, '#create-room-btn', { settle: 500 });
       await waitForExpr(A, visible('room-panel'), { timeout: 15000 });
       const code2 = await roomCodeOf(A);
+      // Read here, not inherited from S1: run alone (ARENA_E2E_ONLY=S2:) the
+      // check below compared against S1's never-set uid and failed.
+      bUid = await evaluate(B, 'window.firebaseAuth.getCurrentUser().uid');
       await setValue(B, '#join-code', code2);
       await clickSel(B, '#join-room-btn', { settle: 600 });
       await waitForExpr(B, visible('room-panel'), { timeout: 15000 });

@@ -395,17 +395,44 @@ jobs:
           #   firebase-config.js     the emulator seam for auth, and the app every client signs in through
           #   firebase-firestore.js  the emulator seam for Firestore: every client in both suites reaches Firestore through it
           #   apps/arena/**          the app that writes through it, plus both suites
+          #   assets/js/, assets/css/, partials/
+          #                          the shared scripts, styles and header partial the arena
+          #                          page loads by <script>/<link>/data-include (missing until
+          #                          2026-10-17: a change to one reported `rules` green unrun)
           #   sync-system/**         the layer the app writes through (arena loads six of its modules)
           #   tests/browser/cdp.mjs  the driver the multiplayer e2e imports
           #   tests/browser/third-party.mjs + vendor/third-party/
           #                          what every e2e page's Firebase SDK is served from
           #   package.json/.nvmrc    the scripts this job runs, and the node it runs them on
-          #   this workflow          its own steps
-          INPUTS='^(firestore\.rules|firebase\.json|firebase-config\.js|firebase-firestore\.js|package\.json|\.nvmrc|apps/arena/|sync-system/|tests/browser/cdp\.mjs|tests/browser/third-party\.mjs|tests/browser/vendor/third-party/|\.github/workflows/ci\.yml)'
+          #   this workflow          its own steps: the header (triggers, concurrency,
+          #                          permissions) and the rules-shard and rules jobs, which
+          #                          are the last two in the file. A change elsewhere in it
+          #                          (another job) cannot move the emulator outcome, and ran
+          #                          these suites for nothing (2026-10-17).
+          INPUTS='^(firestore\.rules|firebase\.json|firebase-config\.js|firebase-firestore\.js|package\.json|\.nvmrc|apps/arena/|assets/js/|assets/css/|partials/|sync-system/|tests/browser/cdp\.mjs|tests/browser/third-party\.mjs|tests/browser/vendor/third-party/|\.github/workflows/ci\.yml)'
           # sync-system/tests/** is the one carve-out: node tests and their
           # stubs, already covered by the `test` job, and loaded by neither
           # emulator suite.
           NOT_INPUTS='^sync-system/tests/'
+
+          # The workflow's arena part: everything before `jobs:`, then
+          # rules-shard to the end of the file. Compared against the merge
+          # base for a pull request (the same commit the three-dot diff uses),
+          # so master moving on is not counted as this change. Every read that
+          # fails runs the suites.
+          arena_part() { awk '/^jobs:/{h=1} !h{print; next} /^  rules-shard:/{p=1} p'; }
+          if printf '%s\n' "$CHANGED" | grep -qx '\.github/workflows/ci\.yml'; then
+            CMP="$BEFORE"
+            if [ "$EVENT" = pull_request ]; then
+              CMP=$(git merge-base "$BEFORE" "$AFTER") || run_everything "no merge base for $BEFORE and $AFTER"
+            fi
+            OLD=$(git show "$CMP:.github/workflows/ci.yml") || run_everything "cannot read the workflow at $CMP"
+            NEW=$(git show "$AFTER:.github/workflows/ci.yml") || run_everything "cannot read the workflow at $AFTER"
+            if [ "$(printf '%s\n' "$OLD" | arena_part)" = "$(printf '%s\n' "$NEW" | arena_part)" ]; then
+              echo "ci.yml changed outside the arena job and the workflow header: not an input."
+              CHANGED=$(printf '%s\n' "$CHANGED" | grep -vx '\.github/workflows/ci\.yml' || true)
+            fi
+          fi
 
           # `|| true` is load-bearing: Actions runs this as `bash -e`, and grep
           # exits 1 when it matches nothing, which IS the skip case. Without it

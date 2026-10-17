@@ -105,6 +105,15 @@ try {
     // Headless Chrome still plays sound: every game here fires feedback.js's
     // WebAudio cues, and on WSLg they reach the owner's speakers.
     '--mute-audio',
+    // A browser configured by nobody but this file (2026-10-17). Google
+    // Chrome on a runner fetches field trials over the network at start-up
+    // and applies them, so the same binary behaved differently from one day
+    // to the next: both groups went red on master and every branch from
+    // 2026-10-17 evening with identical code, image, JDK and emulator, with
+    // a field trial active on the runner that local Chromium did not have and
+    // the host client's room listener falling silent mid-game. No page-level
+    // interception sees that fetch; these flags stop it.
+    '--disable-field-trial-config', '--disable-background-networking', '--disable-component-update',
     '--host-resolver-rules=MAP www.googletagmanager.com 127.0.0.1:1, MAP *.google-analytics.com 127.0.0.1:1',
     'about:blank',
   ], { stdio: 'ignore' });
