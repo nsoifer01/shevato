@@ -69,8 +69,9 @@ export const COUNTERFACTUAL_PARAMS = Object.freeze({
   // Expected minutes over the whole horizon, so roughly a third of a start.
   minutesTolerance: 30,
   // The floor on how deep routes are enumerated. The real depth is the
-  // planner's own (transfers.js `resolveMaxTransfers`: the free transfers
-  // held, at least 2 and at most 5), so "why not him?" never refuses a route
+  // planner's own (transfers.js `resolveMaxTransfers`: the free transfers held
+  // plus the hits the profile allows, at least 2 and at most 5), so "why not
+  // him?" never refuses a route
   // the planner itself would search. See `maxRouteTransfers(ctx)`.
   maxRouteTransfers: 2,
   // Routes of three moves and more are grown from the best this many routes
@@ -1204,6 +1205,7 @@ function scoreScenario(ctx, candidate) {
       squadIds: candidate.squad, captainId: first.captain, captainXp: first.captainExtra,
       projections: ctx.projections, gameState: ctx.gameState, rules: ctx.rules,
       gw: ctx.gw, horizon: cfg.horizon, chipsUsed, openingSquad,
+      ...(cfg.tcLaterBasis ? { laterBasis: cfg.tcLaterBasis } : {}),
     });
   if (!decision || !decision.recommended) return base;
   return (planner.scoreWithTimingChip || scoreWithTimingChip)(base, chip, decision, {
@@ -1239,9 +1241,15 @@ function scoreWithTimingChip(base, chip, decision, { squadState, rules, cfg }) {
 // these free transfers, honouring an experiment's `transferOptions`.
 function maxRouteTransfers(ctx) {
   const base = (ctx.planBundle && ctx.planBundle.planOptions) || {};
+  // The planner's depth counts the hits its RISK PROFILE allows (transfers.js
+  // `hitDepth`, 2026-10-16), and planCfg lifts `maxHits` for pricing, so the
+  // profile's own number is read here: without it the search module's default
+  // (2) applied and a balanced plan's "why not" offered two-hit routes the
+  // planner never searches.
+  const maxHits = planner.resolveOptions(base, ctx.rules, ctx.gw).maxHits;
   return Math.max(
     COUNTERFACTUAL_PARAMS.maxRouteTransfers,
-    resolveMaxTransfers(ctx.squadState.freeTransfers, base.transferOptions || {}),
+    resolveMaxTransfers(ctx.squadState.freeTransfers, { maxHits, ...(base.transferOptions || {}) }),
   );
 }
 

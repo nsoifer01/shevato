@@ -715,6 +715,18 @@ export function createFplApi({
       for (const path of [...status.keys()]) if (path.startsWith(prefix)) status.delete(path);
       clearStoredCache(prefix);
     },
+
+    // A new Team ID is a new manager: the previous one's rows ("Your team",
+    // "Your season history", "Your squad, gameweek N", and the 404 a mistyped
+    // id left) describe somebody else's plan. Kept, they made the data status
+    // list every row twice and kept a failed lookup counted against the right
+    // team's plan, which then read "Moderate confidence ... 1 of the data
+    // sources this plan needs could not be loaded" (2026-10-16). Only the
+    // STATUS goes: every cached copy, the shared bootstrap and fixtures above
+    // all, stays usable, and the new team's reads record their own rows.
+    forgetEntryStatus() {
+      for (const path of [...status.keys()]) if (kindOf(path) === 'entry') status.delete(path);
+    },
   };
 }
 

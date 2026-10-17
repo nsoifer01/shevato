@@ -79,10 +79,15 @@ export function freeHitPicksInfo({ picks, history } = {}) {
 // joined), and then a riser since is sold for more than FPL will pay, so a
 // transfer is offered that FPL refuses. `priceFloors` (joinPriceFloors) holds
 // each such player's lowest listed price up to the joining gameweek, and the
-// lower of the two is used: never above what was paid, so affordability is
-// never overstated. Measured 2026-10-16 on 12 real GW2 joiners: their prices at
-// the joining gameweek summed to FPL's own squad value exactly (12 of 12),
-// while the start prices were 0.0 to 0.5m below it.
+// lower of the two is used. That is below what was paid in every case the
+// public data can show, but not in every case there is (follow-up audit,
+// 2026-10-16): element-summary lists a price once per FIXTURE, so a player
+// who dipped and recovered between two fixtures before the manager joined, or
+// fell after his last fixture before a blank joining week, was bought at a
+// price no row records, and the floor sits up to 0.1m a player above it. Not
+// seen in real data; nothing public can close it. (The 12 GW2 joiners whose
+// joining-week prices summed to FPL's squad value prove only that FPL's value
+// is listed prices plus the bank, not what was paid.)
 export function reconstructPurchasePrices({ picks, transfers, gameState, ignoreGws = null, priceFloors = null }) {
   const list = pickList(picks) || [];
   const latestIn = new Map();
@@ -280,6 +285,57 @@ export function historyCaughtUp(history, picks) {
   };
 }
 
+// The gameweeks a history still lacks once the picks week is filled in.
+//
+// historyCaughtUp can only supply the ONE week the picks carry. A history two
+// or more weeks behind (a browser copy served because a refresh failed, which
+// api.js does for any age, while the new week's picks arrive fresh under their
+// own key) still has a hole, and transfer-state.js replays a missing week as
+// "no transfers made": on the five real GW7 managers a two-week lag read the
+// owner's 1 free transfer as 2 and offered back the Bench Boost he played in
+// GW5, and another manager's 2 as 4 (2026-10-16 follow-up audit). Nothing
+// public can fill such a week, so the state is treated like a missing history.
+// A real history is never sparse: 411 managers at GW6 and 40 sampled at random
+// on 2026-10-16 had one row for every gameweek from the one they joined in.
+export function historyGaps(history) {
+  if (!history || !Array.isArray(history.current) || !history.current.length) return [];
+  const events = new Set(history.current.map(r => r && r.event).filter(Number.isInteger));
+  if (!events.size) return [];
+  const first = Math.min(...events);
+  const last = Math.max(...events);
+  const gaps = [];
+  for (let e = first; e <= last; e++) if (!events.has(e)) gaps.push(e);
+  return gaps;
+}
+
+// The gameweeks whose transfers the transfer list does not yet carry.
+//
+// `entry/{id}/transfers` is cached on its own key too, so it can lag the
+// history and the picks the same way. A player bought in a week the list does
+// not reach is then priced at his season-start price, which is the wrong
+// purchase price and so the wrong selling price, silently (two real GW7
+// managers with GW5-6 dropped read 100.4 as 100.1 and 100.8 as 100.7). FPL's
+// own row for each week counts the transfers made in it (`event_transfers`),
+// and in a week without a Wildcard or Free Hit the list holds exactly that many:
+// 0 mismatches over 200 such weeks of 40 random managers and the five GW7 ones
+// (2026-10-16). Fewer rows than FPL counted is a list that has not caught up.
+// Wildcard and Free Hit weeks report 0 there whatever was made, so they say
+// nothing either way.
+export function transfersBehind(history, transfers) {
+  if (!history || !Array.isArray(history.current) || !Array.isArray(transfers)) return [];
+  const rebuild = new Set(((history.chips) || [])
+    .filter(c => c && (c.name === 'wildcard' || c.name === 'freehit'))
+    .map(c => c.event));
+  const counts = new Map();
+  for (const t of transfers) if (t && Number.isInteger(t.event)) counts.set(t.event, (counts.get(t.event) || 0) + 1);
+  const behind = [];
+  for (const row of history.current) {
+    if (!row || !Number.isInteger(row.event) || rebuild.has(row.event)) continue;
+    if ((row.event_transfers || 0) > (counts.get(row.event) || 0)) behind.push(row.event);
+  }
+  return behind;
+}
+
 export function buildSquadState({ entry, history: historyIn, transfers, picks, gameState, gw, source, revertPicks = null, priceFloors = null }) {
   const rules = gameState.rules;
   const targetGw = gw ?? gameState.nextEvent ?? gameState.currentEvent;
@@ -329,12 +385,29 @@ export function buildSquadState({ entry, history: historyIn, transfers, picks, g
   const effectivePicks = usingRevert ? revertPicks : picks;
   const list = pickList(effectivePicks);
 
-  const historyMissing = historyIsMissing(history, gameState) && !!list;
+  const gaps = list ? historyGaps(history) : [];
+  const historyMissing = (historyIsMissing(history, gameState) || gaps.length > 0) && !!list;
   if (historyMissing) {
     warnings.push({
       code: 'history_missing',
-      message: 'Fantasy Premier League returned no season history for this team, so the chips you have already '
-        + 'played and your banked free transfers are unknown. No chip is recommended until it loads.',
+      message: gaps.length
+        ? `The season history Fantasy Premier League returned for this team is missing gameweek${gaps.length > 1 ? 's' : ''} `
+          + `${gaps.join(', ')}, so the chips you have already played and your banked free transfers are unknown. `
+          + 'No transfer or chip is recommended until it loads in full.'
+        : 'Fantasy Premier League returned no season history for this team, so the chips you have already '
+          + 'played and your banked free transfers are unknown. No chip is recommended until it loads.',
+    });
+  }
+  // Judged on the history as completed from the picks, so the picks week's own
+  // transfers are counted too.
+  const lagging = list && !historyMissing ? transfersBehind(history, transfers) : [];
+  const transfersLagging = lagging.length > 0;
+  if (transfersLagging) {
+    warnings.push({
+      code: 'transfers_behind',
+      message: `The transfer list Fantasy Premier League returned does not yet include gameweek${lagging.length > 1 ? 's' : ''} `
+        + `${lagging.join(', ')}, so what you paid for the players bought then, and what they sell for, is unknown. `
+        + 'No transfer or chip is recommended until it loads in full.',
     });
   }
 
@@ -350,6 +423,9 @@ export function buildSquadState({ entry, history: historyIn, transfers, picks, g
     // already have been played must never be offered.
     chipsAvailable: historyMissing ? [] : chipsRemaining({ history, rules, gw: targetGw }),
     historyMissing,
+    // Set when the transfer list ends before the history does (transfersBehind).
+    // Readiness blocks on it: selling prices are not known.
+    transfersLagging,
     // Set when the picks in hand are a Free Hit team for an EARLIER gameweek
     // and the squad it reverts to could not be read. Readiness blocks on it:
     // the fifteen on screen are not the manager's to transfer.

@@ -44,6 +44,18 @@ test('owner (entry 3855835): what FPL holds for GW7, read exactly', () => {
   assert.equal(selling['B.Fernandes'], 119, 'bought 12.0, now 11.9');
 });
 
+// Free transfers for GW7, derived by hand from each manager's FPL history
+// (one per gameweek from GW2, banked to five, a Wildcard or Free Hit week keeps
+// the bank and earns nothing, FPL's charged hits name the transfers that were
+// not free), independently of transfer-state.js. Until 2026-10-16 only the
+// owner's count was pinned, so a wrong count for any of the other paths (three
+// banked, a Free Hit just played) would have passed.
+test('every manager: the GW7 free-transfer count is what FPL holds', () => {
+  const expected = { 'bench-boost': 2, 'deep-search': 3, 'free-hit': 1, owner: 1, 'triple-captain-tie': 1 };
+  assert.deepEqual(Object.keys(expected).sort(), Object.keys(ENTRIES).sort());
+  for (const [label, ft] of Object.entries(expected)) assert.equal(squadFor(label).freeTransfers, ft, label);
+});
+
 test('owner: the recommended move is the best of every legal single transfer, on the planner\'s own score', async () => {
   const { bundle, squadState } = await planFor('owner');
   const cfg = resolveOptions(APP_OPTIONS, rules, PLAN_GW);
@@ -60,15 +72,21 @@ test('owner: the recommended move is the best of every legal single transfer, on
     const out = GAME_STATE.players.get(pick.playerId);
     for (const p of GAME_STATE.players.values()) {
       if (p.position !== out.position || held.includes(p.id)) continue;
+      // FPL will not sell a player who has left the league or the squad list.
+      if (p.status === 'u' || p.status === 'n') continue;
       if (p.nowCost > bank + pick.sellingTenths) continue;
       const after = held.filter(x => x !== out.id).concat(p.id);
-      if ([...club(after).values()].some(n => n > rules.maxPerClub)) continue;
+      // `clubLimit`, the field rules carries. Until 2026-10-16 this read
+      // `rules.maxPerClub`, which is undefined, so no club limit applied and
+      // 543 illegal or unbuyable transfers were counted as legal.
+      if ([...club(after).values()].some(n => n > rules.clubLimit)) continue;
       legal++;
       const s = score([out.id], [p.id]);
       if (s && s.objective > best.objective) best = { objective: s.objective, out: out.id, inn: p.id };
     }
   }
-  assert.ok(legal > 1500, `${legal} legal single transfers`);
+  assert.ok(Number.isInteger(rules.clubLimit) && rules.clubLimit === 3);
+  assert.equal(legal, 2346, 'every legal single transfer the owner can make');
   assert.deepEqual([name(best.out), name(best.inn)], ['Hall', 'Gabriel']);
   assert.deepEqual(bundle.current.transfersOut.map(name), ['Hall']);
   assert.deepEqual(bundle.current.transfersIn.map(name), ['Gabriel']);

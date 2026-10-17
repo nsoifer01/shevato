@@ -1707,6 +1707,90 @@ xG/xA rate quality, and early-window squad construction where a wrong opening
 channel; running more weights is known to be useless, because no flat weight
 can satisfy three seasons whose optima genuinely differ.
 
+## 49. One basis for a Triple Captain's later weeks: ACCEPT (the fixed-rate variant REJECT)
+
+- **Date:** 2026-10-16
+- **Decision: ACCEPT** `tcLaterBasis: 'extrapolated'` (planner.js
+  resolveOptions; chips.js tripleCaptainDecision / estimateXp), and REJECT
+  `'extrapolated-3'`.
+- **Pre-registered** in `experiments/configs/tc-later-basis.mjs` (both runs,
+  each before it ran). A chip decision moves, so this is a model change and the
+  rule was the strict one: adopt only if it does not lose (per-window delta
+  >= 0, no season below -15 a window).
+- **Why it was run.** The follow-up audit of #611 found the Triple Captain
+  compared this week's armband with later weeks valued on two scales: a
+  projection inside the planning horizon, a per-fixture extrapolation past it.
+  The same week disagreed with itself (the owner's GW10 5.45 extrapolated at
+  horizon 3, 6.30 projected at 5; GW14 6.00 against 7.00), so the week named
+  best moved with the Horizon setting (GW8 at 3, GW10 at 5, GW14 at 8), and the
+  play-or-hold comparison mixed the two.
+
+Chips-on paired instrument, 15 windows x 3 seeds:
+
+| run | arm vs control | per window | se | t | W-L-T | 2023-24 | 2024-25 | 2025-26 |
+| --- | --- | ---: | ---: | ---: | --- | ---: | ---: | ---: |
+| 1 | extrapolated vs mixed (shipped) | +2.4 | 1.4 | 1.68 | 3-2-10 | +1.5 | +0.0 | +5.6 |
+| 2 | extrapolated-3 vs extrapolated | -0.7 | 0.7 | -1.00 | 0-1-14 | +0.0 | -2.1 | +0.0 |
+
+Totals: mixed 35,154, extrapolated 35,260, extrapolated-3 35,229. Run 2
+replayed run 1's two arms beside its own and reproduced both totals exactly.
+
+`extrapolated` values every week after this one by the extrapolation, so all
+later weeks share one scale. Its per-fixture rate is still read over the
+horizon, which is why run 2 tried a fixed three-week rate: that names the
+owner's GW14 at every horizon (the shipped basis names GW14 at 3, 4, 6 and 8
+and GW10 at 5), but it lost one 2024-25 window by 10.3 and nothing anywhere
+else, so it is rejected under the rule written for it. What is left is a rate
+window, not two scales: at the default horizon the owner's later weeks are
+within a few tenths of each other and the decision (hold, by more than the
+2.0 margin) is the same on every basis and every horizon. The 2.0 margin
+(registry 31) was selected on the mixed basis and was not re-selected.
+
+## 48. The hit depth and the exact-objective polish: ACCEPT as search corrections
+
+- **Date:** 2026-10-16
+- **Decision: ACCEPT** both: `hitDepth: true` (transfers.js, the depth is the
+  free transfers held plus the hits the profile allows, capped at 5) and
+  `polish: true` (planner.js polishTopCandidates). Kept under registry 35's
+  standard for a correction: unless it loses with t <= -2.0 or any season loses
+  more than 15 a window.
+- **Pre-registered** in `experiments/configs/search-polish.mjs`.
+- **Why it was run.** The follow-up audit of #611 searched 40 squads derived
+  from the real GW7 managers (a few picks swapped for random legal players,
+  free transfers 1 to 5, bank 0 to 3.9m) with an independent search over the
+  planner's own objective (every legal single, about 3,000 pairs, a beam of
+  three to five moves; about 8,000 exact scores each). The shipped search
+  returned a strictly worse plan on 13: three by 2.7 to 8.2, all holding two
+  free transfers, where the better plan was a one-hit triple the search never
+  generated (it ignored `maxHits` in the depth, so a hit was only ever built
+  with ONE free transfer); and ten by 0.1 to 1.3, holding two to five, where
+  the fast proxy the search ranks on disagreed with the objective. Registry
+  47's wider shortlist moves that line; half of the ten were out of reach of
+  any width.
+
+| arm vs control | per window | se | t | W-L-T | 2023-24 | 2024-25 | 2025-26 |
+| --- | ---: | ---: | ---: | --- | ---: | ---: | ---: |
+| hit-depth | +0.0 | 0.0 | 0.00 | 0-0-15 | +0.0 | +0.0 | +0.0 |
+| polish | -0.2 | 0.2 | -1.00 | 0-1-14 | +0.0 | +0.0 | -0.6 |
+| both | -0.2 | 0.2 | -1.00 | 0-1-14 | +0.0 | +0.0 | -0.6 |
+
+Paired instrument, chips off, 180 cells in 262 s. Control 34,541, which is
+entry 47's shipped total reproduced. As for entry 35, chips-off windows start
+from a fresh squad and rarely hold two free transfers with a hit worth taking,
+so the replay barely exposes either correction; the value is in live seasons
+(at GW7, 221 of 411 real managers held two or more free transfers).
+
+On the 40 stress squads: the hit depth closes the three large misses (8.21 to
+0, 2.67 to 0.17, 3.76 to 0.32), the polish three more and narrows one, nine
+remain at 0.1 to 1.3 (two or more moves differ from the better plan at once).
+Replacing a whole move in the polish (selling a player of another position)
+was tried as well: it closed none of the nine and doubled plan CPU, so it is
+not shipped. Plan CPU on those squads 1.10 s to 1.17 s with the polish.
+Pinned by `tests/search-corrections.test.mjs` (four of the squads, each shown
+to fail on the shipped search) and `tests/transfers-depth.test.mjs`. The "why
+not" routes (counterfactual.js) follow the same depth, with the profile's hit
+allowance rather than the search module's default of two.
+
 ## 47. The exact re-score shortlist, 16 to 24: ACCEPT as a search correction
 
 - **Date:** 2026-10-16

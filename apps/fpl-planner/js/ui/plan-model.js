@@ -202,6 +202,35 @@ export function chipDecision(plan) {
 // who is fit. Past this age the plan is withheld rather than shown.
 export const AVAILABILITY_MAX_AGE_SECONDS = 6 * 3600;
 
+// The data-status rows a PLAN rests on, for the confidence band beside it
+// (hero, why and future cards). The full list still goes to the data status
+// card: dropping a row here is a claim about what the plan uses, never a way
+// to hide a failure.
+//
+// Two kinds of read are not plan inputs, by the code that makes them:
+//   - "Live scores" (event/N/live). app.js loadTeam and refreshLive both
+//     swallow its failure because "the plan does not depend on it": it feeds
+//     only the pitch's actual-score overlay. A timed-out live read still made
+//     the hero say "1 of the data sources this plan needs could not be loaded"
+//     (2026-10-16).
+//   - Picks for a gameweek the plan did not read. loadTeam reads the frozen
+//     gameweek's picks and, after a Free Hit, the gameweek before it; the
+//     History tab's captain column reads up to eight more (loadCaptains), and
+//     a failure there leaves a blank cell, not a weaker plan. `picksGws` names
+//     the plan's own; without it no picks row is dropped.
+const LIVE_PATH = /^event\/\d+\/live$/;
+const PICKS_PATH = /^entry\/\d+\/event\/(\d+)\/picks$/;
+export function planSources(sources, { picksGws = null } = {}) {
+  const own = Array.isArray(picksGws) ? new Set(picksGws.filter(Number.isInteger)) : null;
+  return (sources || []).filter((s) => {
+    const path = (s && s.path) || '';
+    if (LIVE_PATH.test(path)) return false;
+    const picks = PICKS_PATH.exec(path);
+    if (picks && own) return own.has(Number(picks[1]));
+    return true;
+  });
+}
+
 // What the UI is allowed to show given how the fetches went. Returns the exact
 // wording inputs (which sources, why) so no caller has to invent copy.
 export function assessData(dataStatus, { now = Date.now() } = {}) {

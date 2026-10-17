@@ -43,7 +43,7 @@ import { runProbe, payloadShapeFailures } from '../../../apps/fpl-planner/script
 import { FPL_API, USER_AGENT, archiveCoverageFailures, seasonLabelFrom } from '../../../apps/fpl-planner/scripts/lib/archive.mjs';
 import { stagedManifest } from './fpl-archive-stage.mjs';
 import { freeHitPicksInfo } from '../../../apps/fpl-planner/js/engine/squad.js';
-import { REFUSAL_KEY } from './fpl-cache.mjs';
+import { REFUSAL_KEY, scrubUpstreamText } from './fpl-cache.mjs';
 
 export const HEALTH_STORE = 'fpl-health';
 
@@ -130,9 +130,11 @@ async function diagnoseUpstream(fetchImpl) {
       if (res.body) await res.body.cancel().catch(() => {});
     } else {
       // Which edge answered and what it said: the difference between a block
-      // by address, by rate and an FPL outage.
+      // by address, by rate and an FPL outage. Scrubbed (fpl-cache.mjs
+      // scrubUpstreamText): this lands in the public status, and an edge page
+      // can echo whatever URL it refused.
       const edge = res.headers.get('x-served-by');
-      const body = (await res.text().catch(() => '')).replace(/\s+/g, ' ').trim().slice(0, 200);
+      const body = scrubUpstreamText((await res.text().catch(() => '')).replace(/\s+/g, ' ').trim()).slice(0, 200);
       answer += `${edge ? `, served by ${edge}` : ''}${body ? `, saying "${body}"` : ''}`;
     }
     return answer;
@@ -242,12 +244,18 @@ export async function runScheduledProbe({ store, fetchImpl = fetch, now = () => 
   if (!claimed) return { skipped: `slot ${slot} already probed` };
 
   const started = Date.now();
-  const prev = await store.get('last-reading', { type: 'json' });
   let result;
+  // Everything between the claim and the stored result is inside this try
+  // (2026-10-16): the slot is claimed by now, so a throw that escaped here
+  // stored nothing, and the run surfaced only as "never recorded a result"
+  // minutes later, without what threw. The previous reading's read was the
+  // one step outside it. The message is scrubbed: it is published, and an
+  // unparseable body ends up quoted in a JSON error.
   try {
+    const prev = await store.get('last-reading', { type: 'json' });
     result = await probeProduction({ fetchImpl, now: at, prev, entryId });
   } catch (err) {
-    result = { checks: [failure('the probe runs to completion', `threw: ${err && err.message}`, 'no exception')], reading: null, lines: [] };
+    result = { checks: [failure('the probe runs to completion', `threw: ${scrubUpstreamText(err && err.message)}`, 'no exception')], reading: null, lines: [] };
   }
   // The run before this one claimed its slot; if it never stored a result it
   // was killed (the 30-second limit) or crashed, and nothing else would say so.
@@ -296,10 +304,17 @@ export async function runScheduledProbe({ store, fetchImpl = fetch, now = () => 
   };
 
   await store.setJSON('latest', latest);
-  const history = (await store.get('history', { type: 'json' })) || [];
-  history.push({ at, slot, ok: latest.ok, failed: latest.failed.map((f) => f.name), durationMs: latest.durationMs });
-  await store.setJSON('history', history.slice(-HISTORY_LIMIT));
-  if (latest.ok && result.reading) await store.setJSON('last-reading', result.reading);
+  // The verdict is stored; the bookkeeping after it must not cost the alert.
+  // A history read that threw here used to end the run before GitHub was
+  // asked, so a red run told nobody.
+  try {
+    const history = (await store.get('history', { type: 'json' })) || [];
+    history.push({ at, slot, ok: latest.ok, failed: latest.failed.map((f) => f.name), durationMs: latest.durationMs });
+    await store.setJSON('history', history.slice(-HISTORY_LIMIT));
+    if (latest.ok && result.reading) await store.setJSON('last-reading', result.reading);
+  } catch (err) {
+    console.error('fpl-health history write failed', String((err && err.message) || err));
+  }
 
   // The result is stored BEFORE anything is asked of GitHub, so neither a
   // GitHub outage nor the 30-second limit can lose it; the alert's outcome is
@@ -332,11 +347,14 @@ export function refusalCheck(refusal, previousAt, at) {
   const minutes = Math.round((end - first) / 60e3);
   const edge = refusal.headers && refusal.headers['x-served-by'];
   // The report is public and promises nothing about any visitor
-  // (privacy.html), and a refused entry path carries a visitor's team id.
-  const where = /^entry(\/|$)/.test(String(refusal.path)) ? 'a manager\'s data' : refusal.path;
+  // (privacy.html), and a refused entry path carries a visitor's team id. The
+  // body is scrubbed again on the way out: a record written before the proxy
+  // scrubbed it (2026-10-16) can still hold an echoed URL.
+  const where = /^entry(\/|$)/.test(String(refusal.path)) ? 'a manager\'s data' : scrubUpstreamText(refusal.path);
+  const said = refusal.bodyHead ? scrubUpstreamText(refusal.bodyHead).slice(0, 160) : '';
   const saw = `FPL answered ${refusal.status} to ${refusal.count || 1} proxy fetch(es) from ${new Date(first).toISOString()} to ${refusal.at}`
     + ` (${minutes} min${active ? ', still backing off' : ''}; last ${where}${edge ? `, served by ${edge}` : ''}`
-    + `${refusal.bodyHead ? `, saying "${refusal.bodyHead.slice(0, 160)}"` : ''})`;
+    + `${said ? `, saying "${said}"` : ''})`;
   return { ok: minutes < REFUSAL_ALERT_MINUTES, saw, line: `refused        ${saw}` };
 }
 

@@ -182,7 +182,7 @@ export function projectionVitals(rows) {
  * @param {object} input.lifecycle  from gameweekLifecycle()
  * @param {object} [input.vitals]   from projectionVitals(), when projections exist
  * @param {object} [input.baseline] `{ source, rates }` from the GameState
- * @param {object} [input.squad]    `{ historyMissing }` from buildSquadState()
+ * @param {object} [input.squad]    `{ historyMissing, freeHitUnresolved, freeHitGw, transfersLagging }` from buildSquadState()
  */
 export function assessReadiness({ evidence, lifecycle, vitals = null, baseline = null, squad = null } = {}) {
   const blocked = [];
@@ -297,6 +297,17 @@ export function assessReadiness({ evidence, lifecycle, vitals = null, baseline =
     block('history_missing',
       'Your season history could not be read from Fantasy Premier League, so the chips you have used and your '
       + 'free transfers are unknown.',
+      LEVEL.LINEUP);
+  }
+
+  // The transfer list has not caught up with the history (squad.js
+  // transfersBehind): the purchase prices of the players bought in the missing
+  // weeks, and so their selling prices and every affordability check, are not
+  // known. A Wildcard or Free Hit sells the squad at those prices too.
+  if (squad && squad.transfersLagging) {
+    block('transfers_behind',
+      'Your transfer list from Fantasy Premier League is behind your squad, so what your players sell for is '
+      + 'unknown.',
       LEVEL.LINEUP);
   }
 

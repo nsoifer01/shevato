@@ -15,12 +15,13 @@ import {
   runScheduledProbe, statusOf, slotOf, githubDispatchAlert, openStrongStore, HEALTH_STORE, STALE_AFTER_HOURS, UNFINISHED_AFTER_MS,
   healthEntryId, DEFAULT_HEALTH_ENTRY, refusalCheck, REFUSAL_ALERT_MINUTES, SLOW_RUN_MS,
 } from '../lib/fpl-health-run.mjs';
-import { REFUSAL_KEY } from '../lib/fpl-cache.mjs';
+import { REFUSAL_KEY, serveFpl } from '../lib/fpl-cache.mjs';
 import { ARCHIVE_STORE } from '../lib/fpl-archive-stage.mjs';
 import { assess, readStatus, reconcile } from '../../../apps/fpl-planner/scripts/health-monitor.mjs';
 import { handleStatus } from '../fpl-health-status.mjs';
 import { config } from '../fpl-health.mjs';
 import { deadlinePayload } from '../../../apps/fpl-planner/tests/helpers/xp-calibration-fixture.mjs';
+import * as GW7 from '../../../apps/fpl-planner/tests/helpers/gw7-fixture.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const APP = join(HERE, '..', '..', '..', 'apps', 'fpl-planner');
@@ -533,4 +534,85 @@ test('a run near Netlify\'s 30-second kill fails while it can still say so', asy
   assert.ok(fine.checks.some((c) => c.name === name && c.ok));
   const slow = await runScheduledProbe({ store: memoryStore(), fetchImpl: production(), now: () => NOW, slowRunMs: 0 });
   assert.match(slow.failed.find((f) => f.name === name).saw, /^\d+\.\d s$/);
+});
+
+/* ------------------------------------------- 2026-10-16 follow-up audit */
+
+// The real "free-hit" manager of the GW7 fixture behind the REAL proxy
+// pipeline (serveFpl over an in-memory store): his GW6 picks are a Free Hit,
+// so every run reads the squad it reverts to, entry/<id>/event/5/picks, a
+// finished gameweek the proxy keeps for a day. The first run of the week
+// fetched it; the second, six hours on, was served the same correct copy six
+// hours old and failed "under an hour old".
+test('the week after a Free Hit, the second run passes: finished picks are judged by their own day, not the hour', async () => {
+  const ID = '111';
+  const e = GW7.ENTRIES['free-hit'];
+  const bodies = {
+    'bootstrap-static': GW7.BOOTSTRAP, fixtures: GW7.FIXTURES,
+    [`entry/${ID}`]: { ...e.entry, id: Number(ID) }, [`entry/${ID}/history`]: e.history, [`entry/${ID}/transfers`]: e.transfers,
+    [`entry/${ID}/event/6/picks`]: e.picks, [`entry/${ID}/event/5/picks`]: e.revertPicks,
+  };
+  const proxyStore = memoryStore();
+  const fetchUpstream = async (url) => new Response(JSON.stringify(bodies[url.replace('https://fantasy.premierleague.com/api/', '').replace(/\/$/, '')]), { status: 200 });
+  const proxyAt = (nowMs) => async (url) => {
+    if (url.includes('/.netlify/functions/fpl?path=')) {
+      const r = await serveFpl({ path: decodeURIComponent(url.split('path=')[1]), store: proxyStore, fetchUpstream, now: nowMs });
+      return new Response(JSON.stringify(r.body), { status: r.status, headers: { 'cache-control': 'no-store', 'x-fpl-stale': String(r.stale), 'x-fpl-age-seconds': String(r.ageSeconds) } });
+    }
+    if (url.endsWith('opening-baseline.json')) return new Response(readFileSync(join(APP, 'data', 'opening-baseline.json'), 'utf8'), { status: 200 });
+    throw new Error(`unexpected fetch ${url}`);
+  };
+  const T0 = Date.parse(GW7.FETCHED_AT);
+  const store = memoryStore();
+  const freshness = (r) => r.checks.filter((c) => /^the proxy serves .+ fresh/.test(c.name));
+  const first = await runScheduledProbe({ store, fetchImpl: proxyAt(T0), now: () => new Date(T0).toISOString(), entryId: ID });
+  assert.ok(first.checks.some((c) => c.name === `the proxy serves entry/${ID}/event/5/picks fresh and uncached by browsers`), 'the revert squad is read');
+  assert.deepEqual(first.failed, []);
+  const T1 = T0 + 6 * 3600e3;
+  const second = await runScheduledProbe({ store, fetchImpl: proxyAt(T1), now: () => new Date(T1).toISOString(), entryId: ID });
+  assert.deepEqual(second.failed, [], 'the same correct copy, six hours old, is not a failure');
+  assert.equal(freshness(second).length, 7);
+});
+
+test('nothing FPL says on an error reaches the public report with a team id in it', async () => {
+  const echo = '<HTML><BODY>You don\'t have permission to access "http://fantasy.premierleague.com/api/entry/7654321/history/" on this server.<P>Reference #18.abc</BODY></HTML>';
+  // The direct question to FPL after a proxy failure.
+  const r = await runScheduledProbe({
+    store: memoryStore(), now: () => NOW,
+    fetchImpl: production({ proxyStatus: 503, fplFetch: async () => new Response(echo, { status: 403, headers: { 'x-served-by': 'cache-iad-kiad7000001-IAD' } }) }),
+  });
+  assert.equal(r.ok, false);
+  assert.match(r.failed[0].saw, /FPL itself answered 403 .*served by cache-iad-kiad7000001-IAD, saying ".*entry\/<id>\/history.*Reference #18\.abc/);
+  assert.doesNotMatch(JSON.stringify(r), /7654321/);
+  // And a refusal record stored before the proxy scrubbed its bodies.
+  const legacy = { firstAt: NOW, at: NOW, until: NOW, count: 1, path: 'entry', status: 403, bodyHead: echo };
+  const c = refusalCheck(legacy, null, NOW);
+  assert.doesNotMatch(c.saw, /7654321/);
+  assert.match(c.saw, /entry\/<id>/);
+});
+
+test('a throw anywhere between the claim and the result is stored as a failed run, never as ok', async () => {
+  const store = memoryStore();
+  const broken = { ...store, get: async (k, o) => { if (k === 'last-reading') throw new Error('blobs read failed'); return store.get(k, o); } };
+  const r = await runScheduledProbe({ store: broken, fetchImpl: production(), now: () => NOW });
+  assert.equal(r.ok, false);
+  assert.equal(store.map.get('latest').ok, false);
+  assert.deepEqual(store.map.get('latest').failed.map((f) => f.name), ['the probe runs to completion']);
+  assert.match(store.map.get('latest').failed[0].saw, /threw: blobs read failed/);
+
+  // A probe that throws outright is the same failed check.
+  const thrown = await runScheduledProbe({ store: memoryStore(), fetchImpl: async () => { throw new TypeError('fetch failed'); }, now: () => NOW });
+  assert.equal(thrown.ok, false);
+
+  // And bookkeeping that fails after the verdict is stored never costs the alert.
+  const gh = github();
+  const store2 = memoryStore();
+  const noHistory = { ...store2, get: async (k, o) => { if (k === 'history') throw new Error('blobs read failed'); return store2.get(k, o); } };
+  const red = await runScheduledProbe({
+    store: noHistory, fetchImpl: production({ proxyStatus: 503 }), now: () => NOW,
+    alert: githubDispatchAlert({ token: 't', repo: 'o/r', fetchImpl: gh }),
+  });
+  assert.equal(red.ok, false);
+  assert.equal(store2.map.get('latest').ok, false);
+  assert.deepEqual(store2.map.get('latest').alert, { ok: true, dispatched: 'failure' });
 });

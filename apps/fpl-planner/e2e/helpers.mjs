@@ -171,6 +171,15 @@ export async function payloadsFor(state, { teamId = TEAM_ID } = {}) {
     if (e2) e2.is_next = true;
     picksGw = gw1;
     planGw = e2 ? e2.id : gw1;
+    // Nothing after GW1 exists yet (2026-10-16). These states used to carry the
+    // demo's whole season of history and transfers beside GW1 picks, a shape no
+    // manager can be in; it held only while the demo's history and transfer
+    // list disagreed. Once they agreed, its GW2 transfers read as moves already
+    // made for the gameweek being planned and sold players the GW1 squad did
+    // not own. The rows below are rebuilt per state as FPL would serve them.
+    history.current = history.current.filter((r) => r.event <= gw1);
+    history.chips = (history.chips || []).filter((c) => c.event <= gw1);
+    transfers.length = 0;
     // GW1's deadline is behind us and GW2's, the one the plan is FOR, is
     // ahead: a transfer window in the real shape. Until 2026-08-22 the -30 min
     // offset was applied to the PLAN gameweek, so every GW1 screen read

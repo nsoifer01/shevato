@@ -11,6 +11,8 @@
 // IDENTICAL for every visitor, so caching it centrally turns a thousand users
 // into roughly one upstream fetch per TTL window.
 
+import { updateUsage } from './blob-cas.mjs';
+
 export const UPSTREAM_BASE = 'https://fantasy.premierleague.com/api/';
 export const STORE_NAME = 'fpl-planner';
 export const DEADLINE_KEY = 'meta:next-deadline';
@@ -99,6 +101,21 @@ export const REFUSAL_BACKOFF_SECONDS = 120;
 export const REFUSAL_BACKOFF_MAX_SECONDS = 900;
 const REFUSAL_STATUSES = new Set([403, 429]);
 const REFUSAL_HEADERS = ['server', 'via', 'x-served-by', 'x-cache', 'retry-after', 'content-type'];
+
+// How long after a backoff ends a copy that expired during the refusal is
+// still refreshed by ONE caller rather than all of them (2026-10-16). A
+// refusal outlasts STALE_SERVE_SECONDS by construction (REFUSAL_BACKOFF_SECONDS
+// is twice it), so every cached copy that expired inside the backoff is past
+// the stale window when it ends, and the window is where the refresh lease
+// lives: the auditor's repro sent 10 of 10 concurrent callers of ONE path
+// upstream the second the backoff lapsed, the burst the backoff exists to
+// prevent, aimed at an edge that had just refused us. So for the length of one
+// episode (an hour, as recordRefusal counts them), a copy fetched BEFORE the
+// last refusal is refreshed under the lease whatever its age. Callers of
+// DIFFERENT paths still each go upstream once: one request per path is the
+// floor any cache pays, and with nothing cached there is nothing to hand the
+// others but a 503.
+export const REFUSAL_RECOVERY_MS = 3600 * 1000;
 
 // Strips a leading/trailing slash and rejects anything not on the allowlist.
 // Returns the canonical path, or null.
@@ -237,6 +254,8 @@ export async function fplStore() {
 export async function serveFpl({ path, store, fetchUpstream, now, leaseId }) {
   const key = cacheKey(path);
   const cached = await readCache(store, key);
+  // Read once, only off the hit path: a fresh copy never needs it.
+  let refused;
 
   if (cached) {
     const meta = await readDeadline(store);
@@ -259,8 +278,10 @@ export async function serveFpl({ path, store, fetchUpstream, now, leaseId }) {
     // An owner that crashes or times out cannot wedge the key: the lease
     // carries an expiry, and once it lapses the next caller claims it. And
     // once the copy is older than the stale window, every caller goes
-    // upstream again rather than serving something too old to be useful.
-    if (age < ttlSeconds(path, { now, ...meta }) + STALE_SERVE_SECONDS) {
+    // upstream again rather than serving something too old to be useful,
+    // EXCEPT while recovering from a refusal (REFUSAL_RECOVERY_MS).
+    refused = await readRefusal(store);
+    if (age < ttlSeconds(path, { now, ...meta }) + STALE_SERVE_SECONDS || recoveringFrom(refused, cached, now)) {
       const owner = await claimRefreshLease(store, key, now, leaseId);
       if (!owner) {
         return {
@@ -272,7 +293,7 @@ export async function serveFpl({ path, store, fetchUpstream, now, leaseId }) {
   }
 
   try {
-    const refused = await readRefusal(store);
+    if (refused === undefined) refused = await readRefusal(store);
     if (refused && Date.parse(refused.until) > now) throw new UpstreamBackoffError(refused);
     const res = await fetchUpstream(UPSTREAM_BASE + path + '/');
     if (REFUSAL_STATUSES.has(res.status)) await recordRefusal(store, path, res, now);
@@ -358,34 +379,88 @@ export async function readRefusal(store) {
   }
 }
 
+// A refusal that ended within the last episode, and a copy older than it: the
+// copy expired while FPL was refusing us, so its refresh is the post-backoff
+// burst and goes through the lease.
+function recoveringFrom(refused, cached, now) {
+  if (!refused) return false;
+  const at = Date.parse(refused.at);
+  return Number.isFinite(at) && now - at < REFUSAL_RECOVERY_MS && Date.parse(cached.fetchedAt) < at;
+}
+
+// RETRY-AFTER, BOTH FORMS (RFC 9110 10.2.3): delta-seconds ("300") or an
+// HTTP-date ("Fri, 16 Oct 2026 17:10:00 GMT"), the latter judged against the
+// injected clock. Until 2026-10-16 only the first was read: Number() of a date
+// is NaN, so a ten-minute instruction became the 120-second floor and the
+// proxy asked again eight minutes early. "0", a negative, a date already past
+// and anything unparseable all mean "no instruction", which is the floor, and
+// a date is only taken when it reads like one (Date.parse("0") is the year
+// 2000, a valid date).
+export function retryAfterSeconds(value, now) {
+  const raw = String(value == null ? '' : value).trim();
+  let seconds = 0;
+  if (/^\d+$/.test(raw)) seconds = Number(raw);
+  else if (/[a-z]/i.test(raw) && Number.isFinite(Date.parse(raw))) seconds = Math.ceil((Date.parse(raw) - now) / 1000);
+  return Math.min(REFUSAL_BACKOFF_MAX_SECONDS, Math.max(REFUSAL_BACKOFF_SECONDS, Number.isFinite(seconds) ? seconds : 0));
+}
+
+// NOTHING THAT IDENTIFIES A MANAGER LEAVES IN AN UPSTREAM BODY (2026-10-16).
+// An edge error page echoes the URL it refused ("You don't have permission to
+// access .../api/entry/7654321/history/"), and the start of that body is kept
+// in the refusal record and published by fpl-health-status through the health
+// run. privacy.html promises the store holds copies of public FPL responses and
+// nothing about a visitor, and a team id is the one thing that names one. So
+// every `entry` followed by digits (whatever separates them: "/", "%2F", "\/",
+// "__") becomes `entry/<id>`, and any other run of five or more digits, which
+// is the length of every team id since the first season, is masked. Status
+// words, the edge's reference text and short numbers ("Reference #18.abc",
+// "403") survive, which is what the record is for.
+export function scrubUpstreamText(text) {
+  return String(text == null ? '' : text)
+    .replace(/entry(?:%2f|[^a-z0-9])+\d+/gi, 'entry/<id>')
+    .replace(/\d{5,}/g, '<n>');
+}
+
+// The record is a compare-and-set update (blob-cas.mjs, as fpl.mjs meters its
+// quota): Netlify runs one instance per request, and when FPL refuses the
+// proxy it refuses every instance at once, so a plain read-then-write kept one
+// of ten concurrent refusals (count 1, measured 2026-10-16) and the health run
+// read a two-hour episode as a blip. The backoff each caller sets is unchanged.
 async function recordRefusal(store, path, res, now) {
   const headers = {};
   for (const h of REFUSAL_HEADERS) { const v = res.headers.get(h); if (v) headers[h] = v.slice(0, 200); }
-  const bodyHead = (await res.text().catch(() => '')).replace(/\s+/g, ' ').trim().slice(0, 300);
-  const retryAfter = Number(headers['retry-after']);
-  const seconds = Math.min(REFUSAL_BACKOFF_MAX_SECONDS,
-    Math.max(REFUSAL_BACKOFF_SECONDS, Number.isFinite(retryAfter) ? retryAfter : 0));
-  // One episode is refusals no more than an hour apart (a quiet night can
-  // leave long gaps between visitors); its start and count are kept, so the
-  // health run can tell a blip from an hour of stale data.
-  const prev = await readRefusal(store);
-  const continues = prev && Date.parse(prev.at) > now - 3600 * 1000
-    && Number.isFinite(Date.parse(prev.firstAt));
+  // Scrubbed BEFORE it is cut, so the cut cannot leave the head of an id.
+  const bodyHead = scrubUpstreamText((await res.text().catch(() => '')).replace(/\s+/g, ' ').trim()).slice(0, 300);
+  const seconds = retryAfterSeconds(headers['retry-after'], now);
+  const at = new Date(now).toISOString();
   const record = {
-    at: new Date(now).toISOString(), until: new Date(now + seconds * 1000).toISOString(),
-    firstAt: continues ? prev.firstAt : new Date(now).toISOString(),
-    count: continues ? (Number(prev.count) || 1) + 1 : 1,
+    at, until: new Date(now + seconds * 1000).toISOString(), firstAt: at, count: 1,
     // Never a visitor's team id (privacy.html: the store holds copies of
     // public FPL responses, nothing about a visitor): an entry path is kept
     // as its kind.
     path: pathKind(path) === 'entry' ? 'entry' : path, status: res.status, headers, bodyHead,
   };
-  console.error('fpl upstream refused', JSON.stringify(record));
   try {
-    await store.setJSON(REFUSAL_KEY, record);
+    const compute = (prev) => {
+      // One episode is refusals no more than an hour apart (a quiet night can
+      // leave long gaps between visitors); its start and count are kept, so
+      // the health run can tell a blip from an hour of stale data. compute
+      // may run again after a lost round, so it rebuilds from `prev` each time.
+      const continues = typeof prev.at === 'string' && Date.parse(prev.at) > now - 3600 * 1000
+        && Number.isFinite(Date.parse(prev.firstAt));
+      record.firstAt = continues && Date.parse(prev.firstAt) < now ? prev.firstAt : at;
+      record.count = continues ? (Number(prev.count) || 1) + 1 : 1;
+      return { write: record };
+    };
+    // Every CAS round admits one writer, so ten simultaneous refusals need
+    // up to ten rounds; updateUsage gives five, and a lost one is retried.
+    let saved = { ok: false };
+    for (let i = 0; i < 4 && !saved.ok; i++) saved = await updateUsage(store, REFUSAL_KEY, compute);
+    if (!saved.ok) console.error('fpl refusal write lost every compare-and-set round');
   } catch (err) {
     console.error('fpl refusal write failed', String(err && err.message));
   }
+  console.error('fpl upstream refused', JSON.stringify(record));
 }
 
 class MalformedUpstreamError extends Error {

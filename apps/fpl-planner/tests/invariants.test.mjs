@@ -430,7 +430,15 @@ test('an illegal squad is caught rather than quietly optimised', () => {
 // FINDINGS.md "Transfer search performance"), which brought it to ~210 ms
 // locally, an estimated ~750 ms on a GitHub runner. If this fires again,
 // profile first; bump the budget only for a deliberate, understood cost.
-const TRANSFER_SEARCH_BUDGET_CPU_MS = 1500;
+//
+// Bumped 1500 to 2000 on 2026-10-16 for one: the search's depth now counts
+// the hits allowed (registry 48), and this call uses the module's default of
+// two, so the sample's two free transfers search FOUR moves where they
+// searched two. Profiled: 386 ms CPU locally at depth two, 535 to 609 ms at
+// depth four, nearly all of it the exact lineup (optimizeLineup, orderBench)
+// of the extra candidates every depth from three up guarantees an exact score;
+// the runner measured 1509 ms. The balanced profile (one hit) searches three.
+const TRANSFER_SEARCH_BUDGET_CPU_MS = 2000;
 
 test('a full transfer search over the sample dataset stays inside its budget', (t) => {
   const names = ['meta', 'bootstrap', 'fixtures', 'entry', 'entry-history', 'entry-transfers', 'entry-picks'];

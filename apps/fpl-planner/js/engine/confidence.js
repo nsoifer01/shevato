@@ -322,32 +322,68 @@ export function describeAge(seconds) {
   return `${Math.round(s / 86400)} days`;
 }
 
+// THE gap one alternative is shown at, on every surface. A plan that plays a
+// different chip, or a Bench Boost or Triple Captain on both sides, is ranked on
+// what keeping the chip is worth (`deltaWithChipValue`, planner.js
+// alternativeFrom), and the alternatives card prints that figure; any other is
+// shown at its projected horizon gap. Until 2026-10-16 this module picked the
+// runner-up by `deltaHorizon` alone, so on the real GW7 Bench Boost manager the
+// hero said the next best plan "projects 0.5 more points" while the card beside
+// it printed -0.3, -0.4 and -0.6 under "none of them scored higher". Both
+// surfaces read this one function so the two numbers cannot part again.
+export function shownDelta(alt) {
+  return Number.isFinite(alt.deltaWithChipValue) ? alt.deltaWithChipValue : alt.deltaHorizon;
+}
+
+// Why an alternative that is shown AHEAD of the plan was not chosen, as a
+// clause, or null when none of the planner's known reasons applies. Never a
+// guessed reason: the old fallback "once the transfer it spends is counted" was
+// printed for runner-ups that spent no transfer at all.
+function leadCause(alt, risk) {
+  if (alt.belowHitMargin) return 'it takes a hit that does not clear the bar for one';
+  if (alt.belowRollValue) return `it spends ${alt.transfersSpentVsPlan > 1 ? 'free transfers that are' : 'a free transfer that is'} worth more kept`;
+  if (alt.belowRiskPreference) {
+    // riskPreferenceSign is +1 when the PLAN carries the larger first-week
+    // swing, so the alternative is the steadier one. An aggressive profile
+    // rewards swing and a conservative one penalises it (variancePreference,
+    // planner.js RISK_PROFILES); any other pairing gets the generic wording
+    // rather than a reason the numbers do not support.
+    if (risk === 'aggressive' && alt.riskPreferenceSign > 0) return 'it is the steadier plan and your aggressive risk setting favours the riskier one';
+    if (risk === 'conservative' && alt.riskPreferenceSign < 0) return 'it is the riskier plan and your conservative risk setting favours the steadier one';
+    return 'it ranks lower once your risk setting is applied';
+  }
+  return null;
+}
+
 // The runner-up, measured against the week-to-week swing on the players the two
 // plans actually disagree about. Comparing a horizon delta against the whole
 // eleven's standard deviation would compare two different things, so the spread
 // is rebuilt from just the players who differ.
-function marginFactor({ plan, projections }) {
-  const alternatives = (plan.alternatives || []).filter(a => Number.isFinite(a.deltaHorizon));
+function marginFactor({ plan, projections, dataStatus }) {
+  const alternatives = (plan.alternatives || []).filter(a => Number.isFinite(shownDelta(a)));
   if (!alternatives.length) return { key: 'margin', weight: 0, margin: null, reason: null };
 
-  const best = alternatives.reduce((b, a) => (a.deltaHorizon > b.deltaHorizon ? a : b));
-  const margin = Math.max(0, -best.deltaHorizon);
-  // A runner-up that projects MORE than the plan lost on something other than
-  // points: a hit it had to clear by the profile's margin, or a free transfer
-  // it spends that the plan keeps. Clamping its lead to zero used to report
-  // "a second plan projects the same points", which contradicted the
-  // alternatives card printing a positive gap beside it.
-  if (best.deltaHorizon >= 0.05) {
-    const cause = best.belowHitMargin ? 'it takes a hit that does not clear the bar for one'
-      : best.belowRollValue ? `it spends ${best.transfersSpentVsPlan > 1 ? 'free transfers that are' : 'a free transfer that is'} worth more kept`
-        : 'the planner ranks it lower once the transfer it spends is counted';
+  const best = alternatives.reduce((b, a) => (shownDelta(a) > shownDelta(b) ? a : b));
+  const lead = shownDelta(best);
+  const margin = Math.max(0, -lead);
+  // A runner-up shown AHEAD of the plan lost on something other than the
+  // figure: a hit it had to clear by the profile's margin, a free transfer it
+  // spends that the plan keeps, or the risk setting. Clamping its lead to zero
+  // used to report "a second plan projects the same points", which
+  // contradicted the alternatives card printing a positive gap beside it.
+  if (lead >= 0.05) {
+    const cause = leadCause(best, dataStatus && dataStatus.risk);
+    const chipValued = Number.isFinite(best.deltaWithChipValue);
+    const claim = chipValued
+      ? 'the next best plan ranks {v} points ahead over the horizon'
+      : 'the next best plan projects {v} more points over the horizon';
     return {
       key: 'margin',
       weight: 1,
       margin: 0,
-      lead: best.deltaHorizon,
+      lead,
       swing: null,
-      reason: makeReason('confidence_runner_up_projects_more', `the next best plan projects {v} more points over the horizon and is not chosen because ${cause}`, best.deltaHorizon),
+      reason: makeReason('confidence_runner_up_projects_more', cause ? `${claim} and is not chosen because ${cause}` : claim, lead),
     };
   }
 
@@ -450,7 +486,7 @@ export function assessConfidence({ plan, projections, gameState, dataStatus = nu
     minutesFactor({ plan, projections }),
     reachFactor({ plan }),
     dataFactor({ dataStatus, sources, now }),
-    marginFactor({ plan, projections }),
+    marginFactor({ plan, projections, dataStatus }),
   ];
 
   const score = factors.reduce((s, f) => s + f.weight, 0);

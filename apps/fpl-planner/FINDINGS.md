@@ -14,6 +14,123 @@ tables.
 
 ---
 
+## The follow-up audit of #611 (2026-10-16, evening, before GW7)
+
+An independent audit of PR #611 the same evening, by four disjoint auditors
+each with its own repro scripts and an independent oracle (its own
+free-transfer calculator from the rules, a brute-force and greedy search over
+the planner's own objective, a render of every card), found more defects that
+#611's own tests could not see. **The common cause: each new check was
+pinned to the one state that produced the defect it fixed.** The history-lag fix
+was tested at a lag of one week; the alternatives fix on the alternatives card
+but not on the hero beside it; the transfer search on the 61 managers' real
+squads, where nobody held two free transfers and a hit worth taking; the
+health run on a manager with no Free Hit; the late-joiner floor on 12 joiners
+whose evidence could not have failed. The lesson for the next audit: for every
+fix, ask what the NEIGHBOURING states are (two weeks, not one; the other
+surface showing the same number; the other free-transfer counts; the week
+after a chip) and test those, not the reported one.
+
+What was found and fixed, by area:
+
+- **Manager state** (`squad.js`, `readiness.js`). A history TWO or more weeks
+  behind the picks still replayed the missing weeks as "no transfers": on the
+  five real GW7 managers the owner's 1 free transfer read 2 and the Bench Boost
+  he played in GW5 was offered back; another read 2 as 4. Reachable whenever
+  one refresh fails, because api.js serves a stored copy of any age while the
+  new week's picks arrive fresh under their own key. Now `historyGaps` treats
+  any hole as a missing history (no transfer, no chip, a banner naming the
+  weeks). The same class on the transfer list (`transfersBehind`): fewer rows
+  for a normal week than FPL's own `event_transfers` means the list lags, and
+  recent buys would be priced at their start price; now withheld. Both checks
+  are exact on real data: 411 histories without a gap, and 0 count mismatches
+  over 200 normal weeks of 40 managers sampled at random plus the five GW7 ones
+  (Wildcard and Free Hit weeks report 0 and are skipped). The committed demo
+  dataset failed the second check (its history counted transfers in GW2, 11
+  and 12 that its list did not carry) and was repaired with a coherent chain
+  that leaves every held player's price, and the demo's 2 free transfers,
+  unchanged; a test now holds the demo to the same checks as a real team.
+- **The hero contradicted the alternatives card** (`confidence.js`). #611 made
+  the card print the gap the planner ranked on; the confidence line still
+  picked the runner-up by projected points, so the real GW7 Bench Boost
+  manager read "the next best plan projects 0.5 more points ... once the
+  transfer it spends is counted" above a card of -0.3/-0.4/-0.6 and an
+  alternative that spends no transfer (60 contradictions in 135 plans across
+  managers, risk profiles and horizons; 0 now). Both surfaces read
+  `shownDelta`, and a lead is explained only by a cause the planner actually
+  applied (hit bar, roll value, or the risk setting's variance term,
+  `belowRiskPreference`), never a guessed one.
+- **Copy**: a chip in its last week (the owner's first-half Free Hit at GW19)
+  read "Hold", which means losing it; now "Not played, expires after GW19" and
+  a sentence saying so. "2 player unlikely to play", "over 1 gameweeks" (GW38),
+  "1 transfers" in History. "Counting what the chip is worth later" printed for
+  Wildcard and Free Hit alternatives, which carry no keep value in the
+  objective (and the matching `chip_outscored` sentence). A previous team's
+  data-status rows (a mistyped id's 404) and a failed Live scores read, which
+  the plan does not use, lowered the next plan's confidence.
+- **Monitoring and proxy** (`probe.mjs`, `fpl-cache.mjs`, `fpl-health-run.mjs`,
+  `evidence-probe.mjs`). The health run would go red on correct data in every
+  week after the monitored manager played a Free Hit: it reads the previous
+  gameweek's picks, which the proxy rightly keeps for a day, against an hour's
+  freshness bar (now judged per path, `freshLimitSeconds`). An edge error page
+  echoing the refused URL would have put a team id in the public health report
+  and the store (`scrubUpstreamText`). The refusal count lost concurrent
+  updates (now compare-and-set), Retry-After in HTTP-date form was ignored,
+  and every caller of one path went upstream together the second a backoff
+  ended (now one, under the lease, for an hour after a refusal). `--entry
+  none` failed on GitHub while it meant "off" on Netlify. A throw reading the
+  previous reading stored no result, and a failed history write cost the alert.
+- **A test that tested nothing**: `real-deadline-gw7` filtered on
+  `rules.maxPerClub`, which does not exist, so its "best of every legal single
+  transfer" counted 543 illegal or unbuyable moves; it now uses `clubLimit` and
+  asserts the exact 2,346. Every GW7 manager's free transfers are now pinned
+  from a hand derivation (2, 3, 1, 1, 1), not only the owner's. And the browser suite's GW1 states served
+  the demo's whole season of history and transfers beside GW1 picks, a shape
+  no manager can be in, which held only while the demo's history and list
+  disagreed; they now carry nothing after GW1 (`e2e/helpers.mjs`).
+
+- **The transfer search** (`transfers.js`, `planner.js`; registry 48). On 40
+  squads derived from the real GW7 managers an independent search found a plan
+  the planner ranks higher on 13. Three (+2.7 to +8.2) were one-hit triples
+  with two free transfers that were never generated: the depth ignored the
+  profile's `maxHits`, so a hit only existed with ONE free transfer. Ten (0.1
+  to 1.3) were ranked out on the search's fast proxy, which disagrees with the
+  objective; #611's wider shortlist moved that line but half were out of reach
+  of any width. Now the depth counts the allowed hits, and the two leading
+  plans are polished on the objective itself. Nine 0.1 to 1.3 misses remain,
+  each differing from the better plan in two or more moves; a whole-move swap
+  closed none of them at twice the CPU. That residual is the honest limit of a
+  heuristic over 10^10 plans, stated rather than hidden: the five real GW7
+  managers and the owner match an exhaustive search for 0 to 3 transfers.
+- **The Triple Captain compared weeks on two scales** (`chips.js`; registry
+  49): projections inside the horizon, an extrapolation past it, so the same
+  week was worth 5.45 or 6.30 and the week named best moved with the Horizon
+  setting. Every later week is now extrapolated (+2.4 a window on the chips-on
+  replay). Its rate is still read over the horizon, so the NAMED week can still
+  differ between horizons when later weeks are near-ties (the owner: GW10 at
+  5, GW14 at 3, 4, 6 and 8); a fixed three-week rate removes that and lost one
+  window by 10.3, so it was rejected under its pre-registered rule. The
+  play-or-hold decision is the same at horizons 3 to 8 for each of the three
+  GW7 managers still holding the chip (hold, every time).
+- **#611's CPU figure was low.** "About 10% more plan CPU" for the future
+  horizon measured +19% to +43% per manager (owner 0.97 s to 1.16 s); the
+  polish adds about 6% more. Still well inside the browser's ten-second budget
+  and the GitHub probe; the Netlify run plans only the built squad.
+
+### FPL refused the proxy again, briefly (21:41 UTC)
+
+One 403 at 21:41:27 from Fastly POP `cache-iad` on an entry read (`x-cache:
+MISS`, `retry-after: 0`, empty body). The proxy backed off for 120 s and the
+page showed the "not answering" banner with every source marked stale; three
+uncached reads in the SAME page load were answered 200 (the record was not
+yet visible to their instances), and everything was fresh again at 21:45.
+Refusals are therefore per request, not a block on the site: consistent with
+some of the AWS egress addresses Netlify's instances use being refused and
+others not, which is outside anything this code can change and must not be
+routed around. The health run treats an episode under 30 minutes as a blip.
+
+---
+
 ## Why every pre-gameweek audit found something (2026-10-16, before GW7)
 
 **The answer: nothing automated ever looked at a real manager.** Of the 21
@@ -135,7 +252,8 @@ transfers, a doubtful player), and add them to the loop in the test.
    squad was built, which nothing public states, so `reconstructPurchasePrices`
    rule 3 takes the lower of the start price and the player's lowest listed
    price up to the joining gameweek (`joinPriceFloors`, from element-summary).
-   Never above what was paid; still possibly below it. app.js reads those
+   Below what was paid wherever a fixture recorded the price (see "Known and
+   left" for the one case it can sit above); possibly well below it. app.js reads those
    summaries only for a late joiner's original picks, as quiet reads (no data
    status row, nothing stored on the device; a failure keeps the start price).
    The health probe's entry is the owner's, a GW1 squad, so it does not read
@@ -184,7 +302,13 @@ egress, no disguised UA.
 - **A late joiner's purchase price is a floor, not the price paid** (item 7
   above): the lower of the start price and the lowest listed price up to the
   joining week. It can understate what a sale raises (a transfer that is
-  affordable may be missed), never overstate it.
+  affordable may be missed). It can overstate it in one case nothing public
+  records (follow-up audit, 2026-10-16): element-summary lists one price per
+  fixture, so a player who dipped and recovered between fixtures before the
+  manager joined, or fell after his last fixture before a blank joining week,
+  was bought at a price no row shows, up to 0.1m a player below the floor. Not
+  seen in real data. The "12 of 12" squad-value match in item 7 shows only that
+  FPL's value is listed prices plus the bank, so it is not evidence either way.
 - **The header's overall rank and History's "after Gameweek N" differ, and
   that is correct.** The header is `entry.summary_overall_rank`, which FPL
   keeps recalculating with no football played (the owner's moved 6,172,276 to

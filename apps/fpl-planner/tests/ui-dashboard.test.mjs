@@ -378,6 +378,10 @@ test('an alternative that plays a different chip is priced with what keeping the
     ...bundle,
     current: {
       ...plan,
+      // The recommendation plays the Bench Boost and this alternative keeps
+      // it: only a Bench Boost or Triple Captain carries a keep value, so the
+      // "worth later" wording needs one of them on a side.
+      chip: 'bboost',
       alternatives: [
         { headline: 'Foden to Gibbs-White', chip: null, deltaHorizon: -13.7, deltaWithChipValue: -4.7, hits: 0 },
         { headline: 'Play your Bench Boost', chip: 'bboost', deltaHorizon: -0.8, deltaWithChipValue: null, hits: 0 },

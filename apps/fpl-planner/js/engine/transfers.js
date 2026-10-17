@@ -17,11 +17,17 @@
 // gained +5.8, +7.4 and +8.2 from the third to fifth free moves that the search
 // never generated (session report 2026-10-09-1638, B3). K is
 //
-//   K = max(2, min(free transfers held, maxTransfersCap = 5))
+//   K = max(2, min(free transfers held + maxHits, maxTransfersCap = 5))
 //
-// unless `opts.maxTransfers` sets it. At two free transfers or fewer K is 2 and
-// the search is bit-for-bit what it was, which tests/transfers-depth.test.mjs
-// asserts against `maxTransfers: 2`. With unlimited transfers (pre-season, a
+// The `+ maxHits` since 2026-10-16 (registry 48, `hitDepth`): without it a hit
+// was generated only with ONE free transfer, where K is 2 anyway, so a manager
+// with two could never be told that a third move was worth four points (a
+// legal one-hit triple scored +8.2 on the planner's own objective over the
+// free pair it returned, clearing the 2.0 bar).
+//
+// unless `opts.maxTransfers` sets it. With one free transfer and one hit
+// allowed K is 2 and the search is bit-for-bit what it was, which
+// tests/transfers-depth.test.mjs asserts against `maxTransfers: 2`. With unlimited transfers (pre-season, a
 // wildcard) K stays 2: a rebuild is squad-builder.js's job, not this one's.
 //
 // THE BEAM. From the `beamWidth` best two-transfer candidates, by this
@@ -216,6 +222,11 @@ export const TRANSFER_DEFAULTS = Object.freeze({
   // number pins it: `maxTransfers: 2` is the search as it was before the beam.
   maxTransfers: null,
   maxTransfersCap: 5,
+  // Count the hits a profile allows into the depth (THE DEPTH in the header).
+  // false is the depth as it was until 2026-10-16, which reached a hit only
+  // with ONE free transfer: with two, a third move was never generated
+  // (registry 48; the control arm).
+  hitDepth: true,
   // Candidates per depth kept as the frontier the next depth extends.
   beamWidth: 8,
   // Best candidates of each depth >= 3 guaranteed into the exact re-score and
@@ -282,7 +293,8 @@ export function resolveMaxTransfers(freeTransfers, opts = {}) {
   if (Number.isFinite(cfg.maxTransfers)) return cfg.maxTransfers;
   // Unlimited (pre-season, a chip week) is a rebuild, which the builder owns.
   if (!Number.isFinite(freeTransfers)) return 2;
-  return Math.max(2, Math.min(cfg.maxTransfersCap, freeTransfers));
+  const hits = cfg.hitDepth ? Math.max(0, cfg.maxHits || 0) : 0;
+  return Math.max(2, Math.min(cfg.maxTransfersCap, freeTransfers + hits));
 }
 
 // ---------------------------------------------------------------------------

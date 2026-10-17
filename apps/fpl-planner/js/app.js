@@ -27,7 +27,7 @@ import { buildLiveStats, scoreLiveSquad } from './engine/live.js';
 import { formatFreeTransfers } from './engine/transfer-state.js';
 import { el, mount, clear, stat } from './ui/dom.js';
 import { relativeTime, dateTime, formatMoney, rank, points } from './ui/format.js';
-import { assessData, inputFingerprint, fingerprintScope, outdatedReason, noticeKinds } from './ui/plan-model.js';
+import { assessData, inputFingerprint, fingerprintScope, outdatedReason, noticeKinds, planSources } from './ui/plan-model.js';
 import { planInputs, diffPlanVersions, actionKey } from './ui/plan-diff.js';
 import * as store from './ui/store.js';
 import { banner, btn, progressView, sampleBanner, sampleTag, freshness, planChangeCard } from './ui/parts.js';
@@ -852,6 +852,16 @@ function freshnessRow() {
   ]);
 }
 
+// The rows the plan on screen rests on, for its confidence band
+// (plan-model.js planSources): never live scores, and only the picks loadTeam
+// read for it, which is the frozen gameweek's and, after a Free Hit, the
+// gameweek before it. The data status card still lists every row.
+function planSourcesNow() {
+  return planSources(fplApi.getDataStatus().sources, {
+    picksGws: [state.picksGw, state.freeHitGw ? state.freeHitGw - 1 : null],
+  });
+}
+
 function heroSlotContent() {
   const bundle = state.bundle;
   const event = state.gameState.events.find(e => e.id === bundle.current.gw) || null;
@@ -861,7 +871,7 @@ function heroSlotContent() {
     event,
     now: Date.now(),
     isDraft: state.isDraft,
-    sources: fplApi.getDataStatus().sources,
+    sources: planSourcesNow(),
   });
 }
 
@@ -961,7 +971,7 @@ function planView() {
   nodes.push(whyCard({
     bundle,
     gameState: state.gameState,
-    sources: fplApi.getDataStatus().sources,
+    sources: planSourcesNow(),
     open: state.disclosures.why,
     onToggle: (open) => { state.disclosures.why = open; },
   }));
@@ -976,7 +986,7 @@ function planView() {
     onAsk: (playerId) => runner.whyNot(playerId, { runId: bundle.runId ?? null, role: 'plan' }),
   }));
 
-  nodes.push(futureCard({ bundle, gameState: state.gameState, sources: fplApi.getDataStatus().sources }));
+  nodes.push(futureCard({ bundle, gameState: state.gameState, sources: planSourcesNow() }));
   nodes.push(alternativesCard({
     bundle,
     open: state.disclosures.alts,
@@ -1561,6 +1571,10 @@ function wireOnboarding() {
       return;
     }
 
+    // Every team change lands here ("Use a different Team ID" and Settings'
+    // change-team both reopen this form), so this is where the previous
+    // team's data-status rows, a mistyped id's 404 among them, are dropped.
+    fplApi.forgetEntryStatus();
     state.teamId = check.teamId;
     state.bundle = null;
     state.captains = new Map();

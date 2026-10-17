@@ -71,7 +71,11 @@ test('with three free transfers a route of three moves is offered, legal, and be
       assert.ok(now.squad.includes(p.id));
       assert.ok(legal(now.squad, bundle.squadState), `${p.webName}: a legal fifteen`);
       assert.ok(now.bankTenths >= 0, `${p.webName}: affordable`);
-      assert.equal(now.hitPoints, 0, 'inside the free transfers');
+      // The planner searches the free transfers plus the hits its profile
+      // allows (one, balanced; registry 48), and a route is priced exactly
+      // for the moves beyond the three free ones, never past that allowance.
+      assert.equal(now.hitPoints, rules.hitCost * Math.max(0, now.transfers - 3), `${p.webName}: priced for the moves past three`);
+      assert.ok(now.transfers <= 4, `${p.webName}: no deeper than the planner searches`);
     }
   }
   assert.ok(deeper >= 1, 'at least one answer is a route the two-move cap could not reach');

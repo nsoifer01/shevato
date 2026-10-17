@@ -340,14 +340,25 @@ function perFixtureRate(projections, playerId, gwFrom, horizon) {
 // Estimated points for a player in a gameweek that may be outside the horizon.
 // Inside the horizon this returns the projection itself, so the two regimes
 // agree at the boundary.
-export function estimateXp(projections, gameState, player, gw, gwFrom, horizon) {
-  if (gw >= gwFrom && gw < gwFrom + horizon) {
+//
+// `extrapolateLater` values every week after gwFrom by the extrapolation, so
+// all of a chip's later weeks share one basis whatever the horizon setting.
+// The Triple Captain uses it since 2026-10-16 (registry 49): with projections
+// inside the horizon and the extrapolation past it, the same week was worth
+// 5.45 or 6.30 depending on the Horizon setting, and the week named best moved
+// with it (GW8 at 3, GW10 at 5, GW14 at 8 for the owner).
+//
+// `rateWeeks` fixes how many weeks the per-fixture rate is read over, so the
+// rate, and with it every later week's value, does not move with the horizon
+// either (experiments/configs/tc-later-basis.mjs, arm 'extrapolated-3').
+export function estimateXp(projections, gameState, player, gw, gwFrom, horizon, { extrapolateLater = false, rateWeeks = null } = {}) {
+  if (gw >= gwFrom && gw < gwFrom + horizon && !(extrapolateLater && gw > gwFrom)) {
     const row = projOf(projections, player.id, gw);
     if (row) return row.xPoints;
   }
   const fixtures = fixturesForTeam(gameState, player.teamId, gw);
   if (!fixtures.length) return 0;
-  const rate = perFixtureRate(projections, player.id, gwFrom, horizon);
+  const rate = perFixtureRate(projections, player.id, gwFrom, rateWeeks ? Math.min(horizon, rateWeeks) : horizon);
   return rate * fixtures.length * fdrFactor(fixtures, player.teamId);
 }
 
@@ -781,7 +792,11 @@ export function benchBoostReasons(d, gameState) {
 function benchBoostHoldReason(d) {
   if (d.status === 'opening') return openingHoldReason('hold_bboost', 'Bench Boost', d.gw);
   if (d.status === 'unusable') {
-    return makeReason('hold_bboost', 'Your bench has {v} player unlikely to play, so a Bench Boost waits until the bench is repaired.', d.unusable.length, 'count');
+    // Pluralised: real GW7 benches carried two and three such players and read
+    // "Your bench has 3 player unlikely to play" (2026-10-16).
+    return makeReason('hold_bboost', d.unusable.length === 1
+      ? 'Your bench has {v} player unlikely to play, so a Bench Boost waits until the bench is repaired.'
+      : 'Your bench has {v} players unlikely to play, so a Bench Boost waits until the bench is repaired.', d.unusable.length, 'count');
   }
   if (d.status === 'below_bar') {
     return makeReason(
@@ -865,7 +880,7 @@ function chipEntry(chip, d, legalGws, reasons, holdReason, detail) {
 // copy is really worth `xPointsCaptaincy`, the captain when he plays and the
 // VICE when he does not. Entry 25 measured the correction as inert under the
 // old margin; entry 30 re-measured it under the new one (see there).
-export function tripleCaptainDecision({ squadIds, captainId, captainXp, projections, gameState, rules, gw, horizon, chipsUsed = [], openingSquad = false }) {
+export function tripleCaptainDecision({ squadIds, captainId, captainXp, projections, gameState, rules, gw, horizon, chipsUsed = [], openingSquad = false, laterBasis = 'extrapolated' }) {
   const window = chipWindowAt(rules, '3xc', gw, chipsUsed);
   if (!window) return null;
   const valueNow = captainXp;
@@ -879,7 +894,10 @@ export function tripleCaptainDecision({ squadIds, captainId, captainXp, projecti
     for (const id of squadIds) {
       const player = gameState.players.get(id);
       if (!player) continue;
-      const xp = estimateXp(projections, gameState, player, g, gw, horizon);
+      const xp = estimateXp(projections, gameState, player, g, gw, horizon, {
+        extrapolateLater: laterBasis !== 'mixed',
+        rateWeeks: laterBasis === 'extrapolated-3' ? 3 : null,
+      });
       if (xp > top) {
         top = xp;
         topId = id;
@@ -942,6 +960,7 @@ function evaluateTripleCaptain(ctx) {
   const d = tripleCaptainDecision({
     squadIds: squadState.picks.map(p => p.playerId), captainId: now.captain, captainXp: now.captainExtra,
     projections, gameState, rules, gw, horizon, chipsUsed, openingSquad: ctx.openingSquad,
+    laterBasis: (ctx.opts && ctx.opts.tcLaterBasis) || 'extrapolated',
   });
   const captainName = playerName(gameState, now.captain);
   // The triple captain's bar is a MARGIN over the best week left, not an

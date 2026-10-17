@@ -46,6 +46,25 @@ export const MIN_EP_NEXT_SPEARMAN = 0.6;
 // The seed js/app.js planOptions() hands every plan; with DEFAULT_SETTINGS it
 // makes the probe's plan for a real entry the plan a visitor sees.
 export const APP_PLAN_SEED = 7;
+// How old a FRESH proxy answer may be, per path. An hour for everything the
+// app reads to plan (bootstrap, fixtures, the entry, history, transfers and
+// the current picks: their TTLs are minutes). A finished gameweek's picks are
+// different (2026-10-16): they never change again, so the proxy keeps them a
+// day (netlify/functions/lib/fpl-cache.mjs FINISHED_PICKS_TTL_SECONDS, which
+// probe-freshness.test.mjs holds this equal to; it is not imported because
+// the GitHub workflow checks out apps/fpl-planner alone). The run reads them
+// in any week after the monitored manager played a Free Hit (the squad the
+// chip reverts to), and holding them to the hour turned the second run of
+// that week red on correct data. Finished means before the gameweek the
+// bootstrap calls current, the same test the proxy applies.
+export const FRESH_PROXY_SECONDS = 3600;
+export const FINISHED_PICKS_FRESH_SECONDS = 24 * 3600;
+const PICKS_PATH_RE = /^entry\/\d+\/event\/(\d+)\/picks$/;
+export function freshLimitSeconds(name, currentEvent) {
+  const m = PICKS_PATH_RE.exec(name);
+  return m && Number.isInteger(currentEvent) && Number(m[1]) < currentEvent
+    ? FINISHED_PICKS_FRESH_SECONDS : FRESH_PROXY_SECONDS;
+}
 
 /**
  * Shape first: everything else assumes it, and a payload without these arrays
@@ -400,15 +419,18 @@ export async function runProbe({ bootstrap, fixtures, fetchedAt, now = null, sou
   }
 
   // The proxy's own promises (README, "The data layer"): browsers never cache
-  // it, a stale copy says so, and a fresh copy is minutes old, not hours.
+  // it, a stale copy says so, and a fresh copy is minutes old, not hours (a
+  // finished gameweek's picks: within their day, freshLimitSeconds).
   if (source === 'proxy') {
+    const currentEvent = (bootstrap.events.find((e) => e.is_current) || {}).id;
     for (const [name, h] of Object.entries(responses)) {
       const age = Number(h.get('x-fpl-age-seconds')) + (Number(h.get('age')) || 0);
       const cc = String(h.get('cache-control') || '');
+      const limit = freshLimitSeconds(name, currentEvent);
       check(`the proxy serves ${name} fresh and uncached by browsers`,
-        cc.includes('no-store') && h.get('x-fpl-stale') !== 'true' && Number.isFinite(age) && age < 3600,
+        cc.includes('no-store') && h.get('x-fpl-stale') !== 'true' && Number.isFinite(age) && age < limit,
         `cache-control "${cc}", stale ${h.get('x-fpl-stale')}, age ${age}s`,
-        'no-store, not stale, under an hour old');
+        `no-store, not stale, under ${limit === FRESH_PROXY_SECONDS ? 'an hour' : `${limit / 3600} hours`} old`);
     }
   }
 
