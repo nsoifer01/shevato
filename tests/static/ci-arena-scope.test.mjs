@@ -156,15 +156,9 @@ test('the workflow holding the arena emulator job reports on every pull request'
 // ---------------------------------------------------------------------------
 const RUNS = {
   'the ruleset itself': ['firestore.rules'],
-  'the Firestore seam every client reaches Firestore through': ['firebase-firestore.js'],
   'the emulator wiring': ['firebase.json'],
   'the arena app': ['apps/arena/js/app.js'],
   'the rules suite': ['apps/arena/tests-rules/rules.test.mjs'],
-  'the multiplayer e2e': ['apps/arena/e2e/emulator.mjs'],
-  'the sync layer the app writes through': ['sync-system/storage-sync-robust.js'],
-  // Read as data by tests/browser/third-party.mjs, so no import walk sees it:
-  // every e2e page loads the Firebase SDK from this mirror.
-  'the third-party mirror the e2e pages load the SDK from': ['tests/browser/vendor/third-party/manifest.json'],
   'the scripts this job runs': ['package.json'],
   'the node version it runs them on': ['.nvmrc'],
   'the arena job in the workflow': ['.github/workflows/ci.yml'],
@@ -181,16 +175,16 @@ const SKIPS = {
   'documentation': ['README.md', 'CLAUDE.md', 'apps/trip-planner/FINDINGS.md'],
   'another app entirely': ['apps/fpl-planner/js/planner.js', 'apps/fpl-planner/index.html'],
   // The literal shape of PR #511: an app deleted, and one app-count line in a
-  // sync-system TEST. Those files are node tests and their stubs; the `test`
-  // workflow already covers them, and neither emulator suite loads them.
+  // sync-system TEST.
   'PR #511 (an unrelated app removed, one sync-system test line touched)': [
     'apps/quotescout/index.html',
     'netlify/functions/quotescout.mjs',
     'sync-system/tests/app-naming-consistency.test.mjs',
   ],
-  'a sync-system test helper': ['sync-system/tests/helpers/firestore-stub.mjs'],
-  // Covered by the required browser estate instead, which boots the arena
-  // page with them on every pull request (the page-derived test below).
+  // The suite drives the rules over the emulator's REST API and loads no
+  // page; these were inputs only while the multiplayer e2e ran (removed
+  // 2026-10-17). The required browser estate boots the arena page with them.
+  'the client-side Firebase seams and the sync layer': ['firebase-config.js', 'firebase-firestore.js', 'sync-system/storage-sync-robust.js'],
   'a shared script, stylesheet or partial the arena page loads': ['assets/js/main.js', 'assets/css/main.css', 'partials/header.html'],
 };
 
@@ -199,85 +193,6 @@ for (const [what, files] of Object.entries(SKIPS)) {
     assert.equal(runScope({ event: 'pull_request', files }).run, '0', files.join(', '));
   });
 }
-
-// ---------------------------------------------------------------------------
-// Derived, not restated: whatever the e2e imports from outside apps/arena is
-// an input to this job, and must be in the trigger.
-// ---------------------------------------------------------------------------
-test('every module the multiplayer e2e imports from outside apps/arena, transitively, is an input', () => {
-  // TRANSITIVELY: the walk used to read only the two harness files' own
-  // imports, so when cdp.mjs started importing tests/browser/third-party.mjs
-  // (2026-09-14) nothing here noticed that the SDK every e2e page loads now
-  // came from a file the trigger did not list.
-  const queue = ['apps/arena/e2e/emulator.mjs', 'apps/arena/e2e/run-emulator.mjs'];
-  const seen = new Set();
-  const escaping = new Set();
-
-  while (queue.length) {
-    const file = queue.shift();
-    if (seen.has(file)) continue;
-    seen.add(file);
-    for (const m of read(file).matchAll(/from\s+['"](\.[^'"]+)['"]/g)) {
-      const rel = relative(REPO_ROOT, resolve(REPO_ROOT, dirname(file), m[1])).split('\\').join('/');
-      if (!rel.startsWith('apps/arena/')) escaping.add(rel);
-      queue.push(rel);
-    }
-  }
-
-  // tests/browser/cdp.mjs was NOT in the old trigger: the driver the whole
-  // suite runs on could be rewritten without this job ever running. If these
-  // are ever missing from the set, the walk broke.
-  for (const must of ['tests/browser/cdp.mjs', 'tests/browser/third-party.mjs']) {
-    assert.ok(escaping.has(must), `expected the walk to reach ${must}; found ${[...escaping].join(', ')}`);
-  }
-
-  for (const path of escaping) {
-    assert.equal(runScope({ event: 'pull_request', files: [path] }).run, '1',
-      `${path} is imported by the multiplayer e2e but does not trigger it`);
-  }
-});
-
-// ---------------------------------------------------------------------------
-// Derived, not restated, from the APP's side too: whatever apps/arena/js
-// imports from outside apps/arena, and whatever that imports in turn, runs
-// in-page in every client of both emulator suites, and must be in the trigger.
-//
-// The e2e-harness walk above could never see firebase-config.js, because the
-// harness does not import it: the page does. It is the emulator seam every
-// client reaches Firestore through, and it was missing from the trigger until
-// 2026-09-13 (site-wide audit C-4), so a pull request touching only that file
-// reported `rules` green having run neither suite.
-// ---------------------------------------------------------------------------
-test('every module the arena app imports from outside apps/arena, transitively, is an input', () => {
-  const importRe = /(?:\bfrom|\bimport)\s*\(?\s*['"](\.{1,2}\/[^'"]+)['"]/g;
-  const queue = readdirSync(join(REPO_ROOT, 'apps/arena/js'))
-    .filter((f) => f.endsWith('.js'))
-    .map((f) => `apps/arena/js/${f}`);
-  const seen = new Set();
-  const escaping = new Set();
-
-  while (queue.length) {
-    const file = queue.shift();
-    if (seen.has(file)) continue;
-    seen.add(file);
-    for (const m of read(file).matchAll(importRe)) {
-      const rel = relative(REPO_ROOT, resolve(REPO_ROOT, dirname(file), m[1])).split('\\').join('/');
-      if (rel.startsWith('apps/arena/')) continue;
-      escaping.add(rel);
-      queue.push(rel);
-    }
-  }
-
-  // If the app stops importing the seam directly, the walk needs a new root
-  // rather than quietly checking nothing.
-  assert.ok(escaping.has('firebase-config.js'),
-    `expected apps/arena/js to import firebase-config.js; found ${[...escaping].join(', ') || 'nothing'}`);
-
-  for (const path of escaping) {
-    assert.equal(runScope({ event: 'pull_request', files: [path] }).run, '1',
-      `${path} runs in-page in both emulator suites but does not trigger them`);
-  }
-});
 
 // ---------------------------------------------------------------------------
 // Fail-safe. Every unknown must run the suites, never skip them: ten wasted
@@ -297,7 +212,7 @@ for (const [what, opts] of Object.entries(FAIL_SAFE)) {
   test(`${what} runs the suites rather than skipping them`, () => {
     const { run, log } = runScope(opts);
     assert.equal(run, '1', log);
-    assert.match(log, /Running both suites:/);
+    assert.match(log, /Running the rules suite:/);
   });
 }
 
@@ -325,37 +240,3 @@ test('the arena part of the workflow is its last two jobs, as the scope script a
   assert.deepEqual(jobs.slice(-2), ['rules-shard', 'rules'],
     'arena_part() reads from `rules-shard:` to the end of the file; a job added after them would count as arena');
 });
-
-// ---------------------------------------------------------------------------
-// Derived from the PAGE (2026-10-17). The two import walks above see only
-// `import` statements. Every first-party file the arena page loads by
-// <script src>, <link href> or data-include is either an input to these
-// suites or covered by the required browser estate, which boots the arena
-// page on every pull request: never neither, which would let a change to it
-// report green with nothing having loaded the page.
-// ---------------------------------------------------------------------------
-test('every first-party file the arena page loads is an emulator input or loaded by the browser estate', () => {
-  const html = read('apps/arena/index.html');
-  const refs = new Set();
-  for (const m of html.matchAll(/\b(?:src|href)="([^"#?]+)/g)) {
-    const ref = m[1];
-    if (/^(https?:|mailto:|data:|\/\/)/.test(ref) || !/\.(js|mjs|css)$/.test(ref)) continue;
-    const rel = ref.startsWith('/') ? ref.slice(1) : relative(REPO_ROOT, resolve(REPO_ROOT, 'apps/arena', ref)).split('\\').join('/');
-    if (!rel.startsWith('apps/arena/')) refs.add(rel);
-  }
-  for (const m of html.matchAll(/data-include="([a-z0-9-]+)"/g)) refs.add(`partials/${m[1]}.html`);
-  for (const must of ['assets/js/main.js', 'firebase-config.js', 'partials/header.html']) {
-    assert.ok(refs.has(must), `expected the page to load ${must}; found ${[...refs].join(', ')}`);
-  }
-  // The browser estate's own promise: its apps suite boots the arena page,
-  // and the suite is in the estate CI runs on every pull request.
-  assert.match(read('tests/browser/suites/apps.mjs'), /goto\(s, base \+ '\/apps\/arena\/'/, 'the apps suite must still boot the arena page');
-  assert.match(read('tests/browser/run.mjs'), /'tests\/browser\/suites\/apps\.mjs'/, 'the apps suite must still be in the browser estate');
-  assert.match(CI, /^ {2}browser:$/m, 'and `browser` must still be a job (a required check)');
-  for (const path of refs) {
-    const input = runScope({ event: 'pull_request', files: [path] }).run === '1';
-    const browserCovered = /^(assets\/(js|css)\/|partials\/)/.test(path);
-    assert.ok(input || browserCovered, `${path} is loaded by the arena page, triggers no emulator suite, and is not covered by the browser estate`);
-  }
-});
-

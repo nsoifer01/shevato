@@ -14,9 +14,9 @@ name: ci
 #   |  +- browser ...... one verdict for the eight shards
 #   +- dataset-cache ... push only: keeps the Rising Shows dataset cache warm
 #   |                    on master, where every pull request can restore it
-#   +- rules-shard x2 .. Arena's Firestore rules suite + multi-client e2e against
-#      |                 the emulators, scoped to changes that can move them
-#      +- rules ........ one verdict for both groups
+#   +- rules-shard ..... Arena's Firestore rules suite against the emulator,
+#      |                 scoped to changes that can move it
+#      +- rules ........ its verdict
 #
 # Branch protection requires the job names `lint`, `test`, `browser` and
 # `rules`. Renaming one of those jobs silently un-requires it.
@@ -30,7 +30,7 @@ name: ci
 # `plan`, and every job reads the answer.
 #
 # Nothing here waits on anything it does not need: lint, both test halves, the
-# eight browser shards and both Arena groups all start together. On a pull request `plan` is skipped outright
+# eight browser shards and the Arena rules suite all start together. On a pull request `plan` is skipped outright
 # and costs nothing.
 #
 # WHAT IS NEVER DONE HERE: retries of a failed check, continue-on-error on a
@@ -322,24 +322,16 @@ jobs:
       - name: Rising Shows dataset
         uses: ./.github/actions/rising-shows-dataset
 
-  # The Arena emulator suites, on TWO machines. On one, the multiplayer e2e was
-  # about ten minutes of real game clocks, the longest job on a pull request.
-  # It splits at the one boundary its scenarios allow (ARENA_E2E_GROUP in
-  # apps/arena/e2e/emulator.mjs): group 1 is the chained S1-S5 session plus
-  # the rules suite, group 2 is S6 onward. Measured 2026-09-14, each group run
-  # alone on fresh emulators: 76/76 in 6.1 min and 30/30 in 3.5 min, together
-  # exactly the full run's 106 checks. A scenario belongs to one group by its
-  # number, so none can fall between the two.
+  # The Arena Firestore rules suite against the emulator, scoped to changes
+  # that can move it. The two-client multiplayer e2e that used to run here
+  # beside it was removed on 2026-10-17 (owner decision): it had become the
+  # slowest and least reliable check on the gate for an app with no users.
   rules-shard:
     needs: plan
     if: ${{ !cancelled() && (github.event_name != 'push' || needs.plan.result != 'success' || needs.plan.outputs.run == 'true') }}
     runs-on: ubuntu-24.04
-    strategy:
-      fail-fast: false
-      matrix:
-        group: [1, 2]
-    # Both suites, plus a cold firebase-tools download on a cache miss.
-    timeout-minutes: 30
+    # The rules suite, plus a cold firebase-tools download on a cache miss.
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v6
         with:
@@ -372,7 +364,7 @@ jobs:
 
           run_everything() {
             echo "run=1" >> "$GITHUB_OUTPUT"
-            echo "Running both suites: $1"
+            echo "Running the rules suite: $1"
             exit 0
           }
 
@@ -399,30 +391,16 @@ jobs:
           # The inputs, and why each one is an input:
           #   firestore.rules        the authorization boundary under test
           #   firebase.json          emulator ports and the ruleset wiring
-          #   firebase-config.js     the emulator seam for auth, and the app every client signs in through
-          #   firebase-firestore.js  the emulator seam for Firestore: every client in both suites reaches Firestore through it
-          #   apps/arena/**          the app that writes through it, plus both suites
-          # NOT inputs, deliberately: assets/js/, assets/css/ and partials/, which the
-          # arena page loads by <script>/<link>/data-include. They change on most site
-          # pull requests, and the required `browser` estate already boots the arena
-          # page with them on every one (apps, a11y and perf suites), which is the
-          # failure they can cause; tests/static/ci-arena-scope.test.mjs pins that
-          # each one is covered by one job or the other.
-          #   sync-system/**         the layer the app writes through (arena loads six of its modules)
-          #   tests/browser/cdp.mjs  the driver the multiplayer e2e imports
-          #   tests/browser/third-party.mjs + vendor/third-party/
-          #                          what every e2e page's Firebase SDK is served from
+          #   apps/arena/**          the suite (apps/arena/tests-rules/) and the app whose rules these are
           #   package.json/.nvmrc    the scripts this job runs, and the node it runs them on
           #   this workflow          its own steps: the header (triggers, concurrency,
           #                          permissions) and the rules-shard and rules jobs, which
           #                          are the last two in the file. A change elsewhere in it
-          #                          (another job) cannot move the emulator outcome, and ran
-          #                          these suites for nothing (2026-10-17).
-          INPUTS='^(firestore\.rules|firebase\.json|firebase-config\.js|firebase-firestore\.js|package\.json|\.nvmrc|apps/arena/|sync-system/|tests/browser/cdp\.mjs|tests/browser/third-party\.mjs|tests/browser/vendor/third-party/|\.github/workflows/ci\.yml)'
-          # sync-system/tests/** is the one carve-out: node tests and their
-          # stubs, already covered by the `test` job, and loaded by neither
-          # emulator suite.
-          NOT_INPUTS='^sync-system/tests/'
+          #                          (another job) cannot move the outcome (2026-10-17).
+          # The suite drives the rules over the emulator's REST API and loads no
+          # page, so firebase-config.js, firebase-firestore.js and sync-system/
+          # stopped being inputs with the multiplayer e2e (2026-10-17).
+          INPUTS='^(firestore\.rules|firebase\.json|package\.json|\.nvmrc|apps/arena/|\.github/workflows/ci\.yml)'
 
           # The workflow's arena part: everything before `jobs:`, then
           # rules-shard to the end of the file. Compared against the merge
@@ -446,14 +424,14 @@ jobs:
           # `|| true` is load-bearing: Actions runs this as `bash -e`, and grep
           # exits 1 when it matches nothing, which IS the skip case. Without it
           # every pull request with no emulator inputs went red (2026-09-08).
-          HITS=$(printf '%s\n' "$CHANGED" | grep -Ev "$NOT_INPUTS" | grep -E "$INPUTS" || true)
+          HITS=$(printf '%s\n' "$CHANGED" | grep -E "$INPUTS" || true)
           if [ -n "$HITS" ]; then
             echo "run=1" >> "$GITHUB_OUTPUT"
             echo "Emulator inputs changed:"
             printf '%s\n' "$HITS" | sed 's/^/  /'
           else
             echo "run=0" >> "$GITHUB_OUTPUT"
-            echo "No emulator inputs in this change - reporting success without running the suites."
+            echo "No emulator inputs in this change - reporting success without running the rules suite."
             echo "Changed files:"
             printf '%s\n' "$CHANGED" | sed 's/^/  /'
           fi
@@ -488,66 +466,22 @@ jobs:
       # behaviour into a hard failure, so a broken Java setup or download can
       # never fake a green run.
       - name: Run the rules suite against the emulator
-        if: steps.scope.outputs.run == '1' && matrix.group == 1
+        if: steps.scope.outputs.run == '1'
         env:
           ARENA_RULES_REQUIRE: '1'
         run: npm run test:arena:rules
 
-      - name: Resolve browser
-        if: steps.scope.outputs.run == '1'
-        run: |
-          set -e
-          for c in google-chrome google-chrome-stable chromium chromium-browser; do
-            if command -v "$c" >/dev/null 2>&1; then
-              echo "CHROME_BIN=$c" >> "$GITHUB_ENV"
-              echo "Using $c: $("$c" --version)"
-              exit 0
-            fi
-          done
-          echo "::error::INFRASTRUCTURE: no Chrome/Chromium on the runner image." >&2
-          exit 1
 
-      # The only suite that drives two and three real clients against
-      # Firestore + Auth. It brings up its own emulators, two static servers
-      # and its own Chrome, and tears them all down. ARENA_E2E_VERBOSE streams
-      # each check and each scenario's timing as it happens, so a stall or a
-      # failure is located in the log instead of arriving as one block after
-      # eleven minutes.
-      - name: Run multiplayer e2e group ${{ matrix.group }} against the emulators
-        if: steps.scope.outputs.run == '1'
-        env:
-          ARENA_RULES_REQUIRE: '1'
-          ARENA_E2E_VERBOSE: '1'
-          ARENA_E2E_GROUP: ${{ matrix.group }}
-        run: npm run test:arena:emulator
-
-      # What the emulator and the pages said, kept when a group fails
-      # (2026-10-17). Run 39065460835 failed every group-2 scenario from S6's
-      # first step on, passed 35/35 locally and in every one of the ten full
-      # group-2 runs before it, and left nothing to explain itself: the
-      # Firestore emulator writes firestore-debug.log to the repo root, which
-      # the runner discarded.
-      - name: Keep the emulator logs and screenshots
-        if: failure() && steps.scope.outputs.run == '1'
-        uses: actions/upload-artifact@v7
-        with:
-          name: arena-group-${{ matrix.group }}-diagnostics
-          path: |
-            *-debug.log
-            .screenshots/
-          if-no-files-found: ignore
-          retention-days: 14
-
-  # One verdict for both Arena groups, under the name branch protection
-  # requires. `if: always()` for the same reason as `browser`: a failed or
-  # cancelled group must not leave the required check skipped.
+  # The rules suite's verdict, under the name branch protection requires.
+  # `if: always()` for the same reason as `browser`: a failed or cancelled
+  # run must not leave the required check skipped.
   rules:
     needs: [plan, rules-shard]
     if: always()
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
-      - name: Verify both Arena groups passed
+      - name: Verify the Arena rules suite passed
         env:
           EVENT: ${{ github.event_name }}
           PLAN: ${{ needs.plan.result }}
@@ -555,11 +489,11 @@ jobs:
           SHARDS: ${{ needs.rules-shard.result }}
         run: |
           if [ "$EVENT" = push ] && [ "$PLAN" = success ] && [ "$PLAN_RUN" = false ]; then
-            echo "this tree already passed the Arena suites on its pull request"
+            echo "this tree already passed the Arena rules suite on its pull request"
             exit 0
           fi
           echo "rules-shard result: $SHARDS"
           if [ "$SHARDS" != success ]; then
-            echo "::error::the Arena emulator suites did not pass (groups: $SHARDS)"
+            echo "::error::the Arena rules suite did not pass ($SHARDS)"
             exit 1
           fi

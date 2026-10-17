@@ -68,9 +68,9 @@ const SUITES = [
   // two-tab writes, destructive-action undo, import sanitising, seeded axe
   // scans, tablet geometry). One line per app, alphabetical. They are NOT
   // pinned in EXPECTED_CHECKS: like the trip-planner and fpl-planner suites,
-  // their check counts are their owners' to change. Arena's equivalent needs
-  // the Firebase emulators, so it stays in apps/arena/e2e/emulator.mjs behind
-  // `npm run test:arena:emulator`.
+  // their check counts are their owners' to change. Arena has none: its
+  // multiplayer e2e needed the Firebase emulators and was removed on
+  // 2026-10-17.
   // -----------------------------------------------------------------------
   'apps/football-h2h/e2e/audit-2026-08.mjs',
   'apps/fpl-planner/e2e/audit-2026-08.mjs',

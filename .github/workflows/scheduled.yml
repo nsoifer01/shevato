@@ -6,7 +6,7 @@ name: scheduled
 #   full ........... the whole `ci` pipeline against master's tip. Pushes to
 #                    master are mostly skipped now (their tree already passed on
 #                    the pull request), so this is what notices a runner-image
-#                    change: a new Chrome, a new Java. The Arena suites run
+#                    change: a new Chrome, a new Java. The Arena rules suite runs
 #                    unscoped here, which covers emulator and tooling drift.
 #   coverage ....... per-area line-coverage floors (tests/coverage/floors.json).
 #                    It re-runs the unit estate under V8 coverage, which costs

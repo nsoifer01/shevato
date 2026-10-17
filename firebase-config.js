@@ -74,7 +74,8 @@ export { app };
 // production Firebase stays unchanged until a developer or a test
 // harness opts in. The decision logic is a pure module
 // (sync-system/firebase-emulator-flag.mjs) with its own unit tests; the
-// Arena emulator e2e (apps/arena/e2e/) is the intended consumer. Must
+// Arena multiplayer e2e it was built for was removed on 2026-10-17, and a
+// developer pointing a page at local emulators still uses it. Must
 // run before any auth network traffic, hence directly after the instance
 // is created; firebase-firestore.js does the same for Firestore.
 const useEmulators = (() => {

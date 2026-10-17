@@ -69,21 +69,6 @@ test('each required verdict runs whatever happened to its shards', () => {
   }
 });
 
-test('the Arena e2e split covers every scenario exactly once', () => {
-  assert.match(J['rules-shard'], /^ {8}group: \[1, 2\]$/m);
-  assert.match(J['rules-shard'], /ARENA_E2E_GROUP: \$\{\{ matrix\.group \}\}/);
-  const e2e = readFileSync(join(REPO_ROOT, 'apps/arena/e2e/emulator.mjs'), 'utf8');
-  const chainLast = Number((/const CHAIN_LAST = (\d+);/.exec(e2e) || [])[1]);
-  assert.ok(chainLast > 0, 'emulator.mjs must still define CHAIN_LAST');
-  const labels = [...e2e.matchAll(/await guard\('([^']+)'/g)].map((m) => m[1]);
-  assert.ok(labels.length >= 10, `found ${labels.length} scenarios; the parser broke`);
-  // The runner throws on an unprefixed label; this says so before a CI run does.
-  assert.deepEqual(labels.filter((l) => !/^S\d+:/.test(l)), [], 'every scenario label needs its S<n>: prefix');
-  const nums = labels.map((l) => Number(/^S(\d+):/.exec(l)[1]));
-  assert.ok(nums.some((n) => n <= chainLast) && nums.some((n) => n > chainLast), 'both groups must hold scenarios');
-  assert.equal(new Set(nums).size, nums.length, 'scenario numbers must be unique');
-});
-
 test('nothing in the gate is allowed to fail quietly', () => {
   // The KEY, not the phrase: the workflow's comments explain why it is absent.
   const keys = CI.split('\n').filter((l) => /^\s*continue-on-error:/.test(l));

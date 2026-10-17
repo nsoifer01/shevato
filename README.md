@@ -250,7 +250,7 @@ DOM behavior is covered because a copy of its logic passes in Node.
 | Performance | CDP (budgets) | `tests/browser/suites/perf.mjs` | First-party byte / request / DOM-size budgets per page, set from measured baselines with headroom |
 | PWA / offline | CDP | `tests/browser/suites/pwa-gym.mjs`, `apps/trip-planner/e2e/pwa.mjs` | Service-worker registration, cache contents, offline reload |
 | Cross-browser | Playwright (dev-dep) + `node --test` | `tests/cross-browser/` | Firefox + WebKit smoke of every page/app. Chromium depth stays in the CDP harness |
-| Firebase rules + multiplayer | Firestore emulator (npx firebase-tools, Java 21) | `apps/arena/tests-rules/`, `apps/arena/e2e/` | Security-rules suite (deny-all negative control) and a two-client multiplayer e2e against local emulators; never production Firebase |
+| Firebase rules | Firestore emulator (npx firebase-tools, Java 21) | `apps/arena/tests-rules/` | Security-rules suite (deny-all negative control) against the local emulator; never production Firebase. The two-client multiplayer e2e was removed on 2026-10-17 |
 | Coverage | wrapper over `node --test` | `tests/coverage/` | Runs the unit estate under V8 coverage, reports per area, enforces line floors |
 
 ### Commands
@@ -272,7 +272,6 @@ npm run test:coverage      # coverage report to .coverage/summary.md + per-area 
 npm run test:cross-browser # Firefox/WebKit smoke (needs: npm install && npx playwright install firefox webkit;
                            #   WebKit additionally needs system libs, so it runs fully only on CI)
 npm run test:arena:rules   # Firestore security-rules suite vs the local emulator
-npm run test:arena:emulator# two-client multiplayer e2e vs the local emulators
                            #   (both need Java 21 + a one-time firebase-tools download;
                            #   CI runs both in ci.yml's `rules` job on PRs and master pushes
                            #   that can affect Arena, plus weekly)
@@ -386,7 +385,7 @@ Fixing the product bug is a separate change from the test that documents it.
     `dataset-cache` keeps the Rising Shows dataset cache warm on master, where
     every pull request's shards can restore it.
   - `scheduled` (weekly + manual): the full `ci` pipeline against master
-    unscoped (so the Arena suites run there whatever changed), the coverage
+    unscoped (so the Arena rules suite runs there whatever changed), the coverage
     floors, the Firefox/WebKit smoke, the FPL Planner mutation check, and the
     FPL tests that need the real season archive (`fpl-archive`: fetched there
     weekly, never on the pull-request path, and the job fails if any of them

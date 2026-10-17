@@ -111,105 +111,19 @@ Gotchas that cost time, so they are recorded:
   Not a package.json devDependency on purpose: `npm ci` in the other
   workflows stays fast and the push/PR CI stays dependency-free.
 
-## The 2026-10-17 evening episode, and the 90 seconds every run wasted
+## The multiplayer e2e was removed (2026-10-17, owner decision)
 
-**The episode (cause not established).** From about 20:08 to 22:30 UTC on
-2026-10-17 the multiplayer e2e failed on GitHub's runners in BOTH groups, on
-PR #617 and on an unchanged master (control run 39071549268), and then passed
-on both again (39075150572 and the master control 39075151807, started
-together) with no change that could explain it. Ten full group-1 and ten
-group-2 runs before it had passed. Ruled out by measurement: the code (only
-Rising Shows data changed since the last green run), the runner image
-(20261012.601 throughout), Chrome (155.0.8059.39 throughout), the JDK, the
-firebase-tools tree (the restored cache was byte-identical, 139,974,023 B),
-the runner region, the time zone, and CPU starvation (S1 and both groups pass
-locally pinned to two cores, under ten busy-loop processes, and in UTC). The
-best evidence of the mechanism: the failures were each a stalled state
-transition (start, the last advance, game end), and with the room in `picking`
-for question 5 the host's page still drew the previous question while the
-other client drew the picker, i.e. one client's Firestore listener went
-quiet. GitHub's Google Chrome also ran a field trial (`b6f29041`) local
-Chromium does not, and a different group of another (`9a38bae3`); that is a
-real difference but was NOT shown to be the cause (the list was identical on
-the green runs after). Since then the job keeps `*-debug.log` and
-`.screenshots/` on failure (`arena-group-<n>-diagnostics`), prints the browser
-build and its field trials at start, and the game-end checks print the room's
-state and each client's stage, so a recurrence arrives with its evidence.
-
-**The 90 seconds, fixed.** Every group-1 run spent 90 s of S2's 110 s waiting
-on conditions that could not come true: after S1's game, both clients sat on
-the end screen, `resetToLobby` called `leaveRoom` on each, and `leaveRoom`
-waited 10 s for a Leave button that screen does not have, 10 s for a confirm
-that never opened and 25 s for a lobby that never came, before the reload it
-then fell back to. Found with `WAIT_TRACE=1` (cdp.mjs prints every condition
-wait over 2 s with its budget). Now only a page showing a Leave button tries
-to leave: S2 is 19.6 s (CI 39075150572) and group 1 5m34s against 7m9s green
-before. S2 also read B's uid from S1, so it failed run alone; it reads it
-itself now.
-
-**What the rest of the time is.** The remaining waits are the game's own
-clocks, which `firestore.rules` enforces on the SERVER clock (`request.time`):
-the 20 s pick deadline (S7), the 10 s Globe Drop and 2.5 s trivia reveals,
-the presence sweep (S11). `questionTimeMs` is already per room and shortened
-by the suite; making the others configurable would widen a production
-authorization rule to save test seconds, and was not done. Note that the
-scenario timing's "fixed waits" include `waitRoom`'s polling of the room
-document, which goes through the counted sleep.
-
-## Two-client e2e gotchas (apps/arena/e2e/emulator.mjs)
-
-- **The rAF loops are RENDER-only since 2026-08-23.** Game progression
-  (early reveal, advance, finish) lives in `progressRoomClock`, which is
-  driven by a 500 ms `setInterval` and by `visibilitychange` as well as by
-  the rAF ticks, and any member may perform the timed advance once the
-  question window has elapsed plus `ADVANCE_FALLBACK_SLACK_MS` (the rules
-  re-check the deadline against the SERVER clock). A hidden or closed host
-  therefore no longer freezes the room - it used to sit on a live question
-  with no `revealStartedAt` for the full 27 s observed and only moved 2.5 s
-  after the host tab was fronted. Headless Chrome still pauses rAF in
-  background tabs, so anything that is purely a RENDER (the Globe Drop Ready
-  bar, the timer ring) still needs its tab fronted before it can be clicked -
-  the e2e fronts B just to vote Ready, then hands the foreground back.
-  `Page.captureScreenshot` also HANGS (45 s) on a tab that is not the active
-  target, so bring a tab to front before every screenshot.
-- **Two players in one browser profile share origin storage** (and thus
-  one Firebase auth user - firebase-config even broadcasts auth changes
-  cross-tab). Serve one page from `127.0.0.1:<port>` and the other from
-  `localhost:<port>`: same static server, different origins, isolated
-  auth. Both hostnames satisfy the emulator seam.
-- **The shared sync-modal integration skips anonymous users (fixed
-  2026-08-23).** It opens a full-screen modal and then RELOADS the page
-  whenever a user signs in after initial page load, which is exactly what the
-  guest bootstrap on create/join does: a first-time guest clicking "Create
-  room" got the white "Sync Complete! Refreshing page..." modal about 10 ms
-  after the click and a reload about 1 s later, while `createRoom` was still
-  between `setDoc(room)` and `joinPlayer` - back to the lobby, no `?room=`,
-  and a room doc with zero player docs left in Firestore forever. Guests have
-  no `users/{uid}` namespace, so there was never anything to sync: the
-  integration now returns early for `user.isAnonymous`. A REGISTERED sign-in
-  still gets the modal and the reload, which is correct and is pinned in both
-  layers (`sync-system/tests/sync-modal-integration.test.mjs` and the e2e's
-  "D2 boundary" check) so nobody can "fix" the guest case by disabling the
-  feature outright. The e2e no longer seeds `sessionStorage.lastSyncModalTime`
-  at all; it waits the registered reload out instead.
-- **Auth-emulator URLs embed the production hostname in the PATH**
-  (`http://127.0.0.1:9099/identitytoolkit.googleapis.com/...`), so a
-  substring block on production hosts would kill emulator traffic too -
-  match on the URL's host portion only.
-- **Rematch UI reality**: the propose control that exists in the markup
-  is the header `#room-end-again-btn`. `#end-again-btn`, the propose button
-  `renderRematchUI` toggles, is NOT in index.html and is always null
-  (null-guarded, silent); `#rematch-strip`, `#rematch-status` and
-  `#rematch-actions` do exist. The accept path users actually see is the
-  shared confirm modal (`#confirm-modal-confirm`, 10s auto-decline). The
-  `#end-again-btn` references are latent dead code, recorded rather than
-  removed.
-- **Leaving always routes through the confirm modal** - a bare
-  `#leave-room-btn` click does nothing until `#confirm-modal-confirm`.
-- Dropped as flaky-by-design rather than shipped flaky: console-error
-  assertions (the Firestore SDK logs transport noise against emulators)
-  and exact score values (speed bonus depends on answer latency; the
-  suite asserts positive AND identical across clients instead).
+`apps/arena/e2e/` (the two-client multiplayer suite: real browsers playing
+whole games against the Auth and Firestore emulators) and its CI step are
+gone. It had become the slowest and least reliable check on the pull-request
+gate (two groups of 5 to 10 minutes, and on 2026-10-17 red on master and
+every branch with no code change) for an app nobody currently uses. What
+still guards Arena: the Firestore rules suite (`npm run test:arena:rules`,
+the required `rules` check, scoped to changes that can move it, and run
+unscoped weekly by `scheduled.yml`), the unit tests under `apps/arena/tests/`,
+and the browser estate, which boots the page on every pull request. The
+sections below that describe the two-client harness are history; the rules
+harness (`tests-rules/emulator-harness.mjs`) is still live.
 
 ## Host handoff: the rules allowed it, the client never asked (2026-09-11)
 

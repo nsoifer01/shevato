@@ -320,10 +320,6 @@ export async function waitForExpr(s, expression, { timeout = 8000, poll = 150 } 
     }
   } finally {
     waitStats.pollMs += Date.now() - start;
-    // WAIT_TRACE=1 names every condition wait over 2 s, and how long it was
-    // allowed. A wait that runs to its whole timeout and is then ignored is
-    // pure cost; that is how the 90 s in Arena's resetToLobby was found.
-    if (process.env.WAIT_TRACE && Date.now() - start > 2000) console.log(`    [wait ${((Date.now() - start) / 1000).toFixed(1)}s/${timeout / 1000}s] ${String(expression).replace(/\s+/g, ' ').slice(0, 110)}`);
   }
 }
 
