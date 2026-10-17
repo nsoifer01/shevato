@@ -336,7 +336,28 @@ export function transfersBehind(history, transfers) {
   return behind;
 }
 
-export function buildSquadState({ entry, history: historyIn, transfers, picks, gameState, gw, source, revertPicks = null, priceFloors = null }) {
+// The players held that neither the squad the manager started with nor any
+// transfer in the list explains (2026-10-17, found by
+// tests/manager-state-properties.test.mjs). `transfersBehind` compares counts,
+// and a Wildcard week reports `event_transfers: 0` whatever was made, so a
+// transfer list that ends before a Wildcard priced every player bought under it
+// at his season-start price, silently (5.9 read for a player FPL sells at 5.5).
+// The invariant that holds whatever chips were played: every player held is in
+// the squad the manager started with (`startPicks`, the picks of
+// `entry.started_event`) or was bought by a listed transfer. Free Hit buys
+// explain nothing: those players went back. Without `startPicks` (not read, or
+// the read failed) nothing is claimed.
+export function unexplainedPlayers({ picks, startPicks, transfers, history }) {
+  const start = pickList(startPicks);
+  const held = pickList(picks);
+  if (!start || !start.length || !held) return [];
+  const ignore = freeHitGameweeks({ history });
+  const known = new Set(start.map(p => p.element));
+  for (const t of transfers || []) if (t && !ignore.has(t.event)) known.add(t.element_in);
+  return held.map(p => p.element).filter(id => !known.has(id));
+}
+
+export function buildSquadState({ entry, history: historyIn, transfers, picks, gameState, gw, source, revertPicks = null, priceFloors = null, startPicks = null }) {
   const rules = gameState.rules;
   const targetGw = gw ?? gameState.nextEvent ?? gameState.currentEvent;
   const warnings = [];
@@ -401,8 +422,16 @@ export function buildSquadState({ entry, history: historyIn, transfers, picks, g
   // Judged on the history as completed from the picks, so the picks week's own
   // transfers are counted too.
   const lagging = list && !historyMissing ? transfersBehind(history, transfers) : [];
-  const transfersLagging = lagging.length > 0;
-  if (transfersLagging) {
+  const unexplained = list && !historyMissing && !lagging.length
+    ? unexplainedPlayers({ picks: effectivePicks, startPicks, transfers, history }) : [];
+  const transfersLagging = lagging.length > 0 || unexplained.length > 0;
+  if (unexplained.length) {
+    warnings.push({
+      code: 'transfers_behind',
+      message: `The transfer list Fantasy Premier League returned does not yet show how ${unexplained.length === 1 ? 'one of your players was' : `${unexplained.length} of your players were`} bought, `
+        + 'so what you paid for them, and what they sell for, is unknown. No transfer or chip is recommended until it loads in full.',
+    });
+  } else if (transfersLagging) {
     warnings.push({
       code: 'transfers_behind',
       message: `The transfer list Fantasy Premier League returned does not yet include gameweek${lagging.length > 1 ? 's' : ''} `

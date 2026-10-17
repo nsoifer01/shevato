@@ -35,6 +35,21 @@ name: FPL health probe
 #                      six hours, but his PLAN costs up to 4.5 s of CPU locally,
 #                      about 30 s on Netlify, so it is planned here, where a
 #                      failure fails the run and GitHub emails the owner.
+#                      Then the PRE-GAMEWEEK READINESS GATE (2026-10-16,
+#                      `--sample`): twelve more REAL managers (FPL_HEALTH_SAMPLE
+#                      to change it, 0 to skip), drawn afresh each six-hour slot
+#                      from the overall league's top, middle and deep ranks
+#                      plus random and newest ids, each read and planned with
+#                      every check above. One manager exercises one path, and
+#                      many of the season's defects lived on paths his state
+#                      never took (banked transfers, a Free Hit just played, a
+#                      late joiner, a lagging history). Polite: one request at
+#                      a time, a second apart, about 60-75 in all, stopped by
+#                      the first 403/429. Exit 1 is an APPLICATION failure (a
+#                      planner defect), exit 2 UPSTREAM only (FPL unreadable);
+#                      both fail the run, since a check that could not run is
+#                      never a pass, and the step summary names the class, the
+#                      failed checks and the paths covered.
 #
 # Scheduled workflows run only from the default branch. It commits nothing and
 # never triggers a Netlify build.
@@ -101,7 +116,11 @@ jobs:
   probe:
     if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && (inputs.mode == 'full' || inputs.mode == ''))
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    # The payload checks and the monitored plan take under a minute; each
+    # sampled manager about 5 s of paced requests plus 2-20 s of plan (a
+    # Wildcard holder is the slow end). Twelve took 146 s in all locally on
+    # 2026-10-17; a runner is slower, so about five minutes, with room.
+    timeout-minutes: 15
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -117,8 +136,13 @@ jobs:
 
       # FPL_HEALTH_ENTRY=none probes without a manager, as it does on Netlify
       # (evidence-probe.mjs reads `--entry none` that way); any other value
-      # that is not a team id fails the run with a clear error.
-      - name: Probe the live payload and a real manager's plan
+      # that is not a team id fails the run with a clear error. The exit code
+      # is kept as the probe's own, so 1 (application) and 2 (upstream only)
+      # stay distinguishable in the run's history as well as its summary.
+      - name: Probe the live payload, a real manager's plan and a sample of managers
         env:
           FPL_HEALTH_ENTRY: ${{ vars.FPL_HEALTH_ENTRY || '3855835' }}
-        run: node apps/fpl-planner/scripts/evidence-probe.mjs --direct --entry "$FPL_HEALTH_ENTRY"
+          FPL_HEALTH_SAMPLE: ${{ vars.FPL_HEALTH_SAMPLE || '12' }}
+        run: |
+          node apps/fpl-planner/scripts/evidence-probe.mjs --direct --entry "$FPL_HEALTH_ENTRY" \
+            --sample "$FPL_HEALTH_SAMPLE" --summary "$GITHUB_STEP_SUMMARY"

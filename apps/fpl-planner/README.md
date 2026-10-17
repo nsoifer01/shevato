@@ -858,7 +858,11 @@ transfer and no chip is recommended, and the banner names the weeks. So is a
 transfer list behind the history (`transfersBehind`: fewer rows in a week
 without a Wildcard or Free Hit than FPL's own `event_transfers`), because the
 recent buys' purchase and selling prices are then unknown. Both are exact on
-real payloads (FINDINGS, "The follow-up audit of #611").
+real payloads (FINDINGS, "The follow-up audit of #611"). A Wildcard week counts
+no transfers, so a list that ends before one is caught by a third check
+(`unexplainedPlayers`): every player held must be in the squad the manager
+started with (the picks of `entry.started_event`, read quietly by `loadTeam`)
+or have been bought by a listed transfer.
 
 **What it cannot see.** FPL's public `entry/{id}/transfers` and
 `entry/{id}/history` do not list a gameweek's transfers or its chip until that
@@ -1205,7 +1209,39 @@ npm run test:fpl-planner          # apps/fpl-planner/tests/
 node --test netlify/functions/tests/fpl.test.mjs
 npm test                          # everything, from the repo root
 npm run test:fpl-planner:e2e      # the browser suites in e2e/
+npm run test:mutation:fpl         # do the tests catch a broken rule? (weekly on CI)
+node apps/fpl-planner/scripts/evidence-probe.mjs --direct --entry 3855835 --sample 12
 ```
+
+**The regression safeguards (2026-10-17).** Four files test whole categories
+of defect against oracles the engine does not supply (FINDINGS, "Regression
+prevention: the defect ledger"; the rules are in the repository `CLAUDE.md`):
+
+- `tests/manager-state-properties.test.mjs`: an FPL rules calculator written
+  inside the test, 1,000 generated seasons and every prefix, and the payloads
+  the app can actually receive perturbed (history 1 to 3 weeks behind, the
+  transfer list short, a chip row missing): the engine returns the truth or
+  withholds, never a different number. About 3 s.
+- `tests/optimizer-reference.test.mjs`: every legal single and pair scored
+  exactly on squads derived from real managers (0 to 5 free transfers, bank 0,
+  a binding club limit, each risk profile), differential checks between paths
+  that answer the same question ("why not" depth, re-scored plans, ordering,
+  determinism) and metamorphic properties. About 18 s. Two `todo` tests pin
+  the open pair-search gap (ledger row 33).
+- `tests/surface-consistency.test.mjs`: 60 real plans (managers, risk
+  profiles, horizons, chip states, the GW19 expiry week) rendered with the
+  shipped dashboard code in worker threads; the surfaces must agree with the
+  numbers and each other, and a copy lint runs over every rendered line.
+- `scripts/mutation-check.mjs` (`npm run test:mutation:fpl`, and weekly in
+  `scheduled.yml`): breaks 22 critical rules one at a time in a temporary copy
+  and requires the mapped tests to fail; `tests/mutation-check.test.mjs` keeps
+  the table in step with the code on every run.
+
+The GitHub health probe also plans a rotating sample of real managers every
+six hours (`--sample`, top, deep and newest ranks, at most about 70 polite
+reads), prints the paths they exercise, and exits 1 on an application failure
+and 2 on an upstream-only one; a requested check that could not run is never
+reported as OK.
 
 `e2e/` drives a real headless browser through the interactive scenario workflow
 and through the gameweek boundaries (pre-season, the deadline crossing, a

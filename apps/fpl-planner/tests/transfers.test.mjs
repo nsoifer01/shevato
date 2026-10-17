@@ -219,6 +219,28 @@ test('the club limit is enforced inside the search, not left to the caller', () 
   });
   const better = search(elsewhere, { maxTransfers: 1 });
   assert.deepEqual(better[0].transfersIn, [30]);
+
+  // validatePlan also drops an illegal plan at the end of the search, so the
+  // assertions above pass with the search's own club check switched off and
+  // cannot tell the two gates apart. The search's check is what keeps the
+  // SHORTLIST legal: with five club-9 players ranked above the one legal buy
+  // (35), a search that let illegal candidates in filled its shortlist with
+  // them, the validator dropped every one, and the manager was told to roll a
+  // +15-point upgrade away (mutation-check.mjs, transfers-club-limit-off,
+  // 2026-10-16).
+  const crowded = buildWorld({
+    freeTransfers: 2,
+    agents: [
+      { id: 30, position: 3, teamId: 9, xPoints: 12.0, nowCost: 55 },
+      { id: 31, position: 3, teamId: 9, xPoints: 11.0, nowCost: 50 },
+      { id: 32, position: 3, teamId: 9, xPoints: 10.0, nowCost: 50 },
+      { id: 33, position: 3, teamId: 9, xPoints: 9.5, nowCost: 50 },
+      { id: 34, position: 4, teamId: 9, xPoints: 9.5, nowCost: 50 },
+      { id: 35, position: 3, teamId: 19, xPoints: 6.5, nowCost: 50 },
+    ],
+  });
+  const legal = search(crowded, { maxTransfers: 1 });
+  assert.deepEqual(legal[0].transfersIn, [35], 'the best legal transfer survives a shortlist crowded by illegal ones');
 });
 
 test('position identity is preserved, so squad counts survive every transfer', () => {

@@ -349,6 +349,21 @@ async function loadTeam({ force = false } = {}) {
     read.forEach((r, i) => { if (r.status === 'fulfilled') summaries.set(ids[i], r.value.data); });
     state.priceFloors = joinPriceFloors({ summaries, startedEvent });
   }
+
+  // The squad the manager started with, so squad.js unexplainedPlayers can
+  // tell a transfer list that has not caught up (a Wildcard week counts no
+  // transfers, so nothing else can) from a complete one. A finished week's
+  // picks never change and are kept a day at the proxy; the History tab reads
+  // most of them anyway. Quiet, and a failure only skips the check.
+  state.startPicks = null;
+  if (state.picks && startedEvent >= 1 && startedEvent !== state.picksGw) {
+    try {
+      const start = await fplApi.getEntryPicks(state.teamId, startedEvent, { force, quiet: true });
+      state.startPicks = start.data;
+    } catch {
+      state.startPicks = null;
+    }
+  }
 }
 
 /* ------------------------------------------------------------------- model */
@@ -563,6 +578,7 @@ async function connectAndPlan({ reason = 'first-calculation' } = {}) {
       picks: state.picks,
       revertPicks: state.revertPicks,
       priceFloors: state.priceFloors,
+      startPicks: state.startPicks,
       gameState: state.gameState,
       gw: state.planGw,
     });
@@ -690,7 +706,7 @@ async function refreshInputs() {
     }
     const squadState = buildSquadState({
       entry: state.entry, history: state.history, transfers: state.transfers,
-      picks: state.picks, revertPicks: state.revertPicks, priceFloors: state.priceFloors,
+      picks: state.picks, revertPicks: state.revertPicks, priceFloors: state.priceFloors, startPicks: state.startPicks,
       gameState: state.gameState, gw: state.planGw,
     });
     const next = inputFingerprint(squadState, state.gameState, null, fingerprintScope(state.fingerprint));
@@ -1482,7 +1498,7 @@ async function reactToDeadline({ retry = false } = {}) {
       scheduleDeadlineRetry();
       const squadState = buildSquadState({
         entry: state.entry, history: state.history, transfers: state.transfers,
-        picks: state.picks, revertPicks: state.revertPicks, priceFloors: state.priceFloors,
+        picks: state.picks, revertPicks: state.revertPicks, priceFloors: state.priceFloors, startPicks: state.startPicks,
         gameState: state.gameState, gw: state.planGw,
       });
       const next = inputFingerprint(squadState, state.gameState, null, fingerprintScope(state.fingerprint));
