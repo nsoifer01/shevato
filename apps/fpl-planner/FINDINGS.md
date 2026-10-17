@@ -84,7 +84,10 @@ What was found and fixed, by area:
   `rules.maxPerClub`, which does not exist, so its "best of every legal single
   transfer" counted 543 illegal or unbuyable moves; it now uses `clubLimit` and
   asserts the exact 2,346. Every GW7 manager's free transfers are now pinned
-  from a hand derivation (2, 3, 1, 1, 1), not only the owner's.
+  from a hand derivation (2, 3, 1, 1, 1), not only the owner's. And the browser suite's GW1 states served
+  the demo's whole season of history and transfers beside GW1 picks, a shape
+  no manager can be in, which held only while the demo's history and list
+  disagreed; they now carry nothing after GW1 (`e2e/helpers.mjs`).
 
 - **The transfer search** (`transfers.js`, `planner.js`; registry 48). On 40
   squads derived from the real GW7 managers an independent search found a plan
