@@ -1725,7 +1725,11 @@ signed in, in the owner's browser:
 - **The per-gameweek archive (`merged_gw.csv`) does not carry `code`.** The
   identity table comes from each season's `players_raw.csv`
   (`scripts/fetch-history.mjs` downloads it; `js/engine/player-identity.js`
-  builds the index). `assertCrossSeasonField` THROWS on any season-scoped key
+  builds the index). The tests that check this against the REAL archive
+  (`tests/player-identity.test.mjs`, `tests/train-dedupe.test.mjs`) skip
+  without the gitignored download, so until 2026-10-17 they had never run on
+  CI; `scheduled.yml` `fpl-archive` now fetches the archive weekly and fails
+  if any of them skips. `assertCrossSeasonField` THROWS on any season-scoped key
   (`element`, `id`, `player_id`, ...) rather than warning, because the failure
   mode is a full table of plausible wrong numbers.
 - Name matching, where unavoidable (API-Football joins), uses a

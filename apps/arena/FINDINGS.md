@@ -111,20 +111,50 @@ Gotchas that cost time, so they are recorded:
   Not a package.json devDependency on purpose: `npm ci` in the other
   workflows stays fast and the push/PR CI stays dependency-free.
 
-## A group-2 run that failed with nothing to explain it (2026-10-17)
+## The 2026-10-17 evening episode, and the 90 seconds every run wasted
 
-PR #617's first CI run (39065460835) failed every group-2 scenario from S6's
-first step ("start enters the first location": the room never left the
-lobby) through S10, with `fetch failed` against the local servers from S8 on,
-and took 22 minutes against the usual 4 to 6. The same tree passed S6 alone
-(9/9, 71 s) and all of group 2 (35/35, 253 s) locally, on the same runner
-image, JDK and firebase-tools as the ten green full group-2 runs before it
-(2026-09-21 to 2026-10-17, 250 to 347 s). The PR changed no Arena input; the
-suite ran only because `ci.yml` is one. Everything failing at once and the
-servers refusing fetches reads as the emulator or the runner going away early
-in S6, but it cannot be proven: the job kept no logs. Since then a failed
-group uploads `*-debug.log` (the Firestore emulator's own log) and
-`.screenshots/` as `arena-group-<n>-diagnostics`, so the next one is evidence.
+**The episode (cause not established).** From about 20:08 to 22:30 UTC on
+2026-10-17 the multiplayer e2e failed on GitHub's runners in BOTH groups, on
+PR #617 and on an unchanged master (control run 39071549268), and then passed
+on both again (39075150572 and the master control 39075151807, started
+together) with no change that could explain it. Ten full group-1 and ten
+group-2 runs before it had passed. Ruled out by measurement: the code (only
+Rising Shows data changed since the last green run), the runner image
+(20261012.601 throughout), Chrome (155.0.8059.39 throughout), the JDK, the
+firebase-tools tree (the restored cache was byte-identical, 139,974,023 B),
+the runner region, the time zone, and CPU starvation (S1 and both groups pass
+locally pinned to two cores, under ten busy-loop processes, and in UTC). The
+best evidence of the mechanism: the failures were each a stalled state
+transition (start, the last advance, game end), and with the room in `picking`
+for question 5 the host's page still drew the previous question while the
+other client drew the picker, i.e. one client's Firestore listener went
+quiet. GitHub's Google Chrome also ran a field trial (`b6f29041`) local
+Chromium does not, and a different group of another (`9a38bae3`); that is a
+real difference but was NOT shown to be the cause (the list was identical on
+the green runs after). Since then the job keeps `*-debug.log` and
+`.screenshots/` on failure (`arena-group-<n>-diagnostics`), prints the browser
+build and its field trials at start, and the game-end checks print the room's
+state and each client's stage, so a recurrence arrives with its evidence.
+
+**The 90 seconds, fixed.** Every group-1 run spent 90 s of S2's 110 s waiting
+on conditions that could not come true: after S1's game, both clients sat on
+the end screen, `resetToLobby` called `leaveRoom` on each, and `leaveRoom`
+waited 10 s for a Leave button that screen does not have, 10 s for a confirm
+that never opened and 25 s for a lobby that never came, before the reload it
+then fell back to. Found with `WAIT_TRACE=1` (cdp.mjs prints every condition
+wait over 2 s with its budget). Now only a page showing a Leave button tries
+to leave: S2 is 19.6 s (CI 39075150572) and group 1 5m34s against 7m9s green
+before. S2 also read B's uid from S1, so it failed run alone; it reads it
+itself now.
+
+**What the rest of the time is.** The remaining waits are the game's own
+clocks, which `firestore.rules` enforces on the SERVER clock (`request.time`):
+the 20 s pick deadline (S7), the 10 s Globe Drop and 2.5 s trivia reveals,
+the presence sweep (S11). `questionTimeMs` is already per room and shortened
+by the suite; making the others configurable would widen a production
+authorization rule to save test seconds, and was not done. Note that the
+scenario timing's "fixed waits" include `waitRoom`'s polling of the room
+document, which goes through the counted sleep.
 
 ## Two-client e2e gotchas (apps/arena/e2e/emulator.mjs)
 

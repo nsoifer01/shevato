@@ -386,7 +386,14 @@ Fixing the product bug is a separate change from the test that documents it.
     `dataset-cache` keeps the Rising Shows dataset cache warm on master, where
     every pull request's shards can restore it.
   - `scheduled` (weekly + manual): the full `ci` pipeline against master
-    unscoped, the coverage floors, and the Firefox/WebKit smoke.
+    unscoped (so the Arena suites run there whatever changed), the coverage
+    floors, the Firefox/WebKit smoke, the FPL Planner mutation check, and the
+    FPL tests that need the real season archive (`fpl-archive`: fetched there
+    weekly, never on the pull-request path, and the job fails if any of them
+    still skips).
+  - Every job runs on a pinned image (`ubuntu-24.04`), never `ubuntu-latest`,
+    so an image migration is its own pull request
+    (`tests/static/ci-workflow.test.mjs`).
   - `Refresh Rising Shows data` (daily; publishes the dataset release and
     opens the derived-files pull request) and `bot pr autopilot` (drives those
     pull requests through their required checks to auto-merge).

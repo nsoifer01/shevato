@@ -22,6 +22,14 @@ name: scheduled
 #                    mutant is a full test-file run, so it is weekly; the table
 #                    itself is checked on every pull request by
 #                    apps/fpl-planner/tests/mutation-check.test.mjs.
+#   fpl-archive .... the FPL Planner's tests against the REAL season archive
+#                    (player identity across seasons, double-gameweek dedupe).
+#                    They skip without the gitignored .data download, so on
+#                    every pull request five of them skipped and none had ever
+#                    run on CI (found 2026-10-17). The archive is a third
+#                    party's moving git branch, so it is fetched here, weekly,
+#                    and never on the pull-request path, and the job fails if
+#                    any of them still skips.
 #
 # Formerly three separate schedules (test.yml's coverage job on Wednesday,
 # arena-rules.yml on Tuesday, cross-browser.yml on Monday); one run means one
@@ -41,7 +49,7 @@ jobs:
     uses: ./.github/workflows/ci.yml
 
   coverage:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # The estate took 8 to 14 minutes under coverage on three runners
     # (2026-09-14). The runner bounds each test file at 20 minutes
     # (FILE_TIMEOUT_MS in tests/coverage/run.mjs), and a hung file can start
@@ -61,7 +69,7 @@ jobs:
         run: npm run test:coverage
 
   cross-browser:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v6
@@ -89,7 +97,7 @@ jobs:
         run: npm run test:cross-browser
 
   mutation:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # About two and a half minutes on 11 local workers (2026-10-16); the slowest
     # mapped file (chips.test.mjs) is 70 s on its own and a 4-core runner runs
     # two mutants at a time, so 20 leaves headroom without hiding a hang. Plain
@@ -103,3 +111,23 @@ jobs:
           node-version-file: '.nvmrc'
       - name: FPL Planner mutation check
         run: npm run test:mutation:fpl
+
+  fpl-archive:
+    runs-on: ubuntu-24.04
+    # Five CSVs of a few megabytes each, then two test files that take
+    # seconds; 15 bounds a stalled download.
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: '.nvmrc'
+      # Exits non-zero, saying which season, if any file cannot be fetched.
+      - name: Download the season archive
+        run: node apps/fpl-planner/scripts/fetch-history.mjs
+      - name: Real-archive tests, with nothing skipped
+        run: |
+          set -o pipefail
+          node --test --test-reporter=tap apps/fpl-planner/tests/player-identity.test.mjs \
+            apps/fpl-planner/tests/train-dedupe.test.mjs | tee archive.tap
+          grep -qx '# skipped 0' archive.tap || { echo "::error::an archive test skipped, so the download did not give it what it needs"; exit 1; }

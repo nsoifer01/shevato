@@ -53,6 +53,13 @@ concurrency:
   group: ci-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || format('{0}-{1}', github.event_name, github.sha) }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
+# RUNNERS ARE PINNED TO ubuntu-24.04 (2026-10-17), in every workflow here.
+# GitHub moves `ubuntu-latest` to Ubuntu 26 from 2026-10-19 (its annotation
+# on these runs, actions/runner-images#14748), which would change Chrome,
+# Python and Java under unchanged code: the class of failure that cost the
+# evening of 2026-10-17. Moving image is a deliberate change with its own
+# pull request; tests/static/ci-workflow.test.mjs keeps every job pinned.
+
 permissions:
   contents: read
   # plan reads pull requests and their workflow runs.
@@ -62,7 +69,7 @@ permissions:
 jobs:
   plan:
     if: github.event_name == 'push'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     outputs:
       run: ${{ steps.decide.outputs.run }}
@@ -83,7 +90,7 @@ jobs:
   lint:
     needs: plan
     if: ${{ !cancelled() && (github.event_name != 'push' || needs.plan.result != 'success' || needs.plan.outputs.run == 'true') }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v6
@@ -109,7 +116,7 @@ jobs:
   test-shard:
     needs: plan
     if: ${{ !cancelled() && (github.event_name != 'push' || needs.plan.result != 'success' || needs.plan.outputs.run == 'true') }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
       matrix:
@@ -168,7 +175,7 @@ jobs:
   test:
     needs: [plan, test-shard]
     if: always()
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
       - name: Verify both halves passed
@@ -191,7 +198,7 @@ jobs:
   browser-shard:
     needs: plan
     if: ${{ !cancelled() && (github.event_name != 'push' || needs.plan.result != 'success' || needs.plan.outputs.run == 'true') }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # One shard failing must not cancel its siblings: the estate exists to say
     # everything that is broken, not the first thing.
     # EIGHT shards (2026-10-17): packed by the measured costs in
@@ -265,7 +272,7 @@ jobs:
   browser:
     needs: [plan, browser-shard]
     if: always()
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
       - name: Verify every shard passed
@@ -302,7 +309,7 @@ jobs:
   # hours).
   dataset-cache:
     if: github.event_name == 'push'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v6
@@ -326,7 +333,7 @@ jobs:
   rules-shard:
     needs: plan
     if: ${{ !cancelled() && (github.event_name != 'push' || needs.plan.result != 'success' || needs.plan.outputs.run == 'true') }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
       matrix:
@@ -395,10 +402,12 @@ jobs:
           #   firebase-config.js     the emulator seam for auth, and the app every client signs in through
           #   firebase-firestore.js  the emulator seam for Firestore: every client in both suites reaches Firestore through it
           #   apps/arena/**          the app that writes through it, plus both suites
-          #   assets/js/, assets/css/, partials/
-          #                          the shared scripts, styles and header partial the arena
-          #                          page loads by <script>/<link>/data-include (missing until
-          #                          2026-10-17: a change to one reported `rules` green unrun)
+          # NOT inputs, deliberately: assets/js/, assets/css/ and partials/, which the
+          # arena page loads by <script>/<link>/data-include. They change on most site
+          # pull requests, and the required `browser` estate already boots the arena
+          # page with them on every one (apps, a11y and perf suites), which is the
+          # failure they can cause; tests/static/ci-arena-scope.test.mjs pins that
+          # each one is covered by one job or the other.
           #   sync-system/**         the layer the app writes through (arena loads six of its modules)
           #   tests/browser/cdp.mjs  the driver the multiplayer e2e imports
           #   tests/browser/third-party.mjs + vendor/third-party/
@@ -409,7 +418,7 @@ jobs:
           #                          are the last two in the file. A change elsewhere in it
           #                          (another job) cannot move the emulator outcome, and ran
           #                          these suites for nothing (2026-10-17).
-          INPUTS='^(firestore\.rules|firebase\.json|firebase-config\.js|firebase-firestore\.js|package\.json|\.nvmrc|apps/arena/|assets/js/|assets/css/|partials/|sync-system/|tests/browser/cdp\.mjs|tests/browser/third-party\.mjs|tests/browser/vendor/third-party/|\.github/workflows/ci\.yml)'
+          INPUTS='^(firestore\.rules|firebase\.json|firebase-config\.js|firebase-firestore\.js|package\.json|\.nvmrc|apps/arena/|sync-system/|tests/browser/cdp\.mjs|tests/browser/third-party\.mjs|tests/browser/vendor/third-party/|\.github/workflows/ci\.yml)'
           # sync-system/tests/** is the one carve-out: node tests and their
           # stubs, already covered by the `test` job, and loaded by neither
           # emulator suite.
@@ -535,7 +544,7 @@ jobs:
   rules:
     needs: [plan, rules-shard]
     if: always()
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
       - name: Verify both Arena groups passed

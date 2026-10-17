@@ -85,7 +85,7 @@ permissions:
 jobs:
   monitor:
     if: github.event_name == 'schedule' || inputs.mode == 'monitor' || startsWith(inputs.mode, 'drill-')
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
       contents: read
@@ -116,7 +116,7 @@ jobs:
 
   probe:
     if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && (inputs.mode == 'full' || inputs.mode == ''))
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # The payload checks and the monitored plan take under a minute; each
     # sampled manager about 5 s of paced requests plus 2-20 s of plan (a
     # Wildcard holder is the slow end). Twelve took 146 s in all locally on

@@ -168,9 +168,6 @@ const RUNS = {
   'the scripts this job runs': ['package.json'],
   'the node version it runs them on': ['.nvmrc'],
   'the arena job in the workflow': ['.github/workflows/ci.yml'],
-  'a shared script the arena page loads': ['assets/js/main.js'],
-  'a shared stylesheet the arena page loads': ['assets/css/main.css'],
-  'the header partial the arena page includes': ['partials/header.html'],
   'one arena file among many unrelated ones': ['index.html', 'apps/gym-tracker/js/app.js', 'apps/arena/README.md'],
 };
 
@@ -192,6 +189,9 @@ const SKIPS = {
     'sync-system/tests/app-naming-consistency.test.mjs',
   ],
   'a sync-system test helper': ['sync-system/tests/helpers/firestore-stub.mjs'],
+  // Covered by the required browser estate instead, which boots the arena
+  // page with them on every pull request (the page-derived test below).
+  'a shared script, stylesheet or partial the arena page loads': ['assets/js/main.js', 'assets/css/main.css', 'partials/header.html'],
 };
 
 for (const [what, files] of Object.entries(SKIPS)) {
@@ -328,11 +328,13 @@ test('the arena part of the workflow is its last two jobs, as the scope script a
 
 // ---------------------------------------------------------------------------
 // Derived from the PAGE (2026-10-17). The two import walks above see only
-// `import` statements, so every shared file the arena page loads by
-// <script src>, <link href> or data-include (assets/js, assets/css, the header
-// partial) could change with `rules` reporting green unrun.
+// `import` statements. Every first-party file the arena page loads by
+// <script src>, <link href> or data-include is either an input to these
+// suites or covered by the required browser estate, which boots the arena
+// page on every pull request: never neither, which would let a change to it
+// report green with nothing having loaded the page.
 // ---------------------------------------------------------------------------
-test('every first-party file the arena page loads by tag or include is an input', () => {
+test('every first-party file the arena page loads is an emulator input or loaded by the browser estate', () => {
   const html = read('apps/arena/index.html');
   const refs = new Set();
   for (const m of html.matchAll(/\b(?:src|href)="([^"#?]+)/g)) {
@@ -345,9 +347,15 @@ test('every first-party file the arena page loads by tag or include is an input'
   for (const must of ['assets/js/main.js', 'firebase-config.js', 'partials/header.html']) {
     assert.ok(refs.has(must), `expected the page to load ${must}; found ${[...refs].join(', ')}`);
   }
+  // The browser estate's own promise: its apps suite boots the arena page,
+  // and the suite is in the estate CI runs on every pull request.
+  assert.match(read('tests/browser/suites/apps.mjs'), /goto\(s, base \+ '\/apps\/arena\/'/, 'the apps suite must still boot the arena page');
+  assert.match(read('tests/browser/run.mjs'), /'tests\/browser\/suites\/apps\.mjs'/, 'the apps suite must still be in the browser estate');
+  assert.match(CI, /^ {2}browser:$/m, 'and `browser` must still be a job (a required check)');
   for (const path of refs) {
-    assert.equal(runScope({ event: 'pull_request', files: [path] }).run, '1',
-      `${path} is loaded by the arena page but does not trigger the emulator suites`);
+    const input = runScope({ event: 'pull_request', files: [path] }).run === '1';
+    const browserCovered = /^(assets\/(js|css)\/|partials\/)/.test(path);
+    assert.ok(input || browserCovered, `${path} is loaded by the arena page, triggers no emulator suite, and is not covered by the browser estate`);
   }
 });
 

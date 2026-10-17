@@ -7,7 +7,7 @@
 // them breaks a build, which is exactly why they are pinned here.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync, existsSync } from 'node:fs';
+import { readFileSync, existsSync, readdirSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -137,3 +137,15 @@ test('the unit halves run scripts/test-shard.mjs with the total from the matrix'
   assert.doesNotMatch(J['test-shard'], /--test-shard=/, 'node\'s positional shard put the three heaviest files in one half');
   assert.match(J['test-shard'], /name: unit-tests-junit-\$\{\{ matrix\.shard \}\}/, 'one artifact per half, or the second upload collides');
 });
+
+// 2026-10-17: every job in every workflow runs on a named image, never a
+// moving label, so an image migration (ubuntu-latest to Ubuntu 26 from
+// 2026-10-19) is a pull request, not a surprise.
+test('every workflow job runs on a pinned image, never ubuntu-latest', () => {
+  for (const f of readdirSync(join(REPO_ROOT, '.github/workflows')).filter((n) => n.endsWith('.yml'))) {
+    const y = readFileSync(join(REPO_ROOT, '.github/workflows', f), 'utf8');
+    assert.doesNotMatch(y, /runs-on:\s*ubuntu-latest/, f);
+    for (const m of y.matchAll(/runs-on:\s*(\S+)/g)) assert.match(m[1], /^ubuntu-\d{2}\.\d{2}$/, `${f}: ${m[1]}`);
+  }
+});
+
