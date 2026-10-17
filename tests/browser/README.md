@@ -91,7 +91,7 @@ Six runner-level guarantees:
   Firebase emulators both die under load, and a dead browser reports as a wall
   of `ECONNREFUSED` or `timeout: Runtime.evaluate` failures that look like
   product bugs. On 2026-08-23 a concurrent coverage run (load average 21) took
-  down a whole estate run, and two concurrent `test:arena:emulator` runs killed
+  down a whole estate run, and two concurrent Arena emulator runs killed
   each other's emulators during their own cleanup. Never run two copies of the
   arena emulator suite at once, and check `ss -ltn` for 8085 / 9000 / 9099
   before starting one.
@@ -285,10 +285,6 @@ apps/fpl-planner/e2e/    # fpl-planner scenario + gameweek-lifecycle suites
 apps/<app>/e2e/          # audit-2026-08.mjs regressions for every app except
                          #   arena, plus maptap-rivals' quality.mjs (all
                          #   registered in run.mjs)
-apps/arena/e2e/          # two-client multiplayer suite vs local Firebase
-                         #   emulators: NOT in run.mjs (needs Java); run it
-                         #   with npm run test:arena:emulator. CI runs it in
-                         #   the `rules` job of .github/workflows/ci.yml
 ```
 
 A suite exports `run({ base, cdpPort })` and returns

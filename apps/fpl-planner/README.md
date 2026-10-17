@@ -272,7 +272,7 @@ apps/fpl-planner/
   tests/                 *.test.mjs plus committed fixtures/
 netlify/functions/fpl.mjs           the FPL read proxy
 netlify/functions/lib/fpl-cache.mjs its allowlist, TTL policy and cache pipeline
-netlify/functions/fpl-health.mjs    scheduled health probe (`41 */6 * * *`)
+netlify/functions/fpl-health.mjs    scheduled health probe (`41 * * * *`: every 6 h, hourly while red)
 netlify/functions/fpl-health-status.mjs    serves the probe's latest result
 netlify/functions/fpl-archive-capture.mjs  scheduled deadline-archive capture (`7 * * * *`)
 netlify/functions/fpl-archive-export.mjs   serves the staged archive to fpl-archive.yml
@@ -314,7 +314,7 @@ Every module under `js/engine/` is a pure ES module with no DOM access, so `node
 
 `netlify/functions/fpl.mjs` fronts an anchored allowlist of read-only endpoints (`bootstrap-static`, `fixtures`, `event-status`, `entry/<id>`, `entry/<id>/history`, `entry/<id>/transfers`, `entry/<id>/event/<gw>/picks`, `element-summary/<id>`, `event/<gw>/live`). Anything else is refused with 400 before it can reach upstream, and requests from an origin other than shevato.com or local dev are refused with 403.
 
-Responses are cached in Netlify Blobs, so a thousand visitors cost roughly one upstream fetch per TTL window: 10 minutes for the bootstrap, 30 for fixtures, 5 for entry endpoints, 15 for a player summary, 1 for live scores and `event-status`, and a day for the picks of a gameweek before the current one (they can no longer change). Inside the six hours before a deadline AND the hour after the most recent one every TTL collapses to 2 minutes: before, because that is when prices and injury news move; after, because that is when FPL moves the gameweek on, and until 2026-10-09 a copy fetched just before the deadline was served as fresh for up to ten minutes after it (thirty for fixtures). A 200 whose body is not the shape its endpoint serves (bootstrap without `elements`/`events`/`teams` arrays, fixtures that are not an array, and so on) is never cached: the last good copy is served as stale, or the client gets `502 upstream_malformed`. If upstream fails, the last cached copy is served with `x-fpl-stale: true` and its age in seconds; only when there is no cached copy at all does the function return 503. When FPL REFUSES the proxy (a 403 or a 429, as its Fastly edge did from 16:50 UTC on 2026-10-16) the refusal is stored as `meta:upstream-refusal` with the status, the edge headers and the start of the body, and nobody goes upstream for 120 seconds (or Retry-After, up to 900): every caller is served the cached copy marked stale, or a 503, instead of answering a block with more requests. Retry-After is read in both its forms (seconds or an HTTP date); the record is updated compare-and-set so concurrent refusals all count; its body is scrubbed of team ids; and for an hour after a refusal a copy older than it is refreshed by one caller under the lease rather than by every caller the second the backoff ends. An unknown team id passes through as a 404 and is never cached. The CDN in front of the function may repeat a fresh answer, but only for that answer's remaining TTL (collapsed near a deadline in the same way), and a stale answer, an error or a 429 is never edge-cached. Because the edge replays `x-fpl-age-seconds` unchanged, the client adds the response `Age` header to it, so a repeated copy never reads as younger than it is.
+Responses are cached in Netlify Blobs, so a thousand visitors cost roughly one upstream fetch per TTL window: 10 minutes for the bootstrap, 30 for fixtures, 5 for entry endpoints, 15 for a player summary, 1 for live scores and `event-status`, and a day for the picks of a gameweek before the current one (they can no longer change). Inside the six hours before a deadline AND the hour after the most recent one every TTL collapses to 2 minutes: before, because that is when prices and injury news move; after, because that is when FPL moves the gameweek on, and until 2026-10-09 a copy fetched just before the deadline was served as fresh for up to ten minutes after it (thirty for fixtures). A 200 whose body is not the shape its endpoint serves (bootstrap without `elements`/`events`/`teams` arrays, fixtures that are not an array, and so on) is never cached: the last good copy is served as stale, or the client gets `502 upstream_malformed`. If upstream fails, the last cached copy is served with `x-fpl-stale: true` and its age in seconds; only when there is no cached copy at all does the function return 503. When FPL REFUSES the proxy (a 403 or a 429, as its Fastly edge did from 16:50 UTC on 2026-10-16) the refusal is stored as `meta:upstream-refusal` with the status, the edge headers and the start of the body, and when the refusal is a block, nobody goes upstream for 120 seconds (or Retry-After, up to 900): every caller is served the cached copy marked stale, or a 503, instead of answering a block with more requests. A block is a 429, a refusal that carries a positive Retry-After, or a second refusal within 5 minutes of the last (`REFUSAL_CORROBORATION_SECONDS`); a lone 403 is recorded and counted in its episode but stops nobody else, because FPL's edge refuses single requests from some of Netlify's addresses while answering the rest (2026-10-16 21:41, 2026-10-17 12:41), and backing the whole site off for one of them turned one refused read into two minutes of 503s and defeated the app's own retry. Every stale or error answer says why in `x-fpl-upstream` (`refused`, `backoff`, `error`, `refreshing`, or `quota` for our own per-network quota). Retry-After is read in both its forms (seconds or an HTTP date); the record is updated compare-and-set so concurrent refusals all count; its body is scrubbed of team ids; and for an hour after a refusal a copy older than it is refreshed by one caller under the lease rather than by every caller the second the backoff ends. An unknown team id passes through as a 404 and is never cached. The CDN in front of the function may repeat a fresh answer, but only for that answer's remaining TTL (collapsed near a deadline in the same way), and a stale answer, an error or a 429 is never edge-cached. Because the edge replays `x-fpl-age-seconds` unchanged, the client adds the response `Age` header to it, so a repeated copy never reads as younger than it is.
 
 `js/data/api.js` wraps that with a memory and `localStorage` cache under the `fpl-planner:cache:` prefix, per-endpoint TTLs, and single-flight de-duplication so a dashboard asking four components for the bootstrap downloads it once. Those cache keys are deliberately **not** in the app's sync namespace: they are large, identical for every user and fully derivable.
 
@@ -1392,9 +1392,11 @@ real manager, which is why 19 of the 21 live-season defects reached the owner
 first (FINDINGS, "Why every pre-gameweek audit found something").
 
 On a schedule it runs on Netlify, not GitHub: `netlify/functions/fpl-health.mjs`
-(`41 */6 * * *`, so 00:41, 06:41, 12:41 and 18:41 UTC) probes production
-through the proxy, at most once per six-hour slot, and stores the result in the
-`fpl-health` blob store. A run is the payload invariants plus "the previous scheduled
+is invoked hourly at :41 and probes production through the proxy once per
+six-hour slot (00:41, 06:41, 12:41 and 18:41 UTC; a slot the scheduler skipped
+is made up the next hour), and in the hours between only while the last stored
+result is red (`slotFor`), so a recovery is seen within an hour rather than at
+the next slot. It stores the result in the `fpl-health` blob store. A run is the payload invariants plus "the previous scheduled
 run recorded its result" and "the deadline archive holds the captures due by
 now" (a pre capture once the next deadline is under 24 hours away, a post
 capture from 4 to 30 hours after the last one, read from the `fpl-archive`
@@ -1414,7 +1416,14 @@ the status shows a run the moment it is stored. When the proxy answers a payload
 stale, its own call to FPL has just failed, so the run asks FPL once, directly
 (5-second timeout), and adds the answer and how long it took to the failed
 check and the report (for a non-200, also the edge that answered and the start
-of its body); a healthy run asks FPL nothing. Two more checks close the run:
+of its body); a healthy run asks FPL nothing. The run reads the proxy as the
+app does, which retries a 503 once (`js/data/api.js`): a 503 or a stale copy
+whose `x-fpl-upstream` header names an FPL-side cause (`refused`, `backoff`,
+`error`, `refreshing`) is read once more a second later and judged on that
+second answer, and the first is printed as a `transient` line and counted in
+the history (`transient`). An answer degraded for our own reasons (no header,
+`quota`) or any other status is never re-read, and a second bad answer fails
+the check as before. Two more checks close the run:
 "FPL has not refused the proxy for long since the last run" reads the proxy's
 refusal record (below) and fails on an episode of 30 minutes or more, printing
 shorter ones in the report, and "the run finishes well inside Netlify's
@@ -1432,7 +1441,9 @@ on Netlify, and any other non-numeric entry fails before fetching.
 Alerting. A failure is logged as an error, and when `FPL_HEALTH_GITHUB_TOKEN`
 (fine-grained, Actions read/write on this repository only) is set in Netlify,
 the run starts `.github/workflows/fpl-health.yml` in mode `monitor` at once,
-on a failure and on a possible recovery, with `expect_at` naming itself. That
+on a failure and on a possible recovery, with `expect_at` naming itself (but
+not for a run that fails exactly as the one before it did, so the hourly
+recheck of an open incident is not an email an hour). That
 job runs `scripts/health-monitor.mjs`, which reads the status endpoint (waiting
 up to 90 seconds for it to show the run named by `expect_at`, and failing as
 "status endpoint shows an old result" rather than judging an older run), judges

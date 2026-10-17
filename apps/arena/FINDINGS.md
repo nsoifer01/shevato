@@ -111,60 +111,19 @@ Gotchas that cost time, so they are recorded:
   Not a package.json devDependency on purpose: `npm ci` in the other
   workflows stays fast and the push/PR CI stays dependency-free.
 
-## Two-client e2e gotchas (apps/arena/e2e/emulator.mjs)
+## The multiplayer e2e was removed (2026-10-17, owner decision)
 
-- **The rAF loops are RENDER-only since 2026-08-23.** Game progression
-  (early reveal, advance, finish) lives in `progressRoomClock`, which is
-  driven by a 500 ms `setInterval` and by `visibilitychange` as well as by
-  the rAF ticks, and any member may perform the timed advance once the
-  question window has elapsed plus `ADVANCE_FALLBACK_SLACK_MS` (the rules
-  re-check the deadline against the SERVER clock). A hidden or closed host
-  therefore no longer freezes the room - it used to sit on a live question
-  with no `revealStartedAt` for the full 27 s observed and only moved 2.5 s
-  after the host tab was fronted. Headless Chrome still pauses rAF in
-  background tabs, so anything that is purely a RENDER (the Globe Drop Ready
-  bar, the timer ring) still needs its tab fronted before it can be clicked -
-  the e2e fronts B just to vote Ready, then hands the foreground back.
-  `Page.captureScreenshot` also HANGS (45 s) on a tab that is not the active
-  target, so bring a tab to front before every screenshot.
-- **Two players in one browser profile share origin storage** (and thus
-  one Firebase auth user - firebase-config even broadcasts auth changes
-  cross-tab). Serve one page from `127.0.0.1:<port>` and the other from
-  `localhost:<port>`: same static server, different origins, isolated
-  auth. Both hostnames satisfy the emulator seam.
-- **The shared sync-modal integration skips anonymous users (fixed
-  2026-08-23).** It opens a full-screen modal and then RELOADS the page
-  whenever a user signs in after initial page load, which is exactly what the
-  guest bootstrap on create/join does: a first-time guest clicking "Create
-  room" got the white "Sync Complete! Refreshing page..." modal about 10 ms
-  after the click and a reload about 1 s later, while `createRoom` was still
-  between `setDoc(room)` and `joinPlayer` - back to the lobby, no `?room=`,
-  and a room doc with zero player docs left in Firestore forever. Guests have
-  no `users/{uid}` namespace, so there was never anything to sync: the
-  integration now returns early for `user.isAnonymous`. A REGISTERED sign-in
-  still gets the modal and the reload, which is correct and is pinned in both
-  layers (`sync-system/tests/sync-modal-integration.test.mjs` and the e2e's
-  "D2 boundary" check) so nobody can "fix" the guest case by disabling the
-  feature outright. The e2e no longer seeds `sessionStorage.lastSyncModalTime`
-  at all; it waits the registered reload out instead.
-- **Auth-emulator URLs embed the production hostname in the PATH**
-  (`http://127.0.0.1:9099/identitytoolkit.googleapis.com/...`), so a
-  substring block on production hosts would kill emulator traffic too -
-  match on the URL's host portion only.
-- **Rematch UI reality**: the propose control that exists in the markup
-  is the header `#room-end-again-btn`. `#end-again-btn`, the propose button
-  `renderRematchUI` toggles, is NOT in index.html and is always null
-  (null-guarded, silent); `#rematch-strip`, `#rematch-status` and
-  `#rematch-actions` do exist. The accept path users actually see is the
-  shared confirm modal (`#confirm-modal-confirm`, 10s auto-decline). The
-  `#end-again-btn` references are latent dead code, recorded rather than
-  removed.
-- **Leaving always routes through the confirm modal** - a bare
-  `#leave-room-btn` click does nothing until `#confirm-modal-confirm`.
-- Dropped as flaky-by-design rather than shipped flaky: console-error
-  assertions (the Firestore SDK logs transport noise against emulators)
-  and exact score values (speed bonus depends on answer latency; the
-  suite asserts positive AND identical across clients instead).
+`apps/arena/e2e/` (the two-client multiplayer suite: real browsers playing
+whole games against the Auth and Firestore emulators) and its CI step are
+gone. It had become the slowest and least reliable check on the pull-request
+gate (two groups of 5 to 10 minutes, and on 2026-10-17 red on master and
+every branch with no code change) for an app nobody currently uses. What
+still guards Arena: the Firestore rules suite (`npm run test:arena:rules`,
+the required `rules` check, scoped to changes that can move it, and run
+unscoped weekly by `scheduled.yml`), the unit tests under `apps/arena/tests/`,
+and the browser estate, which boots the page on every pull request. The
+sections below that describe the two-client harness are history; the rules
+harness (`tests-rules/emulator-harness.mjs`) is still live.
 
 ## Host handoff: the rules allowed it, the client never asked (2026-09-11)
 

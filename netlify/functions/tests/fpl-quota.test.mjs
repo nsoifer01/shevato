@@ -312,6 +312,24 @@ test('e2e: an exhausted network is still served whatever the cache already holds
   assert.equal(res.headers.get('x-fpl-cache'), 'hit');
 });
 
+// The stale copy a quota refusal leaves is OUR doing. Its x-fpl-upstream says
+// `quota`, never an FPL cause, so the health run (lib/fpl-health-run.mjs
+// rereadingFetch) never re-reads its way past our own limit (2026-10-17).
+test('e2e: an expired copy served because the quota refused its refresh says the quota, not FPL, did it', opts, async () => {
+  const fetchedAt = new Date(Date.now() - 6 * 3600e3).toISOString();
+  seedBlobs({
+    [QUOTA_KEY]: spentUsage(ADDR),
+    [cacheKey('fixtures')]: { fetchedAt, body: { cached: true } },
+  });
+  const res = await withFetchStub(
+    async () => { throw new Error('must not be called'); },
+    () => handler(req('fixtures')),
+  );
+  assert.equal(res.status, 200);
+  assert.equal(res.headers.get('x-fpl-stale'), 'true');
+  assert.equal(res.headers.get('x-fpl-upstream'), 'quota');
+});
+
 test('e2e: distinct attacker-chosen paths are bounded, and the counter moves once per miss', opts, async () => {
   const now = Date.now();
   const net = networkBucket(ADDR, now);

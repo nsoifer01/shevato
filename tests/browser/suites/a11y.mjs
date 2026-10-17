@@ -69,6 +69,11 @@ async function injectAxe(s, axeSource) {
 
 // One WCAG2A/AA scan of the current document. Returns a compact violation
 // list: rule id, impact, node count, first selectors.
+// `evidence` is what a failure needs to be acted on (2026-10-17): the start of
+// each node's HTML and, for color-contrast, the two colours, the ratio and the
+// font axe measured. The trip-planner days-view check failed once on CI
+// (2026-09-17, PR #563) as "color-contrast @ span" and could never be
+// reproduced; a target alone could not say which span, or which two colours.
 async function axeScan(s) {
   return evalAsync(s, `window.axe.run(document, {
     runOnly: { type: 'tag', values: ['wcag2a', 'wcag2aa'] },
@@ -76,6 +81,11 @@ async function axeScan(s) {
   }).then(r => r.violations.map(v => ({
     id: v.id, impact: v.impact, count: v.nodes.length,
     targets: v.nodes.slice(0, 6).map(n => (n.target || []).join(' ')),
+    evidence: v.nodes.slice(0, 3).map(n => {
+      const d = ((n.any || [])[0] || {}).data || {};
+      const colours = d.fgColor ? ' fg ' + d.fgColor + ' bg ' + d.bgColor + ' ratio ' + d.contrastRatio + ' font ' + d.fontSize + '/' + d.fontWeight : '';
+      return String(n.html || '').replace(/\\s+/g, ' ').slice(0, 160) + colours;
+    }),
   })))`);
 }
 
@@ -453,7 +463,8 @@ export async function run({ base, cdpPort }) {
     if (novel.length) {
       t(name, false, `NEW serious/critical violation(s) beyond the pinned quarantine: `
         + x.violations.filter((v) => (SERIOUS.has(v.impact) || PROMOTED.has(v.id)) && novel.includes(v.id))
-          .map((v) => `${v.id}(${v.impact} x${v.count}) @ ${v.targets.slice(0, 3).join(' , ')}`).join('; '));
+          .map((v) => `${v.id}(${v.impact} x${v.count}) @ ${v.targets.slice(0, 3).join(' , ')}`
+            + ((v.evidence || []).length ? ` [${v.evidence.join(' | ')}]` : '')).join('; '));
       continue;
     }
     const own = pairs.filter((p) => !sharedPairs.has(p));

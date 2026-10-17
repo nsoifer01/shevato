@@ -10,8 +10,9 @@
 //      so ordinary local development against production Firebase keeps
 //      working unchanged until a developer (or a test harness) opts in.
 //
-// The Arena emulator e2e (apps/arena/e2e/) sets the flag before the app
-// boots; nothing in production code ever writes it.
+// A developer (or a test harness) sets the flag before the app boots; the
+// Arena multiplayer e2e that did was removed on 2026-10-17. Nothing in
+// production code ever writes it.
 
 export const FIREBASE_EMULATOR_FLAG_KEY = 'shevato:firebase-emulators';
 

@@ -4,8 +4,8 @@ import handler from '../fpl.mjs';
 import {
   canonicalPath, pathKind, ttlSeconds, cacheKey, nextDeadlineFrom, serveFpl,
   TTL, DEADLINE_KEY, DEADLINE_TTL_SECONDS, UPSTREAM_BASE, ALLOWED_PATHS,
-  REFUSAL_KEY, REFUSAL_BACKOFF_SECONDS, REFUSAL_BACKOFF_MAX_SECONDS,
-  retryAfterSeconds, scrubUpstreamText,
+  REFUSAL_KEY, REFUSAL_BACKOFF_SECONDS, REFUSAL_BACKOFF_MAX_SECONDS, REFUSAL_CORROBORATION_SECONDS,
+  retryAfterSeconds, retryAfterInstruction, scrubUpstreamText,
 } from '../lib/fpl-cache.mjs';
 
 // The guard tests exercise the paths that return BEFORE any Blob I/O: the
@@ -283,43 +283,140 @@ const refused = (status = 403, headers = {}) => new Response('<html><body>Access
   status, headers: { 'x-served-by': 'cache-iad-kiad7000001-IAD', server: 'Varnish', ...headers },
 });
 
-test('a 403 from FPL is recorded with what the edge said, and nobody asks again until the backoff ends', async () => {
+test('a 403 from FPL is recorded with what the edge said; alone, it does not stop the next caller asking', async () => {
   const store = memoryStore();
   await serveFpl({ path: 'fixtures', store, fetchUpstream: upstream(() => ok([{ n: 1 }])), now: NOW });
   const later = NOW + 3600 * 1000;
   const blocked = upstream(() => refused());
   const first = await serveFpl({ path: 'fixtures', store, fetchUpstream: blocked, now: later });
   assert.equal(first.stale, true);
+  assert.equal(first.upstream, 'refused', 'the answer says FPL refused this fetch');
   assert.deepEqual(first.body, [{ n: 1 }]);
   const record = store.map.get(REFUSAL_KEY);
   assert.equal(record.status, 403);
   assert.equal(record.path, 'fixtures');
   assert.equal(record.headers['x-served-by'], 'cache-iad-kiad7000001-IAD');
   assert.match(record.bodyHead, /Access denied \(ref 18\.abc\)/);
-  assert.equal(record.until, new Date(later + REFUSAL_BACKOFF_SECONDS * 1000).toISOString());
   assert.equal(record.count, 1);
   assert.equal(record.firstAt, record.at);
+  assert.equal(record.until, record.at, 'recorded, not backed off: one 403 is one refused request');
+
+  // 2026-10-17 12:41: one 403 on one manager read, and every other read of
+  // the same seconds answered 200. The next caller (the app's own retry of a
+  // 503, a second later) asks FPL and is served fresh, on any path.
+  const back = upstream(() => ok({ picks: [] }));
+  const retry = await serveFpl({ path: 'entry/1/event/7/picks', store, fetchUpstream: back, now: later + 1000 });
+  assert.equal(back.calls.length, 1, 'the next caller goes upstream');
+  assert.equal(retry.status, 200);
+  assert.equal(retry.stale, false);
+  assert.equal(retry.upstream, undefined, 'a fresh answer names no cause');
+});
+
+test('a second refusal inside the corroboration window backs off every caller on every path until it ends', async () => {
+  const store = memoryStore();
+  await serveFpl({ path: 'fixtures', store, fetchUpstream: upstream(() => ok([{ n: 1 }])), now: NOW });
+  const later = NOW + 3600 * 1000;
+  const blocked = upstream(() => refused());
+  await serveFpl({ path: 'fixtures', store, fetchUpstream: blocked, now: later });
+  const second = later + (REFUSAL_CORROBORATION_SECONDS - 1) * 1000;
+  await serveFpl({ path: 'entry/9', store, fetchUpstream: blocked, now: second });
+  const record = store.map.get(REFUSAL_KEY);
+  assert.equal(record.count, 2);
+  assert.equal(record.firstAt, new Date(later).toISOString());
+  assert.equal(record.until, new Date(second + REFUSAL_BACKOFF_SECONDS * 1000).toISOString());
 
   // Inside the backoff: other paths too, because FPL refuses the caller, not a path.
   const quiet = upstream(() => ok([{ n: 2 }]));
-  const a = await serveFpl({ path: 'fixtures', store, fetchUpstream: quiet, now: later + 60e3 });
-  const b = await serveFpl({ path: 'bootstrap-static', store, fetchUpstream: quiet, now: later + 60e3 });
+  const a = await serveFpl({ path: 'fixtures', store, fetchUpstream: quiet, now: second + 60e3 });
+  const b = await serveFpl({ path: 'bootstrap-static', store, fetchUpstream: quiet, now: second + 60e3 });
   assert.equal(quiet.calls.length, 0, 'no upstream request during the backoff');
   assert.equal(a.stale, true);
+  assert.equal(a.upstream, 'backoff');
   assert.deepEqual(a.body, [{ n: 1 }]);
   assert.equal(b.status, 503, 'nothing cached: a labelled 503, never invented data');
+  assert.equal(b.upstream, 'backoff');
 
-  // After it, the next caller asks again; a second refusal continues the episode.
-  const again = await serveFpl({ path: 'fixtures', store, fetchUpstream: blocked, now: later + 600e3 });
-  assert.equal(again.stale, true);
-  assert.equal(blocked.calls.length, 2);
-  assert.equal(store.map.get(REFUSAL_KEY).count, 2);
-  assert.equal(store.map.get(REFUSAL_KEY).firstAt, record.at);
+  // After it, the next caller asks again, and a 200 is served fresh.
+  const fresh = await serveFpl({ path: 'fixtures', store, fetchUpstream: quiet, now: second + 600e3 });
+  assert.equal(quiet.calls.length, 1);
+  assert.equal(fresh.stale, false);
+  assert.deepEqual(fresh.body, [{ n: 2 }]);
+});
 
-  // And a 200 after that is served fresh.
-  const back = await serveFpl({ path: 'fixtures', store, fetchUpstream: quiet, now: later + 1200e3 });
-  assert.equal(back.stale, false);
-  assert.deepEqual(back.body, [{ n: 2 }]);
+test('two 403s further apart than the window are one episode and two refused requests, never a backoff', async () => {
+  const store = memoryStore();
+  const blocked = upstream(() => refused());
+  await serveFpl({ path: 'fixtures', store, fetchUpstream: blocked, now: NOW });
+  const later = NOW + (REFUSAL_CORROBORATION_SECONDS + 1) * 1000;
+  await serveFpl({ path: 'fixtures', store, fetchUpstream: blocked, now: later });
+  const record = store.map.get(REFUSAL_KEY);
+  assert.equal(record.count, 2, 'the episode still counts both');
+  assert.equal(record.firstAt, new Date(NOW).toISOString());
+  assert.equal(record.until, record.at);
+});
+
+test('a 429, or a 403 that carries Retry-After, backs off at once', async () => {
+  const rateLimited = memoryStore();
+  await serveFpl({ path: 'fixtures', store: rateLimited, now: NOW, fetchUpstream: upstream(() => refused(429)) });
+  assert.equal(rateLimited.map.get(REFUSAL_KEY).until, new Date(NOW + REFUSAL_BACKOFF_SECONDS * 1000).toISOString());
+  const told = memoryStore();
+  await serveFpl({ path: 'fixtures', store: told, now: NOW, fetchUpstream: upstream(() => refused(403, { 'retry-after': '300' })) });
+  assert.equal(told.map.get(REFUSAL_KEY).until, new Date(NOW + 300e3).toISOString());
+  // "0" asks for nothing: an isolated 403 still.
+  const zero = memoryStore();
+  await serveFpl({ path: 'fixtures', store: zero, now: NOW, fetchUpstream: upstream(() => refused(403, { 'retry-after': '0' })) });
+  assert.equal(zero.map.get(REFUSAL_KEY).until, new Date(NOW).toISOString());
+  for (const v of ['300', new Date(NOW + 600e3).toUTCString()]) assert.ok(retryAfterInstruction(v, NOW) > 0, v);
+  for (const v of ['0', '-5', '', null, 'soon', new Date(NOW - 600e3).toUTCString()]) assert.equal(retryAfterInstruction(v, NOW), null, String(v));
+});
+
+// The incident itself, 2026-10-17 12:41 (#616): the health run reads
+// bootstrap, fixtures, the owner's entry, history and transfers at once and
+// then his picks. FPL refused ONE of those reads. The proxy's backoff then
+// answered the picks, which it had never cached, with a 503, and served the
+// transfers six hours stale. Now the refused read is the only casualty.
+test('one refused read in a burst costs that read alone, and the rest of the burst is fresh', async () => {
+  const store = memoryStore({}, { delayMs: 2 });
+  await serveFpl({ path: 'entry/1/transfers', store, fetchUpstream: upstream(() => ok([{ n: 1 }])), now: NOW });
+  const at = NOW + 6 * 3600e3;
+  let refusedOnce = false;
+  const fpl = upstream((url) => {
+    if (!refusedOnce && url.includes('entry/1/transfers')) { refusedOnce = true; return refused(); }
+    return ok(url.includes('picks') ? { picks: [] } : [{ n: 2 }]);
+  });
+  const paths = ['entry/1', 'entry/1/history', 'entry/1/transfers'];
+  const first = await Promise.all(paths.map((path) => serveFpl({ path, store, fetchUpstream: fpl, now: at })));
+  const picks = await serveFpl({ path: 'entry/1/event/7/picks', store, fetchUpstream: fpl, now: at + 1500 });
+  assert.equal(picks.status, 200, 'the picks read after the refusal is served, not refused by our own backoff');
+  assert.equal(picks.stale, false);
+  assert.equal(first[2].stale, true, 'the refused read is served its copy, marked stale');
+  assert.equal(first[2].upstream, 'refused');
+  // And the app's retry of it, a moment later, is fresh.
+  const retried = await serveFpl({ path: 'entry/1/transfers', store, fetchUpstream: fpl, now: at + 2000 });
+  assert.equal(retried.stale, false);
+  assert.deepEqual(retried.body, [{ n: 2 }]);
+});
+
+test('every degraded answer names its cause, and only a degraded one does', async () => {
+  const cases = [
+    ['an outage over a copy', upstream(() => new Response('boom', { status: 503 })), true, 'error'],
+    ['an outage with nothing cached', upstream(() => new Response('boom', { status: 503 })), false, 'error'],
+    ['a 404 over a copy', upstream(() => new Response('nf', { status: 404 })), true, 'error'],
+    ['a 200 that is not the payload', upstream(() => ok({ nope: 1 })), false, 'error'],
+    ['a timeout', upstream(() => { throw new DOMException('timed out', 'TimeoutError'); }), true, 'error'],
+  ];
+  for (const [label, fetchUpstream, seeded, cause] of cases) {
+    const store = memoryStore();
+    if (seeded) await serveFpl({ path: 'fixtures', store, fetchUpstream: upstream(() => ok([{ n: 1 }])), now: NOW });
+    const res = await serveFpl({ path: 'fixtures', store, fetchUpstream, now: NOW + 3600e3 });
+    assert.equal(res.upstream, cause, label);
+    assert.ok(res.stale || res.status >= 500, label);
+  }
+  const store = memoryStore();
+  const fresh = await serveFpl({ path: 'fixtures', store, fetchUpstream: upstream(() => ok([{ n: 1 }])), now: NOW });
+  const hit = await serveFpl({ path: 'fixtures', store, fetchUpstream: upstream(() => ok([{ n: 1 }])), now: NOW + 1000 });
+  assert.equal(fresh.upstream, undefined);
+  assert.equal(hit.upstream, undefined);
 });
 
 test('a 429 honours Retry-After, up to the cap', async () => {

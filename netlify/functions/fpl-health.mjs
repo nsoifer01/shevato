@@ -1,4 +1,5 @@
-// The FPL Planner's health probe, every six hours on Netlify's scheduler
+// The FPL Planner's health probe, every six hours on Netlify's scheduler, and
+// every hour while it is failing
 // (netlify/functions/lib/fpl-health-run.mjs explains why it moved off GitHub
 // Actions, how a duplicate run is prevented and how a failure is reported).
 // A failed probe is logged as an error and returns 500, so it is visible in
@@ -27,5 +28,7 @@ export default async () => {
   return new Response(line, { status: result.ok ? 200 : 500, headers: { 'content-type': 'application/json' } });
 };
 
-// 00:41, 06:41, 12:41 and 18:41 UTC, the slots the GitHub cron used.
-export const config = { schedule: '41 */6 * * *' };
+// Hourly at :41. A run probes at 00:41, 06:41, 12:41 and 18:41 UTC (the slots
+// the GitHub cron used), and in the hours between only while the last result
+// is red (lib/fpl-health-run.mjs slotFor), so a recovery is seen within an hour.
+export const config = { schedule: '41 * * * *' };
