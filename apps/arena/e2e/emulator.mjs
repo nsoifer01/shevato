@@ -149,6 +149,23 @@ export async function run({ base, cdpPort, base2 = null }) {
     }
     R.push({ name, pass: !!pass, detail: detail ? String(detail).slice(0, 600) : '' });
   };
+  // Which browser build and field trials this run has (2026-10-17). Google
+  // Chrome on a runner fetches its field-trial config over the network at
+  // start-up, which no page-level interception sees; Chromium does not. Printed
+  // once, so two runs on the same binary can be compared.
+  {
+    const v = await newPage(cdpPort);
+    try {
+      await goto(v, 'chrome://version', { settle: 300 });
+      const info = await evaluate(v, `(() => { const g = (id) => ((document.getElementById(id) || {}).innerText || '').trim();
+        return { version: g('version'), variations: g('variations-list').split('\\n').filter(Boolean), cmd: g('command_line') }; })()`);
+      console.log(`  [browser] ${JSON.stringify(info)}`);
+    } catch (e) {
+      console.log(`  [browser] chrome://version unreadable: ${e && e.message}`);
+    } finally {
+      await closePage(cdpPort, v);
+    }
+  }
   const skip = (name, reason) => R.push({ name, pass: true, skipped: true, detail: reason });
 
   if (!(await emulatorReachable())) {
@@ -1585,8 +1602,14 @@ export async function run({ base, cdpPort, base2 = null }) {
         globeOverflow <= 0 && timerBox.l >= 0 && timerBox.r <= timerBox.vw && timerBox.w > 0, `overflow=${globeOverflow} timer=${JSON.stringify(timerBox)}`);
       // Round 3: last location, host still hidden; the room must FINISH.
       const g3 = await waitRoom(code6, (st) => st.status === 'finished', 40000);
+      // What each client saw and said when the room did not finish
+      // (2026-10-17: red on CI, never locally).
+      const finishView = async (s) => JSON.stringify(await evaluate(s, `(() => ({ vis: document.visibilityState,
+        warns: (window.__warns || []).length, last: (window.__warns || []).slice(-2).map((w) => String(w[1]).slice(0, 90)) }))()`));
       t('emulator (globe, D3): the final location resolves into the finished state without the host in the foreground',
-        g3.status === 'finished' && g3.finalRanking.length === 2, `status=${g3.status} ranking=${g3.finalRanking.length}`);
+        g3.status === 'finished' && g3.finalRanking.length === 2,
+        `status=${g3.status} ranking=${g3.finalRanking.length} idx=${g3.idx} reveal=${g3.reveal} startedMs=${g3.startedMs} revealMs=${g3.revealMs} now=${Date.now()}`
+        + ` | A=${await finishView(A)} B=${await finishView(B)}`);
       t('emulator (globe): both clients reach the end stage',
         (await waitForExpr(B, endUp, { timeout: 15000 })) && (await waitForExpr(A, endUp, { timeout: 15000 })));
       await shot(B, 'globe-end-390');
