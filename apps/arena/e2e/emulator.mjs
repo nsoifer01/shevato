@@ -188,6 +188,12 @@ export async function run({ base, cdpPort, base2 = null }) {
     const s = await newPage(cdpPort);
     s.navigations = [];
     s.dialogs = [];
+    // What the Firestore SDK itself says (2026-10-17): a client whose room
+    // listener went quiet until a reload is the one failure no check could
+    // explain, and the SDK reports lease, stream and backend trouble on the
+    // console, which nothing kept.
+    s.firestoreLog = [];
+    s.label = pageBase;
     // A blocking JS dialog (the app alert()s on a failed room create /
     // rematch) freezes the renderer, and every later Input.dispatchMouseEvent
     // times out 45 s later somewhere unrelated. Dismiss and RECORD instead, so
@@ -198,6 +204,11 @@ export async function run({ base, cdpPort, base2 = null }) {
         s.send('Page.handleJavaScriptDialog', { accept: true }).catch(() => {});
       } else if (m === 'Page.frameNavigated' && params.frame && !params.frame.parentId) {
         s.navigations.push(String(params.frame.url || '').replace(pageBase, ''));
+      } else if (m === 'Runtime.consoleAPICalled' && (params.type === 'warning' || params.type === 'error')) {
+        const text = (params.args || []).map((a) => a.value ?? a.description ?? '').join(' ');
+        if (/firestore|firebase/i.test(text) && s.firestoreLog.length < 40) {
+          s.firestoreLog.push(`${new Date().toISOString().slice(11, 19)} ${params.type}: ${text.replace(/\s+/g, ' ').slice(0, 200)}`);
+        }
       }
     });
     await setViewport(s, width, height, mobile);
@@ -2005,6 +2016,12 @@ export async function run({ base, cdpPort, base2 = null }) {
   } catch (e) {
     t('arena-emulator: suite ran to completion', false, String(e && e.stack || e).slice(0, 240));
   } finally {
+    for (const [n, s] of [['A', A], ['B', B], ['C', C]]) {
+      if (s && s.firestoreLog && s.firestoreLog.length) {
+        console.log(`  [firestore ${n} ${s.label}] ${s.firestoreLog.length} warning(s)/error(s):`);
+        for (const l of s.firestoreLog) console.log(`    ${l}`);
+      }
+    }
     for (const s of [A, B, C]) { if (s) { try { await closePage(cdpPort, s); } catch { /* closed */ } } }
   }
   return R;
