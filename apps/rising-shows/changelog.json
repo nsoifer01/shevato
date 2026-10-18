@@ -1,6 +1,341 @@
 {
   "updates": [
     {
+      "builtAt": "2026-10-18T11:07:58.744Z",
+      "totals": {
+        "seasons": 67351,
+        "delta": 32
+      },
+      "shapeCounts": {
+        "rebound": 9758,
+        "big-finale": 11814,
+        "u-shaped": 2639,
+        "rollercoaster": 13504,
+        "mid-peak": 4363,
+        "consistent": 2516,
+        "bad-finale": 4336,
+        "front-loaded": 3064,
+        "slow-burn": 3969,
+        "declining": 1631,
+        "saved-best-for-last": 1380,
+        "shape-drift": 1394,
+        "rising": 2353
+      },
+      "shapeDeltas": {
+        "rebound": -6,
+        "big-finale": 5,
+        "u-shaped": 1,
+        "rollercoaster": 10,
+        "mid-peak": 3,
+        "consistent": -5,
+        "bad-finale": 3,
+        "front-loaded": 5,
+        "slow-burn": 6,
+        "declining": -6,
+        "saved-best-for-last": 1,
+        "shape-drift": -4,
+        "rising": 1
+      },
+      "added": [
+        {
+          "seriesId": "tt26743760",
+          "title": "The Apothecary Diaries",
+          "season": 3,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt13196080",
+          "title": "Tokyo Revengers",
+          "season": 4,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt32344704",
+          "title": "Tougen Anki: Dark Demon of Paradise",
+          "season": 2,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt39328047",
+          "title": "Doctor X: Age of the White Mafia",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt38589502",
+          "title": "Blithe In",
+          "season": 1,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt42026819",
+          "title": "Nord Sud Ovest Est: La leggendaria storia degli 883",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt42727894",
+          "title": "Romelia War Chronicle",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt1129398",
+          "title": "Murder in Sweden",
+          "season": 10,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt38732131",
+          "title": "Money Trap: The Karun Treasure",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt0094530",
+          "title": "The Betrothed",
+          "season": 1,
+          "seasonYear": 1989
+        },
+        {
+          "seriesId": "tt27053309",
+          "title": "The Unbelievable with Dan Aykroyd",
+          "season": 4,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt34581662",
+          "title": "Kanzlei Liebling Kreuzberg",
+          "season": 1,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt47661704",
+          "title": "Make Me Tingle",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt6906110",
+          "title": "Maine Cabin Masters",
+          "season": 7,
+          "seasonYear": 2021
+        },
+        {
+          "seriesId": "tt5698216",
+          "title": "Jamie Johnson",
+          "season": 7,
+          "seasonYear": 2022
+        },
+        {
+          "seriesId": "tt1400819",
+          "title": "Horrible Histories",
+          "season": 11,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt11876490",
+          "title": "Doc: In Your Hands",
+          "season": 4,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt13369892",
+          "title": "Pearl Next Door",
+          "season": 1,
+          "seasonYear": 2020
+        },
+        {
+          "seriesId": "tt4119504",
+          "title": "Hi! School-Love On",
+          "season": 1,
+          "seasonYear": 2014
+        },
+        {
+          "seriesId": "tt0348512",
+          "title": "Mega Babies",
+          "season": 1,
+          "seasonYear": 1999
+        },
+        {
+          "seriesId": "tt6556992",
+          "title": "Hot Ones",
+          "season": 31,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt11704040",
+          "title": "Love Is Blind",
+          "season": 11,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt13711670",
+          "title": "Naked Attraction Suomi",
+          "season": 3,
+          "seasonYear": 2023
+        },
+        {
+          "seriesId": "tt4633666",
+          "title": "Marooned with Ed Stafford",
+          "season": 1,
+          "seasonYear": 2013
+        },
+        {
+          "seriesId": "tt22440568",
+          "title": "An/Na",
+          "season": 1,
+          "seasonYear": 2022
+        },
+        {
+          "seriesId": "tt30128014",
+          "title": "The Traitors Hungary",
+          "season": 5,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt30828747",
+          "title": "Dracula's Kiss, Spellbound by a Doppelganger",
+          "season": 1,
+          "seasonYear": 2023
+        },
+        {
+          "seriesId": "tt31975781",
+          "title": "Zussen",
+          "season": 2,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt36192875",
+          "title": "The Race",
+          "season": 3,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt37673572",
+          "title": "Polden",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt4016396",
+          "title": "The Idle Mermaid",
+          "season": 1,
+          "seasonYear": 2014
+        },
+        {
+          "seriesId": "tt37180305",
+          "title": "Friends Sex and Games",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt6139710",
+          "title": "Fall in Love with Me",
+          "season": 1,
+          "seasonYear": 2014
+        }
+      ],
+      "removed": [
+        {
+          "seriesId": "tt1626459",
+          "title": "My Kitchen Rules",
+          "season": 14,
+          "seasonYear": 2024
+        }
+      ],
+      "ratingSwings": [
+        {
+          "seriesId": "tt3076512",
+          "title": "Just You",
+          "season": 1,
+          "from": 7,
+          "to": 5.7,
+          "delta": -1.3
+        },
+        {
+          "seriesId": "tt37109705",
+          "title": "The Lament of Autumn",
+          "season": 1,
+          "from": 9.92,
+          "to": 8.88,
+          "delta": -1.04
+        },
+        {
+          "seriesId": "tt35163061",
+          "title": "0bvEL FNAF Plush",
+          "season": 1,
+          "from": 1.48,
+          "to": 2.3,
+          "delta": 0.82
+        },
+        {
+          "seriesId": "tt31925820",
+          "title": "Dupahiya",
+          "season": 2,
+          "from": 8.54,
+          "to": 7.78,
+          "delta": -0.76
+        },
+        {
+          "seriesId": "tt2458514",
+          "title": "Mary Stayed Out All Night",
+          "season": 1,
+          "from": 7.69,
+          "to": 7.03,
+          "delta": -0.66
+        },
+        {
+          "seriesId": "tt13486352",
+          "title": "ZDF Magazin Royale",
+          "season": 7,
+          "from": 7.4,
+          "to": 6.8,
+          "delta": -0.6
+        },
+        {
+          "seriesId": "tt39379365",
+          "title": "4 Blocks Zero",
+          "season": 1,
+          "from": 7.97,
+          "to": 8.48,
+          "delta": 0.51
+        },
+        {
+          "seriesId": "tt0356228",
+          "title": "Bakuryuu Sentai Abaranger",
+          "season": 1,
+          "from": 7.1,
+          "to": 6.6,
+          "delta": -0.5
+        },
+        {
+          "seriesId": "tt2623064",
+          "title": "Heartstrings",
+          "season": 1,
+          "from": 8.15,
+          "to": 7.68,
+          "delta": -0.47
+        },
+        {
+          "seriesId": "tt35520662",
+          "title": "Duck Dynasty: The Revival",
+          "season": 1,
+          "from": 7.67,
+          "to": 7.23,
+          "delta": -0.44
+        }
+      ],
+      "modifiedCounts": {
+        "seriesVotes": 20970,
+        "avgRating": 1205,
+        "shapes": 216,
+        "episodeCount": 91,
+        "seriesRating": 314,
+        "poster": 6
+      }
+    },
+    {
       "builtAt": "2026-10-17T10:47:46.294Z",
       "totals": {
         "seasons": 67319,
@@ -9150,214 +9485,6 @@
         "seriesRating": 155,
         "episodeCount": 61,
         "poster": 4
-      }
-    },
-    {
-      "builtAt": "2026-09-04T10:30:30.570Z",
-      "totals": {
-        "seasons": 66612,
-        "delta": 13
-      },
-      "shapeCounts": {
-        "rebound": 10174,
-        "rising": 2594,
-        "slow-burn": 4413,
-        "big-finale": 12145,
-        "u-shaped": 3090,
-        "rollercoaster": 14146,
-        "mid-peak": 4629,
-        "saved-best-for-last": 1506,
-        "front-loaded": 3510,
-        "declining": 1884,
-        "bad-finale": 4650,
-        "consistent": 2627,
-        "shape-drift": 1576
-      },
-      "shapeDeltas": {
-        "rebound": 17,
-        "rising": -1,
-        "slow-burn": 3,
-        "big-finale": 3,
-        "u-shaped": -2,
-        "rollercoaster": 11,
-        "saved-best-for-last": -1,
-        "front-loaded": 7,
-        "bad-finale": 3,
-        "consistent": 1,
-        "shape-drift": 1
-      },
-      "added": [
-        {
-          "seriesId": "tt19358400",
-          "title": "Erotic Short Stories",
-          "season": 1,
-          "seasonYear": 1999
-        },
-        {
-          "seriesId": "tt0198088",
-          "title": "Cilla's Comedy Six",
-          "season": 1,
-          "seasonYear": 1975
-        },
-        {
-          "seriesId": "tt1159863",
-          "title": "Magical Girl Lyrical Nanoha StrikerS",
-          "season": 3,
-          "seasonYear": 2007
-        },
-        {
-          "seriesId": "tt14743620",
-          "title": "Object Invasion",
-          "season": 1,
-          "seasonYear": 2016
-        },
-        {
-          "seriesId": "tt0465809",
-          "title": "Faites entrer l'accusé",
-          "season": 26,
-          "seasonYear": 2025
-        },
-        {
-          "seriesId": "tt2850332",
-          "title": "Brother vs. Brother",
-          "season": 7,
-          "seasonYear": 2020
-        },
-        {
-          "seriesId": "tt16533392",
-          "title": "Nonkels",
-          "season": 3,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt32276608",
-          "title": "Autemials' Videopacks",
-          "season": 3,
-          "seasonYear": 2025
-        },
-        {
-          "seriesId": "tt32321928",
-          "title": "Betty La Fea: The Story Continues",
-          "season": 3,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt39204850",
-          "title": "Dead Man's Dog",
-          "season": 1,
-          "seasonYear": 2025
-        },
-        {
-          "seriesId": "tt38453829",
-          "title": "So Far So Good",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt43490607",
-          "title": "Aeronautica Imperialis",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt43665893",
-          "title": "Edilgen Aticilar",
-          "season": 1,
-          "seasonYear": 2026
-        }
-      ],
-      "removed": [],
-      "ratingSwings": [
-        {
-          "seriesId": "tt33145195",
-          "title": "Margarita",
-          "season": 3,
-          "from": 4.4,
-          "to": 5.74,
-          "delta": 1.34
-        },
-        {
-          "seriesId": "tt33312074",
-          "title": "She, Damned Soul",
-          "season": 1,
-          "from": 7.21,
-          "to": 6.46,
-          "delta": -0.75
-        },
-        {
-          "seriesId": "tt13183442",
-          "title": "Doomsday Brothers",
-          "season": 1,
-          "from": 5.63,
-          "to": 6.3,
-          "delta": 0.67
-        },
-        {
-          "seriesId": "tt44250295",
-          "title": "Sigge får inte ligga",
-          "season": 1,
-          "from": 7.88,
-          "to": 7.33,
-          "delta": -0.55
-        },
-        {
-          "seriesId": "tt38876221",
-          "title": "Dalliance",
-          "season": 1,
-          "from": 7.46,
-          "to": 8,
-          "delta": 0.54
-        },
-        {
-          "seriesId": "tt27618426",
-          "title": "Don't Toy with Me, Miss Nagatoro 2nd Attack Mini Anime",
-          "season": 1,
-          "from": 8.2,
-          "to": 8.66,
-          "delta": 0.46
-        },
-        {
-          "seriesId": "tt39044683",
-          "title": "Moon Shadow",
-          "season": 1,
-          "from": 8.8,
-          "to": 8.4,
-          "delta": -0.4
-        },
-        {
-          "seriesId": "tt36956707",
-          "title": "Jack the Ripper: Written in Blood",
-          "season": 1,
-          "from": 6.43,
-          "to": 6.07,
-          "delta": -0.36
-        },
-        {
-          "seriesId": "tt36912840",
-          "title": "Devika & Danny",
-          "season": 1,
-          "from": 8.61,
-          "to": 8.26,
-          "delta": -0.35
-        },
-        {
-          "seriesId": "tt37053085",
-          "title": "All the Truth in My Lies",
-          "season": 1,
-          "from": 7.42,
-          "to": 7.08,
-          "delta": -0.34
-        }
-      ],
-      "modifiedCounts": {
-        "seriesVotes": 20937,
-        "avgRating": 1180,
-        "shapes": 192,
-        "episodeCount": 86,
-        "seriesRating": 273,
-        "poster": 6,
-        "overview": 5,
-        "providers": 1
       }
     }
   ]
