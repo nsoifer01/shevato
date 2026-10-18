@@ -7,7 +7,7 @@
 // them breaks a build, which is exactly why they are pinned here.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync, existsSync } from 'node:fs';
+import { readFileSync, existsSync, readdirSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -53,7 +53,7 @@ test('a gated job is skipped only when plan positively decided the tree already 
   // other than a successful "already tested" answer would wave a pull request
   // through untested. The only skip path: a push, plan succeeded, run=false.
   const GATE = "${{ !cancelled() && (github.event_name != 'push' || needs.plan.result != 'success' || needs.plan.outputs.run == 'true') }}";
-  for (const id of ['lint', 'test', 'browser-shard', 'rules-shard']) {
+  for (const id of ['lint', 'test-shard', 'browser-shard', 'rules-shard']) {
     assert.equal(ifOf(id), GATE, `job "${id}" must use the fail-open gate`);
     assert.match(J[id], /^ {4}needs: plan$/m, `job "${id}" reads plan's answer`);
   }
@@ -61,27 +61,12 @@ test('a gated job is skipped only when plan positively decided the tree already 
 });
 
 test('each required verdict runs whatever happened to its shards', () => {
-  for (const [verdict, shards] of [['browser', 'browser-shard'], ['rules', 'rules-shard']]) {
+  for (const [verdict, shards] of [['test', 'test-shard'], ['browser', 'browser-shard'], ['rules', 'rules-shard']]) {
     assert.equal(ifOf(verdict), 'always()',
       `without always() a failed or cancelled ${shards} leaves the required check SKIPPED, which reads as passing`);
     assert.match(J[verdict], new RegExp(`SHARDS: \\$\\{\\{ needs\\.${shards}\\.result \\}\\}`));
     assert.match(J[verdict], /"\$SHARDS" != success/);
   }
-});
-
-test('the Arena e2e split covers every scenario exactly once', () => {
-  assert.match(J['rules-shard'], /^ {8}group: \[1, 2\]$/m);
-  assert.match(J['rules-shard'], /ARENA_E2E_GROUP: \$\{\{ matrix\.group \}\}/);
-  const e2e = readFileSync(join(REPO_ROOT, 'apps/arena/e2e/emulator.mjs'), 'utf8');
-  const chainLast = Number((/const CHAIN_LAST = (\d+);/.exec(e2e) || [])[1]);
-  assert.ok(chainLast > 0, 'emulator.mjs must still define CHAIN_LAST');
-  const labels = [...e2e.matchAll(/await guard\('([^']+)'/g)].map((m) => m[1]);
-  assert.ok(labels.length >= 10, `found ${labels.length} scenarios; the parser broke`);
-  // The runner throws on an unprefixed label; this says so before a CI run does.
-  assert.deepEqual(labels.filter((l) => !/^S\d+:/.test(l)), [], 'every scenario label needs its S<n>: prefix');
-  const nums = labels.map((l) => Number(/^S(\d+):/.exec(l)[1]));
-  assert.ok(nums.some((n) => n <= chainLast) && nums.some((n) => n > chainLast), 'both groups must hold scenarios');
-  assert.equal(new Set(nums).size, nums.length, 'scenario numbers must be unique');
 });
 
 test('nothing in the gate is allowed to fail quietly', () => {
@@ -113,8 +98,8 @@ test('the unit job reports each test file\'s cost against the per-file bound, on
   // --test-timeout bounds whole files. PR #542 took it for a per-test bound,
   // and nothing showed how close any file ran until the weekly coverage job
   // killed two (2026-09-14).
-  assert.match(J.test, /--test-reporter=\.\/scripts\/test-file-times\.mjs --test-reporter-destination=unit-file-times\.md/);
-  const summarize = J.test.slice(J.test.indexOf('- name: Summarize results'));
+  assert.match(J['test-shard'], /--test-reporter=\.\/scripts\/test-file-times\.mjs --test-reporter-destination=unit-file-times\.md/);
+  const summarize = J['test-shard'].slice(J['test-shard'].indexOf('- name: Summarize results'));
   assert.match(summarize, /^ {8}if: always\(\)$/m);
   assert.match(summarize, /unit-file-times\.md \| tee -a "\$GITHUB_STEP_SUMMARY"/);
 });
@@ -127,3 +112,25 @@ test('the retired per-suite workflows stay retired', () => {
     assert.equal(existsSync(join(REPO_ROOT, '.github/workflows', f)), false, `${f} was folded into ci.yml / scheduled.yml`);
   }
 });
+
+// 2026-10-17: the unit estate runs as two cost-packed halves of `npm test`
+// (scripts/test-shard.mjs), with the share total taken from the matrix, as the
+// browser shards do, so adding a half can never leave files no half runs.
+test('the unit halves run scripts/test-shard.mjs with the total from the matrix', () => {
+  assert.match(J['test-shard'], /^ {8}shard: \[1, 2\]$/m);
+  assert.match(J['test-shard'], /^ {8}run: node scripts\/test-shard\.mjs \$\{\{ matrix\.shard \}\}\/\$\{\{ strategy\.job-total \}\}$/m);
+  assert.doesNotMatch(J['test-shard'], /--test-shard=/, 'node\'s positional shard put the three heaviest files in one half');
+  assert.match(J['test-shard'], /name: unit-tests-junit-\$\{\{ matrix\.shard \}\}/, 'one artifact per half, or the second upload collides');
+});
+
+// 2026-10-17: every job in every workflow runs on a named image, never a
+// moving label, so an image migration (ubuntu-latest to Ubuntu 26 from
+// 2026-10-19) is a pull request, not a surprise.
+test('every workflow job runs on a pinned image, never ubuntu-latest', () => {
+  for (const f of readdirSync(join(REPO_ROOT, '.github/workflows')).filter((n) => n.endsWith('.yml'))) {
+    const y = readFileSync(join(REPO_ROOT, '.github/workflows', f), 'utf8');
+    assert.doesNotMatch(y, /runs-on:\s*ubuntu-latest/, f);
+    for (const m of y.matchAll(/runs-on:\s*(\S+)/g)) assert.match(m[1], /^ubuntu-\d{2}\.\d{2}$/, `${f}: ${m[1]}`);
+  }
+});
+

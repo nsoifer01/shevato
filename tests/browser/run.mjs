@@ -68,9 +68,9 @@ const SUITES = [
   // two-tab writes, destructive-action undo, import sanitising, seeded axe
   // scans, tablet geometry). One line per app, alphabetical. They are NOT
   // pinned in EXPECTED_CHECKS: like the trip-planner and fpl-planner suites,
-  // their check counts are their owners' to change. Arena's equivalent needs
-  // the Firebase emulators, so it stays in apps/arena/e2e/emulator.mjs behind
-  // `npm run test:arena:emulator`.
+  // their check counts are their owners' to change. Arena has none: its
+  // multiplayer e2e needed the Firebase emulators and was removed on
+  // 2026-10-17.
   // -----------------------------------------------------------------------
   'apps/football-h2h/e2e/audit-2026-08.mjs',
   'apps/fpl-planner/e2e/audit-2026-08.mjs',
@@ -240,48 +240,49 @@ if (!selected.length) { console.error(`--only=${only} matches no suite. Suites:\
 // prints at the end of every run.
 const DEFAULT_SECONDS = 90;
 //
-// Refreshed 2026-09-14 from the four CI shard timing tables of run
-// 34800414010 (the last run of the old four-shard layout), which now pack the
-// estate into six CI shards of 467-473 s each.
+// Refreshed 2026-10-17 from the median of the timing tables of the six shards
+// of three green PR runs (39026312243, 38998045594, 38986936794). The 2026-09-14
+// table had drifted: its slowest shard of six measured 532 s against 470 s for
+// the rest. These pack eight CI shards at 361-367 s each.
 const SUITE_SECONDS = {
   // perf: 313 on 2026-09-08 once the throttled CLS budgets and the F08
-  // partition cases were added (each is its own page load); 346 now.
-  'tests/browser/suites/perf.mjs': 346,
-  'tests/browser/suites/a11y.mjs': 179,
-  'apps/trip-planner/e2e/audit-fixes.mjs': 172,
-  'apps/gym-tracker/e2e/audit-2026-08.mjs': 153,
-  'tests/browser/suites/visual.mjs': 141,
-  'apps/gym-tracker/e2e/units-migration.mjs': 129,
-  'apps/trip-planner/e2e/places.mjs': 122,
-  'tests/browser/suites/apps.mjs': 120,
-  'apps/mario-kart/e2e/audit-2026-08.mjs': 115,
-  'tests/browser/suites/site.mjs': 115,
-  'apps/trip-planner/e2e/trips-sync.mjs': 109,
-  'apps/maptap-rivals/e2e/quality.mjs': 99,
-  'apps/trip-planner/e2e/ui.mjs': 99,
-  'apps/fpl-planner/e2e/lifecycle.mjs': 94,
-  'apps/trip-planner/e2e/audit-2026-08.mjs': 89,
+  // partition cases were added (each is its own page load); 346 on 2026-09-14, 326 now.
+  'tests/browser/suites/perf.mjs': 326,
+  'tests/browser/suites/a11y.mjs': 182,
+  'apps/trip-planner/e2e/audit-fixes.mjs': 175,
+  'apps/gym-tracker/e2e/audit-2026-08.mjs': 151,
+  'tests/browser/suites/visual.mjs': 137,
+  'apps/gym-tracker/e2e/units-migration.mjs': 128,
+  'apps/trip-planner/e2e/places.mjs': 181,
+  'tests/browser/suites/apps.mjs': 122,
+  'apps/mario-kart/e2e/audit-2026-08.mjs': 98,
+  'tests/browser/suites/site.mjs': 116,
+  'apps/trip-planner/e2e/trips-sync.mjs': 108,
+  'apps/maptap-rivals/e2e/quality.mjs': 113,
+  'apps/trip-planner/e2e/ui.mjs': 97,
+  'apps/fpl-planner/e2e/lifecycle.mjs': 102,
+  'apps/trip-planner/e2e/audit-2026-08.mjs': 90,
   // 501 -> 101 with the same-document navigation fix in cdp.mjs (see FINDINGS,
   // "A fragment-only goto() used to cost 21 seconds"), then -> ~80 once
   // seedAndReload stopped needing three navigations per boot.
   'apps/maptap-rivals/e2e/audit-2026-08.mjs': 80,
-  'apps/fpl-planner/e2e/audit-2026-08.mjs': 80,
-  'apps/fpl-planner/e2e/scenario.mjs': 64,
-  'apps/trip-planner/e2e/assistant.mjs': 64,
+  'apps/fpl-planner/e2e/audit-2026-08.mjs': 84,
+  'apps/fpl-planner/e2e/scenario.mjs': 75,
+  'apps/trip-planner/e2e/assistant.mjs': 63,
   'tests/browser/suites/csp.mjs': 59,
   'apps/trip-planner/e2e/qa-fixes.mjs': 52,
-  'apps/trip-planner/e2e/canonical-coordinates.mjs': 50,
-  'apps/trip-planner/e2e/views.mjs': 48,
+  'apps/trip-planner/e2e/canonical-coordinates.mjs': 56,
+  'apps/trip-planner/e2e/views.mjs': 50,
   'apps/trip-planner/e2e/schedule-slots.mjs': 47,
   'apps/trip-planner/e2e/core.mjs': 45,
-  'apps/football-h2h/e2e/audit-2026-08.mjs': 44,
+  'apps/football-h2h/e2e/audit-2026-08.mjs': 43,
   'apps/trip-planner/e2e/assistant-identity.mjs': 34,
   // With the dataset present, which CI now always prepares.
-  'apps/rising-shows/e2e/audit-2026-08.mjs': 30,
+  'apps/rising-shows/e2e/audit-2026-08.mjs': 34,
   'apps/trip-planner/e2e/share.mjs': 18,
   'tests/browser/suites/pwa-gym.mjs': 12,
-  'apps/fpl-planner/e2e/free-hit.mjs': 9,
-  'apps/fpl-planner/e2e/roll-near-tie.mjs': 20,
+  'apps/fpl-planner/e2e/free-hit.mjs': 10,
+  'apps/fpl-planner/e2e/roll-near-tie.mjs': 27,
   'apps/trip-planner/e2e/pwa.mjs': 5,
 };
 

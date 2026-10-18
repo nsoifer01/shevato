@@ -107,6 +107,8 @@ test('F11: twenty concurrent expired reads make ONE upstream call', async () => 
   assert.ok(results.every((r) => r.status === 200), 'and nobody is made to wait or fail');
   assert.ok(results.filter((r) => r.coalesced).every((r) => r.stale === true),
     'a coalesced answer must SAY it is stale');
+  assert.ok(results.filter((r) => r.coalesced).every((r) => r.upstream === 'refreshing'),
+    'and why: another caller is refreshing it (x-fpl-upstream)');
 });
 
 test('F11: the refresh owner still returns fresh data and writes the cache', async () => {

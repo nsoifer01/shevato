@@ -7,14 +7,16 @@ name: ci
 #   +- plan ............ push only: has this exact tree already passed on its
 #   |                    pull request? (scripts/ci-already-tested.mjs)
 #   +- lint ............ ESLint correctness rules (npm run lint)
-#   +- test ............ every node:test file: unit, integration, static
-#   +- browser-shard x6  the CDP browser estate, packed by measured cost
-#   |  +- browser ...... one verdict for the six shards
+#   +- test-shard x2 ... every node:test file (unit, integration, static),
+#   |  |                 packed by measured cost (scripts/test-shard.mjs)
+#   |  +- test ......... one verdict for both halves
+#   +- browser-shard x8  the CDP browser estate, packed by measured cost
+#   |  +- browser ...... one verdict for the eight shards
 #   +- dataset-cache ... push only: keeps the Rising Shows dataset cache warm
 #   |                    on master, where every pull request can restore it
-#   +- rules-shard x2 .. Arena's Firestore rules suite + multi-client e2e against
-#      |                 the emulators, scoped to changes that can move them
-#      +- rules ........ one verdict for both groups
+#   +- rules-shard ..... Arena's Firestore rules suite against the emulator,
+#      |                 scoped to changes that can move it
+#      +- rules ........ its verdict
 #
 # Branch protection requires the job names `lint`, `test`, `browser` and
 # `rules`. Renaming one of those jobs silently un-requires it.
@@ -27,8 +29,8 @@ name: ci
 # that had already passed. Now the question is asked once, correctly, in
 # `plan`, and every job reads the answer.
 #
-# Nothing here waits on anything it does not need: lint, test, the six browser
-# shards and both Arena groups all start together. On a pull request `plan` is skipped outright
+# Nothing here waits on anything it does not need: lint, both test halves, the
+# eight browser shards and the Arena rules suite all start together. On a pull request `plan` is skipped outright
 # and costs nothing.
 #
 # WHAT IS NEVER DONE HERE: retries of a failed check, continue-on-error on a
@@ -51,6 +53,13 @@ concurrency:
   group: ci-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || format('{0}-{1}', github.event_name, github.sha) }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
+# RUNNERS ARE PINNED TO ubuntu-24.04 (2026-10-17), in every workflow here.
+# GitHub moves `ubuntu-latest` to Ubuntu 26 from 2026-10-19 (its annotation
+# on these runs, actions/runner-images#14748), which would change Chrome,
+# Python and Java under unchanged code: the class of failure that cost the
+# evening of 2026-10-17. Moving image is a deliberate change with its own
+# pull request; tests/static/ci-workflow.test.mjs keeps every job pinned.
+
 permissions:
   contents: read
   # plan reads pull requests and their workflow runs.
@@ -60,7 +69,7 @@ permissions:
 jobs:
   plan:
     if: github.event_name == 'push'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     outputs:
       run: ${{ steps.decide.outputs.run }}
@@ -81,7 +90,7 @@ jobs:
   lint:
     needs: plan
     if: ${{ !cancelled() && (github.event_name != 'push' || needs.plan.result != 'success' || needs.plan.outputs.run == 'true') }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v6
@@ -94,10 +103,24 @@ jobs:
       - run: npm ci
       - run: npm run lint
 
-  test:
+  # TWO HALVES (2026-10-17). One job was 414 s median and 649 s at worst over
+  # the 25 PR runs to 2026-10-17, second only to the browser shards on the
+  # critical path, and the FPL planner's heavy files keep growing.
+  # scripts/test-shard.mjs packs the files of `npm test` longest-first by
+  # measured cost and runs its share with the script's own flags, so `npm test`
+  # stays the one definition of what runs and the halves together run every
+  # file once (4,122 + 3,344 = all 7,466 tests, measured). Node's own
+  # --test-shard was tried first: it splits by file position, the three
+  # heaviest files sort together, and its slow half took 327 s and 488 s on
+  # this PR's first two runs, no faster than the single job.
+  test-shard:
     needs: plan
     if: ${{ !cancelled() && (github.event_name != 'push' || needs.plan.result != 'success' || needs.plan.outputs.run == 'true') }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2]
     # About four minutes on a runner. The cap exists so a hung test fails in
     # minutes with a name instead of holding a runner for GitHub's six-hour
     # default: package.json sets --test-timeout, which bounds each test FILE
@@ -125,10 +148,10 @@ jobs:
       # creeping toward the bound shows on a green run before it is killed.
       # Passed through NODE_OPTIONS so `npm test` stays the single definition
       # of what runs (no test in the estate spawns `node --test` itself).
-      - name: Unit, integration and static tests
+      - name: Unit, integration and static tests (share ${{ matrix.shard }})
         env:
           NODE_OPTIONS: --test-reporter=dot --test-reporter-destination=stdout --test-reporter=junit --test-reporter-destination=unit-tests.junit.xml --test-reporter=./scripts/test-file-times.mjs --test-reporter-destination=unit-file-times.md
-        run: npm test
+        run: node scripts/test-shard.mjs ${{ matrix.shard }}/${{ strategy.job-total }}
       # On EVERY outcome: `dot` prints no totals, so on a green run this line is
       # the evidence of how many tests actually executed (and how many were
       # skipped or quarantined as todo). Printed to the log and the run summary.
@@ -141,25 +164,55 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v7
         with:
-          name: unit-tests-junit
+          name: unit-tests-junit-${{ matrix.shard }}
           path: unit-tests.junit.xml
           if-no-files-found: ignore
           retention-days: 14
 
+  # One verdict for both halves, under the name branch protection requires.
+  # `if: always()` for the same reason as `browser`: a failed or cancelled
+  # half must not leave the required check skipped.
+  test:
+    needs: [plan, test-shard]
+    if: always()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Verify both halves passed
+        env:
+          EVENT: ${{ github.event_name }}
+          PLAN: ${{ needs.plan.result }}
+          PLAN_RUN: ${{ needs.plan.outputs.run }}
+          SHARDS: ${{ needs.test-shard.result }}
+        run: |
+          if [ "$EVENT" = push ] && [ "$PLAN" = success ] && [ "$PLAN_RUN" = false ]; then
+            echo "this tree already passed the unit estate on its pull request"
+            exit 0
+          fi
+          echo "test-shard result: $SHARDS"
+          if [ "$SHARDS" != success ]; then
+            echo "::error::the unit estate did not pass (halves: $SHARDS)"
+            exit 1
+          fi
+
   browser-shard:
     needs: plan
     if: ${{ !cancelled() && (github.event_name != 'push' || needs.plan.result != 'success' || needs.plan.outputs.run == 'true') }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # One shard failing must not cancel its siblings: the estate exists to say
     # everything that is broken, not the first thing.
-    # SIX shards: packed by the measured costs in tests/browser/run.mjs, six
-    # land within 1.5% of each other at about 470 s of suites each (four were
-    # about 710 s). The single heaviest suite, perf.mjs, is about 350 s, so
-    # more shards would buy little and cost more concurrent jobs per PR.
+    # EIGHT shards (2026-10-17): packed by the measured costs in
+    # tests/browser/run.mjs, from GitHub-runner medians of three PR runs, eight
+    # land at 361-367 s of suites each (six at 482-491 s; the stale table had
+    # drifted to 532 s on its slowest). The heaviest suite, perf.mjs, is about
+    # 326 s, so eight is where more shards stop paying. The repository is
+    # public, so runner minutes are free; the cost is concurrent jobs, 13 at
+    # once per pull request against GitHub's 20, so two pushes at the same
+    # moment briefly queue.
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2, 3, 4, 5, 6]
+        shard: [1, 2, 3, 4, 5, 6, 7, 8]
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@v6
@@ -219,7 +272,7 @@ jobs:
   browser:
     needs: [plan, browser-shard]
     if: always()
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
       - name: Verify every shard passed
@@ -245,7 +298,7 @@ jobs:
   # side effect of re-running the estate on every push; pushes now skip the
   # shards when the tree already passed (plan), so without this job nothing on
   # master would save the key and every pull request's first run would download
-  # and split the dataset on all six shards. Measured 2026-09-14 (PR #542): a
+  # and split the dataset on every shard. Measured 2026-09-14 (PR #542): a
   # miss costs each shard 8-13 s (download, split, save), a hit restores in
   # 2-4 s. Not gated on plan: its whole job is the run that plan skips.
   #
@@ -256,7 +309,7 @@ jobs:
   # hours).
   dataset-cache:
     if: github.event_name == 'push'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v6
@@ -269,24 +322,16 @@ jobs:
       - name: Rising Shows dataset
         uses: ./.github/actions/rising-shows-dataset
 
-  # The Arena emulator suites, on TWO machines. On one, the multiplayer e2e was
-  # about ten minutes of real game clocks, the longest job on a pull request.
-  # It splits at the one boundary its scenarios allow (ARENA_E2E_GROUP in
-  # apps/arena/e2e/emulator.mjs): group 1 is the chained S1-S5 session plus
-  # the rules suite, group 2 is S6 onward. Measured 2026-09-14, each group run
-  # alone on fresh emulators: 76/76 in 6.1 min and 30/30 in 3.5 min, together
-  # exactly the full run's 106 checks. A scenario belongs to one group by its
-  # number, so none can fall between the two.
+  # The Arena Firestore rules suite against the emulator, scoped to changes
+  # that can move it. The two-client multiplayer e2e that used to run here
+  # beside it was removed on 2026-10-17 (owner decision): it had become the
+  # slowest and least reliable check on the gate for an app with no users.
   rules-shard:
     needs: plan
     if: ${{ !cancelled() && (github.event_name != 'push' || needs.plan.result != 'success' || needs.plan.outputs.run == 'true') }}
-    runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        group: [1, 2]
-    # Both suites, plus a cold firebase-tools download on a cache miss.
-    timeout-minutes: 30
+    runs-on: ubuntu-24.04
+    # The rules suite, plus a cold firebase-tools download on a cache miss.
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v6
         with:
@@ -319,7 +364,7 @@ jobs:
 
           run_everything() {
             echo "run=1" >> "$GITHUB_OUTPUT"
-            echo "Running both suites: $1"
+            echo "Running the rules suite: $1"
             exit 0
           }
 
@@ -346,32 +391,47 @@ jobs:
           # The inputs, and why each one is an input:
           #   firestore.rules        the authorization boundary under test
           #   firebase.json          emulator ports and the ruleset wiring
-          #   firebase-config.js     the emulator seam for auth, and the app every client signs in through
-          #   firebase-firestore.js  the emulator seam for Firestore: every client in both suites reaches Firestore through it
-          #   apps/arena/**          the app that writes through it, plus both suites
-          #   sync-system/**         the layer the app writes through (arena loads six of its modules)
-          #   tests/browser/cdp.mjs  the driver the multiplayer e2e imports
-          #   tests/browser/third-party.mjs + vendor/third-party/
-          #                          what every e2e page's Firebase SDK is served from
+          #   apps/arena/**          the suite (apps/arena/tests-rules/) and the app whose rules these are
           #   package.json/.nvmrc    the scripts this job runs, and the node it runs them on
-          #   this workflow          its own steps
-          INPUTS='^(firestore\.rules|firebase\.json|firebase-config\.js|firebase-firestore\.js|package\.json|\.nvmrc|apps/arena/|sync-system/|tests/browser/cdp\.mjs|tests/browser/third-party\.mjs|tests/browser/vendor/third-party/|\.github/workflows/ci\.yml)'
-          # sync-system/tests/** is the one carve-out: node tests and their
-          # stubs, already covered by the `test` job, and loaded by neither
-          # emulator suite.
-          NOT_INPUTS='^sync-system/tests/'
+          #   this workflow          its own steps: the header (triggers, concurrency,
+          #                          permissions) and the rules-shard and rules jobs, which
+          #                          are the last two in the file. A change elsewhere in it
+          #                          (another job) cannot move the outcome (2026-10-17).
+          # The suite drives the rules over the emulator's REST API and loads no
+          # page, so firebase-config.js, firebase-firestore.js and sync-system/
+          # stopped being inputs with the multiplayer e2e (2026-10-17).
+          INPUTS='^(firestore\.rules|firebase\.json|package\.json|\.nvmrc|apps/arena/|\.github/workflows/ci\.yml)'
+
+          # The workflow's arena part: everything before `jobs:`, then
+          # rules-shard to the end of the file. Compared against the merge
+          # base for a pull request (the same commit the three-dot diff uses),
+          # so master moving on is not counted as this change. Every read that
+          # fails runs the suites.
+          arena_part() { awk '/^jobs:/{h=1} !h{print; next} /^  rules-shard:/{p=1} p'; }
+          if printf '%s\n' "$CHANGED" | grep -qx '\.github/workflows/ci\.yml'; then
+            CMP="$BEFORE"
+            if [ "$EVENT" = pull_request ]; then
+              CMP=$(git merge-base "$BEFORE" "$AFTER") || run_everything "no merge base for $BEFORE and $AFTER"
+            fi
+            OLD=$(git show "$CMP:.github/workflows/ci.yml") || run_everything "cannot read the workflow at $CMP"
+            NEW=$(git show "$AFTER:.github/workflows/ci.yml") || run_everything "cannot read the workflow at $AFTER"
+            if [ "$(printf '%s\n' "$OLD" | arena_part)" = "$(printf '%s\n' "$NEW" | arena_part)" ]; then
+              echo "ci.yml changed outside the arena job and the workflow header: not an input."
+              CHANGED=$(printf '%s\n' "$CHANGED" | grep -vx '\.github/workflows/ci\.yml' || true)
+            fi
+          fi
 
           # `|| true` is load-bearing: Actions runs this as `bash -e`, and grep
           # exits 1 when it matches nothing, which IS the skip case. Without it
           # every pull request with no emulator inputs went red (2026-09-08).
-          HITS=$(printf '%s\n' "$CHANGED" | grep -Ev "$NOT_INPUTS" | grep -E "$INPUTS" || true)
+          HITS=$(printf '%s\n' "$CHANGED" | grep -E "$INPUTS" || true)
           if [ -n "$HITS" ]; then
             echo "run=1" >> "$GITHUB_OUTPUT"
             echo "Emulator inputs changed:"
             printf '%s\n' "$HITS" | sed 's/^/  /'
           else
             echo "run=0" >> "$GITHUB_OUTPUT"
-            echo "No emulator inputs in this change - reporting success without running the suites."
+            echo "No emulator inputs in this change - reporting success without running the rules suite."
             echo "Changed files:"
             printf '%s\n' "$CHANGED" | sed 's/^/  /'
           fi
@@ -406,49 +466,22 @@ jobs:
       # behaviour into a hard failure, so a broken Java setup or download can
       # never fake a green run.
       - name: Run the rules suite against the emulator
-        if: steps.scope.outputs.run == '1' && matrix.group == 1
+        if: steps.scope.outputs.run == '1'
         env:
           ARENA_RULES_REQUIRE: '1'
         run: npm run test:arena:rules
 
-      - name: Resolve browser
-        if: steps.scope.outputs.run == '1'
-        run: |
-          set -e
-          for c in google-chrome google-chrome-stable chromium chromium-browser; do
-            if command -v "$c" >/dev/null 2>&1; then
-              echo "CHROME_BIN=$c" >> "$GITHUB_ENV"
-              echo "Using $c: $("$c" --version)"
-              exit 0
-            fi
-          done
-          echo "::error::INFRASTRUCTURE: no Chrome/Chromium on the runner image." >&2
-          exit 1
 
-      # The only suite that drives two and three real clients against
-      # Firestore + Auth. It brings up its own emulators, two static servers
-      # and its own Chrome, and tears them all down. ARENA_E2E_VERBOSE streams
-      # each check and each scenario's timing as it happens, so a stall or a
-      # failure is located in the log instead of arriving as one block after
-      # eleven minutes.
-      - name: Run multiplayer e2e group ${{ matrix.group }} against the emulators
-        if: steps.scope.outputs.run == '1'
-        env:
-          ARENA_RULES_REQUIRE: '1'
-          ARENA_E2E_VERBOSE: '1'
-          ARENA_E2E_GROUP: ${{ matrix.group }}
-        run: npm run test:arena:emulator
-
-  # One verdict for both Arena groups, under the name branch protection
-  # requires. `if: always()` for the same reason as `browser`: a failed or
-  # cancelled group must not leave the required check skipped.
+  # The rules suite's verdict, under the name branch protection requires.
+  # `if: always()` for the same reason as `browser`: a failed or cancelled
+  # run must not leave the required check skipped.
   rules:
     needs: [plan, rules-shard]
     if: always()
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
-      - name: Verify both Arena groups passed
+      - name: Verify the Arena rules suite passed
         env:
           EVENT: ${{ github.event_name }}
           PLAN: ${{ needs.plan.result }}
@@ -456,11 +489,11 @@ jobs:
           SHARDS: ${{ needs.rules-shard.result }}
         run: |
           if [ "$EVENT" = push ] && [ "$PLAN" = success ] && [ "$PLAN_RUN" = false ]; then
-            echo "this tree already passed the Arena suites on its pull request"
+            echo "this tree already passed the Arena rules suite on its pull request"
             exit 0
           fi
           echo "rules-shard result: $SHARDS"
           if [ "$SHARDS" != success ]; then
-            echo "::error::the Arena emulator suites did not pass (groups: $SHARDS)"
+            echo "::error::the Arena rules suite did not pass ($SHARDS)"
             exit 1
           fi

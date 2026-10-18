@@ -315,74 +315,36 @@ Live multiplayer needs the shared Firebase/Firestore config at the repo root (`f
 
 ## Running tests
 
-Arena has three suites at three depths:
+Arena has two suites:
 
 ```sh
 npm run test:arena           # pure-module unit tests (part of `npm test`)
 npm run test:arena:rules     # Firestore security-rules suite (emulator; needs Java)
-npm run test:arena:emulator  # two-client multiplayer e2e (emulator + headless Chromium)
-
-# ONE scenario, for iterating on a bug. Comma-separated, matched as a
-# substring of the scenario label, so `S6` and `S6:` both work:
-ARENA_E2E_ONLY=S6 npm run test:arena:emulator          # about 70 seconds
-ARENA_E2E_ONLY=S2,S10 npm run test:arena:emulator      # host handoff, both paths
-ARENA_E2E_ONLY=S6 ARENA_E2E_VERBOSE=1 npm run test:arena:emulator   # detail on passes too
 ```
 
-Every scenario runs standalone: the three client pages are opened by `guard()`,
-not inside S1, so a filtered run pays for nothing it filtered out (before
-2026-09-12 the pages lived in S1, which meant every "focused" run replayed a
-full five-round three-client game first and cost 5 to 11 minutes). The
-skipped scenarios are still REPORTED, with the filter that excluded them, so a
-filtered run can never be mistaken for a full one. Read the preconditions in
-the output before believing a filtered pass: the scenarios share one live
-multi-client session and some leave the clients where the next one expects
-them.
-
-**The validation ladder** for a failure here, cheapest rung first. Do not start
-at the bottom:
-
-1. A `node --test` unit test that reproduces the logic (milliseconds; run it
-   forty times if it is a race).
-2. `ARENA_E2E_ONLY=<scenario>` (about 70 seconds).
-3. `npm run test:arena:emulator` in full, ONCE (5 to 11 minutes).
-4. The repository gates: `npm test`, `npm run lint`,
-   `npm run test:browser:parallel`, ONCE at the end.
+The two-client multiplayer e2e (`apps/arena/e2e/`, real browsers playing whole
+games against the emulators) was removed on 2026-10-17 by owner decision; see
+FINDINGS.md "The multiplayer e2e was removed".
 
 **Stale emulators.** An interrupted run used to leave the emulator holding
 port 8085, and the next run then SKIPPED, which reads exactly like a finished
-run. Two guards now: `run-emulator.mjs` tears down emulators, both static
-servers and Chrome on `SIGINT`/`SIGTERM`/`SIGHUP`, and `startEmulator` reaps
-leftovers of its own (matched on `emulators:start` plus the throwaway project
-id, so a real Firebase emulator for another project is never touched) and says
-so with the PIDs. A busy port owned by anything else is reported, not killed.
+run. `startEmulator` reaps leftovers of its own (matched on `emulators:start`
+plus the throwaway project id, so a real Firebase emulator for another project
+is never touched) and says so with the PIDs. A busy port owned by anything
+else is reported, not killed.
 
 - **Unit** (`node --test apps/arena/tests/`): trivia scoring and streaks, Globe Drop distance/multiplier/difficulty scoring, room-code generation and alphabet validation, daily-challenge determinism, Wikidata/Trivia normalization, chat sanitization/moderation, the sliding chat window and its unread bookkeeping, the host-takeover predicate, and the room-gate hash derivation (pinned against independently computed SHA-256 vectors). `rematch-failure` and `rejoin-disconnect-stamp` run the real `app.js` glue functions in `node:vm` against an in-memory Firestore (`tests/helpers/app-vm.js`), for bugs that live in which write the glue issues rather than in a pure helper.
 - **Rules** (`apps/arena/tests-rules/`): runs the real `firestore.rules` inside the Firestore emulator via plain REST - player-doc ownership, the hashed password gate, the value bounds on every member room write (advance, pick, resume, rematch votes), chat caps and append-only, guest exclusions, admin deletes, plus pins for the shared non-arena sections (including the MapTap Rivals network collections). On Node 20 the npm script finds no files (the `node --test` glob needs Node 21+; `.nvmrc` pins 22), so run it on 22 or run `node --test apps/arena/tests-rules/rules.test.mjs` directly. Deliberately NOT part of `npm test`: it needs Java plus a one-time firebase-tools/emulator download (pinned version, cached afterwards), which the dependency-free push/PR CI does not have. Skips cleanly when the environment is missing; CI runs it with `ARENA_RULES_REQUIRE=1`, which turns that skip into a hard failure (the `rules` job of `.github/workflows/ci.yml`). Rules are loaded through the emulator's `PUT :securityRules` endpoint with a deny-all negative control, because `emulators:start/exec` does not reliably compile updated rules.
-- **Multiplayer e2e** (`apps/arena/e2e/`): three real app instances (three origins = three Firebase users) against the Firestore + Auth emulators, connected through the opt-in emulator seam in the shared `firebase-config.js` (auth) and `firebase-firestore.js` (Firestore) (loopback hostname AND `localStorage['shevato:firebase-emulators'] = '1'` - inert in production by construction, see `sync-system/firebase-emulator-flag.mjs`). Covers the full room lifecycle: create, join by code, start, lockstep question propagation, simultaneous answers with early reveal, score propagation, rematch, host handoff on BOTH paths (the Leave button in S2, and a host tab that simply disappears in S10), a player swept while their tab was frozen in the background being told and taken out of the room when it wakes (S11), the sliding chat window past its 80-message cap (S9), the password gate end-to-end, and invalid-code rejection. It also pins the 2026-08-22 audit's regressions: a first-time guest creating a room with no sync-modal seed, the gate-deletion exploit attempted from a third client's own SDK, a ghost player past the grace, a hidden host tab (trivia and Globe Drop), an answer clicked while offline, the chat rate limit at the call site, a coordinate double-click on Start, a stale rematch prompt, the end screen after the winner leaves, chat/gate/player cleanup after the last leaver, a registered user's leaderboard row matching their profile, and seeded axe scans of the in-room states and modals at 1280 and 360. Production Firebase hosts are intercept-failed on every page as a second line of defense.
 
-**When CI runs the two emulator suites.** The `rules` job of
+**When CI runs the rules suite.** The `rules` job of
 `.github/workflows/ci.yml` starts on every pull request and every push to
 master whose tree has not already passed (weekly, `scheduled.yml` runs it
-unscoped), but a "Scope" step decides inside the job whether the suites
-actually run: they run when the change touches `firestore.rules`,
-`firebase.json`, `firebase-firestore.js`, `firebase-config.js` (the emulator
-seam every client reaches Firestore through), `apps/arena/`, `sync-system/`
-(except `sync-system/tests/`), the `tests/browser/cdp.mjs` driver the e2e
-imports, `tests/browser/third-party.mjs` and its `vendor/third-party/` mirror
-(where every e2e page's Firebase SDK comes from), `package.json`, `.nvmrc` or
-the workflow itself, and are skipped otherwise. The job runs on two machines
-(`rules-shard` groups 1 and 2, gathered by `rules`): group 1 is the rules suite
-plus scenarios S1-S5, which are one chained session and always run together
-in order; group 2 is S6 onward, each of which starts from a reset lobby
-(`ARENA_E2E_GROUP`, `CHAIN_LAST` in `e2e/emulator.mjs`). The e2e prints each scenario as
-it starts and how long it took (fixed waits, polling and navigation), and with
-`ARENA_E2E_VERBOSE=1`, which CI sets, each check as it resolves. The job reports either way, which
-is what lets `rules` be a required status check: a workflow filtered by
-`on.<event>.paths` reports nothing at all when a change misses the filter, and
-a required check that never reports can never be satisfied. `tests/static/ci-arena-scope.test.mjs`
-drives that Scope script directly and fails if the input list drifts from what
-the suites actually depend on. It derives that list from both the e2e
-harness's imports and the app's own import graph; the second walk is what
-would have caught `firebase-config.js` missing from the inputs until
-2026-09-13.
+unscoped), but a "Scope" step decides inside the job whether the suite
+actually runs: it runs when the change touches `firestore.rules`,
+`firebase.json`, `apps/arena/`, `package.json`, `.nvmrc`, or the workflow's
+header or its `rules-shard`/`rules` jobs, and is skipped otherwise. The job
+reports either way, which is what lets `rules` be a required status check: a
+workflow filtered by `on.<event>.paths` reports nothing at all when a change
+misses the filter, and a required check that never reports can never be
+satisfied. `tests/static/ci-arena-scope.test.mjs` drives that Scope script
+directly.

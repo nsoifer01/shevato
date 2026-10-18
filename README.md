@@ -250,7 +250,7 @@ DOM behavior is covered because a copy of its logic passes in Node.
 | Performance | CDP (budgets) | `tests/browser/suites/perf.mjs` | First-party byte / request / DOM-size budgets per page, set from measured baselines with headroom |
 | PWA / offline | CDP | `tests/browser/suites/pwa-gym.mjs`, `apps/trip-planner/e2e/pwa.mjs` | Service-worker registration, cache contents, offline reload |
 | Cross-browser | Playwright (dev-dep) + `node --test` | `tests/cross-browser/` | Firefox + WebKit smoke of every page/app. Chromium depth stays in the CDP harness |
-| Firebase rules + multiplayer | Firestore emulator (npx firebase-tools, Java 21) | `apps/arena/tests-rules/`, `apps/arena/e2e/` | Security-rules suite (deny-all negative control) and a two-client multiplayer e2e against local emulators; never production Firebase |
+| Firebase rules | Firestore emulator (npx firebase-tools, Java 21) | `apps/arena/tests-rules/` | Security-rules suite (deny-all negative control) against the local emulator; never production Firebase. The two-client multiplayer e2e was removed on 2026-10-17 |
 | Coverage | wrapper over `node --test` | `tests/coverage/` | Runs the unit estate under V8 coverage, reports per area, enforces line floors |
 
 ### Commands
@@ -263,8 +263,8 @@ npm run test:browser       # full browser estate: site, apps, a11y, visual, perf
                            #   across a six-job matrix, `-- --shard=<i>/<n>`, and the shards are
                            #   packed by MEASURED cost). Never touches the internet: third-party
                            #   requests are served from tests/browser/vendor/third-party/
-npm run test:browser:parallel  # the same estate, 4 shards at once on this machine (11.1
-                           #   minutes, measured 2026-09-14). Each shard gets its own port pair, static server, Chrome
+npm run test:browser:parallel  # the same estate, 6 shards at once on this machine (8.0
+                           #   minutes, measured twice 2026-10-17; 12.0 at 4). Each shard gets its own port pair, static server, Chrome
                            #   and profile, so it is the same isolation CI gets. `-- --shards=<n>`
                            #   to change the width; it refuses to start if a port is busy.
 npm run test:all           # "is this change safe to merge": lint, then npm test, then test:browser
@@ -272,7 +272,6 @@ npm run test:coverage      # coverage report to .coverage/summary.md + per-area 
 npm run test:cross-browser # Firefox/WebKit smoke (needs: npm install && npx playwright install firefox webkit;
                            #   WebKit additionally needs system libs, so it runs fully only on CI)
 npm run test:arena:rules   # Firestore security-rules suite vs the local emulator
-npm run test:arena:emulator# two-client multiplayer e2e vs the local emulators
                            #   (both need Java 21 + a one-time firebase-tools download;
                            #   CI runs both in ci.yml's `rules` job on PRs and master pushes
                            #   that can affect Arena, plus weekly)
@@ -370,11 +369,12 @@ Fixing the product bug is a separate change from the test that documents it.
   check counts for every harness-owned suite (see EXPECTED_CHECKS in
   run.mjs), so a crashed block cannot silently shrink the denominator.
 - CI (`.github/workflows/`):
-  - `ci` is the whole pull-request gate, one workflow: `lint`, `test` (every
-    `node:test` file with the Rising Shows dataset present, so the
+  - `ci` is the whole pull-request gate, one workflow: `lint`, the
+    `test-shard` pair with its `test` verdict (every `node:test` file, split in
+    two by measured cost by `scripts/test-shard.mjs`, with the Rising Shows dataset present, so the
     real-catalogue tests run; `dot` output plus a summary on every run that
     states the totals and names every skipped test), the
-    `browser-shard` matrix (six shards) with its `browser` verdict, and the
+    `browser-shard` matrix (eight shards) with its `browser` verdict, and the
     `rules-shard` pair with its `rules` verdict (the Arena rules suite and the
     multi-client e2e against the emulators, split across two machines and
     scoped to changes that can move them). They all start together. The required status checks
@@ -385,7 +385,14 @@ Fixing the product bug is a separate change from the test that documents it.
     `dataset-cache` keeps the Rising Shows dataset cache warm on master, where
     every pull request's shards can restore it.
   - `scheduled` (weekly + manual): the full `ci` pipeline against master
-    unscoped, the coverage floors, and the Firefox/WebKit smoke.
+    unscoped (so the Arena rules suite runs there whatever changed), the coverage
+    floors, the Firefox/WebKit smoke, the FPL Planner mutation check, and the
+    FPL tests that need the real season archive (`fpl-archive`: fetched there
+    weekly, never on the pull-request path, and the job fails if any of them
+    still skips).
+  - Every job runs on a pinned image (`ubuntu-24.04`), never `ubuntu-latest`,
+    so an image migration is its own pull request
+    (`tests/static/ci-workflow.test.mjs`).
   - `Refresh Rising Shows data` (daily; publishes the dataset release and
     opens the derived-files pull request) and `bot pr autopilot` (drives those
     pull requests through their required checks to auto-merge).

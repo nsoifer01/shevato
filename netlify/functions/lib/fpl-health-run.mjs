@@ -43,7 +43,7 @@ import { runProbe, payloadShapeFailures } from '../../../apps/fpl-planner/script
 import { FPL_API, USER_AGENT, archiveCoverageFailures, seasonLabelFrom } from '../../../apps/fpl-planner/scripts/lib/archive.mjs';
 import { stagedManifest } from './fpl-archive-stage.mjs';
 import { freeHitPicksInfo } from '../../../apps/fpl-planner/js/engine/squad.js';
-import { REFUSAL_KEY, scrubUpstreamText } from './fpl-cache.mjs';
+import { REFUSAL_KEY, UPSTREAM_CAUSES, scrubUpstreamText } from './fpl-cache.mjs';
 
 export const HEALTH_STORE = 'fpl-health';
 
@@ -75,6 +75,20 @@ export const DIAGNOSE_TIMEOUT_MS = 5000;
 // when it has ended by the time the run looks: on 2026-10-16 FPL refused the
 // proxy for up to two hours between two green runs and nothing said so.
 export const REFUSAL_ALERT_MINUTES = 30;
+// ONE RE-READ OF AN ANSWER FPL DEGRADED (2026-10-17). The app retries a 503
+// once, 300 to 500 ms later (js/data/api.js RETRY_STATUSES), so a single
+// refused or failed upstream fetch costs a visitor a slower load, not a broken
+// one; the probe read each payload once and failed the run on it. Incidents
+// #616 (one 403, the proxy's own backoff, a run red for six hours on a site
+// that was healthy two seconds later) and #604 were that. So a proxy answer
+// that is a 503 or a stale copy AND names an FPL-side cause in x-fpl-upstream
+// (lib/fpl-cache.mjs UPSTREAM_CAUSES) is read once more after this pause, and
+// judged on the second answer. The first is reported as a `transient` line
+// and counted in the history. Never re-read: an answer degraded for our own
+// reasons (no header, `quota`), any other status, and a second bad answer,
+// which fails the check exactly as before. A corroborated refusal keeps the
+// proxy backing off, so a real block still fails the run.
+export const REREAD_DELAY_MS = 1000;
 // The real manager every run plans, read through the proxy exactly as the app
 // reads him (2026-10-16). Every manager-state defect of 2026/27 (free
 // transfers, the Free Hit revert, the value check, the alternatives card)
@@ -87,10 +101,27 @@ export const healthEntryId = (env = globalThis.process ? process.env : {}) => {
   return /^\d+$/.test(v) ? v : null;
 };
 
-export const slotOf = (iso) => {
+export const slotOf = (iso, hours = SLOT_HOURS) => {
   const d = new Date(Date.parse(iso));
-  const h = Math.floor(d.getUTCHours() / SLOT_HOURS) * SLOT_HOURS;
+  const h = Math.floor(d.getUTCHours() / hours) * hours;
   return `${d.toISOString().slice(0, 10)}T${String(h).padStart(2, '0')}`;
+};
+
+// WHILE RED, EVERY HOUR (2026-10-17). The function is invoked hourly; it
+// probes once per six-hour slot as before, and in the hours between only when
+// the last stored result failed. Recovery used to be seen at the next six-hour
+// slot at best: #616 was opened at 12:41 for a refusal over by 12:43 and stayed
+// open, and the GitHub backstop re-reported it at 15:58, on a site that had
+// been healthy for three hours. A healthy site costs FPL nothing extra; a red
+// one is re-read about ten times an hour. Slot ids sort as strings, so an
+// hourly recheck's id ('2026-10-17T13') is "after" its six-hour slot's
+// ('2026-10-17T12') and the next slot ('2026-10-17T18') is after both.
+export const RECHECK_HOURS = 1;
+export const slotFor = (at, claimedSlot, before) => {
+  const slot = slotOf(at);
+  if (!claimedSlot || claimedSlot < slot) return { slot, recheck: false };
+  if (before && before.ok === false) return { slot: slotOf(at, RECHECK_HOURS), recheck: true };
+  return null;
 };
 
 /**
@@ -98,12 +129,34 @@ export const slotOf = (iso) => {
  * `previous` is the claim this one replaced, so a run can tell whether the
  * one before it ever finished.
  */
-async function claimSlot(store, slot, at) {
+async function claimSlot(store, at, before) {
   const cur = await store.getWithMetadata('slot', { type: 'json' });
   const previous = (cur && cur.data) || null;
-  if (previous && previous.slot === slot) return { claimed: false, previous };
+  const wanted = slotFor(at, previous && previous.slot, before);
+  if (!wanted) return { claimed: false, previous, slot: slotOf(at) };
+  const { slot } = wanted;
+  if (previous && previous.slot === slot) return { claimed: false, previous, slot };
   const res = await store.setJSON('slot', { slot, at }, cur && cur.etag ? { onlyIfMatch: cur.etag } : { onlyIfNew: true });
-  return { claimed: !(res && res.modified === false), previous };
+  return { claimed: !(res && res.modified === false), previous, slot };
+}
+
+// The proxy, read as the app reads it: an answer FPL degraded is asked for
+// once more (REREAD_DELAY_MS). `notes` collects what each re-read found.
+export function rereadingFetch(fetchImpl, notes, { delayMs = REREAD_DELAY_MS, sleep = (ms) => new Promise((r) => setTimeout(r, ms)) } = {}) {
+  return async (url, init) => {
+    const first = await fetchImpl(url, init);
+    const cause = first.headers.get('x-fpl-upstream');
+    const degraded = first.status === 503 || (first.ok && first.headers.get('x-fpl-stale') === 'true');
+    if (!degraded || !UPSTREAM_CAUSES.includes(cause)) return first;
+    if (first.body) await first.body.cancel().catch(() => {});
+    await sleep(delayMs);
+    const second = await fetchImpl(url, init);
+    const path = new URL(url).searchParams.get('path');
+    const was = first.status === 503 ? 'HTTP 503' : 'a stale copy';
+    const now = second.status !== 200 ? `HTTP ${second.status}` : second.headers.get('x-fpl-stale') === 'true' ? 'a stale copy again' : 'fresh';
+    notes.push({ path, cause, recovered: now === 'fresh', line: `${path}: ${was} (${cause}), re-read ${delayMs / 1000} s later: ${now}` });
+    return second;
+  };
 }
 
 async function readPayload(name, fetchImpl, responses) {
@@ -184,8 +237,10 @@ export async function readEntry(id, bootstrapReady, fetchImpl, responses = {}) {
 }
 
 /** One probe of production. Pure apart from `fetchImpl` and the clock. */
-export async function probeProduction({ fetchImpl = fetch, now = new Date().toISOString(), prev = null, entryId = healthEntryId() } = {}) {
+export async function probeProduction({ fetchImpl: rawFetch = fetch, now = new Date().toISOString(), prev = null, entryId = healthEntryId(), rereadDelayMs = REREAD_DELAY_MS } = {}) {
   const responses = {};
+  const transient = [];
+  const fetchImpl = rereadingFetch(rawFetch, transient, { delayMs: rereadDelayMs });
   let bootstrap;
   let fixtures;
   // In parallel: the reads are independent, and on Netlify every second
@@ -199,10 +254,10 @@ export async function probeProduction({ fetchImpl = fetch, now = new Date().toIS
       readPayload('fixtures', fetchImpl, responses),
     ]);
   } catch (err) {
-    return { checks: [failure('the proxy serves the FPL payloads', `${err.message}; ${await diagnoseUpstream(fetchImpl)}`, 'HTTP 200')], reading: null, lines: [] };
+    return { checks: [failure('the proxy serves the FPL payloads', `${err.message}; ${await diagnoseUpstream(rawFetch)}`, 'HTTP 200')], reading: null, lines: transientLines(transient), transient };
   }
   const shape = payloadShapeFailures(bootstrap, fixtures);
-  if (shape.length) return { checks: [failure('the payloads have the shape the app reads', shape.join('; '), 'bootstrap and fixtures arrays')], reading: null, lines: [] };
+  if (shape.length) return { checks: [failure('the payloads have the shape the app reads', shape.join('; '), 'bootstrap and fixtures arrays')], reading: null, lines: transientLines(transient), transient };
   const entry = entryRead ? await entryRead : null;
   const result = await runProbe({
     // The real entry's squad state is checked; his plan is the GitHub
@@ -222,26 +277,28 @@ export async function probeProduction({ fetchImpl = fetch, now = new Date().toIS
   // and the report. A healthy run asks FPL nothing.
   const stale = Object.keys(responses).filter((name) => responses[name].get('x-fpl-stale') === 'true');
   if (stale.length) {
-    const diagnosis = await diagnoseUpstream(fetchImpl);
+    const diagnosis = await diagnoseUpstream(rawFetch);
     for (const c of result.checks) {
       if (c.ok === false && stale.some((name) => c.name === `the proxy serves ${name} fresh and uncached by browsers`)) c.saw = `${c.saw}; ${diagnosis}`;
     }
     result.lines.push('', `upstream        ${diagnosis} (asked directly after the proxy served ${stale.join(' and ')} stale)`);
   }
+  result.lines.push(...transientLines(transient));
   // Handed back for the archive check below, which needs the deadlines.
-  return { ...result, bootstrap };
+  return { ...result, bootstrap, transient };
 }
+
+const transientLines = (notes) => (notes.length ? ['', ...notes.map((n) => `transient       ${n.line}`)] : []);
 
 /**
  * The scheduled run: claim the slot, probe, store, alert. Returns what was
  * stored (or `{ skipped }`).
  */
-export async function runScheduledProbe({ store, fetchImpl = fetch, now = () => new Date().toISOString(), alert = null, archiveStore = null, entryId = healthEntryId(), proxyStore = null, slowRunMs = SLOW_RUN_MS } = {}) {
+export async function runScheduledProbe({ store, fetchImpl = fetch, now = () => new Date().toISOString(), alert = null, archiveStore = null, entryId = healthEntryId(), proxyStore = null, slowRunMs = SLOW_RUN_MS, rereadDelayMs = REREAD_DELAY_MS } = {}) {
   const at = now();
-  const slot = slotOf(at);
   const before = await store.get('latest', { type: 'json' });
-  const { claimed, previous } = await claimSlot(store, slot, at);
-  if (!claimed) return { skipped: `slot ${slot} already probed` };
+  const { claimed, previous, slot } = await claimSlot(store, at, before);
+  if (!claimed) return { skipped: `slot ${slot} already probed${before && before.ok === false ? '' : ', and the last result passed'}` };
 
   const started = Date.now();
   let result;
@@ -253,7 +310,7 @@ export async function runScheduledProbe({ store, fetchImpl = fetch, now = () => 
   // unparseable body ends up quoted in a JSON error.
   try {
     const prev = await store.get('last-reading', { type: 'json' });
-    result = await probeProduction({ fetchImpl, now: at, prev, entryId });
+    result = await probeProduction({ fetchImpl, now: at, prev, entryId, rereadDelayMs });
   } catch (err) {
     result = { checks: [failure('the probe runs to completion', `threw: ${scrubUpstreamText(err && err.message)}`, 'no exception')], reading: null, lines: [] };
   }
@@ -301,6 +358,9 @@ export async function runScheduledProbe({ store, fetchImpl = fetch, now = () => 
     checks: result.checks.filter((c) => c.ok !== null).map(({ name, ok }) => ({ name, ok })),
     reading: result.reading,
     lines: result.lines,
+    // Answers FPL degraded and the re-read recovered (or did not): how often
+    // the upstream blips, kept in the history so a rising rate is visible.
+    transient: (result.transient || []).length,
   };
 
   await store.setJSON('latest', latest);
@@ -309,7 +369,7 @@ export async function runScheduledProbe({ store, fetchImpl = fetch, now = () => 
   // asked, so a red run told nobody.
   try {
     const history = (await store.get('history', { type: 'json' })) || [];
-    history.push({ at, slot, ok: latest.ok, failed: latest.failed.map((f) => f.name), durationMs: latest.durationMs });
+    history.push({ at, slot, ok: latest.ok, failed: latest.failed.map((f) => f.name), durationMs: latest.durationMs, transient: latest.transient });
     await store.setJSON('history', history.slice(-HISTORY_LIMIT));
     if (latest.ok && result.reading) await store.setJSON('last-reading', result.reading);
   } catch (err) {
@@ -383,6 +443,12 @@ export function statusOf(latest, nowMs = Date.now(), claim = null) {
  * so a healthy steady state starts nothing. Otherwise it only checks the token
  * can still reach the workflow, so an expired token surfaces while nothing is
  * wrong. Inert (null) without a token.
+ *
+ * A run that fails exactly as the one before it did (the same checks, and that
+ * one's alert went through) starts nothing either (2026-10-17). The hourly
+ * recheck while red would otherwise start a failing workflow run, and so an
+ * email, every hour of an incident; the issue already says it, and the GitHub
+ * schedule's backstop run repeats the failure every six hours, as before.
  */
 export function githubDispatchAlert({ token, repo = 'nsoifer01/shevato', ref = 'master', fetchImpl = fetch, timeoutMs = ALERT_TIMEOUT_MS } = {}) {
   if (!token) return null;
@@ -398,7 +464,11 @@ export function githubDispatchAlert({ token, repo = 'nsoifer01/shevato', ref = '
   return async ({ latest, before, nowMs = Date.parse(latest.at) }) => {
     const priorUnsettled = !before || before.ok === false || (before.alert && before.alert.ok === false)
       || nowMs - Date.parse(before.at) > STALE_AFTER_HOURS * 3600e3;
-    if (!latest.ok || priorUnsettled) {
+    const names = (r) => (r.failed || []).map((f) => f.name).sort().join('|');
+    const unchanged = !latest.ok && before && before.ok === false && names(before) === names(latest)
+      && !(before.alert && before.alert.ok === false)
+      && nowMs - Date.parse(before.at) <= STALE_AFTER_HOURS * 3600e3;
+    if ((!latest.ok || priorUnsettled) && !unchanged) {
       // expect_at names this run, so the monitor waits until the status shows
       // it (or something newer) instead of judging the result before it.
       const res = await call('/dispatches', { method: 'POST', body: JSON.stringify({ ref, inputs: { mode: 'monitor', expect_at: latest.at } }) });

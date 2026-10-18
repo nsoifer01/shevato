@@ -1,13 +1,13 @@
 #!/usr/bin/env node
 // Runs the browser estate as several shards AT ONCE on this machine.
 //
-//   npm run test:browser:parallel              # 4 shards
-//   npm run test:browser:parallel -- --shards=6
+//   npm run test:browser:parallel              # 6 shards
+//   npm run test:browser:parallel -- --shards=4
 //   npm run test:browser:parallel -- --only=trip-planner
 //
 // Why this exists: run.mjs walks its suites one at a time in one browser, so
 // a full local pass is ~25 minutes of mostly waiting while nine cores idle.
-// CI already solves this by putting the shards on four machines. This does the
+// CI already solves this by putting the shards on eight machines. This does the
 // same thing on one machine, which is safe for exactly the reason the CI
 // comment gives - each shard needs its OWN static server and its OWN Chrome,
 // and gets them here from a per-shard port pair.
@@ -49,7 +49,10 @@ const USAGE = 'usage: run-parallel.mjs [--shards=<n>] [--only=<path-substring>] 
 // Deliberately NOT 8099/9222: those are run.mjs's defaults, and a developer
 // running the serial command in another terminal must not collide with this.
 // 8080 is reserved on the owner's machine and is never a candidate.
-let shards = 4;
+// Six since 2026-10-17: on this 10-vCPU workstation the estate took 12.0 min
+// at four shards and 8.0 min at six, twice, all green with no skips. Past six
+// the shards contend for CPU, which is what timing-sensitive suites flake on.
+let shards = 6;
 let only = null;
 let portBase = 8300;
 let cdpBase = 9330;

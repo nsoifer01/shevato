@@ -13,7 +13,9 @@
 //   GET /.netlify/functions/fpl?path=entry/4231987/history
 //
 // Response headers: x-fpl-cache (hit|miss), x-fpl-fetched-at (ISO),
-// x-fpl-stale (true|false), x-fpl-age-seconds (int). The age is the copy's
+// x-fpl-stale (true|false), x-fpl-age-seconds (int), and on a stale answer or
+// an error x-fpl-upstream (refused|backoff|error|refreshing|quota, see
+// lib/fpl-cache.mjs UPSTREAM_CAUSES): why. The age is the copy's
 // age when THIS FUNCTION answered; a response Netlify's edge repeats carries
 // it frozen, plus the standard Age header saying how long the edge has held
 // it, and the client adds the two (apps/fpl-planner/js/data/api.js).
@@ -113,6 +115,7 @@ export default async function handler(req) {
       fetchedAt: new Date().toISOString(),
       stale: false,
       ageSeconds: 0,
+      upstream: 'error',
       path,
     };
   }
@@ -121,6 +124,9 @@ export default async function handler(req) {
   // `result` is that copy at 200 and the caller never learns it was refused,
   // which is the right outcome: the answer cost nothing to produce.
   if (refusal.scope && result.status !== 200) return quotaExceeded(refusal.scope, now);
+  // A copy served because OUR quota refused the refresh is our doing, not
+  // FPL's, and must not read as an upstream failure.
+  const upstream = refusal.scope ? 'quota' : result.upstream;
 
   return new Response(JSON.stringify(result.body), {
     status: result.status,
@@ -143,6 +149,7 @@ export default async function handler(req) {
       'x-fpl-fetched-at': result.fetchedAt,
       'x-fpl-stale': String(result.stale),
       'x-fpl-age-seconds': String(result.ageSeconds),
+      ...(upstream ? { 'x-fpl-upstream': upstream } : {}),
     },
   });
 }

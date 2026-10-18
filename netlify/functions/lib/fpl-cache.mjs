@@ -92,10 +92,22 @@ export const leaseKey = (key) => `lease:${key}`;
 // had to be. The log said only "upstream 403", so the cause could not be read
 // back once it ended. And past STALE_SERVE_SECONDS every visitor's request went
 // straight upstream, so a refusal that is rate-based was answered with more
-// requests. Now the first refusal is recorded here (status, the edge headers
-// and the start of the body) and, until `until`, no caller goes upstream: the
+// requests. Now every refusal is recorded here (status, the edge headers and
+// the start of the body) and, until `until`, no caller goes upstream: the
 // cached copy is served marked stale, or a 503 when there is none. The health
 // run reports the record. Retry-After is honoured up to the cap.
+//
+// ONE 403 IS NOT A BLOCK (2026-10-17). A 429, or any refusal that carries a
+// Retry-After, is FPL telling us to slow down, and backs off at once. A 403
+// without one backs off only when it is CORROBORATED: a second refusal inside
+// REFUSAL_CORROBORATION_SECONDS. Twice (10-16 21:41 and 10-17 12:41) a single
+// 403 came from one Fastly POP on one manager read while every other read in
+// the same seconds was answered 200, and FPL answered the health run's own
+// direct request 200 in 44 ms. The immediate backoff turned that one refused
+// request into two minutes of 503s for every uncached path on the site, and
+// defeated the app's own single retry of a 503 (js/data/api.js
+// RETRY_STATUSES), which would otherwise have succeeded. A real block (10-16,
+// 28 of 28 refused) still backs off on its second refusal, one request later.
 export const REFUSAL_KEY = 'meta:upstream-refusal';
 export const REFUSAL_BACKOFF_SECONDS = 120;
 export const REFUSAL_BACKOFF_MAX_SECONDS = 900;
@@ -116,6 +128,23 @@ const REFUSAL_HEADERS = ['server', 'via', 'x-served-by', 'x-cache', 'retry-after
 // floor any cache pays, and with nothing cached there is nothing to hand the
 // others but a 503.
 export const REFUSAL_RECOVERY_MS = 3600 * 1000;
+
+// How close a second 403 must follow the first for the pair to be a block
+// rather than one refused request (see "ONE 403 IS NOT A BLOCK" above). Two
+// isolated 403s were seen 15 hours apart; a block refuses every request.
+export const REFUSAL_CORROBORATION_SECONDS = 300;
+
+// Why an answer is stale or an error, as the `x-fpl-upstream` header says it
+// (fpl.mjs). The health run re-reads an answer FPL degraded, once, as the app
+// retries one; it never re-reads one this proxy degraded for its own reasons.
+//   refused ..... FPL refused THIS fetch (403 or 429)
+//   backoff ..... not asked: a recent refusal is being honoured
+//   error ....... FPL failed (5xx, timeout, a 404 over a cached copy, a body
+//                 that is not the payload)
+//   refreshing .. another caller holds the refresh lease; the copy is the
+//                 last one, served while it is fetched
+// fpl.mjs adds `quota` when our own per-network quota refused the fetch.
+export const UPSTREAM_CAUSES = ['refused', 'backoff', 'error', 'refreshing'];
 
 // Strips a leading/trailing slash and rejects anything not on the allowlist.
 // Returns the canonical path, or null.
@@ -286,17 +315,25 @@ export async function serveFpl({ path, store, fetchUpstream, now, leaseId }) {
       if (!owner) {
         return {
           status: 200, body: cached.body, cache: 'hit', fetchedAt: cached.fetchedAt,
-          stale: true, ageSeconds: age, coalesced: true,
+          stale: true, ageSeconds: age, coalesced: true, upstream: 'refreshing',
         };
       }
     }
   }
 
+  // What went wrong, for the x-fpl-upstream header, when something did.
+  let cause = 'error';
   try {
     if (refused === undefined) refused = await readRefusal(store);
-    if (refused && Date.parse(refused.until) > now) throw new UpstreamBackoffError(refused);
+    if (refused && Date.parse(refused.until) > now) {
+      cause = 'backoff';
+      throw new UpstreamBackoffError(refused);
+    }
     const res = await fetchUpstream(UPSTREAM_BASE + path + '/');
-    if (REFUSAL_STATUSES.has(res.status)) await recordRefusal(store, path, res, now);
+    if (REFUSAL_STATUSES.has(res.status)) {
+      cause = 'refused';
+      await recordRefusal(store, path, res, now);
+    }
     // A 404 means two different things and they need different answers.
     //
     // With NO cached copy it is the real one: an unknown team id, which the
@@ -312,7 +349,7 @@ export async function serveFpl({ path, store, fetchUpstream, now, leaseId }) {
       if (cached) {
         return {
           status: 200, body: cached.body, cache: 'hit', fetchedAt: cached.fetchedAt,
-          stale: true, ageSeconds: ageSeconds(cached.fetchedAt, now),
+          stale: true, ageSeconds: ageSeconds(cached.fetchedAt, now), upstream: 'error',
         };
       }
       return { status: 404, body: { error: 'not_found' }, cache: 'miss', fetchedAt: new Date(now).toISOString(), stale: false, ageSeconds: 0 };
@@ -350,13 +387,13 @@ export async function serveFpl({ path, store, fetchUpstream, now, leaseId }) {
     if (cached) {
       return {
         status: 200, body: cached.body, cache: 'hit', fetchedAt: cached.fetchedAt,
-        stale: true, ageSeconds: ageSeconds(cached.fetchedAt, now),
+        stale: true, ageSeconds: ageSeconds(cached.fetchedAt, now), upstream: cause,
       };
     }
     if (err instanceof MalformedUpstreamError) {
-      return { status: 502, body: { error: 'upstream_malformed' }, cache: 'miss', fetchedAt: new Date(now).toISOString(), stale: false, ageSeconds: 0 };
+      return { status: 502, body: { error: 'upstream_malformed' }, cache: 'miss', fetchedAt: new Date(now).toISOString(), stale: false, ageSeconds: 0, upstream: 'error' };
     }
-    return { status: 503, body: { error: 'upstream_unavailable' }, cache: 'miss', fetchedAt: new Date(now).toISOString(), stale: false, ageSeconds: 0 };
+    return { status: 503, body: { error: 'upstream_unavailable' }, cache: 'miss', fetchedAt: new Date(now).toISOString(), stale: false, ageSeconds: 0, upstream: cause };
   }
 }
 
@@ -397,11 +434,18 @@ function recoveringFrom(refused, cached, now) {
 // a date is only taken when it reads like one (Date.parse("0") is the year
 // 2000, a valid date).
 export function retryAfterSeconds(value, now) {
+  const seconds = retryAfterInstruction(value, now) || 0;
+  return Math.min(REFUSAL_BACKOFF_MAX_SECONDS, Math.max(REFUSAL_BACKOFF_SECONDS, seconds));
+}
+
+// The seconds Retry-After actually asks for, or null when it asks for nothing
+// (absent, "0", past, unparseable). A refusal that asks backs off at once.
+export function retryAfterInstruction(value, now) {
   const raw = String(value == null ? '' : value).trim();
   let seconds = 0;
   if (/^\d+$/.test(raw)) seconds = Number(raw);
   else if (/[a-z]/i.test(raw) && Number.isFinite(Date.parse(raw))) seconds = Math.ceil((Date.parse(raw) - now) / 1000);
-  return Math.min(REFUSAL_BACKOFF_MAX_SECONDS, Math.max(REFUSAL_BACKOFF_SECONDS, Number.isFinite(seconds) ? seconds : 0));
+  return Number.isFinite(seconds) && seconds > 0 ? seconds : null;
 }
 
 // NOTHING THAT IDENTIFIES A MANAGER LEAVES IN AN UPSTREAM BODY (2026-10-16).
@@ -432,9 +476,12 @@ async function recordRefusal(store, path, res, now) {
   // Scrubbed BEFORE it is cut, so the cut cannot leave the head of an id.
   const bodyHead = scrubUpstreamText((await res.text().catch(() => '')).replace(/\s+/g, ' ').trim()).slice(0, 300);
   const seconds = retryAfterSeconds(headers['retry-after'], now);
+  const told = res.status === 429 || retryAfterInstruction(headers['retry-after'], now) !== null;
   const at = new Date(now).toISOString();
   const record = {
-    at, until: new Date(now + seconds * 1000).toISOString(), firstAt: at, count: 1,
+    // `until` is set in compute: whether this refusal backs off depends on
+    // the one before it. `until === at` records it without backing off.
+    at, until: at, firstAt: at, count: 1,
     // Never a visitor's team id (privacy.html: the store holds copies of
     // public FPL responses, nothing about a visitor): an entry path is kept
     // as its kind.
@@ -450,6 +497,8 @@ async function recordRefusal(store, path, res, now) {
         && Number.isFinite(Date.parse(prev.firstAt));
       record.firstAt = continues && Date.parse(prev.firstAt) < now ? prev.firstAt : at;
       record.count = continues ? (Number(prev.count) || 1) + 1 : 1;
+      const corroborated = continues && now - Date.parse(prev.at) <= REFUSAL_CORROBORATION_SECONDS * 1000;
+      record.until = told || corroborated ? new Date(now + seconds * 1000).toISOString() : at;
       return { write: record };
     };
     // Every CAS round admits one writer, so ten simultaneous refusals need

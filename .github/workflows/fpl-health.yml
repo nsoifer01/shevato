@@ -1,8 +1,9 @@
 name: FPL health probe
 
 # THE PROBE ITSELF RUNS ON NETLIFY (since 2026-10-10): netlify/functions/fpl-health.mjs,
-# every six hours (00:41, 06:41, 12:41, 18:41 UTC), against production through
-# the proxy, with every invariant of scripts/lib/probe.mjs. GitHub fires this
+# every six hours (00:41, 06:41, 12:41, 18:41 UTC) and every hour while its
+# last result is red, against production through the proxy, with every
+# invariant of scripts/lib/probe.mjs. GitHub fires this
 # repository's schedules hours late or not at all, so it carries nothing
 # time-sensitive. This workflow keeps the incident and the manual diagnostic:
 #
@@ -84,7 +85,7 @@ permissions:
 jobs:
   monitor:
     if: github.event_name == 'schedule' || inputs.mode == 'monitor' || startsWith(inputs.mode, 'drill-')
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
       contents: read
@@ -115,7 +116,7 @@ jobs:
 
   probe:
     if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && (inputs.mode == 'full' || inputs.mode == ''))
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # The payload checks and the monitored plan take under a minute; each
     # sampled manager about 5 s of paced requests plus 2-20 s of plan (a
     # Wildcard holder is the slow end). Twelve took 146 s in all locally on

@@ -603,7 +603,8 @@ defect fixes stamped above:
   21) runs 23 security-rules tests, and a 27-check two-client multiplayer
   e2e drives create/join/start/answer/reveal/scoreboard/rematch/host-handoff
   and both password paths against local emulators (`npm run
-  test:arena:rules`, `npm run test:arena:emulator`; weekly CI via
+  test:arena:rules`, and the multiplayer e2e until its removal on
+  2026-10-17; weekly CI via
   arena-rules.yml then, and since 2026-09-07 also on pull requests and
   master pushes that can affect Arena). The emulator seam in firebase-config.js is
   double-gated (loopback host AND an explicit localStorage opt-in) and

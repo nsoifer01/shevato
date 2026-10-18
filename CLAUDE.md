@@ -103,8 +103,8 @@ Every change to the planner follows these, unprompted:
   Open the PR as soon as the work is committed and let this run alongside CI
   rather than waiting on it first (owner, 2026-09-28: waiting twice wastes the
   round); never merge until both are green, and if either goes red, fix, push
-  and rewrite the PR body. About eleven minutes (11.1, measured 2026-09-14),
-  four shards at once; budget it into the round. It never touches the
+  and rewrite the PR body. About eight minutes (8.0, measured twice 2026-10-17),
+  six shards at once; budget it into the round. It never touches the
   internet: third-party requests are answered from
   `tests/browser/vendor/third-party/`, and when
   `npm test` says the mirror is missing an asset, run
@@ -213,9 +213,8 @@ Every change to the planner follows these, unprompted:
 - `npm run test:all` is the local merge gate and now runs lint first, so the
   cheapest check fails fastest.
 - **Debug a slow/flaky e2e with the narrowest run and a unit test, never by
-  re-running the suite.** The Arena emulator suite takes 5-11 minutes; one
-  scenario takes about 70 seconds (`ARENA_E2E_ONLY=S6:`, which works standalone
-  since 2026-09-12 because `guard()` opens the client pages). Read the code and
+  re-running the suite.** (The Arena multiplayer e2e this was written for was
+  removed on 2026-10-17; the rule holds for every browser suite.) Read the code and
   form the hypothesis first, add every probe you might want in ONE pass
   (re-arming costs a whole run), reproduce ONCE, then pin the logic with a
   `node:test` unit test in milliseconds and run the full suite ONCE at the end.

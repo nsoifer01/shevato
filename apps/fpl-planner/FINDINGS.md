@@ -67,6 +67,7 @@ column names the guard added so the whole category is covered, not the case.
 | 33 | With 2 free transfers a free pair 0.18 and 0.40 better than the plan is never generated (it differs in both moves, beyond the one-swap polish) | CI: optimizer-reference (new) | R2 search | OPEN: two `todo` tests pin it; follow-up is a pair-level polish, measured as registry 48 was |
 | 34 | The "held on a tie" test never tested a tie (`>=` survived) | mutation-check (new) | R5 dead test | tie assertion in chips.test |
 | 35 | The search's own club-limit check was unguarded; illegal plans could crowd the shortlist and a legal +15 upgrade be dropped for a roll | mutation-check (new) | R5 dead test | crowded-shortlist case in transfers.test |
+| 36 | One 403 backed the whole proxy off for 120 s (503s for every uncached path, the app's own retry defeated); the probe read once where the app retries; a red result then stood six hours (#616) | monitor (#616, 2026-10-17) | R6 ops path | corroborated backoff, `x-fpl-upstream`, probe re-read, hourly recheck while red; fpl.test, fpl-health.test; 5 mutants |
 
 **Open question (not yet a defect):** the first rotating real-manager sample
 (2026-10-17, 12 managers) recommended a Wildcard at GW7 to all 7 who still
@@ -97,6 +98,53 @@ Categories, and the one guard that covers each WHOLE category:
 - **R6, operational failure paths**: fault-injected tests of each dependency
   failing realistically, and the readiness gate's upstream versus application
   classification (`evidence-probe.mjs --sample`).
+
+## Issue #616 (17 October 2026): one refused read, a site-wide backoff, six hours red
+
+**What happened, from the run log and the status record.** The 12:41 UTC
+Netlify probe read bootstrap, fixtures and the owner's entry, history and
+transfers in parallel, then his GW7 picks. FPL's edge (`cache-iad`) refused
+ONE manager read with a 403 and no Retry-After; FPL answered the run's own
+direct request a moment later 200 in 44 ms. The proxy recorded the refusal and
+backed off for 120 s, so the rest of that run was answered by our own
+backoff: transfers from the copy the 06:41 run had fetched (stale, 21,600 s),
+and the picks, never cached, with a 503. The run failed two checks, opened
+#616 with an @mention, and the GitHub dispatch (#42) and the 12:53 backstop,
+which GitHub started at 15:58 (#43), both failed on that one snapshot. By
+18:27 both paths were fresh by hand; the 18:41 run passed and closed #616.
+
+**Three of our defects, none of them FPL's.**
+- The proxy backed the whole site off on a single 403. The two isolated 403s
+  on record (2026-10-16 21:41, 2026-10-17 12:41) each refused one request
+  while the requests around it were answered, which is per-request refusal
+  from some of Netlify's egress addresses, not a block; the backoff turned
+  each into two minutes of 503s on every uncached path, and the app's own
+  single retry of a 503 (`js/data/api.js`) met the backoff too. Now a 429, or
+  any refusal with a positive Retry-After, backs off at once, and a 403 backs
+  off only when a second one follows within `REFUSAL_CORROBORATION_SECONDS`
+  (300). The two-hour block of 2026-10-16 (28 of 28 refused) still backs off,
+  one request later.
+- The probe read each payload once, where the app retries. Its own refusal
+  check called the episode a blip ("0 min") while two other checks failed on
+  that same blip. Now every degraded proxy answer names its cause in
+  `x-fpl-upstream`, and the probe re-reads one an FPL-side cause degraded,
+  once, a second later (`rereadingFetch`), reporting the first as `transient`.
+  It never re-reads an answer degraded for our own reasons, so a proxy bug or
+  our quota still fails the run.
+- A red result stood until the next six-hour slot. Now the function is
+  invoked hourly and probes between slots only while red (`slotFor`). A
+  recheck that fails exactly as the run before it starts no GitHub run (each
+  failed run is an email to the owner); a changed failure or a recovery does.
+
+**Incident #604 (2026-10-14) was very probably the same mechanism**: a
+six-hour-old bootstrap served stale while fixtures were fetched fresh in the
+same run. It cannot be proven, because refusals were not recorded before
+2026-10-16.
+
+**Known and left.** A single refused read still costs that one visitor a
+stale banner or a slower load, which is FPL's choice and is not routed around
+(no rotating egress, no disguised UA). If isolated 403s become frequent, the
+history's `transient` count is where it shows.
 
 ## The follow-up audit of #611 (2026-10-16, evening, before GW7)
 
@@ -212,6 +260,7 @@ Refusals are therefore per request, not a block on the site: consistent with
 some of the AWS egress addresses Netlify's instances use being refused and
 others not, which is outside anything this code can change and must not be
 routed around. The health run treats an episode under 30 minutes as a blip.
+That backoff on a single 403 was itself the defect behind #616 (2026-10-17).
 
 ---
 
@@ -372,7 +421,8 @@ What changed, so the next one is both gentler and explained (fpl-cache.mjs):
 a 403 or 429 is recorded as `meta:upstream-refusal` with the status, the edge
 headers and the start of the body, and for 120 s (or Retry-After, up to
 900 s) no caller goes upstream at all: the cached copy is served marked stale,
-or a 503 when there is none. Before, every visitor past the 60-second stale
+or a 503 when there is none. (Since #616, 2026-10-17, a lone 403 without
+Retry-After no longer backs off; see that section.) Before, every visitor past the 60-second stale
 window asked again, which answers a rate block with more requests. The health
 run reads that record and fails when a refusal episode (refusals no more than
 an hour apart) lasted 30 minutes or more since the previous run, naming what
@@ -546,7 +596,7 @@ on 16 October, the first one at which GW7's pre capture (due 08:07) must exist.
 
 The health probe followed the same day, for the same reason: a six-hourly
 check that may fire eight hours late cannot promise detection within a quarter
-of a day. It now runs as the `fpl-health` scheduled function (`41 */6 * * *`).
+of a day. It now runs as the `fpl-health` scheduled function (`41 * * * *` since 2026-10-17: every six hours, and hourly while red).
 What Netlify does NOT give, and how each gap is covered:
 
 - **No failure notification** below Enterprise (log drains are
@@ -1675,7 +1725,11 @@ signed in, in the owner's browser:
 - **The per-gameweek archive (`merged_gw.csv`) does not carry `code`.** The
   identity table comes from each season's `players_raw.csv`
   (`scripts/fetch-history.mjs` downloads it; `js/engine/player-identity.js`
-  builds the index). `assertCrossSeasonField` THROWS on any season-scoped key
+  builds the index). The tests that check this against the REAL archive
+  (`tests/player-identity.test.mjs`, `tests/train-dedupe.test.mjs`) skip
+  without the gitignored download, so until 2026-10-17 they had never run on
+  CI; `scheduled.yml` `fpl-archive` now fetches the archive weekly and fails
+  if any of them skips. `assertCrossSeasonField` THROWS on any season-scoped key
   (`element`, `id`, `player_id`, ...) rather than warning, because the failure
   mode is a full table of plausible wrong numbers.
 - Name matching, where unavoidable (API-Football joins), uses a

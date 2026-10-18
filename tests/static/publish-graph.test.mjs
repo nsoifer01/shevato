@@ -181,7 +181,6 @@ test('internal artifacts are NOT published', () => {
     'scripts/build-publish-dir.mjs',
     'scripts/stamp-sitemap-index.mjs',
     'apps/arena/tests-rules/rules.test.mjs',
-    'apps/arena/e2e/emulator.mjs',
     'apps/trip-planner/tests/trip-logic.test.js',
     'apps/fpl-planner/experiments/registry.md',
     'assets/seo/organization.jsonld',

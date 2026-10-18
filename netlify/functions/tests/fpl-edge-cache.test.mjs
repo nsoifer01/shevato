@@ -197,3 +197,18 @@ test('handler: a stale copy served through an outage is never edge-cached', opts
   assert.equal(res.headers.get('x-fpl-stale'), 'true');
   assert.equal(edge(res), 'no-store');
 });
+
+// Why a degraded answer is degraded travels with it (2026-10-17): the health
+// run re-reads only an answer FPL degraded, as the app retries one.
+test('handler: a degraded answer says why in x-fpl-upstream, and a fresh one carries no such header', opts, async () => {
+  const now = Date.now();
+  seedBlobs({ [cacheKey('fixtures')]: { fetchedAt: iso(now - 4000 * SEC), body: [{ id: 1 }] } });
+  const stale = await withFetch(async () => new Response('down', { status: 503 }), () => handler(req('fixtures')));
+  assert.equal(stale.headers.get('x-fpl-upstream'), 'error');
+  const refused = await withFetch(async () => new Response('denied', { status: 403 }), () => handler(req('entry/4231987/history')));
+  assert.equal(refused.status, 503);
+  assert.equal(refused.headers.get('x-fpl-upstream'), 'refused');
+  const fresh = await withFetch(async () => ok([{ id: 2 }]), () => handler(req('fixtures')));
+  assert.equal(fresh.headers.get('x-fpl-stale'), 'false');
+  assert.equal(fresh.headers.get('x-fpl-upstream'), null);
+});

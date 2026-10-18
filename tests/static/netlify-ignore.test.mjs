@@ -63,7 +63,7 @@ test('documentation, tests, workflows and the lint config are the only skippable
     'README.md', 'FINDINGS.md', 'CLAUDE.md', 'TESTING-AUDIT.md', 'apps/arena/FINDINGS.md',
     'apps/rising-shows/exports/README.md', 'apps/fpl-planner/experiments/registry.md',
     'tests/static/publish-graph.test.mjs', 'tests/browser/vendor/third-party/x.js', 'apps/arena/tests/scoring.test.js',
-    'apps/arena/e2e/emulator.mjs', 'apps/arena/tests-rules/rules.test.mjs', 'sync-system/tests/sync-helpers.test.mjs',
+    'apps/arena/tests-rules/rules.test.mjs', 'sync-system/tests/sync-helpers.test.mjs',
     '.github/workflows/ci.yml', '.github/actions/rising-shows-dataset/action.yml',
     'eslint.config.mjs',
   ];
