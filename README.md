@@ -23,7 +23,7 @@ shevato/
 │   │   ├── language-switcher.js      # Tri-lingual switcher for the separately-branded landing
 │   │   ├── passive-events-fix.js     # Passive listeners polyfill
 │   │   ├── breakpoints.min.js, browser.min.js, util.js  # Responsive helpers
-│   │   └── pagination.js, global-icons.js
+│   │   └── pagination.js, global-icons.js  # Shared table pagination manager, shared emoji icon sets
 │   ├── js/tests/                     # Unit tests for the analytics, chart-a11y and sync-status helpers (npm run test:analytics)
 │   ├── og/                           # Social-card template, manifest and builder (see assets/og/README.md)
 │   └── seo/                          # Reference JSON-LD fragments + metadata checklist
