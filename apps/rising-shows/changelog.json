@@ -1,6 +1,329 @@
 {
   "updates": [
     {
+      "builtAt": "2026-10-19T13:02:43.919Z",
+      "totals": {
+        "seasons": 67377,
+        "delta": 26
+      },
+      "shapeCounts": {
+        "rebound": 9758,
+        "big-finale": 11803,
+        "u-shaped": 2641,
+        "rollercoaster": 13498,
+        "mid-peak": 4357,
+        "consistent": 2521,
+        "bad-finale": 4334,
+        "front-loaded": 3060,
+        "slow-burn": 3958,
+        "declining": 1635,
+        "saved-best-for-last": 1378,
+        "shape-drift": 1395,
+        "rising": 2360
+      },
+      "shapeDeltas": {
+        "big-finale": -11,
+        "u-shaped": 2,
+        "rollercoaster": -6,
+        "mid-peak": -6,
+        "consistent": 5,
+        "bad-finale": -2,
+        "front-loaded": -4,
+        "slow-burn": -11,
+        "declining": 4,
+        "saved-best-for-last": -2,
+        "shape-drift": 1,
+        "rising": 7
+      },
+      "added": [
+        {
+          "seriesId": "tt7441658",
+          "title": "Black Clover",
+          "season": 5,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt43650242",
+          "title": "Even the Student Council Has Its Holes!",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt32766897",
+          "title": "Ranma ½",
+          "season": 3,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt39201866",
+          "title": "100 Days of Deception",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt17501476",
+          "title": "Bindiya",
+          "season": 1,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt43650419",
+          "title": "Magic Repo Man: Dumped by My Party, I'll Cash in with a Cute Support Fairy to Become the Strongest!",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt43691424",
+          "title": "#I'm Looking for a Zombie",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt0043194",
+          "title": "Dragnet",
+          "season": 6,
+          "seasonYear": 1956
+        },
+        {
+          "seriesId": "tt17501476",
+          "title": "Bindiya",
+          "season": 2,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt0098820",
+          "title": "Have I Got News for You",
+          "season": 72,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt0115088",
+          "title": "Alarm für Cobra 11 - Die Autobahnpolizei",
+          "season": 28,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt9642838",
+          "title": "Russia from Above",
+          "season": 1,
+          "seasonYear": 2018
+        },
+        {
+          "seriesId": "tt0105931",
+          "title": "Adelheid und ihre Mörder",
+          "season": 2,
+          "seasonYear": 1998
+        },
+        {
+          "seriesId": "tt10009438",
+          "title": "Beneath the Skin",
+          "season": 1,
+          "seasonYear": 2018
+        },
+        {
+          "seriesId": "tt32063263",
+          "title": "The Forsytes",
+          "season": 2,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt44757191",
+          "title": "The Seven Knights of the Marronnier Kingdom",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt0490044",
+          "title": "Space Cadets",
+          "season": 1,
+          "seasonYear": 2005
+        },
+        {
+          "seriesId": "tt2301643",
+          "title": "Halloween Wars",
+          "season": 16,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt34377511",
+          "title": "Black Widow",
+          "season": 1,
+          "seasonYear": 2024
+        },
+        {
+          "seriesId": "tt39373684",
+          "title": "Peccato",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt5929274",
+          "title": "Noble, My Love",
+          "season": 1,
+          "seasonYear": 2015
+        },
+        {
+          "seriesId": "tt0411027",
+          "title": "Strictly Come Dancing",
+          "season": 24,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt13438882",
+          "title": "Celebrity Wheel of Fortune",
+          "season": 7,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt31014008",
+          "title": "Wilderness with Simon Reeve",
+          "season": 2,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt22438924",
+          "title": "Moncloa. Cuatro estaciones",
+          "season": 1,
+          "seasonYear": 2024
+        },
+        {
+          "seriesId": "tt43631370",
+          "title": "Villa Coral",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt44320738",
+          "title": "Love Island Adria",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt42487863",
+          "title": "Vertex Force",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt47816221",
+          "title": "Zmora",
+          "season": 1,
+          "seasonYear": 2026
+        }
+      ],
+      "removed": [
+        {
+          "seriesId": "tt37787357",
+          "title": "Bindiya Ke Bahubali",
+          "season": 1,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt0280277",
+          "title": "Mr. Bean: The Animated Series",
+          "season": 6,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt37787357",
+          "title": "Bindiya Ke Bahubali",
+          "season": 2,
+          "seasonYear": 2026
+        }
+      ],
+      "ratingSwings": [
+        {
+          "seriesId": "tt38732131",
+          "title": "Money Trap: The Karun Treasure",
+          "season": 1,
+          "from": 5.81,
+          "to": 2.6,
+          "delta": -3.21
+        },
+        {
+          "seriesId": "tt47722400",
+          "title": "SXB Island",
+          "season": 1,
+          "from": 10,
+          "to": 8.64,
+          "delta": -1.36
+        },
+        {
+          "seriesId": "tt5073760",
+          "title": "Bible Black Only",
+          "season": 1,
+          "from": 4.4,
+          "to": 5.33,
+          "delta": 0.93
+        },
+        {
+          "seriesId": "tt3798374",
+          "title": "High School King of Savvy",
+          "season": 1,
+          "from": 8.04,
+          "to": 7.27,
+          "delta": -0.77
+        },
+        {
+          "seriesId": "tt38074086",
+          "title": "Sins and Roses",
+          "season": 2,
+          "from": 8.5,
+          "to": 7.74,
+          "delta": -0.76
+        },
+        {
+          "seriesId": "tt11097072",
+          "title": "Young Dylan",
+          "season": 5,
+          "from": 8.35,
+          "to": 7.62,
+          "delta": -0.73
+        },
+        {
+          "seriesId": "tt1728224",
+          "title": "Pearlie",
+          "season": 1,
+          "from": 6.72,
+          "to": 5.99,
+          "delta": -0.73
+        },
+        {
+          "seriesId": "tt11097072",
+          "title": "Young Dylan",
+          "season": 4,
+          "from": 7.93,
+          "to": 7.26,
+          "delta": -0.67
+        },
+        {
+          "seriesId": "tt11097072",
+          "title": "Young Dylan",
+          "season": 3,
+          "from": 8.09,
+          "to": 7.44,
+          "delta": -0.65
+        },
+        {
+          "seriesId": "tt39747556",
+          "title": "Real History with Matt Walsh",
+          "season": 1,
+          "from": 6.38,
+          "to": 5.73,
+          "delta": -0.65
+        }
+      ],
+      "modifiedCounts": {
+        "seriesVotes": 21907,
+        "seriesRating": 391,
+        "avgRating": 1342,
+        "shapes": 203,
+        "poster": 4,
+        "overview": 8,
+        "episodeCount": 83
+      }
+    },
+    {
       "builtAt": "2026-10-18T11:07:58.744Z",
       "totals": {
         "seasons": 67351,
@@ -9314,177 +9637,6 @@
         "seriesRating": 352,
         "poster": 3,
         "overview": 3
-      }
-    },
-    {
-      "builtAt": "2026-09-05T10:10:19.312Z",
-      "totals": {
-        "seasons": 66619,
-        "delta": 7
-      },
-      "shapeCounts": {
-        "rebound": 10177,
-        "rising": 2591,
-        "slow-burn": 4416,
-        "big-finale": 12154,
-        "u-shaped": 3092,
-        "rollercoaster": 14149,
-        "mid-peak": 4624,
-        "saved-best-for-last": 1508,
-        "front-loaded": 3513,
-        "declining": 1879,
-        "bad-finale": 4654,
-        "consistent": 2627,
-        "shape-drift": 1577
-      },
-      "shapeDeltas": {
-        "rebound": 3,
-        "rising": -3,
-        "slow-burn": 3,
-        "big-finale": 9,
-        "u-shaped": 2,
-        "rollercoaster": 3,
-        "mid-peak": -5,
-        "saved-best-for-last": 2,
-        "front-loaded": 3,
-        "declining": -5,
-        "bad-finale": 4,
-        "shape-drift": 1
-      },
-      "added": [
-        {
-          "seriesId": "tt13210838",
-          "title": "The Gentlemen",
-          "season": 2,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt31449991",
-          "title": "Chad Powers",
-          "season": 2,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt44842745",
-          "title": "Welcome to the Family: The Murder of Dan Markel",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt0043224",
-          "title": "The Red Skelton Hour",
-          "season": 6,
-          "seasonYear": 1956
-        },
-        {
-          "seriesId": "tt12752438",
-          "title": "Paris 2024: Games of the XXXIII Olympiad",
-          "season": 2,
-          "seasonYear": 2024
-        },
-        {
-          "seriesId": "tt22688206",
-          "title": "Strula",
-          "season": 9,
-          "seasonYear": 2025
-        },
-        {
-          "seriesId": "tt30022291",
-          "title": "Fredbear's Family Diner",
-          "season": 1,
-          "seasonYear": 2023
-        }
-      ],
-      "removed": [],
-      "ratingSwings": [
-        {
-          "seriesId": "tt1570957",
-          "title": "Worst Cooks in America",
-          "season": 24,
-          "from": 7.65,
-          "to": 6.93,
-          "delta": -0.72
-        },
-        {
-          "seriesId": "tt14976292",
-          "title": "Link Click",
-          "season": 4,
-          "from": 8.7,
-          "to": 8.12,
-          "delta": -0.58
-        },
-        {
-          "seriesId": "tt33347879",
-          "title": "The Traitors",
-          "season": 2,
-          "from": 7.44,
-          "to": 6.91,
-          "delta": -0.53
-        },
-        {
-          "seriesId": "tt0156196",
-          "title": "Jesse",
-          "season": 1,
-          "from": 6.02,
-          "to": 6.41,
-          "delta": 0.39
-        },
-        {
-          "seriesId": "tt0156196",
-          "title": "Jesse",
-          "season": 2,
-          "from": 6.04,
-          "to": 6.42,
-          "delta": 0.38
-        },
-        {
-          "seriesId": "tt16359992",
-          "title": "Gutter mot verden",
-          "season": 1,
-          "from": 6.13,
-          "to": 5.8,
-          "delta": -0.33
-        },
-        {
-          "seriesId": "tt33297589",
-          "title": "Wild Valley",
-          "season": 1,
-          "from": 6.62,
-          "to": 6.29,
-          "delta": -0.33
-        },
-        {
-          "seriesId": "tt40444386",
-          "title": "Evil Lives Here: My Child the Killer",
-          "season": 1,
-          "from": 7.21,
-          "to": 6.9,
-          "delta": -0.31
-        },
-        {
-          "seriesId": "tt4859164",
-          "title": "The Loud House",
-          "season": 11,
-          "from": 8.98,
-          "to": 9.26,
-          "delta": 0.28
-        },
-        {
-          "seriesId": "tt12327578",
-          "title": "Star Trek: Strange New Worlds",
-          "season": 4,
-          "from": 6.48,
-          "to": 6.21,
-          "delta": -0.27
-        }
-      ],
-      "modifiedCounts": {
-        "seriesVotes": 14225,
-        "avgRating": 611,
-        "shapes": 113,
-        "seriesRating": 155,
-        "episodeCount": 61,
-        "poster": 4
       }
     }
   ]
