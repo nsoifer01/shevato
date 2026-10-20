@@ -1,6 +1,392 @@
 {
   "updates": [
     {
+      "builtAt": "2026-10-20T11:31:40.173Z",
+      "totals": {
+        "seasons": 67420,
+        "delta": 43
+      },
+      "shapeCounts": {
+        "rebound": 9757,
+        "big-finale": 11804,
+        "u-shaped": 2643,
+        "rollercoaster": 13491,
+        "mid-peak": 4351,
+        "consistent": 2530,
+        "bad-finale": 4334,
+        "front-loaded": 3060,
+        "slow-burn": 3966,
+        "declining": 1637,
+        "saved-best-for-last": 1378,
+        "shape-drift": 1390,
+        "rising": 2368
+      },
+      "shapeDeltas": {
+        "rebound": -1,
+        "big-finale": 1,
+        "u-shaped": 2,
+        "rollercoaster": -7,
+        "mid-peak": -6,
+        "consistent": 9,
+        "slow-burn": 8,
+        "declining": 2,
+        "shape-drift": -5,
+        "rising": 8
+      },
+      "added": [
+        {
+          "seriesId": "tt32639706",
+          "title": "Blue Box",
+          "season": 2,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt0096697",
+          "title": "The Simpsons",
+          "season": 38,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt15792808",
+          "title": "Aoashi",
+          "season": 2,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt36849871",
+          "title": "Marshals",
+          "season": 2,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt13875494",
+          "title": "Tracker",
+          "season": 4,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt41298100",
+          "title": "Reborn as a Space Mercenary: I Woke Up Piloting the Strongest Starship!",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt21376524",
+          "title": "Animal Control",
+          "season": 5,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt15791752",
+          "title": "Grimsburg",
+          "season": 3,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt43691418",
+          "title": "Even Though I'm a Super Timid Noble Girl, I Accepted the Bet from My Cunning Fiancé",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt43650323",
+          "title": "I'm Dating a Dark Summoner",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt0972751",
+          "title": "Zegapain",
+          "season": 1,
+          "seasonYear": 2006
+        },
+        {
+          "seriesId": "tt3370324",
+          "title": "Soul Mates",
+          "season": 2,
+          "seasonYear": 2016
+        },
+        {
+          "seriesId": "tt43691394",
+          "title": "Tank Chair",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt43691315",
+          "title": "Kanata Kara",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt1094229",
+          "title": "Heartland",
+          "season": 20,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt13729210",
+          "title": "Radio Mileva",
+          "season": 4,
+          "seasonYear": 2023
+        },
+        {
+          "seriesId": "tt14728224",
+          "title": "A Captain's Log",
+          "season": 1,
+          "seasonYear": 2021
+        },
+        {
+          "seriesId": "tt21001730",
+          "title": "My Secret Love",
+          "season": 1,
+          "seasonYear": 2022
+        },
+        {
+          "seriesId": "tt23469464",
+          "title": "Universal Basic Guys",
+          "season": 3,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt37484311",
+          "title": "Blue Skies",
+          "season": 2,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt39333720",
+          "title": "Ömür Usta",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt46066849",
+          "title": "Umayuru: Full Gate!",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt43650454",
+          "title": "Kanojo no Tomodachi",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt42576855",
+          "title": "Where the Mask Ends",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt9319818",
+          "title": "The Hit List",
+          "season": 9,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt12251992",
+          "title": "Call It What You Want",
+          "season": 1,
+          "seasonYear": 2021
+        },
+        {
+          "seriesId": "tt16452690",
+          "title": "The Real Murders of Atlanta",
+          "season": 4,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt19729114",
+          "title": "The Miracle of Teddy Bear",
+          "season": 1,
+          "seasonYear": 2022
+        },
+        {
+          "seriesId": "tt18225840",
+          "title": "Paint with Love",
+          "season": 1,
+          "seasonYear": 2021
+        },
+        {
+          "seriesId": "tt21430478",
+          "title": "Even Sun",
+          "season": 1,
+          "seasonYear": 2022
+        },
+        {
+          "seriesId": "tt26915869",
+          "title": "Destiny Seeker",
+          "season": 1,
+          "seasonYear": 2023
+        },
+        {
+          "seriesId": "tt27846702",
+          "title": "Past-Senger",
+          "season": 1,
+          "seasonYear": 2023
+        },
+        {
+          "seriesId": "tt28092405",
+          "title": "House of Stars",
+          "season": 1,
+          "seasonYear": 2023
+        },
+        {
+          "seriesId": "tt14563172",
+          "title": "Sanrio Danshi",
+          "season": 1,
+          "seasonYear": 2018
+        },
+        {
+          "seriesId": "tt30783407",
+          "title": "Gauteshow",
+          "season": 4,
+          "seasonYear": 2024
+        },
+        {
+          "seriesId": "tt31015468",
+          "title": "Hawa & Adam",
+          "season": 1,
+          "seasonYear": 2024
+        },
+        {
+          "seriesId": "tt32056687",
+          "title": "Dress My Tour",
+          "season": 1,
+          "seasonYear": 2024
+        },
+        {
+          "seriesId": "tt28784874",
+          "title": "Dinosaur Love",
+          "season": 1,
+          "seasonYear": 2023
+        },
+        {
+          "seriesId": "tt21098268",
+          "title": "The Best Story",
+          "season": 1,
+          "seasonYear": 2021
+        },
+        {
+          "seriesId": "tt35503338",
+          "title": "Rivalerne",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt43638526",
+          "title": "El buen espíritu: detrás de la puerta del Opus Dei",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt48409707",
+          "title": "Boy, with Caution",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt6722972",
+          "title": "Hot Dog",
+          "season": 3,
+          "seasonYear": 2005
+        }
+      ],
+      "removed": [],
+      "ratingSwings": [
+        {
+          "seriesId": "tt30799082",
+          "title": "Inci Taneleri",
+          "season": 3,
+          "from": 3.5,
+          "to": 2.57,
+          "delta": -0.93
+        },
+        {
+          "seriesId": "tt26708692",
+          "title": "Barney's World",
+          "season": 1,
+          "from": 7.23,
+          "to": 8.01,
+          "delta": 0.78
+        },
+        {
+          "seriesId": "tt32063263",
+          "title": "The Forsytes",
+          "season": 2,
+          "from": 7.6,
+          "to": 6.9,
+          "delta": -0.7
+        },
+        {
+          "seriesId": "tt30799082",
+          "title": "Inci Taneleri",
+          "season": 2,
+          "from": 4.52,
+          "to": 3.86,
+          "delta": -0.66
+        },
+        {
+          "seriesId": "tt38732131",
+          "title": "Money Trap: The Karun Treasure",
+          "season": 1,
+          "from": 2.6,
+          "to": 1.95,
+          "delta": -0.65
+        },
+        {
+          "seriesId": "tt27690979",
+          "title": "Love Syndrome III",
+          "season": 1,
+          "from": 7.13,
+          "to": 6.57,
+          "delta": -0.56
+        },
+        {
+          "seriesId": "tt30799082",
+          "title": "Inci Taneleri",
+          "season": 1,
+          "from": 5.23,
+          "to": 4.68,
+          "delta": -0.55
+        },
+        {
+          "seriesId": "tt5684214",
+          "title": "Captain Marleau",
+          "season": 5,
+          "from": 6.7,
+          "to": 7.23,
+          "delta": 0.53
+        },
+        {
+          "seriesId": "tt6316900",
+          "title": "Confess",
+          "season": 1,
+          "from": 9.04,
+          "to": 8.53,
+          "delta": -0.51
+        },
+        {
+          "seriesId": "tt1249208",
+          "title": "Celebrity Family Feud",
+          "season": 1,
+          "from": 6.66,
+          "to": 6.2,
+          "delta": -0.46
+        }
+      ],
+      "modifiedCounts": {
+        "seriesVotes": 19466,
+        "avgRating": 1230,
+        "shapes": 184,
+        "seriesRating": 362,
+        "episodeCount": 78,
+        "poster": 5,
+        "overview": 7
+      }
+    },
+    {
       "builtAt": "2026-10-19T13:02:43.919Z",
       "totals": {
         "seasons": 67377,
@@ -9430,213 +9816,6 @@
         "episodeCount": 102,
         "seriesRating": 829,
         "poster": 4
-      }
-    },
-    {
-      "builtAt": "2026-09-06T10:24:53.069Z",
-      "totals": {
-        "seasons": 66632,
-        "delta": 13
-      },
-      "shapeCounts": {
-        "rebound": 10179,
-        "rising": 2595,
-        "slow-burn": 4411,
-        "big-finale": 12159,
-        "u-shaped": 3090,
-        "rollercoaster": 14149,
-        "mid-peak": 4624,
-        "saved-best-for-last": 1506,
-        "front-loaded": 3505,
-        "declining": 1881,
-        "bad-finale": 4657,
-        "consistent": 2631,
-        "shape-drift": 1576
-      },
-      "shapeDeltas": {
-        "rebound": 2,
-        "rising": 4,
-        "slow-burn": -5,
-        "big-finale": 5,
-        "u-shaped": -2,
-        "saved-best-for-last": -2,
-        "front-loaded": -8,
-        "declining": 2,
-        "bad-finale": 3,
-        "consistent": 4,
-        "shape-drift": -1
-      },
-      "added": [
-        {
-          "seriesId": "tt44974627",
-          "title": "The Grand Tour",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt1345472",
-          "title": "Phantom: The Animation",
-          "season": 1,
-          "seasonYear": 2004
-        },
-        {
-          "seriesId": "tt38590339",
-          "title": "Famous Last Words",
-          "season": 1,
-          "seasonYear": 2025
-        },
-        {
-          "seriesId": "tt12259074",
-          "title": "Sin",
-          "season": 1,
-          "seasonYear": 2020
-        },
-        {
-          "seriesId": "tt27790101",
-          "title": "Conan O'Brien Must Go",
-          "season": 3,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt19872918",
-          "title": "Robogobo",
-          "season": 1,
-          "seasonYear": 2025
-        },
-        {
-          "seriesId": "tt32909469",
-          "title": "Lovesick",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt17940828",
-          "title": "Shubh Mangal Mein Dangal",
-          "season": 1,
-          "seasonYear": 2022
-        },
-        {
-          "seriesId": "tt34586849",
-          "title": "Nepobaby",
-          "season": 2,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt16744184",
-          "title": "My Nephew from Hell",
-          "season": 1,
-          "seasonYear": 2021
-        },
-        {
-          "seriesId": "tt39035969",
-          "title": "Weirdo 101",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt43723095",
-          "title": "Meet the Owens",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt6956946",
-          "title": "Paint Me a Story",
-          "season": 2,
-          "seasonYear": 2014
-        }
-      ],
-      "removed": [],
-      "ratingSwings": [
-        {
-          "seriesId": "tt9022950",
-          "title": "The Kelly Clarkson Show",
-          "season": 2,
-          "from": 5.83,
-          "to": 6.53,
-          "delta": 0.7
-        },
-        {
-          "seriesId": "tt39601175",
-          "title": "Amar Vishwas",
-          "season": 1,
-          "from": 7.63,
-          "to": 6.95,
-          "delta": -0.68
-        },
-        {
-          "seriesId": "tt11349896",
-          "title": "Max & the Midknights",
-          "season": 1,
-          "from": 9.05,
-          "to": 8.42,
-          "delta": -0.63
-        },
-        {
-          "seriesId": "tt0202179",
-          "title": "ABC Afterschool Specials",
-          "season": 25,
-          "from": 5.93,
-          "to": 6.55,
-          "delta": 0.62
-        },
-        {
-          "seriesId": "tt34498121",
-          "title": "Thukra Ke Mera Pyaar",
-          "season": 2,
-          "from": 6.51,
-          "to": 7.08,
-          "delta": 0.57
-        },
-        {
-          "seriesId": "tt8295372",
-          "title": "A Crazy Wind",
-          "season": 1,
-          "from": 6.32,
-          "to": 6.85,
-          "delta": 0.53
-        },
-        {
-          "seriesId": "tt14976292",
-          "title": "Link Click",
-          "season": 4,
-          "from": 8.12,
-          "to": 8.6,
-          "delta": 0.48
-        },
-        {
-          "seriesId": "tt11869098",
-          "title": "Haunting in the Heartland",
-          "season": 1,
-          "from": 7.7,
-          "to": 7.22,
-          "delta": -0.48
-        },
-        {
-          "seriesId": "tt18070984",
-          "title": "Average Joe",
-          "season": 2,
-          "from": 7.07,
-          "to": 7.55,
-          "delta": 0.48
-        },
-        {
-          "seriesId": "tt43035122",
-          "title": "Nour",
-          "season": 1,
-          "from": 9.6,
-          "to": 9.13,
-          "delta": -0.47
-        }
-      ],
-      "modifiedCounts": {
-        "seriesVotes": 20151,
-        "avgRating": 1065,
-        "shapes": 180,
-        "episodeCount": 75,
-        "seriesRating": 352,
-        "poster": 3,
-        "overview": 3
       }
     }
   ]
