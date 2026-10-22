@@ -1,6 +1,242 @@
 {
   "updates": [
     {
+      "builtAt": "2026-10-22T11:55:04.235Z",
+      "totals": {
+        "seasons": 67453,
+        "delta": 18
+      },
+      "shapeCounts": {
+        "rebound": 9768,
+        "big-finale": 11800,
+        "u-shaped": 2646,
+        "rollercoaster": 13489,
+        "mid-peak": 4354,
+        "consistent": 2532,
+        "bad-finale": 4335,
+        "front-loaded": 3057,
+        "slow-burn": 3965,
+        "declining": 1638,
+        "saved-best-for-last": 1380,
+        "shape-drift": 1392,
+        "rising": 2371
+      },
+      "shapeDeltas": {
+        "rebound": 3,
+        "big-finale": -2,
+        "u-shaped": 4,
+        "rollercoaster": 5,
+        "mid-peak": 4,
+        "bad-finale": -1,
+        "front-loaded": -6,
+        "slow-burn": -1,
+        "declining": 3,
+        "saved-best-for-last": 1,
+        "shape-drift": 3,
+        "rising": 1
+      },
+      "added": [
+        {
+          "seriesId": "tt12590266",
+          "title": "Cyberpunk: Edgerunners",
+          "season": 2,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt43691365",
+          "title": "The Cold Sato-san is Only Sweet to Me",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt43691412",
+          "title": "The Laid-Off Cheat-Granting Mage Enjoys a Second Lease on Life",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt41296544",
+          "title": "Nia Liston: The Merciless Maiden",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt41814550",
+          "title": "NCIS: New York",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt9111220",
+          "title": "Hudson & Rex",
+          "season": 9,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt1319900",
+          "title": "Ghost Adventures",
+          "season": 29,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt21832348",
+          "title": "Bobby's Triple Threat",
+          "season": 5,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt14401604",
+          "title": "Gutfeld!",
+          "season": 3,
+          "seasonYear": 2023
+        },
+        {
+          "seriesId": "tt37626694",
+          "title": "Birangana",
+          "season": 1,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt36852013",
+          "title": "Harlan Coben's Final Twist",
+          "season": 2,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt0398557",
+          "title": "Saturday Night Thriller",
+          "season": 1,
+          "seasonYear": 1982
+        },
+        {
+          "seriesId": "tt41948472",
+          "title": "Sheep",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt43691391",
+          "title": "Super Psychic Policeman Chojo",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt1483133",
+          "title": "Wasted Land",
+          "season": 1,
+          "seasonYear": 2009
+        },
+        {
+          "seriesId": "tt33344252",
+          "title": "Blood Legacy",
+          "season": 2,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt36940475",
+          "title": "Mengele Unveiled",
+          "season": 1,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt27755929",
+          "title": "Blood Red - Under the Moonlight",
+          "season": 2,
+          "seasonYear": 2025
+        }
+      ],
+      "removed": [],
+      "ratingSwings": [
+        {
+          "seriesId": "tt30799082",
+          "title": "Inci Taneleri",
+          "season": 2,
+          "from": 3.25,
+          "to": 2.16,
+          "delta": -1.09
+        },
+        {
+          "seriesId": "tt30799082",
+          "title": "Inci Taneleri",
+          "season": 1,
+          "from": 4.01,
+          "to": 3.12,
+          "delta": -0.89
+        },
+        {
+          "seriesId": "tt30799082",
+          "title": "Inci Taneleri",
+          "season": 3,
+          "from": 2.19,
+          "to": 1.53,
+          "delta": -0.66
+        },
+        {
+          "seriesId": "tt14401604",
+          "title": "Gutfeld!",
+          "season": 1,
+          "from": 6.07,
+          "to": 6.61,
+          "delta": 0.54
+        },
+        {
+          "seriesId": "tt1863526",
+          "title": "Bar Rescue",
+          "season": 10,
+          "from": 7.33,
+          "to": 6.8,
+          "delta": -0.53
+        },
+        {
+          "seriesId": "tt14401604",
+          "title": "Gutfeld!",
+          "season": 2,
+          "from": 6.94,
+          "to": 7.46,
+          "delta": 0.52
+        },
+        {
+          "seriesId": "tt43650454",
+          "title": "Kanojo no Tomodachi",
+          "season": 1,
+          "from": 7.93,
+          "to": 7.47,
+          "delta": -0.46
+        },
+        {
+          "seriesId": "tt43599615",
+          "title": "The Love Lab",
+          "season": 1,
+          "from": 7.75,
+          "to": 7.35,
+          "delta": -0.4
+        },
+        {
+          "seriesId": "tt10268080",
+          "title": "My Perfect Landing",
+          "season": 1,
+          "from": 5.72,
+          "to": 6.11,
+          "delta": 0.39
+        },
+        {
+          "seriesId": "tt0176095",
+          "title": "The Challenge",
+          "season": 6,
+          "from": 8.59,
+          "to": 8.23,
+          "delta": -0.36
+        }
+      ],
+      "modifiedCounts": {
+        "seriesVotes": 14870,
+        "avgRating": 1026,
+        "shapes": 169,
+        "seriesRating": 233,
+        "episodeCount": 66
+      }
+    },
+    {
       "builtAt": "2026-10-21T11:47:49.253Z",
       "totals": {
         "seasons": 67435,
@@ -9491,219 +9727,6 @@
       ],
       "ratingSwings": [],
       "modifiedCounts": {}
-    },
-    {
-      "builtAt": "2026-09-08T10:37:02.890Z",
-      "totals": {
-        "seasons": 66662,
-        "delta": 14
-      },
-      "shapeCounts": {
-        "rebound": 10184,
-        "rising": 2600,
-        "slow-burn": 4413,
-        "big-finale": 12154,
-        "u-shaped": 3094,
-        "rollercoaster": 14152,
-        "mid-peak": 4628,
-        "saved-best-for-last": 1506,
-        "front-loaded": 3505,
-        "declining": 1886,
-        "bad-finale": 4648,
-        "consistent": 2633,
-        "shape-drift": 1576
-      },
-      "shapeDeltas": {
-        "rebound": 4,
-        "rising": 3,
-        "slow-burn": -2,
-        "big-finale": 9,
-        "u-shaped": 9,
-        "rollercoaster": 12,
-        "mid-peak": 6,
-        "front-loaded": 1,
-        "declining": 2,
-        "bad-finale": -6,
-        "consistent": -6
-      },
-      "added": [
-        {
-          "seriesId": "tt11846996",
-          "title": "Vigil",
-          "season": 3,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt27350543",
-          "title": "Rock Musical Bleach",
-          "season": 1,
-          "seasonYear": 2005
-        },
-        {
-          "seriesId": "tt1291441",
-          "title": "Ka-Pow!",
-          "season": 1,
-          "seasonYear": 2008
-        },
-        {
-          "seriesId": "tt1281973",
-          "title": "Bigg Boss",
-          "season": 6,
-          "seasonYear": 2012
-        },
-        {
-          "seriesId": "tt1281973",
-          "title": "Bigg Boss",
-          "season": 5,
-          "seasonYear": 2011
-        },
-        {
-          "seriesId": "tt9425082",
-          "title": "Body Cam",
-          "season": 11,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt26224444",
-          "title": "Slave Market",
-          "season": 2,
-          "seasonYear": 2024
-        },
-        {
-          "seriesId": "tt30825705",
-          "title": "Jorik",
-          "season": 1,
-          "seasonYear": 2024
-        },
-        {
-          "seriesId": "tt44302417",
-          "title": "Ash",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt5189210",
-          "title": "Landscape Artist of the Year",
-          "season": 9,
-          "seasonYear": 2024
-        },
-        {
-          "seriesId": "tt5189210",
-          "title": "Landscape Artist of the Year",
-          "season": 10,
-          "seasonYear": 2025
-        },
-        {
-          "seriesId": "tt40104578",
-          "title": "Candy Caries",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt4741312",
-          "title": "Flint. Redemption",
-          "season": 1,
-          "seasonYear": 2012
-        },
-        {
-          "seriesId": "tt5140444",
-          "title": "Grand Tours of the Scottish Islands",
-          "season": 1,
-          "seasonYear": 2013
-        }
-      ],
-      "removed": [],
-      "ratingSwings": [
-        {
-          "seriesId": "tt1281973",
-          "title": "Bigg Boss",
-          "season": 10,
-          "from": 6.93,
-          "to": 5.64,
-          "delta": -1.29
-        },
-        {
-          "seriesId": "tt1281973",
-          "title": "Bigg Boss",
-          "season": 4,
-          "from": 6.03,
-          "to": 4.79,
-          "delta": -1.24
-        },
-        {
-          "seriesId": "tt39013436",
-          "title": "Arafta",
-          "season": 2,
-          "from": 9.91,
-          "to": 8.69,
-          "delta": -1.22
-        },
-        {
-          "seriesId": "tt0442722",
-          "title": "The Doodlebops",
-          "season": 1,
-          "from": 9.02,
-          "to": 8.27,
-          "delta": -0.75
-        },
-        {
-          "seriesId": "tt15087662",
-          "title": "Bigg Boss OTT",
-          "season": 1,
-          "from": 5.07,
-          "to": 4.34,
-          "delta": -0.73
-        },
-        {
-          "seriesId": "tt1281973",
-          "title": "Bigg Boss",
-          "season": 8,
-          "from": 7.11,
-          "to": 6.48,
-          "delta": -0.63
-        },
-        {
-          "seriesId": "tt0103481",
-          "title": "Love & War",
-          "season": 3,
-          "from": 7.15,
-          "to": 7.76,
-          "delta": 0.61
-        },
-        {
-          "seriesId": "tt33305575",
-          "title": "Treasure island",
-          "season": 1,
-          "from": 7.4,
-          "to": 6.8,
-          "delta": -0.6
-        },
-        {
-          "seriesId": "tt8948264",
-          "title": "Vdud",
-          "season": 13,
-          "from": 7.98,
-          "to": 7.4,
-          "delta": -0.58
-        },
-        {
-          "seriesId": "tt41564444",
-          "title": "Reborn",
-          "season": 1,
-          "from": 7.01,
-          "to": 6.5,
-          "delta": -0.51
-        }
-      ],
-      "modifiedCounts": {
-        "seriesVotes": 20341,
-        "avgRating": 1150,
-        "shapes": 214,
-        "episodeCount": 100,
-        "seriesRating": 322,
-        "poster": 18,
-        "overview": 15
-      }
     }
   ]
 }
