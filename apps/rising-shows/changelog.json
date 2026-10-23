@@ -1,6 +1,280 @@
 {
   "updates": [
     {
+      "builtAt": "2026-10-23T11:45:10.423Z",
+      "totals": {
+        "seasons": 67477,
+        "delta": 24
+      },
+      "shapeCounts": {
+        "rebound": 9780,
+        "big-finale": 11808,
+        "u-shaped": 2645,
+        "rollercoaster": 13490,
+        "mid-peak": 4354,
+        "consistent": 2540,
+        "bad-finale": 4344,
+        "front-loaded": 3064,
+        "slow-burn": 3973,
+        "declining": 1643,
+        "saved-best-for-last": 1379,
+        "shape-drift": 1396,
+        "rising": 2372
+      },
+      "shapeDeltas": {
+        "rebound": 12,
+        "big-finale": 8,
+        "u-shaped": -1,
+        "rollercoaster": 1,
+        "consistent": 8,
+        "bad-finale": 9,
+        "front-loaded": 7,
+        "slow-burn": 8,
+        "declining": 5,
+        "saved-best-for-last": -1,
+        "shape-drift": 4,
+        "rising": 1
+      },
+      "added": [
+        {
+          "seriesId": "tt23112594",
+          "title": "VisionQuest",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt30796986",
+          "title": "NCIS: Origins",
+          "season": 3,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt11743610",
+          "title": "The Terminal List",
+          "season": 2,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt0364845",
+          "title": "NCIS",
+          "season": 24,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt49522266",
+          "title": "Top Gear: Top 41",
+          "season": 1,
+          "seasonYear": 2013
+        },
+        {
+          "seriesId": "tt14218830",
+          "title": "Abbott Elementary",
+          "season": 6,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt36235895",
+          "title": "Private Eyes West Coast",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt38937897",
+          "title": "Merry Berry Love",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt2805096",
+          "title": "Chicago P.D.",
+          "season": 14,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt4655480",
+          "title": "Chicago Med",
+          "season": 12,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt36601237",
+          "title": "Ruído",
+          "season": 2,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt42798488",
+          "title": "KiDnap GAME",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt8068852",
+          "title": "The Rocketeer",
+          "season": 1,
+          "seasonYear": 2019
+        },
+        {
+          "seriesId": "tt5017396",
+          "title": "MTV Roadies",
+          "season": 12,
+          "seasonYear": 2015
+        },
+        {
+          "seriesId": "tt5017396",
+          "title": "MTV Roadies",
+          "season": 8,
+          "seasonYear": 2011
+        },
+        {
+          "seriesId": "tt4353976",
+          "title": "Antiques Road Trip",
+          "season": 18,
+          "seasonYear": 2019
+        },
+        {
+          "seriesId": "tt1815377",
+          "title": "Strawberry Shortcake's Berry Bitty Adventures",
+          "season": 2,
+          "seasonYear": 2010
+        },
+        {
+          "seriesId": "tt5017396",
+          "title": "MTV Roadies",
+          "season": 16,
+          "seasonYear": 2019
+        },
+        {
+          "seriesId": "tt5017396",
+          "title": "MTV Roadies",
+          "season": 14,
+          "seasonYear": 2017
+        },
+        {
+          "seriesId": "tt14401604",
+          "title": "Gutfeld!",
+          "season": 4,
+          "seasonYear": 2024
+        },
+        {
+          "seriesId": "tt36794102",
+          "title": "Shatir",
+          "season": 1,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt39222526",
+          "title": "Underground",
+          "season": 2,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt47743267",
+          "title": "Ishqa Ishqa",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt6722972",
+          "title": "Hot Dog",
+          "season": 4,
+          "seasonYear": 2013
+        }
+      ],
+      "removed": [],
+      "ratingSwings": [
+        {
+          "seriesId": "tt0346211",
+          "title": "Bir Demet Tiyatro",
+          "season": 1,
+          "from": 7.82,
+          "to": 6.91,
+          "delta": -0.91
+        },
+        {
+          "seriesId": "tt6663476",
+          "title": "Mama June: Family Crisis",
+          "season": 6,
+          "from": 6.93,
+          "to": 7.63,
+          "delta": 0.7
+        },
+        {
+          "seriesId": "tt11298328",
+          "title": "The Long Night",
+          "season": 1,
+          "from": 8.38,
+          "to": 7.77,
+          "delta": -0.61
+        },
+        {
+          "seriesId": "tt3206540",
+          "title": "Morganville: The Series",
+          "season": 1,
+          "from": 7.63,
+          "to": 7.02,
+          "delta": -0.61
+        },
+        {
+          "seriesId": "tt15483602",
+          "title": "Reincarnated as a Sword",
+          "season": 2,
+          "from": 9.1,
+          "to": 8.6,
+          "delta": -0.5
+        },
+        {
+          "seriesId": "tt12135844",
+          "title": "Map Men",
+          "season": 5,
+          "from": 8.8,
+          "to": 8.34,
+          "delta": -0.46
+        },
+        {
+          "seriesId": "tt10924104",
+          "title": "Kursun",
+          "season": 1,
+          "from": 8.17,
+          "to": 7.73,
+          "delta": -0.44
+        },
+        {
+          "seriesId": "tt5017396",
+          "title": "MTV Roadies",
+          "season": 1,
+          "from": 6.13,
+          "to": 6.57,
+          "delta": 0.44
+        },
+        {
+          "seriesId": "tt35230907",
+          "title": "Baska Bir Gün",
+          "season": 1,
+          "from": 5.47,
+          "to": 5.03,
+          "delta": -0.44
+        },
+        {
+          "seriesId": "tt37673572",
+          "title": "Polden",
+          "season": 1,
+          "from": 7.93,
+          "to": 7.5,
+          "delta": -0.43
+        }
+      ],
+      "modifiedCounts": {
+        "seriesVotes": 19432,
+        "avgRating": 1294,
+        "shapes": 215,
+        "seriesRating": 252,
+        "episodeCount": 98,
+        "overview": 1,
+        "poster": 3
+      }
+    },
+    {
       "builtAt": "2026-10-22T11:55:04.235Z",
       "totals": {
         "seasons": 67453,
@@ -9691,42 +9965,6 @@
         "seriesRating": 303,
         "episodeCount": 94
       }
-    },
-    {
-      "builtAt": "2026-09-08T20:23:41.741Z",
-      "totals": {
-        "seasons": 66661,
-        "delta": -1
-      },
-      "shapeCounts": {
-        "rebound": 10184,
-        "rising": 2600,
-        "slow-burn": 4413,
-        "big-finale": 12154,
-        "u-shaped": 3094,
-        "rollercoaster": 14152,
-        "mid-peak": 4628,
-        "saved-best-for-last": 1506,
-        "front-loaded": 3504,
-        "declining": 1886,
-        "bad-finale": 4648,
-        "consistent": 2633,
-        "shape-drift": 1576
-      },
-      "shapeDeltas": {
-        "front-loaded": -1
-      },
-      "added": [],
-      "removed": [
-        {
-          "seriesId": "tt0041162",
-          "title": "Batman and Robin",
-          "season": 1,
-          "seasonYear": 1949
-        }
-      ],
-      "ratingSwings": [],
-      "modifiedCounts": {}
     }
   ]
 }
