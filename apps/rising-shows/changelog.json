@@ -1,6 +1,374 @@
 {
   "updates": [
     {
+      "builtAt": "2026-10-24T11:03:55.709Z",
+      "totals": {
+        "seasons": 67517,
+        "delta": 40
+      },
+      "shapeCounts": {
+        "rebound": 9789,
+        "big-finale": 11811,
+        "u-shaped": 2646,
+        "rollercoaster": 13503,
+        "mid-peak": 4366,
+        "consistent": 2544,
+        "bad-finale": 4344,
+        "front-loaded": 3063,
+        "slow-burn": 3979,
+        "declining": 1648,
+        "saved-best-for-last": 1379,
+        "shape-drift": 1394,
+        "rising": 2369
+      },
+      "shapeDeltas": {
+        "rebound": 9,
+        "big-finale": 3,
+        "u-shaped": 1,
+        "rollercoaster": 13,
+        "mid-peak": 12,
+        "consistent": 4,
+        "front-loaded": -1,
+        "slow-burn": 6,
+        "declining": 5,
+        "shape-drift": -2,
+        "rising": -3
+      },
+      "added": [
+        {
+          "seriesId": "tt31589662",
+          "title": "Georgie & Mandy's First Marriage",
+          "season": 3,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt2261391",
+          "title": "Chicago Fire",
+          "season": 15,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt33270224",
+          "title": "Cupertino",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt0203259",
+          "title": "Law & Order: Special Victims Unit",
+          "season": 28,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt26933824",
+          "title": "Nobody Wants This",
+          "season": 3,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt26591110",
+          "title": "Elsbeth",
+          "season": 4,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt31289994",
+          "title": "The Lowdown",
+          "season": 2,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt33078239",
+          "title": "Eternally Yours",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt13884052",
+          "title": "The Detective Is Already Dead",
+          "season": 2,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt0098844",
+          "title": "Law & Order",
+          "season": 26,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt20859904",
+          "title": "Beavis and Butt-Head",
+          "season": 4,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt7558652",
+          "title": "Pure Taboo",
+          "season": 7,
+          "seasonYear": 2023
+        },
+        {
+          "seriesId": "tt0364867",
+          "title": "Sakura Diaries",
+          "season": 1,
+          "seasonYear": 1997
+        },
+        {
+          "seriesId": "tt0163449",
+          "title": "The Hello Girls",
+          "season": 2,
+          "seasonYear": 1998
+        },
+        {
+          "seriesId": "tt21047520",
+          "title": "The 2022 NBA Finals",
+          "season": 1,
+          "seasonYear": 2022
+        },
+        {
+          "seriesId": "tt22167756",
+          "title": "Take 5 with Zan Rowe",
+          "season": 3,
+          "seasonYear": 2024
+        },
+        {
+          "seriesId": "tt14648632",
+          "title": "ArtisWitch",
+          "season": 1,
+          "seasonYear": 2021
+        },
+        {
+          "seriesId": "tt13957868",
+          "title": "Peanuts",
+          "season": 3,
+          "seasonYear": 1980
+        },
+        {
+          "seriesId": "tt28772111",
+          "title": "Camden",
+          "season": 1,
+          "seasonYear": 2024
+        },
+        {
+          "seriesId": "tt38413198",
+          "title": "Halef: Köklerin Çagrisi",
+          "season": 2,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt45337087",
+          "title": "Bobby Flay's the Line",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt0131684",
+          "title": "Sharman",
+          "season": 1,
+          "seasonYear": 1996
+        },
+        {
+          "seriesId": "tt5017396",
+          "title": "MTV Roadies",
+          "season": 15,
+          "seasonYear": 2018
+        },
+        {
+          "seriesId": "tt2161695",
+          "title": "Celebrity Antiques Road Trip",
+          "season": 12,
+          "seasonYear": 2023
+        },
+        {
+          "seriesId": "tt1441404",
+          "title": "Al fondo hay sitio",
+          "season": 12,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt19623220",
+          "title": "As Long as We Live",
+          "season": 1,
+          "seasonYear": 2023
+        },
+        {
+          "seriesId": "tt29943321",
+          "title": "A Wolf's Prey",
+          "season": 1,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt30324675",
+          "title": "Ona takaya klassnaya",
+          "season": 1,
+          "seasonYear": 2024
+        },
+        {
+          "seriesId": "tt33241411",
+          "title": "The Answer Run",
+          "season": 1,
+          "seasonYear": 2024
+        },
+        {
+          "seriesId": "tt37399646",
+          "title": "Sew-ey's No Armor Hardcore",
+          "season": 1,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt37399646",
+          "title": "Sew-ey's No Armor Hardcore",
+          "season": 2,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt37399646",
+          "title": "Sew-ey's No Armor Hardcore",
+          "season": 3,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt38351618",
+          "title": "Body in the Water",
+          "season": 1,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt38496042",
+          "title": "Das Vergessen",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt41583453",
+          "title": "Hunt for the Missing: Chicago",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt15686274",
+          "title": "Ndrangheta, World Wide Mafia",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt39380586",
+          "title": "Saban",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt43669648",
+          "title": "Günesin Dogdugu Yer",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt4141426",
+          "title": "Secret Door",
+          "season": 1,
+          "seasonYear": 2014
+        },
+        {
+          "seriesId": "tt8084548",
+          "title": "Red vs. Blue: Relocated",
+          "season": 1,
+          "seasonYear": 2009
+        }
+      ],
+      "removed": [],
+      "ratingSwings": [
+        {
+          "seriesId": "tt9355244",
+          "title": "Very Beautiful Movements 2",
+          "season": 3,
+          "from": 6.26,
+          "to": 4.85,
+          "delta": -1.41
+        },
+        {
+          "seriesId": "tt0346211",
+          "title": "Bir Demet Tiyatro",
+          "season": 1,
+          "from": 6.91,
+          "to": 6.1,
+          "delta": -0.81
+        },
+        {
+          "seriesId": "tt14321632",
+          "title": "All the Queen's Men",
+          "season": 5,
+          "from": 8.04,
+          "to": 7.39,
+          "delta": -0.65
+        },
+        {
+          "seriesId": "tt9680524",
+          "title": "Glow Up: Britain's Next Make-Up Star",
+          "season": 7,
+          "from": 6.82,
+          "to": 6.19,
+          "delta": -0.63
+        },
+        {
+          "seriesId": "tt31189898",
+          "title": "Drunkard Morning",
+          "season": 2,
+          "from": 4.33,
+          "to": 4.92,
+          "delta": 0.59
+        },
+        {
+          "seriesId": "tt15835482",
+          "title": "Me and Her",
+          "season": 1,
+          "from": 6.82,
+          "to": 7.41,
+          "delta": 0.59
+        },
+        {
+          "seriesId": "tt9355244",
+          "title": "Very Beautiful Movements 2",
+          "season": 2,
+          "from": 5.41,
+          "to": 4.84,
+          "delta": -0.57
+        },
+        {
+          "seriesId": "tt9355244",
+          "title": "Very Beautiful Movements 2",
+          "season": 1,
+          "from": 5.43,
+          "to": 4.87,
+          "delta": -0.56
+        },
+        {
+          "seriesId": "tt37540577",
+          "title": "Aquel",
+          "season": 1,
+          "from": 6.3,
+          "to": 6.86,
+          "delta": 0.56
+        },
+        {
+          "seriesId": "tt1580811",
+          "title": "Love and Punishment",
+          "season": 1,
+          "from": 6.67,
+          "to": 7.23,
+          "delta": 0.56
+        }
+      ],
+      "modifiedCounts": {
+        "seriesVotes": 24262,
+        "avgRating": 1871,
+        "shapes": 321,
+        "seriesRating": 1198,
+        "episodeCount": 155,
+        "overview": 4
+      }
+    },
+    {
       "builtAt": "2026-10-23T11:45:10.423Z",
       "totals": {
         "seasons": 67477,
@@ -9690,280 +10058,6 @@
         "episodeCount": 53,
         "poster": 2,
         "overview": 1
-      }
-    },
-    {
-      "builtAt": "2026-09-09T10:45:51.082Z",
-      "totals": {
-        "seasons": 66679,
-        "delta": 18
-      },
-      "shapeCounts": {
-        "rebound": 10190,
-        "rising": 2612,
-        "slow-burn": 4414,
-        "big-finale": 12173,
-        "u-shaped": 3091,
-        "rollercoaster": 14154,
-        "mid-peak": 4634,
-        "saved-best-for-last": 1505,
-        "front-loaded": 3506,
-        "declining": 1884,
-        "bad-finale": 4651,
-        "consistent": 2634,
-        "shape-drift": 1578
-      },
-      "shapeDeltas": {
-        "rebound": 6,
-        "rising": 12,
-        "slow-burn": 1,
-        "big-finale": 19,
-        "u-shaped": -3,
-        "rollercoaster": 2,
-        "mid-peak": 6,
-        "saved-best-for-last": -1,
-        "front-loaded": 2,
-        "declining": -2,
-        "bad-finale": 3,
-        "consistent": 1,
-        "shape-drift": 2
-      },
-      "added": [
-        {
-          "seriesId": "tt45372918",
-          "title": "La red púrpura",
-          "season": 1,
-          "seasonYear": 2023
-        },
-        {
-          "seriesId": "tt45372916",
-          "title": "La nena",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt0041053",
-          "title": "The Silver Theatre",
-          "season": 1,
-          "seasonYear": 1949
-        },
-        {
-          "seriesId": "tt0103396",
-          "title": "Dateline NBC",
-          "season": 8,
-          "seasonYear": 1999
-        },
-        {
-          "seriesId": "tt0103396",
-          "title": "Dateline NBC",
-          "season": 9,
-          "seasonYear": 2000
-        },
-        {
-          "seriesId": "tt40266274",
-          "title": "Selling Sex",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt1043090",
-          "title": "Dispatches",
-          "season": 23,
-          "seasonYear": 2009
-        },
-        {
-          "seriesId": "tt1429752",
-          "title": "Mantracker",
-          "season": 4,
-          "seasonYear": 2009
-        },
-        {
-          "seriesId": "tt0112911",
-          "title": "Spiritual Voices",
-          "season": 1,
-          "seasonYear": 1995
-        },
-        {
-          "seriesId": "tt27564441",
-          "title": "Dunaj, k vasim sluzbám",
-          "season": 1,
-          "seasonYear": 2023
-        },
-        {
-          "seriesId": "tt28331583",
-          "title": "Truthseekers",
-          "season": 2,
-          "seasonYear": 2024
-        },
-        {
-          "seriesId": "tt33247029",
-          "title": "Les Armes",
-          "season": 1,
-          "seasonYear": 2024
-        },
-        {
-          "seriesId": "tt0465875",
-          "title": "Les tropiques de l'amour",
-          "season": 2,
-          "seasonYear": 2003
-        },
-        {
-          "seriesId": "tt6777360",
-          "title": "Reported Missing",
-          "season": 5,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt28075806",
-          "title": "The Great Barrier Reef: A Living Treasure",
-          "season": 1,
-          "seasonYear": 2021
-        },
-        {
-          "seriesId": "tt32544262",
-          "title": "Clive Myrie's Caribbean Adventure",
-          "season": 1,
-          "seasonYear": 2024
-        },
-        {
-          "seriesId": "tt34385046",
-          "title": "Abandoned Railways from Above",
-          "season": 1,
-          "seasonYear": 2024
-        },
-        {
-          "seriesId": "tt35049313",
-          "title": "Humoretaten",
-          "season": 3,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt36733655",
-          "title": "The Seasons",
-          "season": 7,
-          "seasonYear": 2025
-        },
-        {
-          "seriesId": "tt42654265",
-          "title": "Earle Meets World",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt45051577",
-          "title": "The Last Oath",
-          "season": 1,
-          "seasonYear": 2026
-        }
-      ],
-      "removed": [
-        {
-          "seriesId": "tt13377972",
-          "title": "The Gypsy Bride",
-          "season": 2,
-          "seasonYear": 2023
-        },
-        {
-          "seriesId": "tt13377972",
-          "title": "The Gypsy Bride",
-          "season": 3,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt36733655",
-          "title": "The Seasons",
-          "season": 1,
-          "seasonYear": 2025
-        }
-      ],
-      "ratingSwings": [
-        {
-          "seriesId": "tt0211882",
-          "title": "Watership Down",
-          "season": 3,
-          "from": 6.18,
-          "to": 5.08,
-          "delta": -1.1
-        },
-        {
-          "seriesId": "tt0451460",
-          "title": "Handy Manny",
-          "season": 2,
-          "from": 5.39,
-          "to": 6.18,
-          "delta": 0.79
-        },
-        {
-          "seriesId": "tt37376067",
-          "title": "Reckless",
-          "season": 1,
-          "from": 7.08,
-          "to": 6.3,
-          "delta": -0.78
-        },
-        {
-          "seriesId": "tt15302054",
-          "title": "Young, Famous & African",
-          "season": 2,
-          "from": 6.62,
-          "to": 5.86,
-          "delta": -0.76
-        },
-        {
-          "seriesId": "tt36470536",
-          "title": "Next Gen NYC",
-          "season": 2,
-          "from": 6.7,
-          "to": 6,
-          "delta": -0.7
-        },
-        {
-          "seriesId": "tt21080118",
-          "title": "Al Daheeh",
-          "season": 1,
-          "from": 8.01,
-          "to": 8.64,
-          "delta": 0.63
-        },
-        {
-          "seriesId": "tt0451460",
-          "title": "Handy Manny",
-          "season": 3,
-          "from": 5.78,
-          "to": 6.4,
-          "delta": 0.62
-        },
-        {
-          "seriesId": "tt4460504",
-          "title": "Britannica's Tales Around the World",
-          "season": 1,
-          "from": 4.48,
-          "to": 3.86,
-          "delta": -0.62
-        },
-        {
-          "seriesId": "tt38711470",
-          "title": "High School! Kimengumi",
-          "season": 1,
-          "from": 7.23,
-          "to": 6.63,
-          "delta": -0.6
-        },
-        {
-          "seriesId": "tt0211882",
-          "title": "Watership Down",
-          "season": 2,
-          "from": 6.17,
-          "to": 5.62,
-          "delta": -0.55
-        }
-      ],
-      "modifiedCounts": {
-        "seriesVotes": 20672,
-        "avgRating": 1414,
-        "shapes": 243,
-        "seriesRating": 303,
-        "episodeCount": 94
       }
     }
   ]
