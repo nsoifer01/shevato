@@ -68,6 +68,7 @@ column names the guard added so the whole category is covered, not the case.
 | 34 | The "held on a tie" test never tested a tie (`>=` survived) | mutation-check (new) | R5 dead test | tie assertion in chips.test |
 | 35 | The search's own club-limit check was unguarded; illegal plans could crowd the shortlist and a legal +15 upgrade be dropped for a roll | mutation-check (new) | R5 dead test | crowded-shortlist case in transfers.test |
 | 36 | One 403 backed the whole proxy off for 120 s (503s for every uncached path, the app's own retry defeated); the probe read once where the app retries; a red result then stood six hours (#616) | monitor (#616, 2026-10-17) | R6 ops path | corroborated backoff, `x-fpl-upstream`, probe re-read, hourly recheck while red; fpl.test, fpl-health.test; 5 mutants |
+| 37 | Both health probes judged FPL's routine update after a deadline as a failure: GitHub started the probe 5 s after GW8's deadline and every manager read 503'd (red, exit 2), and the Netlify 18:41 run would have opened an incident 11 min after GW10's 18:30 deadline | monitor (GitHub probe run 39995547754, 2026-10-23) | R6 ops path | `UPDATE_WINDOW_MS` / `updateWindowAt`: the CLI waits the window out, the Netlify run defers to the next hour, deferral counts as the scheduler running; probe-sample, fpl-health, probe-freshness; 6 mutants |
 
 **Open question (not yet a defect):** the first rotating real-manager sample
 (2026-10-17, 12 managers) recommended a Wildcard at GW7 to all 7 who still
@@ -98,6 +99,62 @@ Categories, and the one guard that covers each WHOLE category:
 - **R6, operational failure paths**: fault-injected tests of each dependency
   failing realistically, and the readiness gate's upstream versus application
   classification (`evidence-probe.mjs --sample`).
+
+## The GW8 deadline (23 October 2026): a probe that landed in FPL's update
+
+**What happened, from the run log and FPL.** GitHub started the `full` probe
+(run 39995547754) at 17:29:57 UTC; its first request left at 17:30:05. GW8's
+deadline was 17:30:00 (`bootstrap-static` events). Bootstrap and fixtures were
+served, and every payload invariant and the built-squad plan passed; then the
+owner's entry and all 14 sampled managers (12 asked, 2 spares) came back HTTP
+503, so not one manager check ran, and the run exited 2 (UPSTREAM only, 16
+checks). The next scheduled run, 21:43, was green, as is every run since; the
+Netlify probe (18:41 slot) never saw it.
+
+**Not an outage, and not the planner.** FPL 503s manager reads for about half
+an hour after every deadline while it moves the gameweek on (GW1-RUNBOOK.md,
+Fact 4: 17:30 to 17:57 at GW1). The run read FPL directly (`--direct`), so the
+proxy and the app were not in the path; what visitors saw in those minutes is
+the known deadline behaviour (stale copies labelled stale, the new picks 503,
+the page retrying every 75 s, "The data layer around a deadline" below), which
+no log this plan can read back would confirm for that night. **What the 503
+bodies said is not known**: the probe never kept a failed body. The CLI now
+reads it and names FPL's "The game is being updated." when it is there.
+
+**Our defect: both probes treated a scheduled FPL state as a failure.**
+GitHub fires this schedule hours late at random, so any run can land on a
+deadline. Netlify fires on time, at :41, which makes its collisions
+predictable: the 18:41 run is 11 minutes after an 18:30 deadline (GW10, 6
+November). If FPL already calls GW10 current by then, the owner's GW10 picks
+are not cached yet, so the run would read them as a 503 (as #616's 12:41 run
+read GW7's), open an incident with an @mention, fail a workflow run, and close
+it all an hour later. Now the hour after the most recent deadline is
+FPL's (`UPDATE_WINDOW_MS`, the proxy's `POST_DEADLINE_WINDOW_MS`):
+- the CLI asks a 5xx or FPL's notice again every minute until FPL answers,
+  then checks everything, and prints what it waited (`update`). It is NOT a
+  pass by default: a read still failing when the hour ends is UPSTREAM, saying
+  so, and refusals, 404s, timeouts and network errors are never waited. The
+  workflow's timeout went from 15 to 75 minutes for the wait; the repository
+  is public, so the minutes are free.
+- the Netlify run, which cannot wait inside 30 seconds, leaves its slot
+  unclaimed and writes `deferred`; the next hourly invocation is outside the
+  window and probes. A deferral counts as the scheduler running in
+  `statusOf` and the monitor (otherwise a deferred slot reads stale for the
+  seconds between 7 h after the last run and the next run storing), and never
+  changes a red result.
+
+**Against 17 October (#616, next section).** Different mechanism, same
+family. There, FPL refused one read at random and our proxy turned it into two
+minutes of 503s; the fault was ours and the fix was in the proxy. Here, FPL
+was doing what it does after every deadline and the fault was the probes'
+schedule-blindness. What they share: a probe that read FPL once, at a moment
+when a failure was expected and transient, and judged it as an incident. The
+category is R6 (ops path), and the neighbouring states tested are the window's
+first seconds, its last minute, its close, before the deadline, a refusal
+inside it, the notice before any deadline is known, and a red result deferred.
+
+**Still open.** Whether FPL's update ever outlasts the hour: if a run reports
+"outlasted its routine update", that is new information about FPL, not noise.
 
 ## Issue #616 (17 October 2026): one refused read, a site-wide backoff, six hours red
 

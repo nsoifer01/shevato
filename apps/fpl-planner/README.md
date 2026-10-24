@@ -1438,6 +1438,25 @@ previous reading is stored as a failed run, and a failed history write no
 longer costs the alert. `--entry none` probes without a manager on GitHub as
 on Netlify, and any other non-numeric entry fails before fetching.
 
+FPL's update after a deadline (since 2026-10-24). For about half an hour after
+every deadline FPL 503s manager reads while it moves the gameweek on; both
+probes treat the hour after the most recent deadline (`UPDATE_WINDOW_MS` in
+`scripts/lib/probe.mjs`, equal to the proxy's `POST_DEADLINE_WINDOW_MS`) as
+FPL's maintenance, not a failure. The CLI (`evidence-probe.mjs`) asks a read
+that comes back 5xx, or with FPL's "The game is being updated." at any status,
+again every minute (`FPL_PROBE_UPDATE_POLL_MS` in tests) until FPL answers or
+the window closes, then runs every check; an `update` line says what was
+waited. A read still failing when the window closes is UPSTREAM as before and
+says it outlasted the update; a 403, 429, 404, timeout or network error is
+never waited for. The workflow's `probe` job allows 75 minutes for this. The
+Netlify run cannot wait inside 30 seconds, so when the proxy's stored deadlines
+put it inside the window it claims nothing, writes `deferred`
+(`{ at, slot, deadline, until }`) to the `fpl-health` store and leaves the slot
+to the next hourly invocation, which is past the window by construction.
+`fpl-health-status` shows a deferral newer than `latest` as `deferred`, and it
+and the monitor count it as the scheduler running for the 7-hour staleness
+check; it never changes `latest`'s verdict, so a red run stays red.
+
 Alerting. A failure is logged as an error, and when `FPL_HEALTH_GITHUB_TOKEN`
 (fine-grained, Actions read/write on this repository only) is set in Netlify,
 the run starts `.github/workflows/fpl-health.yml` in mode `monitor` at once,

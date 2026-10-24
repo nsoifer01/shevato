@@ -39,11 +39,11 @@
 // the issue is written by the workflow with GITHUB_TOKEN, by the same script
 // the delayed GitHub schedule runs as the backstop: one writer, one incident.
 
-import { runProbe, payloadShapeFailures } from '../../../apps/fpl-planner/scripts/lib/probe.mjs';
+import { runProbe, payloadShapeFailures, updateWindowAt } from '../../../apps/fpl-planner/scripts/lib/probe.mjs';
 import { FPL_API, USER_AGENT, archiveCoverageFailures, seasonLabelFrom } from '../../../apps/fpl-planner/scripts/lib/archive.mjs';
 import { stagedManifest } from './fpl-archive-stage.mjs';
 import { freeHitPicksInfo } from '../../../apps/fpl-planner/js/engine/squad.js';
-import { REFUSAL_KEY, UPSTREAM_CAUSES, scrubUpstreamText } from './fpl-cache.mjs';
+import { DEADLINE_KEY, REFUSAL_KEY, UPSTREAM_CAUSES, scrubUpstreamText } from './fpl-cache.mjs';
 
 export const HEALTH_STORE = 'fpl-health';
 
@@ -124,18 +124,44 @@ export const slotFor = (at, claimedSlot, before) => {
   return null;
 };
 
+// NOT DURING FPL'S UPDATE AFTER A DEADLINE (2026-10-24). For about half an
+// hour after every deadline FPL 503s manager reads while it moves the
+// gameweek on (scripts/lib/probe.mjs UPDATE_WINDOW_MS, the window). A run in
+// it reads the owner's new picks as a 503 and his other reads as stale copies
+// and fails: an incident, an @mention and a failed workflow for FPL's routine
+// maintenance, as the GitHub probe was on 2026-10-23 at GW8's deadline. The
+// 18:41 run lands 11 minutes after an 18:30 deadline (GW10, 6 November). This
+// run cannot wait it out inside Netlify's 30 seconds, so it leaves the slot
+// unclaimed and records `deferred`; the next hourly invocation is past the
+// window by construction and probes the slot as usual. The deadlines are the
+// ones the proxy last stored (fpl-cache.mjs DEADLINE_KEY), a read that costs
+// FPL nothing; without them the run probes as before. statusOf and the
+// monitor count a deferral as the scheduler running, so the hour it adds
+// never reads as a stopped scheduler, and a red result stays red through it.
+export async function updateWindowFor(proxyStore, at) {
+  if (!proxyStore) return null;
+  try {
+    const meta = await proxyStore.get(DEADLINE_KEY, { type: 'json' });
+    return meta && typeof meta === 'object' ? updateWindowAt([meta.nextDeadline, meta.lastDeadline], Date.parse(at)) : null;
+  } catch (err) {
+    console.error('fpl-health deadline meta read failed', String(err && err.message));
+    return null;
+  }
+}
+
 /**
- * Claim this slot. `claimed` is false when another invocation already has it;
- * `previous` is the claim this one replaced, so a run can tell whether the
- * one before it ever finished.
+ * Claim this slot. `claimed` is false when another invocation already has it,
+ * or when `updateWindow` defers it (`deferred`); `previous` is the claim this
+ * one replaced, so a run can tell whether the one before it ever finished.
  */
-async function claimSlot(store, at, before) {
+async function claimSlot(store, at, before, updateWindow = null) {
   const cur = await store.getWithMetadata('slot', { type: 'json' });
   const previous = (cur && cur.data) || null;
   const wanted = slotFor(at, previous && previous.slot, before);
   if (!wanted) return { claimed: false, previous, slot: slotOf(at) };
   const { slot } = wanted;
   if (previous && previous.slot === slot) return { claimed: false, previous, slot };
+  if (updateWindow) return { claimed: false, deferred: true, previous, slot };
   const res = await store.setJSON('slot', { slot, at }, cur && cur.etag ? { onlyIfMatch: cur.etag } : { onlyIfNew: true });
   return { claimed: !(res && res.modified === false), previous, slot };
 }
@@ -297,7 +323,12 @@ const transientLines = (notes) => (notes.length ? ['', ...notes.map((n) => `tran
 export async function runScheduledProbe({ store, fetchImpl = fetch, now = () => new Date().toISOString(), alert = null, archiveStore = null, entryId = healthEntryId(), proxyStore = null, slowRunMs = SLOW_RUN_MS, rereadDelayMs = REREAD_DELAY_MS } = {}) {
   const at = now();
   const before = await store.get('latest', { type: 'json' });
-  const { claimed, previous, slot } = await claimSlot(store, at, before);
+  const updateWindow = await updateWindowFor(proxyStore, at);
+  const { claimed, deferred, previous, slot } = await claimSlot(store, at, before, updateWindow);
+  if (deferred) {
+    await store.setJSON('deferred', { at, slot, deadline: updateWindow.deadline, until: updateWindow.until });
+    return { skipped: `slot ${slot} deferred: FPL is updating after the ${updateWindow.deadline} deadline until ${updateWindow.until}; the next hourly run probes it` };
+  }
   if (!claimed) return { skipped: `slot ${slot} already probed${before && before.ok === false ? '' : ', and the last result passed'}` };
 
   const started = Date.now();
@@ -419,20 +450,35 @@ export function refusalCheck(refusal, previousAt, at) {
 }
 
 /**
+ * When the scheduler last ran, by the result or a later deferral (see
+ * updateWindowFor): the clock both staleness checks judge. `deferred` counts
+ * only when it is newer than `latest`.
+ */
+export function lastRunAt(latest, deferred = null) {
+  const at = latest ? Date.parse(latest.at) : NaN;
+  const d = deferred ? Date.parse(deferred.at) : NaN;
+  return Number.isFinite(d) && !(d <= at) ? d : at;
+}
+
+/**
  * What the status endpoint answers: 200 healthy and recent, 503 otherwise.
  * `claim` is the store's slot claim: a claim newer than `latest` that is old
- * enough to have finished is a run that died.
+ * enough to have finished is a run that died. `deferred` is the store's last
+ * deferral, shown when newer than `latest` and counted as the scheduler
+ * running; it never changes the verdict of `latest`.
  */
-export function statusOf(latest, nowMs = Date.now(), claim = null) {
+export function statusOf(latest, nowMs = Date.now(), claim = null, deferred = null) {
   if (claim && claim.slot && (!latest || latest.slot !== claim.slot) && nowMs - Date.parse(claim.at) > UNFINISHED_AFTER_MS) {
     return { status: 503, body: { ok: false, reason: `the run for slot ${claim.slot} started at ${claim.at} and never recorded a result (killed at Netlify's 30-second limit, or crashed)`, latest } };
   }
   if (!latest) return { status: 503, body: { ok: false, reason: 'no probe has run yet' } };
-  const ageHours = (nowMs - Date.parse(latest.at)) / 3600e3;
+  const runAt = lastRunAt(latest, deferred);
+  const shown = runAt !== Date.parse(latest.at) ? { deferred } : {};
+  const ageHours = (nowMs - runAt) / 3600e3;
   if (ageHours > STALE_AFTER_HOURS) {
-    return { status: 503, body: { ok: false, reason: `the last probe ran ${ageHours.toFixed(1)}h ago; the scheduler has missed a slot`, latest } };
+    return { status: 503, body: { ok: false, reason: `the last probe ran ${ageHours.toFixed(1)}h ago; the scheduler has missed a slot`, latest, ...shown } };
   }
-  return { status: latest.ok ? 200 : 503, body: { ok: latest.ok, reason: latest.ok ? 'every invariant holds' : `${latest.failed.length} invariant(s) failed`, latest } };
+  return { status: latest.ok ? 200 : 503, body: { ok: latest.ok, reason: latest.ok ? 'every invariant holds' : `${latest.failed.length} invariant(s) failed`, latest, ...shown } };
 }
 
 /**

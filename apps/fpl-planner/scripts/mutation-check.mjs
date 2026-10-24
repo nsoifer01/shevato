@@ -324,6 +324,55 @@ export const MUTANTS = [
     tests: [NT('fpl-health')],
     guards: 'An hourly recheck that fails exactly as before starts no workflow run, so an open incident is not an email an hour (2026-10-17).',
   },
+  // ---- FPL's update after a deadline (2026-10-24). ----
+  {
+    id: 'update-window-never',
+    file: `${APP}/scripts/lib/probe.mjs`,
+    find: 'if (last === null || nowMs - last >= UPDATE_WINDOW_MS) return null;',
+    replace: 'return null;',
+    tests: [T('probe-freshness'), T('probe-sample'), NT('fpl-health')],
+    guards: "A probe that lands in FPL's update after a deadline waits it out (CLI) or defers (Netlify) instead of failing on FPL's maintenance (GW8, 2026-10-23).",
+  },
+  {
+    id: 'update-window-open-ended',
+    file: `${APP}/scripts/lib/probe.mjs`,
+    find: 'if (last === null || nowMs - last >= UPDATE_WINDOW_MS) return null;',
+    replace: 'if (last === null) return null;',
+    tests: [T('probe-freshness'), T('probe-sample'), NT('fpl-health')],
+    guards: 'The update window closes an hour after the deadline: FPL failing past it is an UPSTREAM failure, and a run then probes normally (2026-10-24).',
+  },
+  {
+    id: 'probe-update-notice-only',
+    file: `${APP}/scripts/evidence-probe.mjs`,
+    find: "!(err.kind === 'server' || err.kind === 'updating')",
+    replace: "!(err.kind === 'updating')",
+    tests: [T('probe-sample')],
+    guards: "Inside the window a plain 503 is FPL's update too, not only one carrying its notice (2026-10-24).",
+  },
+  {
+    id: 'health-defer-never',
+    file: 'netlify/functions/lib/fpl-health-run.mjs',
+    find: 'if (updateWindow) return { claimed: false, deferred: true, previous, slot };',
+    replace: 'if (false) return { claimed: false, deferred: true, previous, slot };',
+    tests: [NT('fpl-health')],
+    guards: "The Netlify run inside FPL's update leaves its slot to the next hour rather than failing on it (GW10's 18:30 deadline vs the 18:41 run, 2026-10-24).",
+  },
+  {
+    id: 'health-deferral-not-alive',
+    file: 'netlify/functions/lib/fpl-health-run.mjs',
+    find: 'return Number.isFinite(d) && !(d <= at) ? d : at;',
+    replace: 'return at;',
+    tests: [NT('fpl-health')],
+    guards: 'A deferral counts as the scheduler running, so the hour it adds never reads as a stopped scheduler on the status endpoint (2026-10-24).',
+  },
+  {
+    id: 'monitor-deferral-not-alive',
+    file: `${APP}/scripts/health-monitor.mjs`,
+    find: 'const runAt = Number.isFinite(deferredMs) && deferredMs > Date.parse(latest.at) ? deferredMs : Date.parse(latest.at);',
+    replace: 'const runAt = Date.parse(latest.at);',
+    tests: [NT('fpl-health')],
+    guards: 'The monitor judges staleness on the same clock as the status endpoint, deferral included (2026-10-24).',
+  },
 ];
 
 // Count non-overlapping occurrences: the `find` must be unique, or the mutant
