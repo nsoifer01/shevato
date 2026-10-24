@@ -66,6 +66,35 @@ export function freshLimitSeconds(name, currentEvent) {
     ? FINISHED_PICKS_FRESH_SECONDS : FRESH_PROXY_SECONDS;
 }
 
+// FPL'S UPDATE AFTER A DEADLINE (2026-10-24). For a while after every deadline
+// FPL answers manager reads with a 503 ("The game is being updated."): 17:30
+// to 17:57 UTC at GW1 (GW1-RUNBOOK.md, Fact 4), and at the GW8 deadline of
+// 2026-10-23 17:30 UTC a GitHub run that started five seconds after it got a
+// 503 for the owner's entry and for all 14 managers it sampled. That is FPL's scheduled maintenance, not an
+// outage and not ours, and a probe that lands in it measures nothing. The
+// window is the proxy's post-deadline hour (netlify/functions/lib/
+// fpl-cache.mjs POST_DEADLINE_WINDOW_MS, which probe-freshness.test.mjs holds
+// this equal to; not imported, for the sparse checkout reason above). The CLI
+// waits it out and then runs every check; the Netlify run, which cannot wait,
+// defers to its next hourly invocation. FPL still failing once the window has
+// closed fails exactly as before.
+export const UPDATE_WINDOW_MS = 60 * 60e3;
+
+/**
+ * The update window `nowMs` is in, or null: the most recent of `deadlines`
+ * (ISO strings, any order, junk ignored) that has passed, if it passed less
+ * than UPDATE_WINDOW_MS ago.
+ */
+export function updateWindowAt(deadlines, nowMs) {
+  let last = null;
+  for (const d of deadlines || []) {
+    const ms = Date.parse(d);
+    if (Number.isFinite(ms) && ms <= nowMs && (last === null || ms > last)) last = ms;
+  }
+  if (last === null || nowMs - last >= UPDATE_WINDOW_MS) return null;
+  return { deadline: new Date(last).toISOString(), until: new Date(last + UPDATE_WINDOW_MS).toISOString() };
+}
+
 /**
  * Shape first: everything else assumes it, and a payload without these arrays
  * is an error page in disguise, which must fail as itself rather than as a

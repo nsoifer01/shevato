@@ -12,8 +12,8 @@ import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { runProbe, freshLimitSeconds, FRESH_PROXY_SECONDS, FINISHED_PICKS_FRESH_SECONDS } from '../scripts/lib/probe.mjs';
-import { FINISHED_PICKS_TTL_SECONDS } from '../../../netlify/functions/lib/fpl-cache.mjs';
+import { runProbe, freshLimitSeconds, FRESH_PROXY_SECONDS, FINISHED_PICKS_FRESH_SECONDS, updateWindowAt, UPDATE_WINDOW_MS } from '../scripts/lib/probe.mjs';
+import { FINISHED_PICKS_TTL_SECONDS, POST_DEADLINE_WINDOW_MS } from '../../../netlify/functions/lib/fpl-cache.mjs';
 import { BOOTSTRAP, FIXTURES, ENTRIES, FETCHED_AT } from './helpers/gw7-fixture.mjs';
 
 const APP = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -141,4 +141,20 @@ test('every way the CLI probe can fail exits non-zero and names what failed; "--
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
+});
+
+// FPL's update after a deadline: the probes' window is the proxy's
+// post-deadline hour (not imported: the GitHub workflow checks out
+// apps/fpl-planner alone), judged from the most recent passed deadline.
+test('the update window is the hour after the most recent passed deadline, as the proxy reckons it', () => {
+  assert.equal(UPDATE_WINDOW_MS, POST_DEADLINE_WINDOW_MS, 'the probes and the proxy agree on the hour after a deadline');
+  const D = Date.parse('2026-10-23T17:30:00Z');
+  const deadlines = ['2026-10-31T11:00:00Z', 'not a date', null, '2026-10-17T10:00:00Z', '2026-10-23T17:30:00Z'];
+  assert.equal(updateWindowAt(deadlines, D - 1), null, 'before the deadline');
+  assert.deepEqual(updateWindowAt(deadlines, D), { deadline: '2026-10-23T17:30:00.000Z', until: '2026-10-23T18:30:00.000Z' });
+  assert.equal(updateWindowAt(deadlines, D + 5000).deadline, '2026-10-23T17:30:00.000Z', 'the most recent, in any order');
+  assert.ok(updateWindowAt(deadlines, D + UPDATE_WINDOW_MS - 1));
+  assert.equal(updateWindowAt(deadlines, D + UPDATE_WINDOW_MS), null, 'closed at the hour');
+  assert.equal(updateWindowAt([], D), null);
+  assert.equal(updateWindowAt(undefined, D), null);
 });

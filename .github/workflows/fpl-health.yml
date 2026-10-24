@@ -46,7 +46,12 @@ name: FPL health probe
 #                      never took (banked transfers, a Free Hit just played, a
 #                      late joiner, a lagging history). Polite: one request at
 #                      a time, a second apart, about 60-75 in all, stopped by
-#                      the first 403/429. Exit 1 is an APPLICATION failure (a
+#                      the first 403/429. A run GitHub starts inside FPL's
+#                      update after a deadline (2026-10-23: five seconds after
+#                      GW8's, every manager read 503) waits for FPL to answer,
+#                      at most the hour after the deadline, then checks
+#                      everything; still failing then is red as before.
+#                      Exit 1 is an APPLICATION failure (a
 #                      planner defect), exit 2 UPSTREAM only (FPL unreadable);
 #                      both fail the run, since a check that could not run is
 #                      never a pass, and the step summary names the class, the
@@ -120,8 +125,11 @@ jobs:
     # The payload checks and the monitored plan take under a minute; each
     # sampled manager about 5 s of paced requests plus 2-20 s of plan (a
     # Wildcard holder is the slow end). Twelve took 146 s in all locally on
-    # 2026-10-17; a runner is slower, so about five minutes, with room.
-    timeout-minutes: 15
+    # 2026-10-17; a runner is slower, so about five minutes, with room. A run
+    # GitHub starts inside FPL's update after a deadline waits it out first
+    # (evidence-probe.mjs, at most the hour after the deadline), so the bound
+    # is that hour plus the run.
+    timeout-minutes: 75
     steps:
       - name: Checkout
         uses: actions/checkout@v6
