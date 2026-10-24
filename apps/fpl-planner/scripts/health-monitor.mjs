@@ -76,9 +76,16 @@ export function assess({ http, body, error = null, nowMs = Date.now(), expectAt 
     add('status-behind', `fpl-health-status still shows the probe at ${latest.at}, not the one at ${expectAt} that started this check; the status store is serving an old result`, 'status endpoint shows an old result');
     return { problems, latest };
   }
-  const ageHours = (nowMs - Date.parse(latest.at)) / 3600e3;
+  // A deferral newer than the result is the scheduler running too: the
+  // Netlify run leaves the slot to the next hour while FPL updates after a
+  // deadline (netlify/functions/lib/fpl-health-run.mjs updateWindowFor). It
+  // never changes the result's verdict, only this clock.
+  const deferredMs = body.deferred ? Date.parse(body.deferred.at) : NaN;
+  const runAt = Number.isFinite(deferredMs) && deferredMs > Date.parse(latest.at) ? deferredMs : Date.parse(latest.at);
+  const ageHours = (nowMs - runAt) / 3600e3;
   if (!(ageHours <= STALE_AFTER_HOURS)) {
-    add('stale', `the last probe ran ${Number.isFinite(ageHours) ? ageHours.toFixed(1) : '?'}h ago (at ${latest.at}); Netlify has stopped running the scheduled function`, 'probe result is stale');
+    const when = runAt === deferredMs ? `deferred at ${body.deferred.at}, last probed at ${latest.at}` : `at ${latest.at}`;
+    add('stale', `the last probe ran ${Number.isFinite(ageHours) ? ageHours.toFixed(1) : '?'}h ago (${when}); Netlify has stopped running the scheduled function`, 'probe result is stale');
   }
   for (const f of latest.failed || []) add(`check:${f.name}`, `${f.name}: saw ${f.saw}, expected ${f.expected}`, f.name);
   if (latest.alert && latest.alert.ok === false) {

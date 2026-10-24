@@ -64,6 +64,23 @@
 // will not serve, a manager with no squad in a live season, or a sample that
 // read fewer managers than requested is an UPSTREAM failure.
 //
+// FPL'S UPDATE AFTER A DEADLINE IS WAITED OUT, NOT REPORTED (2026-10-24). For
+// about half an hour after every deadline FPL 503s manager reads while it
+// moves the gameweek on (scripts/lib/probe.mjs UPDATE_WINDOW_MS). GitHub
+// starts the schedule hours late at random, and on 2026-10-23 it started this
+// run five seconds after the GW8 deadline: the owner's entry and all 14
+// sampled managers came back 503, the run went red as UPSTREAM, and not one
+// manager check had run. So a 5xx, or FPL's
+// "The game is being updated." at any status, inside the hour after the most
+// recent deadline (or the hour after FPL first says it is updating, when no
+// deadline is known yet) is asked again every UPDATE_POLL_MS, one read at a
+// time, until FPL answers or the window closes; then every check runs as
+// usual. The run's clock is `--now` or now, as for the sample's slot. A read
+// still failing when the window closes fails as UPSTREAM exactly as before,
+// saying it outlasted FPL's update, and a 403, 429, 404, timeout or network
+// error is never waited for. The `update` line says what was waited and for
+// how long.
+//
 // `--sample N` (with `--direct`) is the pre-gameweek readiness gate (added
 // 2026-10-16). One monitored manager exercises one path through the engine,
 // and of the 29 live-season defects many lived on paths his state never
@@ -110,9 +127,10 @@ import { readFileSync, writeFileSync, appendFileSync, existsSync, mkdirSync } fr
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { setTimeout as sleep } from 'node:timers/promises';
-import { USER_AGENT, FPL_API } from './lib/archive.mjs';
+import { USER_AGENT, FPL_API, isGameUpdating } from './lib/archive.mjs';
 import {
   runProbe, payloadShapeFailures, resolveProbeWorld, entrySquadVerdict, planEntryVerdict, entryVerdictChecks,
+  updateWindowAt, UPDATE_WINDOW_MS,
 } from './lib/probe.mjs';
 import { freeHitPicksInfo } from '../js/engine/squad.js';
 
@@ -139,6 +157,14 @@ const LEAGUE_OVERALL = 314;
 const PAGE_SIZE = 50;
 const SPARES = 2;
 const MAX_SAMPLE = 40;
+// How often a read FPL fails during its update is asked again. A minute: the
+// GW1 update took 27, so a run waits a few minutes past the end for at most a
+// few dozen extra requests. FPL_PROBE_UPDATE_POLL_MS shortens it for the
+// tests, which answer from stubs; nothing else sets it.
+const UPDATE_POLL_MS = (() => {
+  const env = Number(process.env.FPL_PROBE_UPDATE_POLL_MS);
+  return Number.isFinite(env) && env >= 0 ? env : 60e3;
+})();
 
 /** A read FPL did not answer with the payload: always UPSTREAM. */
 class UpstreamError extends Error {
@@ -169,27 +195,66 @@ async function fetchOnce(name) {
     if (err && (err.name === 'TimeoutError' || err.name === 'AbortError')) throw new UpstreamError('timeout', `${name}: no answer in ${REQUEST_TIMEOUT_MS / 1000}s`);
     throw new UpstreamError('network', `${name}: ${err && err.message}`);
   }
+  const text = await res.text().catch(() => '');
+  // FPL's update notice, whatever the status it came with (archive.mjs).
+  if (isGameUpdating(text)) throw new UpstreamError('updating', `${name}: HTTP ${res.status}, FPL says the game is being updated`);
   if (!res.ok) {
     if (res.status === 403 || res.status === 429) refused = refused || `${name} with HTTP ${res.status}`;
     throw new UpstreamError(kindOfStatus(res.status), `${name}: HTTP ${res.status}`);
   }
   responses[name] = res.headers;
   try {
-    return await res.json();
+    return JSON.parse(text);
   } catch {
     throw new UpstreamError('malformed', `${name}: the body is not JSON`);
   }
 }
 
+// The run's clock: `--now` when given, advancing in real time from it.
+const NOW_ARG_MS = Date.parse(arg('now') || '');
+const clockOffset = Number.isFinite(NOW_ARG_MS) ? NOW_ARG_MS - Date.now() : 0;
+const clock = () => Date.now() + clockOffset;
+// FPL's update window, once known (see the header), and what was waited in it.
+let updateWindow = null;
+const update = { reads: new Set(), retries: 0, firstAt: null, lastAt: null, answered: new Set(), unresolved: new Set() };
+
+async function fetchThroughUpdate(name) {
+  for (;;) {
+    try {
+      const body = await fetchOnce(name);
+      if (update.reads.has(name)) update.answered.add(name);
+      return body;
+    } catch (err) {
+      if (!(err instanceof UpstreamError) || !(err.kind === 'server' || err.kind === 'updating')) throw err;
+      if (!updateWindow && err.kind === 'updating') {
+        updateWindow = { deadline: null, gw: null, until: new Date(clock() + UPDATE_WINDOW_MS).toISOString() };
+      }
+      if (!updateWindow) throw err;
+      if (clock() >= Date.parse(updateWindow.until)) {
+        if (update.reads.has(name)) {
+          update.unresolved.add(name);
+          err.message += `; still failing when FPL's update window closed at ${updateWindow.until}, so this outlasted its routine update`;
+        }
+        throw err;
+      }
+      update.reads.add(name);
+      update.retries += 1;
+      update.firstAt = update.firstAt ?? clock();
+      await sleep(UPDATE_POLL_MS);
+      update.lastAt = clock();
+    }
+  }
+}
+
 async function read(name, file) {
   if (file) return JSON.parse(readFileSync(file, 'utf8'));
-  if (!gapMs) return fetchOnce(name);
+  if (!gapMs) return fetchThroughUpdate(name);
   // One at a time, `gapMs` after the previous one finished, even when the
   // caller asks for several at once (readEntry's Promise.all).
   const run = gate.then(async () => {
     const wait = lastRequestAt + gapMs - Date.now();
     if (wait > 0) await sleep(wait);
-    try { return await fetchOnce(name); } finally { lastRequestAt = Date.now(); }
+    try { return await fetchThroughUpdate(name); } finally { lastRequestAt = Date.now(); }
   });
   gate = run.catch(() => {});
   return run;
@@ -246,6 +311,14 @@ let bootstrap;
 let fixtures;
 try {
   bootstrap = await read('bootstrap-static', arg('bootstrap'));
+  // The deadlines say when FPL's update is due, before it says so itself.
+  if (!arg('bootstrap') && bootstrap && Array.isArray(bootstrap.events)) {
+    const known = updateWindowAt(bootstrap.events.map((e) => e && e.deadline_time), clock());
+    if (known) {
+      const ev = bootstrap.events.find((e) => e && Date.parse(e.deadline_time) === Date.parse(known.deadline));
+      updateWindow = { ...known, gw: ev ? ev.id : null };
+    }
+  }
   fixtures = await read('fixtures', arg('fixtures'));
 } catch (err) {
   fail('the probe runs to completion', `reading the payloads threw: ${err && err.message}`, 'bootstrap-static and fixtures read', classOf(err));
@@ -487,6 +560,19 @@ const counts = { [APPLICATION]: failures.filter((f) => f.class === APPLICATION).
 const exitCode = counts[APPLICATION] ? 1 : counts[UPSTREAM] ? 2 : 0;
 const verdict = exitCode === 0 ? 'OK' : exitCode === 1 ? `PROBLEM (${APPLICATION})` : `PROBLEM (${UPSTREAM} only)`;
 
+// What FPL's update cost this run, or null when nothing was waited for.
+function updateLine() {
+  if (!update.retries) return null;
+  const n = update.reads.size;
+  const where = updateWindow.deadline
+    ? `after the ${updateWindow.gw ? `GW${updateWindow.gw} ` : ''}deadline (${updateWindow.deadline})`
+    : `(it said so at ${new Date(update.firstAt).toISOString()})`;
+  const mins = ((update.lastAt - update.firstAt) / 60e3).toFixed(1);
+  const stuck = update.unresolved.size ? `, ${update.unresolved.size} still failing when its window closed at ${updateWindow.until}` : '';
+  return `FPL was updating ${where}: ${n} read${n === 1 ? '' : 's'} asked again ${update.retries} time${update.retries === 1 ? '' : 's'}`
+    + ` over ${mins} min; ${update.answered.size} of ${n} answered once it ended${stuck}`;
+}
+
 function coverageLine(s) {
   const ms = s.managers.filter((m) => m.path);
   const ft = {};
@@ -504,7 +590,7 @@ function coverageLine(s) {
 if (flag('json')) {
   console.log(JSON.stringify({
     reading: result.reading, checks: result.checks, readiness: result.readiness, blocked: result.blocked,
-    failures, counts, exitCode,
+    failures, counts, exitCode, update: updateLine(),
     sample: sample && { slot: sample.slot, requested: sample.requested, pages: sample.pages, requests: sample.requests, budget: sample.budget,
       skipped: sample.skipped, managers: sample.managers.map((m) => ({ origin: m.origin, rank: m.rank, path: m.path && m.path.tags, seconds: m.seconds, failed: m.checks.filter((c) => !c.ok) })) },
   }, null, 2));
@@ -541,8 +627,10 @@ if (!flag('json')) {
     });
     for (const s of sample.skipped) console.log(`  skip  ${s.origin}: ${s.why}`);
     console.log(`coverage        ${coverageLine(sample)}`);
-    console.log(`requests        ${sample.requests} to FPL for the sample, ${requests} in all (bounded at ${sample.budget} for the sample), at least ${gapMs / 1000}s apart`);
+    console.log(`requests        ${sample.requests} to FPL for the sample, ${requests} in all (bounded at ${sample.budget} for the sample), at least ${gapMs / 1000}s apart`
+      + `${update.retries ? `, ${update.retries} of them asked again while FPL updated` : ''}`);
   }
+  if (updateLine()) console.log(`update          ${updateLine()}`);
   console.log('');
   console.log(`failures        application ${counts[APPLICATION]}   upstream ${counts[UPSTREAM]}`);
   if (exitCode === 0) {
@@ -555,6 +643,7 @@ if (!flag('json')) {
 }
 
 const md = [`### FPL health probe: ${verdict}`, '', `Application failures: **${counts[APPLICATION]}**, upstream failures: **${counts[UPSTREAM]}**.`];
+if (updateLine()) md.push('', `Waited: ${updateLine()}.`);
 if (exitCode === 2) md.push('', 'Upstream only: FPL could not be read, nothing says the planner is wrong. Re-run later; a repeat means FPL is refusing this runner.');
 if (failures.length) {
   md.push('', '| Class | Failed check | Saw |', '| --- | --- | --- |');

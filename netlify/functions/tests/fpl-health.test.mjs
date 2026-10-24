@@ -13,9 +13,9 @@ import { fileURLToPath } from 'node:url';
 
 import {
   runScheduledProbe, statusOf, slotOf, slotFor, githubDispatchAlert, openStrongStore, HEALTH_STORE, STALE_AFTER_HOURS, UNFINISHED_AFTER_MS,
-  healthEntryId, DEFAULT_HEALTH_ENTRY, refusalCheck, REFUSAL_ALERT_MINUTES, SLOW_RUN_MS,
+  healthEntryId, DEFAULT_HEALTH_ENTRY, refusalCheck, REFUSAL_ALERT_MINUTES, SLOW_RUN_MS, updateWindowFor,
 } from '../lib/fpl-health-run.mjs';
-import { REFUSAL_KEY, serveFpl } from '../lib/fpl-cache.mjs';
+import { DEADLINE_KEY, REFUSAL_KEY, serveFpl } from '../lib/fpl-cache.mjs';
 import { ARCHIVE_STORE } from '../lib/fpl-archive-stage.mjs';
 import { assess, readStatus, reconcile } from '../../../apps/fpl-planner/scripts/health-monitor.mjs';
 import { handleStatus } from '../fpl-health-status.mjs';
@@ -732,3 +732,99 @@ test('an hourly recheck that fails exactly as before starts no workflow run, so 
   assert.equal((await alert({ latest: { at: at(3), slot: 's3', ok: true, failed: [] }, before: red(2, ['x', 'y']) })).dispatched, 'recovery-check');
 });
 
+
+// FPL's update after a deadline (2026-10-24). For about half an hour after
+// every deadline FPL 503s manager reads; a run in that hour fails on FPL's
+// routine maintenance (the GitHub probe did, 2026-10-23 at GW8's deadline),
+// and the 18:41 run lands 11 minutes after an 18:30 deadline. The run cannot
+// wait inside 30 seconds, so it leaves the slot to the next hourly invocation.
+// The deadlines are the ones the proxy stored; NOW is 11:30 UTC.
+test('a run inside FPL\'s update after a deadline defers its slot to the next hour, and only there', async () => {
+  const min = (m) => new Date(Date.parse(NOW) + m * 60e3).toISOString();
+  const proxy = (meta) => { const s = memoryStore(); if (meta !== undefined) s.map.set(DEADLINE_KEY, meta); return s; };
+  // The meta as the proxy leaves it after a deadline: the passed deadline is still `nextDeadline`.
+  const after = (deadline) => ({ nextDeadline: deadline, lastDeadline: min(-7 * 24 * 60), currentEvent: 3 });
+
+  // 11 minutes in: deferred, nothing fetched, nothing claimed.
+  const store = memoryStore();
+  const fetchImpl = production();
+  const r = await runScheduledProbe({ store, fetchImpl, now: () => min(-59), proxyStore: proxy(after(min(-70))) });
+  assert.match(r.skipped, /^slot 2026-09-12T06 deferred: FPL is updating after the .+ deadline until .+; the next hourly run probes it$/);
+  assert.equal(fetchImpl.calls.length, 0, 'FPL and the proxy are asked nothing');
+  assert.equal(store.map.get('slot'), undefined, 'the slot is left for the next invocation');
+  assert.deepEqual(store.map.get('deferred'), { at: min(-59), slot: '2026-09-12T06', deadline: min(-70), until: min(-10) });
+  // The next hourly invocation is past the window, and probes the same slot.
+  const next = await runScheduledProbe({ store, fetchImpl: production(), now: () => min(1), proxyStore: proxy(after(min(-70))) });
+  assert.equal(next.slot, '2026-09-12T06');
+  assert.ok(next.ok, JSON.stringify(next.failed));
+
+  // The neighbours: the window's first and last moments defer; the moment it
+  // closes, a deadline still to come, no meta, an unreadable meta and no
+  // proxy store all probe as before.
+  for (const [label, meta, defers] of [
+    ['at the deadline', after(NOW), true],
+    ['in its last second', after(min(-59.99)), true],
+    ['a meta rewritten after the deadline', { nextDeadline: min(6 * 24 * 60), lastDeadline: min(-5), currentEvent: 4 }, true],
+    ['the hour has passed', after(min(-60)), false],
+    ['before the deadline', { nextDeadline: min(1), lastDeadline: min(-7 * 24 * 60), currentEvent: 3 }, false],
+    ['no meta', undefined, false],
+    ['junk meta', { nextDeadline: 'soon', lastDeadline: null }, false],
+  ]) {
+    const w = await updateWindowFor(proxy(meta), NOW);
+    assert.equal(Boolean(w), defers, label);
+  }
+  const broken = { async get() { throw new Error('blobs down'); } };
+  assert.equal(await updateWindowFor(broken, NOW), null, 'an unreadable meta probes as before');
+  assert.equal(await updateWindowFor(null, NOW), null);
+  const plain = await runScheduledProbe({ store: memoryStore(), fetchImpl: production(), now: () => NOW, proxyStore: proxy(after(min(-60))) });
+  assert.ok(plain.ok && !plain.skipped, 'a closed window probes');
+
+  // A slot already probed is skipped as before, without a deferral.
+  const done = memoryStore();
+  await runScheduledProbe({ store: done, fetchImpl: production(), now: () => min(-120) });
+  const again = await runScheduledProbe({ store: done, fetchImpl: production(), now: () => min(-59), proxyStore: proxy(after(min(-70))) });
+  assert.match(again.skipped, /already probed/);
+  assert.equal(done.map.get('deferred'), undefined);
+});
+
+test('a deferral keeps a red result red, and counts as the scheduler running for the status and the monitor', async () => {
+  const min = (m) => new Date(Date.parse(NOW) + m * 60e3).toISOString();
+  const proxy = memoryStore();
+  proxy.map.set(DEADLINE_KEY, { nextDeadline: min(-70), lastDeadline: null, currentEvent: 3 });
+  const store = memoryStore();
+  const red = await runScheduledProbe({ store, fetchImpl: production({ proxyStatus: 503 }), now: () => min(-6 * 60) });
+  assert.equal(red.ok, false);
+  const d = await runScheduledProbe({ store, fetchImpl: production(), now: () => min(-59), proxyStore: proxy });
+  assert.match(d.skipped, /deferred/);
+  const res = await handleStatus(req(), store, Date.parse(min(-58)));
+  const body = await res.json();
+  assert.equal(res.status, 503, 'still red: nothing was measured that says otherwise');
+  assert.equal(body.ok, false);
+  assert.equal(body.deferred.at, min(-59));
+  assert.equal(assess({ http: res.status, body, nowMs: Date.parse(min(-58)) }).problems.some((p) => p.key.startsWith('check:')), true);
+
+  // Staleness: the deferral is the scheduler's last sign of life.
+  const latest = { at: min(0), slot: '2026-09-12T06', ok: true, failed: [], checks: [] };
+  const deferred = { at: min(6 * 60 + 41), slot: '2026-09-12T12' };
+  const late = Date.parse(min(7 * 60 + 20));
+  assert.equal(statusOf(latest, late).status, 503, 'without the deferral this is a stopped scheduler');
+  const kept = statusOf(latest, late, null, deferred);
+  assert.equal(kept.status, 200);
+  assert.deepEqual(kept.body.deferred, deferred);
+  const stopped = statusOf(latest, Date.parse(deferred.at) + (STALE_AFTER_HOURS * 3600e3) + 1, null, deferred);
+  assert.equal(stopped.status, 503, 'a scheduler that stops after a deferral is still caught');
+  assert.match(stopped.body.reason, /the scheduler has missed a slot/);
+  // A deferral older than the result is history, and not shown.
+  const old = statusOf(latest, Date.parse(min(60)), null, { at: min(-60), slot: '2026-09-12T06' });
+  assert.equal(old.status, 200);
+  assert.equal(old.body.deferred, undefined);
+
+  // The monitor judges the same clock by itself.
+  const fresh = assess({ http: 200, body: kept.body, nowMs: late });
+  assert.deepEqual(fresh.problems, []);
+  const noDeferral = assess({ http: 200, body: { ok: true, latest }, nowMs: late });
+  assert.deepEqual(noDeferral.problems.map((p) => p.key), ['stale']);
+  const after = assess({ http: 200, body: kept.body, nowMs: Date.parse(deferred.at) + STALE_AFTER_HOURS * 3600e3 + 1 });
+  assert.deepEqual(after.problems.map((p) => p.key), ['stale']);
+  assert.match(after.problems[0].text, /\(deferred at .+, last probed at .+\)/);
+});
