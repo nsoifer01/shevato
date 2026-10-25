@@ -1259,7 +1259,8 @@ prevention: the defect ledger"; the rules are in the repository `CLAUDE.md`):
 
 The GitHub health probe also plans a rotating sample of real managers every
 six hours (`--sample`, top, deep and newest ranks, at most about 70 polite
-reads), prints the paths they exercise, and exits 1 on an application failure
+reads, one at a time and at least a second apart on the monotonic clock, so a
+wall clock that steps cannot shorten the gap), prints the paths they exercise, and exits 1 on an application failure
 and 2 on an upstream-only one; a requested check that could not run is never
 reported as OK.
 
