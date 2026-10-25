@@ -1152,8 +1152,19 @@ Players and fixtures are stored as a column table (field names once, one row per
 
 Four keys, all in the `fplPlannerApp` sync namespace registered in
 `sync-system/app-sync-init.js`: `fplPlannerTeamId`, `fplPlannerSettings`,
-`fplPlannerPlanHistory` (per gameweek, capped at 5 versions and 8 gameweeks) and
-`fplPlannerSquadSnapshot`. The bulk FPL data is NOT synced: it is large, public
+`fplPlannerPlanHistory` and `fplPlannerSquadSnapshot`. Plan history is kept per
+FPL team ID and season (`{ v: 2, scopes: { "<teamId>|<season>": { teamId,
+season, touchedAt, gws } } }`, `js/ui/store.js`): each scope holds at most 5
+versions per gameweek and 8 gameweeks, and only the 3 most recently written
+scopes are kept, so the synced value stays bounded (143 KB at every cap, measured
+with real snapshots). Every reader gets one scope's per-gameweek map, so a plan
+is compared only with the same team's earlier plan for the same season and
+gameweek (the version kept in memory is used only for its own gameweek), and the
+History tab lists only that team's plans. Sample mode has no scope: it reads
+and writes no stored history. History saved before 2026-10-25 had no team or
+season and is never attributed to anyone; the first scoped write replaces it.
+A season the payload does not name gives no scope, so nothing is stored rather
+than seasons being mixed. The bulk FPL data is NOT synced: it is large, public
 and identical for every user, so `js/data/api.js` caches it under the unsynced
 `fpl-planner:cache:` prefix. Signed out, everything works from localStorage.
 One more key sits outside the namespace: `fplPlannerSeasonBaseline.v1`

@@ -63,13 +63,12 @@ const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const html = readFileSync(join(REPO_ROOT, 'privacy.html'), 'utf8');
 
 // The two most recent reviews. Append by moving CURRENT down to PREVIOUS.
-const PREVIOUS = { date: '10 October 2026', digest: 'c94a16d63847c23a8c63eb3bd48d94c8e5b81aeeea80884275e41bd2e76aaca6' };
+const PREVIOUS = { date: '11 October 2026', digest: 'bf2da3a73d525d065375d04a141d268e332972668f264c4558f3636efb758fca' };
 const CURRENT = {
-  // The Google Places paragraph now describes the assistant's discovery
-  // searches (tp-places `discover`): the search text and area reach Google,
-  // the slot's date and time are used only inside the function.
-  date: '11 October 2026',
-  digest: 'bf2da3a73d525d065375d04a141d268e332972668f264c4558f3636efb758fca',
+  // The FPL Planner's synced saved plans are now kept per team ID and season
+  // (at most the three most recently planned), so each carries its team ID.
+  date: '25 October 2026',
+  digest: '5bedfb1680ecb51fd8de980848b3a6adc2fee992e351f8135ba74643c3edcc65',
 };
 
 /**

@@ -120,7 +120,9 @@ const state = {
   // The last plan version calculated in this session, and how the current one
   // differs from it. `lastVersion` is only the in-memory copy: after a reload
   // the comparison is made against the version in the synced plan history, so
-  // "previously we said roll" survives closing the tab.
+  // "previously we said roll" survives closing the tab. It is `{ key, record }`,
+  // the key naming the team and season it belongs to (historyScopeKey), and is
+  // only ever compared with a plan of the same scope (2026-10-25).
   lastVersion: null,
   planChange: null,
   // Why the shipped opening-season baseline could not be loaded, when it was
@@ -448,10 +450,12 @@ async function computePlan(squadState, { reason }) {
   // Sample mode never reads the stored history: those versions belong to a real
   // team and diffing a synthetic plan against them would invent a change.
   const record = versionRecord(bundle, reason);
-  const previous = state.lastVersion
-    || (state.sample ? null : store.latestVersion(store.getPlanHistory(), bundle.current.gw));
+  const memoryKey = historyScopeKey();
+  const previous = store.comparableVersion({
+    memory: state.lastVersion, memoryKey, history: store.getPlanHistory(historyScope()), gw: bundle.current.gw,
+  });
   state.planChange = diffPlanVersions(previous, record, { gameState: state.gameState });
-  state.lastVersion = record;
+  state.lastVersion = memoryKey ? { key: memoryKey, record } : null;
 
   persistPlan(bundle, record);
 
@@ -506,20 +510,37 @@ function persistPlan(bundle, record) {
     ids: (bundle.current.squad || []).slice(),
     savedAt: new Date().toISOString(),
   });
-  const history = store.getPlanHistory();
-  const latest = store.latestVersion(history, bundle.current.gw);
+  const scope = historyScope();
+  const latest = store.latestVersion(store.getPlanHistory(scope), bundle.current.gw);
   // A rerun on identical inputs that lands on the identical answer is not a new
   // version. The fingerprint describes the squad and the game, not the planner
   // settings, so a horizon change keeps it while genuinely changing the answer:
   // that is a version, and the action has to be compared as well.
   if (latest && latest.fingerprint === record.fingerprint && actionKey(latest.plan) === actionKey(record.plan)) return;
-  store.setPlanHistory(store.recordPlanVersion(history, bundle.current.gw, {
+  store.recordPlanHistory(scope, bundle.current.gw, {
     plan: bundle.current,
     reason: record.reason,
     computedAt: record.computedAt,
     fingerprint: record.fingerprint,
     inputs: record.inputs,
-  }));
+  });
+}
+
+// Whose plan history this is: the team being planned, in this season. Null in
+// sample mode (nothing from it is stored, and the stored plans are a real
+// team's) and while the team or season is unknown.
+function historyScope() {
+  if (state.sample || !state.gameState || !state.gameState.rules) return null;
+  return store.planHistoryScope(state.teamId, state.gameState.rules.season);
+}
+
+// The key the in-memory version is held under: the scope's, or the sample
+// session's own, so a sample plan is still compared with the sample plan
+// before it and never with a real team's.
+function historyScopeKey() {
+  if (state.sample) return `sample|${state.teamId}`;
+  const scope = historyScope();
+  return scope ? scope.key : null;
 }
 
 /* ------------------------------------------------------------------- boot */
@@ -585,7 +606,7 @@ async function connectAndPlan({ reason = 'first-calculation' } = {}) {
 
     // A squad that no longer matches the last plan is not a mistake, it is the
     // new input. The notice says so in neutral words and nothing more.
-    const previous = store.latestVersion(store.getPlanHistory(), state.planGw);
+    const previous = store.latestVersion(store.getPlanHistory(historyScope()), state.planGw);
     // Taken over the same scope the stored plan's fingerprint watched (its
     // recommended moves and its fixtures), so the two compare like for like.
     const nextFingerprint = inputFingerprint(squadState, state.gameState, null,
@@ -1331,11 +1352,11 @@ function historyTab() {
     state.sample ? sampleBanner() : null,
     historyView({
       history: state.history,
-      planHistory: store.getPlanHistory(),
+      planHistory: store.getPlanHistory(historyScope()),
       gameState: state.gameState,
       captainsByGw: state.captains,
     }),
-    planVersionsView({ planHistory: store.getPlanHistory(), gameState: state.gameState }),
+    planVersionsView({ planHistory: store.getPlanHistory(historyScope()), gameState: state.gameState }),
   ];
 }
 
@@ -1361,6 +1382,8 @@ function settingsTab() {
       onDataRemoved: (what, message) => {
         state.teamId = null;
         state.bundle = null;
+        state.lastVersion = null;
+        state.planChange = null;
         state.squadState = null;
         state.view = 'plan';
         if (what === 'delete-all') {
@@ -1501,7 +1524,16 @@ async function reactToDeadline({ retry = false } = {}) {
         code: 'deadline-passed',
         text: `The Gameweek ${wasPlanGw} deadline has passed, so this plan can no longer be acted on. Recalculate for Gameweek ${state.planGw}.`,
       };
-      state.pendingSquad = null;
+      // "Recalculate" plans the squad this holds, and the planner plans the
+      // squad state's own gameweek, so it has to be the NEW gameweek's: with
+      // null, recalculate() fell back to the old squad state and planned the
+      // gameweek whose deadline had just passed (found reviewing #630,
+      // 2026-10-25). Built as connectAndPlan builds it.
+      state.pendingSquad = gameweekMoved && state.picks ? buildSquadState({
+        entry: state.entry, history: state.history, transfers: state.transfers,
+        picks: state.picks, revertPicks: state.revertPicks, priceFloors: state.priceFloors, startPicks: state.startPicks,
+        gameState: state.gameState, gw: state.planGw,
+      }) : null;
     } else {
       // Same gameweek still being planned. Either the deadline that passed was
       // an earlier one, or FPL has not moved on yet (scheduled below). Treat it
@@ -1604,6 +1636,10 @@ function wireOnboarding() {
     fplApi.forgetEntryStatus();
     state.teamId = check.teamId;
     state.bundle = null;
+    // The previous team's plan comparison and notices are not this team's.
+    state.lastVersion = null;
+    state.planChange = null;
+    state.notice = null;
     state.captains = new Map();
     state.historyLoaded = false;
     await connectAndPlan({ reason: 'first-calculation' });

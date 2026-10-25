@@ -69,6 +69,9 @@ column names the guard added so the whole category is covered, not the case.
 | 35 | The search's own club-limit check was unguarded; illegal plans could crowd the shortlist and a legal +15 upgrade be dropped for a roll | mutation-check (new) | R5 dead test | crowded-shortlist case in transfers.test |
 | 36 | One 403 backed the whole proxy off for 120 s (503s for every uncached path, the app's own retry defeated); the probe read once where the app retries; a red result then stood six hours (#616) | monitor (#616, 2026-10-17) | R6 ops path | corroborated backoff, `x-fpl-upstream`, probe re-read, hourly recheck while red; fpl.test, fpl-health.test; 5 mutants |
 | 37 | Both health probes judged FPL's routine update after a deadline as a failure: GitHub started the probe 5 s after GW8's deadline and every manager read 503'd (red, exit 2), and the Netlify 18:41 run would have opened an incident 11 min after GW10's 18:30 deadline | monitor (GitHub probe run 39995547754, 2026-10-23) | R6 ops path | `UPDATE_WINDOW_MS` / `updateWindowAt`: the CLI waits the window out, the Netlify run defers to the next hour, deferral counts as the scheduler running; probe-sample, fpl-health, probe-freshness; 6 mutants |
+| 41 | After a deadline passed with the page open, the "Recalculate for Gameweek N+1" button planned gameweek N again (`reactToDeadline` left no pending squad, so `recalculate` reused the old squad state, whose gameweek the planner plans) | Claude, building the gameweek-transition e2e for #630 (2026-10-25) | R4 boundary | the moved branch builds the new gameweek's squad state as `connectAndPlan` does; e2e/plan-history G (fails on the old code: still "Gameweek 13") |
+| 40 | A plan for the next gameweek, computed in the same session after a deadline, was compared with the previous gameweek's in-memory plan ("Plan updated", previously the GW N plan); the scope key named team and season only, and `diffPlanVersions` does not check the gameweek | owner review of #630 (2026-10-25) | R4 boundary | `comparableVersion` takes the in-memory record only for the same gameweek (`plan.gw`); plan-history-scope test 10, e2e/plan-history G; mutant `history-memory-any-gameweek` |
+| 39 | Plan history was one map for whoever was planned last: a second team opened in the same browser got "Plan updated" against the first team's plan, the first team's plans in its History tab, a possible "your squad changed", and demo mode listed real plans | owner-requested production verification of #628 (2026-10-25) | R1 coherence | history scoped by team ID and season (`planHistoryScope`, `comparableVersion`, v2 shape, legacy never attributed, 3 scopes kept); plan-history-scope (10 tests), e2e/plan-history (35 checks; 7 of its first 18 fail on master); 4 mutants |
 | 38 | A squad over three from a club because a player moved club (four Arsenal: Konsa joined) could not be planned at all ("refusing to return an invalid plan"), and the transfer search checked only the incoming player's club, so it could offer a move that kept four | monitor (GitHub probe sample, run 40136156321, 2026-10-24) | R1 coherence | `clubLimitBreaches` (validate.js): the limit binds on a changed squad, the held squad is exempt; one rule for validation, search, polish, why-not, counterfactual; gw8-2026 real fixture; inherited-club-limit (7 tests, all fail on master); 6 mutants |
 
 **Open question (not yet a defect):** the first rotating real-manager sample
@@ -161,6 +164,64 @@ which would call a legal squad bad data. A sale note first sat after its pair's
 gain row, which put it directly above the NEXT sale, where it read as that
 sale's; the browser suite now checks it sits between its own pair's cards and
 gain row, and that check failed on the first placement.
+
+## Plan history was one team's, whoever was planned last (found 25 October 2026)
+
+**What happened.** Verifying #628 in production, the four-Arsenal manager was
+opened after the owner's team in the same browser, and the page showed "Plan
+updated: Previously Make 1 transfer: Calvert-Lewin out, Evanilson in", which
+was the OWNER's plan, on a team that never held Calvert-Lewin.
+
+**Why.** `fplPlannerPlanHistory` held one map of gameweek -> versions and no
+team or season, and every reader took it whole: the "Plan updated / unchanged"
+comparison (`computePlan`, from `state.lastVersion` or storage), the "Plan
+rebuilt: your squad changed" fingerprint check (`connectAndPlan`), and both
+History tab views. The in-app team switch reset the bundle but not
+`lastVersion`, and the History tab in demo mode read the real store. Same
+category as ledger row 11 (a previous team's state reaching the next team).
+
+**Fix.** One scope, `<teamId>|<season>` (`planHistoryScope`), for every read
+and write; readers get that scope's per-gameweek map, so the views and the
+differ did not change shape. The in-memory version is `{ key, record }` and is
+used only for the same scope (`comparableVersion`); demo mode keys its own
+session and touches no stored history. Limits: the old 5 versions x 8
+gameweeks per scope, and the 3 most recently written scopes (143 KB measured at
+every cap with real input snapshots, under the sync layer's 700 KB refusal).
+
+**Legacy and other devices.** Old records name no team, and the defect itself
+mixed teams in them, so ownership cannot be established: they are never read
+as anyone's, and the first scoped write replaces them. An old-code device that
+writes after this one adds its legacy map beside the scoped one; the new code
+ignores it and drops it on its next write, and the old code ignores the scoped
+part (non-numeric keys). Sync is still last-write-wins on the whole key, so two
+devices planning DIFFERENT teams at the same moment can still drop one
+device's newest version, as before this change; no team's plan is ever shown
+as another's.
+
+**The gameweek is part of the boundary too (owner review, rows 40 and 41).**
+The scope key names a team and season, and the in-memory version survived a
+deadline: with the page open across it, the next gameweek's first plan was
+compared with the previous gameweek's ("Plan updated", previously the GW13
+plan, reproduced in the browser). `comparableVersion` now takes the in-memory
+record only when its own `plan.gw` is the gameweek being planned; a
+recalculation inside a gameweek is still compared, and the old gameweek's
+versions stay in its own History block. Building that browser case found that
+the "Recalculate for Gameweek N+1" button planned gameweek N again, because
+`reactToDeadline`'s moved branch left no pending squad; it now builds the new
+gameweek's squad state exactly as `connectAndPlan` does. The same e2e confirms
+in the real app that legacy history is never listed and is replaced on the first
+write, that four teams leave three scopes, and that a payload which does not
+name its season stores and compares nothing.
+
+**Tests.** `plan-history-scope.test.mjs` runs app.js's sequence (compare,
+remember, persist) through the real store: A then B, B recalculated, back to A,
+reload, same gameweek across teams, two seasons, legacy, corrupted and
+half-synced values, demo mode and a fresh install, the caps and the synced size.
+`e2e/plan-history.mjs` drives app.js, switching teams with "Use a different
+Team ID", crossing a deadline with the page open, and checking legacy history,
+the team cap and an unknown season (35 checks). On master's code its team
+checks fail 7 of 18, showing exactly the production card, and the unit tests
+fail on master's semantics.
 
 ## The GW8 deadline (23 October 2026): a probe that landed in FPL's update
 
