@@ -127,6 +127,7 @@ import { readFileSync, writeFileSync, appendFileSync, existsSync, mkdirSync } fr
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { setTimeout as sleep } from 'node:timers/promises';
+import { performance } from 'node:perf_hooks';
 import { USER_AGENT, FPL_API, isGameUpdating } from './lib/archive.mjs';
 import {
   runProbe, payloadShapeFailures, resolveProbeWorld, entrySquadVerdict, planEntryVerdict, entryVerdictChecks,
@@ -179,7 +180,16 @@ const responses = {};
 let requests = 0;
 let refused = null;
 let gate = Promise.resolve();
-let lastRequestAt = 0;
+// When the previous request finished, on the MONOTONIC clock (2026-10-25).
+// The gap was measured with Date.now(), and a wall clock that steps breaks it
+// both ways: a step forward between two requests made the probe think a second
+// had passed and send at once (reproduced: 21 ms apart under a clock stepping
+// forward), and a step back made a polite gap look short to anything timing
+// it on the same clock (the owner's WSL machine steps its wall clock back
+// about 964 ms every 32 s, which is the 280 ms "failure" probe-sample saw on
+// 2026-10-25 04:34:18 UTC). performance.now() never steps. Deadlines and the
+// update window stay on the wall clock (`clock` below): they ARE wall times.
+let lastRequestAt = -Infinity;
 let gapMs = 0;
 
 async function fetchOnce(name) {
@@ -252,9 +262,9 @@ async function read(name, file) {
   // One at a time, `gapMs` after the previous one finished, even when the
   // caller asks for several at once (readEntry's Promise.all).
   const run = gate.then(async () => {
-    const wait = lastRequestAt + gapMs - Date.now();
+    const wait = lastRequestAt + gapMs - performance.now();
     if (wait > 0) await sleep(wait);
-    try { return await fetchThroughUpdate(name); } finally { lastRequestAt = Date.now(); }
+    try { return await fetchThroughUpdate(name); } finally { lastRequestAt = performance.now(); }
   });
   gate = run.catch(() => {});
   return run;

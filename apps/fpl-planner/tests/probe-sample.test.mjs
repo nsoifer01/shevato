@@ -45,8 +45,15 @@ const PRELOAD = `data:text/javascript,${encodeURIComponent(`
   import { readFileSync, appendFileSync } from 'node:fs';
   const cfg = JSON.parse(readFileSync(process.env.FAKE_FPL, 'utf8'));
   const hits = {};
+  // A wall clock that steps on every reading, when asked (CLOCK_STEP_MS): the
+  // way a machine whose clock is corrected in steps behaves, exaggerated.
+  const step = Number(process.env.CLOCK_STEP_MS || 0);
+  if (step) { const real = Date.now.bind(Date); let off = 0; Date.now = () => { off += step; return real() + off; }; }
   globalThis.fetch = async (url) => {
-    appendFileSync(process.env.FAKE_FPL + '.calls', Date.now() + ' ' + url + '\\n');
+    // When each request was SENT, on the monotonic clock: the wall clock can
+    // step (the owner's WSL machine steps it back ~964 ms every 32 s), and a
+    // gap timed on it was read as 280 ms on 2026-10-25 when it was 1.2 s.
+    appendFileSync(process.env.FAKE_FPL + '.calls', (performance.timeOrigin + performance.now()) + ' ' + url + '\\n');
     if (cfg.network) throw new TypeError('fetch failed');
     const path = String(url).replace('https://fantasy.premierleague.com/api/', '').replace(/\\/$/, '');
     let r = cfg.routes[path];
@@ -69,10 +76,10 @@ const PRELOAD = `data:text/javascript,${encodeURIComponent(`
 
 const base = () => ({ routes: { 'bootstrap-static': { body: BOOTSTRAP }, fixtures: { body: FIXTURES } }, entries: {}, standings: null, fallback: null });
 
-function runCli(dir, name, cfg, args, { gapMs = '0', pollMs = '0' } = {}) {
+function runCli(dir, name, cfg, args, { gapMs = '0', pollMs = '0', clockStepMs = '0' } = {}) {
   const file = join(dir, `${name}.json`);
   writeFileSync(file, JSON.stringify(cfg));
-  const env = { ...process.env, FAKE_FPL: file, FPL_PROBE_UPDATE_POLL_MS: pollMs };
+  const env = { ...process.env, FAKE_FPL: file, FPL_PROBE_UPDATE_POLL_MS: pollMs, CLOCK_STEP_MS: clockStepMs };
   if (gapMs === null) delete env.FPL_PROBE_REQUEST_GAP_MS; else env.FPL_PROBE_REQUEST_GAP_MS = gapMs;
   return new Promise((resolve) => {
     const child = spawn(process.execPath, ['--import', PRELOAD, PROBE, '--direct', ...args], { env, stdio: ['ignore', 'pipe', 'pipe'] });
@@ -312,6 +319,32 @@ test("FPL's update after a deadline is waited out inside its window, and only th
       assert.equal(ownerReads(r), 4, `${name}: each read asked once`);
     }
     assert.match(runs.refused.out, /HTTP 403/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// Request pacing is measured on the monotonic clock, so a wall clock that
+// steps cannot shorten it (2026-10-25). Pacing on Date.now(), a clock stepping
+// FORWARD between two requests made the probe send them 21 ms apart; stepping
+// BACK it stayed polite but looked impolite to a wall-clock measurement (the
+// intermittent 280 ms seen on the owner's machine). Exaggerated here: the wall
+// clock moves on every reading, forward 1 s or back 0.3 s.
+test('requests stay at least a second apart however the wall clock steps', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'fpl-sample-clock-'));
+  try {
+    // Bootstrap, fixtures, then a refused standings page: three paced requests.
+    const cfg = { ...base(), standings: { status: 429, body: 'slow down' } };
+    const runs = await Promise.all([['steady', '0'], ['forward', '1000'], ['back', '-300']].map(async ([label, step]) =>
+      [label, await runCli(dir, label, cfg, ['--now', FETCHED_AT, '--sample', '3'], { gapMs: null, clockStepMs: step })]));
+    for (const [label, r] of runs) {
+      assert.equal(r.code, 2, `${label}: ${r.out}`);
+      assert.equal(r.calls.length, 3, `${label}: bootstrap, fixtures and the refused standings page`);
+      for (let i = 1; i < r.calls.length; i++) {
+        const gap = r.calls[i].at - r.calls[i - 1].at;
+        assert.ok(gap >= 950, `${label}: request ${i + 1} came ${Math.round(gap)} ms after the one before`);
+      }
+    }
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

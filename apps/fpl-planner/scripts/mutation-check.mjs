@@ -365,6 +365,15 @@ export const MUTANTS = [
     tests: [T('inherited-club-limit')],
     guards: 'Every "why not" answer has the held squad, rolled, as a legal scored baseline even when it is over the limit (2026-10-24).',
   },
+  // ---- request pacing on the monotonic clock (2026-10-25). ----
+  {
+    id: 'probe-pacing-on-wall-clock',
+    file: `${APP}/scripts/evidence-probe.mjs`,
+    find: '    const wait = lastRequestAt + gapMs - performance.now();\n    if (wait > 0) await sleep(wait);\n    try { return await fetchThroughUpdate(name); } finally { lastRequestAt = performance.now(); }',
+    replace: '    const wait = lastRequestAt + gapMs - Date.now();\n    if (wait > 0) await sleep(wait);\n    try { return await fetchThroughUpdate(name); } finally { lastRequestAt = Date.now(); }',
+    tests: [T('probe-sample')],
+    guards: 'The sample\'s requests to FPL stay a second apart even when the wall clock steps forward (21 ms apart on Date.now(), 2026-10-25).',
+  },
   // ---- plan history per team and season (2026-10-25). ----
   {
     id: 'history-memory-any-team',

@@ -69,6 +69,7 @@ column names the guard added so the whole category is covered, not the case.
 | 35 | The search's own club-limit check was unguarded; illegal plans could crowd the shortlist and a legal +15 upgrade be dropped for a roll | mutation-check (new) | R5 dead test | crowded-shortlist case in transfers.test |
 | 36 | One 403 backed the whole proxy off for 120 s (503s for every uncached path, the app's own retry defeated); the probe read once where the app retries; a red result then stood six hours (#616) | monitor (#616, 2026-10-17) | R6 ops path | corroborated backoff, `x-fpl-upstream`, probe re-read, hourly recheck while red; fpl.test, fpl-health.test; 5 mutants |
 | 37 | Both health probes judged FPL's routine update after a deadline as a failure: GitHub started the probe 5 s after GW8's deadline and every manager read 503'd (red, exit 2), and the Netlify 18:41 run would have opened an incident 11 min after GW10's 18:30 deadline | monitor (GitHub probe run 39995547754, 2026-10-23) | R6 ops path | `UPDATE_WINDOW_MS` / `updateWindowAt`: the CLI waits the window out, the Netlify run defers to the next hour, deferral counts as the scheduler running; probe-sample, fpl-health, probe-freshness; 6 mutants |
+| 42 | The probe's sample paced its FPL requests on `Date.now()`: a wall clock stepping forward made it send two requests 21 ms apart, and one stepping back (the owner's WSL machine, about -964 ms every 32 s) made its polite gaps read as short to the test, which failed intermittently ("280 ms", 2026-10-25 04:34:18 UTC, the moment a logged clock step) | intermittent `npm test` failure, investigated (2026-10-25) | R6 ops path | pacing on `performance.now()`; probe-sample logs requests on the monotonic clock and runs the polite case under clocks stepping forward and back; mutant `probe-pacing-on-wall-clock` |
 | 41 | After a deadline passed with the page open, the "Recalculate for Gameweek N+1" button planned gameweek N again (`reactToDeadline` left no pending squad, so `recalculate` reused the old squad state, whose gameweek the planner plans) | Claude, building the gameweek-transition e2e for #630 (2026-10-25) | R4 boundary | the moved branch builds the new gameweek's squad state as `connectAndPlan` does; e2e/plan-history G (fails on the old code: still "Gameweek 13") |
 | 40 | A plan for the next gameweek, computed in the same session after a deadline, was compared with the previous gameweek's in-memory plan ("Plan updated", previously the GW N plan); the scope key named team and season only, and `diffPlanVersions` does not check the gameweek | owner review of #630 (2026-10-25) | R4 boundary | `comparableVersion` takes the in-memory record only for the same gameweek (`plan.gw`); plan-history-scope test 10, e2e/plan-history G; mutant `history-memory-any-gameweek` |
 | 39 | Plan history was one map for whoever was planned last: a second team opened in the same browser got "Plan updated" against the first team's plan, the first team's plans in its History tab, a possible "your squad changed", and demo mode listed real plans | owner-requested production verification of #628 (2026-10-25) | R1 coherence | history scoped by team ID and season (`planHistoryScope`, `comparableVersion`, v2 shape, legacy never attributed, 3 scopes kept); plan-history-scope (10 tests), e2e/plan-history (35 checks; 7 of its first 18 fail on master); 4 mutants |
@@ -222,6 +223,34 @@ Team ID", crossing a deadline with the page open, and checking legacy history,
 the team cap and an unknown season (35 checks). On master's code its team
 checks fail 7 of 18, showing exactly the production card, and the unit tests
 fail on master's semantics.
+
+## Request pacing on a clock that steps (25 October 2026)
+
+**What failed.** `probe-sample.test`'s politeness check failed once in a full
+`npm test` run: the first two requests 280 ms apart, against a promised second.
+It passed alone three times and on every CI run.
+
+**What the evidence established.** The owner's WSL machine steps its wall
+clock back about 964 ms every ~32 s (measured against `performance.now()` over
+100 s: -962, -966, -964 ms; `systemd-resolved` logs "Clock change detected"
+every ~31.5 s), and the journal shows a step at 23:34:18 local, 04:34:18 UTC,
+the failing run's first request. The probe paced and the test measured on
+`Date.now()`, so a step back during the probe's one-second sleep shortened the
+LOGGED gap (about 1000 - 964 + the bootstrap read) while the real gap stayed
+over a second. Reproduced deterministically with a wall clock stepping on every
+reading: stepping back 0.3 s, the wall-clock log reads 721 ms where the
+monotonic gap is 1,621 ms; stepping FORWARD 1 s, the probe really sent the
+first two requests 21 ms apart while the wall-clock log read 3,022 ms, so the
+test could never have caught the genuine failure.
+
+**Fix.** The gap is taken on `performance.now()` (from `-Infinity`, so the first
+request is not delayed); the update window and every deadline stay on the wall
+clock, which is what they are measured against. The test logs each request on
+the monotonic clock and runs the polite case under clocks stepping forward and
+back; on the old pacing it fails ("request 2 came 17 ms after the one before").
+Not changed, for want of evidence: the Netlify run's duration check and the
+monitor's 90-second wait also time on `Date.now()`, where a step could move
+them by about a second; Netlify's run times have stayed between 10 and 19 s.
 
 ## The GW8 deadline (23 October 2026): a probe that landed in FPL's update
 
