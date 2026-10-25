@@ -69,6 +69,7 @@ column names the guard added so the whole category is covered, not the case.
 | 35 | The search's own club-limit check was unguarded; illegal plans could crowd the shortlist and a legal +15 upgrade be dropped for a roll | mutation-check (new) | R5 dead test | crowded-shortlist case in transfers.test |
 | 36 | One 403 backed the whole proxy off for 120 s (503s for every uncached path, the app's own retry defeated); the probe read once where the app retries; a red result then stood six hours (#616) | monitor (#616, 2026-10-17) | R6 ops path | corroborated backoff, `x-fpl-upstream`, probe re-read, hourly recheck while red; fpl.test, fpl-health.test; 5 mutants |
 | 37 | Both health probes judged FPL's routine update after a deadline as a failure: GitHub started the probe 5 s after GW8's deadline and every manager read 503'd (red, exit 2), and the Netlify 18:41 run would have opened an incident 11 min after GW10's 18:30 deadline | monitor (GitHub probe run 39995547754, 2026-10-23) | R6 ops path | `UPDATE_WINDOW_MS` / `updateWindowAt`: the CLI waits the window out, the Netlify run defers to the next hour, deferral counts as the scheduler running; probe-sample, fpl-health, probe-freshness; 6 mutants |
+| 38 | A squad over three from a club because a player moved club (four Arsenal: Konsa joined) could not be planned at all ("refusing to return an invalid plan"), and the transfer search checked only the incoming player's club, so it could offer a move that kept four | monitor (GitHub probe sample, run 40136156321, 2026-10-24) | R1 coherence | `clubLimitBreaches` (validate.js): the limit binds on a changed squad, the held squad is exempt; one rule for validation, search, polish, why-not, counterfactual; gw8-2026 real fixture; inherited-club-limit (7 tests, all fail on master); 6 mutants |
 
 **Open question (not yet a defect):** the first rotating real-manager sample
 (2026-10-17, 12 managers) recommended a Wildcard at GW7 to all 7 who still
@@ -99,6 +100,59 @@ Categories, and the one guard that covers each WHOLE category:
 - **R6, operational failure paths**: fault-injected tests of each dependency
   failing realistically, and the readiness gate's upstream versus application
   classification (`evidence-probe.mjs --sample`).
+
+## A squad over the club limit by a transfer it never made (24 October 2026)
+
+**What happened.** The first `full` probe on master after #627 sampled a
+rank-8.0M manager whose squad holds Raya, Konsa, Zubimendi and Eze: four
+Arsenal players. Konsa (id 31, an original Aston Villa id) moved to Arsenal
+after the manager picked Konsa, and the manager has made no transfer all season.
+FPL accepts that squad. The planner threw "refusing to return an invalid plan
+(club_limit ...)" and the manager got no plan; the app runs the same engine, so
+on the site they would have seen the same failure. The probe, exactly as
+intended, called it APPLICATION (exit 1).
+
+**Why.** `validatePlan` judged the squad as if it had just been picked, so even
+"roll" (no transfer) failed, and `transfers.js` checked only the incoming
+players' clubs, so "sell a Liverpool player, buy a Spurs one" passed the search
+while still holding four Arsenal. **FPL's rule is about a change**: a squad that
+is picked or changed may hold at most three from a club; one held untouched is
+legal to keep whatever a player's later club makes it. The fix states that once
+(`clubLimitBreaches(squad, players, limit, heldIds)`: a squad identical to the
+held one is never a breach, any other is judged in full) and every site asks
+it: `validatePlan`, the transfer search, the planner's polish, the single-swap
+"why not" and the counterfactual's routes and baseline. A Wildcard and a Free
+Hit build a new squad and were already held to the limit by the builder; the
+week after a Free Hit plans the reverted squad as held.
+
+**How many managers can hit it.** Not one squad: a class. The GW1 capture of
+2026-08-21 against today's bootstrap shows ten players who changed Premier
+League club after the GW1 deadline (Martinez, Baleba, Enzo, N.Jackson, Delap,
+Muñoz, Ndiaye, Grealish, Marmoush, Savinho; Konsa is outside that trimmed
+capture), and nobody between the GW4 capture and GW8. Any manager who held
+three from a destination club plus the mover, and has not transferred since,
+holds four. It surfaces in January again, and whenever FPL reassigns a club.
+
+**Tests (fixed by category, neighbours included).** `inherited-club-limit.test.mjs`
+counts clubs from FPL's own `element.team`, never the engine's `teamId`, and
+restates the rule inside the test: the real four-Arsenal squad plans and every
+transferring week is within the limit; with one free transfer the roll keeps
+the held squad and every one-move plan sells an Arsenal player; `validatePlan`
+on held, kept-four, sold-Eze, bought-a-fifth and built-from-nothing; exactly
+three (buying a fourth is a breach); two clubs over (fixing one is not enough);
+Wildcard and Free Hit squads; the week after a Free Hit; and "why not" offers
+no move that keeps four and says why. All seven fail on master's engine.
+Each site has its own mutant. **A test enshrined the defect**: `planner.test`'s
+"an invalid plan throws" used a held squad with six from one club as its
+example of an invalid plan. That squad is now planned (it rolls: two transfers
+cannot reach three), and the throw is held by a squad FPL can never produce, a
+goalkeeper listed as a defender. Plans for the five real GW7 managers, whose
+squads are within the limit, are byte-identical before and after.
+
+**Not changed.** No notice on the page tells a manager that their squad is over
+the limit and why a recommended sale is partly forced by it. Squad warnings
+render under "Data quality", which would misframe a legal squad as bad data;
+a proper notice is a UI change of its own.
 
 ## The GW8 deadline (23 October 2026): a probe that landed in FPL's update
 

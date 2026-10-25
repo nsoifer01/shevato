@@ -25,7 +25,11 @@
 // replaced, and names, regions and league data are dropped. Picks, transfers
 // and history rows are kept exactly, because they ARE the test.
 //
-//   node apps/fpl-planner/scripts/derive-gw7-fixtures.mjs <raw-dir> [out-dir]
+//   node apps/fpl-planner/scripts/derive-gw7-fixtures.mjs <raw-dir> [out-dir] [served] [source]
+//
+// `served` and `source` describe a capture other than GW7's (the GW8 one of
+// 2026-10-24, tests/fixtures/gw8-2026, is derived the same way); without them
+// the GW7 fixture is written exactly as before.
 //
 // <raw-dir> holds bootstrap-static.json, fixtures.json and
 // entries/<label>/{entry,history,transfers,picks}.json (+ revert-picks.json
@@ -40,6 +44,8 @@ import { META, TOTALS, pick } from './lib/fixture-fields.mjs';
 const HERE = dirname(fileURLToPath(import.meta.url));
 const RAW = process.argv[2];
 const OUT = process.argv[3] || join(HERE, '..', 'tests', 'fixtures', 'gw7-2026');
+const SERVED = process.argv[4] || '2026-10-16 (GW6 finished, GW7 next)';
+const SOURCE = process.argv[5] || 'public FPL API, 2026-10-16 (before the GW7 deadline 2026-10-17T10:00Z)';
 if (!RAW) throw new Error('usage: derive-gw7-fixtures.mjs <raw-dir> [out-dir]');
 
 // What the engine reads beyond the lifecycle fixtures' META and TOTALS:
@@ -61,7 +67,7 @@ const sha = (...p) => createHash('sha256').update(readFileSync(join(RAW, ...p)))
 const bootstrap = J('bootstrap-static.json');
 mkdirSync(OUT, { recursive: true });
 writeFileSync(join(OUT, 'bootstrap.json'), JSON.stringify({
-  note: 'bootstrap-static as served on 2026-10-16 (GW6 finished, GW7 next), trimmed to the fields the engine reads. scripts/derive-gw7-fixtures.mjs.',
+  note: `bootstrap-static as served on ${SERVED}, trimmed to the fields the engine reads. scripts/derive-gw7-fixtures.mjs.`,
   ...pick(bootstrap, ['events', 'game_settings', 'game_config', 'phases', 'teams', 'element_types', 'chips', 'total_players']),
   // A column table (field names once, a row per player), restored to the
   // upstream shape by tests/helpers/gw7-fixture.mjs; it halves the file.
@@ -103,7 +109,7 @@ for (const label of readdirSync(join(RAW, 'entries')).sort()) {
 }
 writeFileSync(join(OUT, 'entries.json'), JSON.stringify(entries, null, 1) + '\n');
 writeFileSync(join(OUT, 'manifest.json'), JSON.stringify({
-  source: 'public FPL API, 2026-10-16 (before the GW7 deadline 2026-10-17T10:00Z)',
+  source: SOURCE,
   derivedBy: 'scripts/derive-gw7-fixtures.mjs',
   pool: bootstrap.elements.length,
   sha256: { bootstrap: sha('bootstrap-static.json'), fixtures: sha('fixtures.json') },

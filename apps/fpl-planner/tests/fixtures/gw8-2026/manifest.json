@@ -1,0 +1,12 @@
+{
+  "source": "public FPL API, 2026-10-24T21:56:08Z (GW8 in progress; GW9 deadline 2026-10-31T11:00Z)",
+  "derivedBy": "scripts/derive-gw7-fixtures.mjs",
+  "pool": 669,
+  "sha256": {
+    "bootstrap": "a027bc1a23836fa810d1e105eceddfeb477b2189717b616ebdc61c018c1eec23",
+    "fixtures": "f6a13cf9dfe8de112e0ee82159ee3bd8c4490dc8abb642d53118a69822b9c71b"
+  },
+  "entries": [
+    "four-arsenal"
+  ]
+}

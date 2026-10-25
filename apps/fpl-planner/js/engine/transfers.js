@@ -208,7 +208,7 @@
 import { squadHorizonValue, optimizeLineup, DEFAULT_DISCOUNT, DEFAULT_HORIZON } from './lineup.js';
 import { availabilityCeiling } from './minutes.js';
 import { chooseCaptain } from './captain.js';
-import { validatePlan } from './validate.js';
+import { validatePlan, clubLimitBreaches } from './validate.js';
 import { transferAccounting, transferStateOf, freeTransfersFor } from './transfer-state.js';
 import { readPriceChange, priceUrgency } from './price-change.js';
 
@@ -341,12 +341,6 @@ export function searchTransfers({ squadState, projections, gameState, rules, hor
     : (Date.parse(gameState.fetchedAt) || Date.now());
   const priceModels = buildPriceModels({ players, pools, enablers, ownedIds, rules: R, now: priceNow });
 
-  const baseClubCounts = new Map();
-  for (const id of ownedIds) {
-    const t = players.get(id).teamId;
-    baseClubCounts.set(t, (baseClubCounts.get(t) || 0) + 1);
-  }
-
   const candidates = [];
   const seen = new Set();
 
@@ -365,10 +359,13 @@ export function searchTransfers({ squadState, projections, gameState, rules, hor
     const bankAfter = bankBefore + moneyIn - moneyOut;
     if (bankAfter < 0) return;
 
-    if (!clubLimitOk(baseClubCounts, outIds, inIds, players, R.clubLimit)) return;
+    // The whole squad after the move, not only the incoming players' clubs: a
+    // manager holding four from a club a player moved to must bring it back
+    // to the limit with any transfer (validate.js clubLimitBreaches).
+    const squad = applyTransfers(ownedIds, outIds, inIds);
+    if (clubLimitBreaches(squad, players, R.clubLimit, ownedIds).length) return;
 
     seen.add(key);
-    const squad = applyTransfers(ownedIds, outIds, inIds);
     const c = {
       key, outIds, inIds, squad,
       transferCount: count,
@@ -854,21 +851,6 @@ function churnCost(outIds, inIds, doubts, horizonValue, cfg) {
 function rollValue(carried, cfg) {
   const perTransfer = Number.isFinite(cfg.rollValuePoints) ? cfg.rollValuePoints : cfg.ftValuePoints;
   return perTransfer * Math.max(0, carried - 1);
-}
-
-function clubLimitOk(baseCounts, outIds, inIds, players, limit) {
-  const counts = new Map(baseCounts);
-  for (const id of outIds) {
-    const t = players.get(id).teamId;
-    counts.set(t, counts.get(t) - 1);
-  }
-  for (const id of inIds) {
-    const t = players.get(id).teamId;
-    const n = (counts.get(t) || 0) + 1;
-    if (n > limit) return false;
-    counts.set(t, n);
-  }
-  return true;
 }
 
 function applyTransfers(ownedIds, outIds, inIds) {

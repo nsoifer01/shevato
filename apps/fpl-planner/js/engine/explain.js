@@ -18,6 +18,7 @@ import { hitCost, transferStateOf, isUnlimited } from './transfer-state.js';
 import { openingSquadMoney } from './squad.js';
 import { CAPTAIN_PARAMS } from './captain.js';
 import { projectionDistance } from './confidence.js';
+import { clubLimitBreaches } from './validate.js';
 
 // The exact neutral wording used whenever the squad on file differs from what
 // was recommended last time. Exported so the UI cannot reinvent it in a less
@@ -679,7 +680,11 @@ export function whyNot(playerId, { planBundle, gameState, rules }) {
   }).length;
 
   // Every legal single swap: same position, affordable at selling prices, and
-  // inside the club limit once the outgoing player is gone.
+  // a squad inside the club limit once the swap is made. The whole squad is
+  // judged, not only the target's club: a squad already over the limit at another club
+  // (a player moved club) must be brought back to it by any transfer
+  // (validate.js clubLimitBreaches).
+  const inherited = clubLimitBreaches(held, gameState.players, rules.clubLimit);
   const options = [];
   let bestShortfall = Infinity;
   for (const outId of held) {
@@ -697,6 +702,7 @@ export function whyNot(playerId, { planBundle, gameState, rules }) {
     if (sameClubAfter > rules.clubLimit) continue;
 
     const squad = held.filter(id => id !== outId).concat(playerId);
+    if (clubLimitBreaches(squad, gameState.players, rules.clubLimit, held).length) continue;
     const trajectory = squadTrajectory({
       squadIds: squad, projections, gameState, rules, gwFrom: gw, horizon, discount,
     });
@@ -720,6 +726,15 @@ export function whyNot(playerId, { planBundle, gameState, rules }) {
         'club_limit',
         `You already hold {v} players from ${clubOf(gameState, playerId)}, which is the limit.`,
         clubCount,
+        'count',
+      ));
+    }
+    for (const b of inherited.filter(x => x.teamId !== target.teamId)) {
+      const club = gameState.teams.get(b.teamId);
+      blockers.push(makeReason(
+        'club_limit',
+        `You hold {v} players from ${club && club.name ? club.name : 'one club'}, over the limit of ${rules.clubLimit} because a player moved club. FPL lets you keep them until you transfer, and then the squad has to be back to ${rules.clubLimit}, so a single swap for ${name} has to sell one of them.`,
+        b.count,
         'count',
       ));
     }

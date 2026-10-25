@@ -391,10 +391,13 @@ test('every plan the planner returns passes validatePlan, including the projecte
   }
 });
 
-test('an invalid plan throws instead of being returned', async () => {
-  // Six players from one club against a limit of three. No single or double
-  // transfer can make that squad legal, so every candidate the planner scores
-  // is illegal and there is nothing legitimate left to return.
+test('a held squad over the club limit is planned as held, and a transfer never keeps it over', async () => {
+  // Six players from one club against a limit of three. FPL lets a squad stand
+  // that a club change put over the limit (validate.js clubLimitBreaches), and
+  // with two free transfers nothing can bring six back to three, so the plan
+  // rolls. Until 2026-10-24 this squad was the planner's example of an invalid
+  // plan and it refused to plan it, which is how a real four-Arsenal manager
+  // got no plan at all (FINDINGS ledger row 38).
   const roster = baseRoster();
   for (const id of [201, 202, 203, 301, 302, 401]) {
     roster.find(p => p.id === id).teamId = 3;
@@ -404,11 +407,32 @@ test('an invalid plan throws instead of being returned', async () => {
   const projections = makeProjections(gameState, GW, GW + 8, baseXp);
   const squadState = makeSquadState(SQUAD_IDS, { gw: GW, prices });
 
+  const bundle = await buildPlan({ gameState, squadState, options: { projections, strength: {}, seed: 1 } });
+  for (const plan of [bundle.current, ...bundle.future]) {
+    const fromThree = plan.squad.filter(id => gameState.players.get(id).teamId === 3).length;
+    if (plan.transferCount > 0) assert.ok(fromThree <= 3, `GW${plan.gw}: ${fromThree} from one club after a transfer`);
+  }
+  assert.equal(bundle.current.transferCount, 0, 'two transfers cannot reach three, so it rolls');
+  assert.deepEqual([...bundle.current.squad].sort(), [...SQUAD_IDS].sort());
+});
+
+test('an invalid plan throws instead of being returned', async () => {
+  // A goalkeeper listed as a defender: one goalkeeper and six defenders, which
+  // FPL can never produce and no like-for-like transfer can repair, so every
+  // candidate the planner scores, the roll included, is illegal and there is
+  // nothing legitimate left to return.
+  const roster = baseRoster();
+  roster.find(p => p.id === 102).position = 2;
+  const gameState = makeGameState(roster, GW);
+  const prices = new Map(roster.map(p => [p.id, p.nowCost]));
+  const projections = makeProjections(gameState, GW, GW + 8, baseXp);
+  const squadState = makeSquadState(SQUAD_IDS, { gw: GW, prices });
+
   await assert.rejects(
     () => buildPlan({ gameState, squadState, options: { projections, strength: {}, seed: 1 } }),
     (err) => {
       assert.match(err.message, /refusing to return an invalid plan/);
-      assert.match(err.message, /club_limit/);
+      assert.match(err.message, /position_count/);
       return true;
     },
   );
