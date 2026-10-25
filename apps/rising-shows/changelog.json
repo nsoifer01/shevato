@@ -1,6 +1,346 @@
 {
   "updates": [
     {
+      "builtAt": "2026-10-25T11:17:58.736Z",
+      "totals": {
+        "seasons": 67548,
+        "delta": 31
+      },
+      "shapeCounts": {
+        "rebound": 9796,
+        "big-finale": 11815,
+        "u-shaped": 2650,
+        "rollercoaster": 13502,
+        "mid-peak": 4363,
+        "consistent": 2543,
+        "bad-finale": 4344,
+        "front-loaded": 3066,
+        "slow-burn": 3977,
+        "declining": 1647,
+        "saved-best-for-last": 1381,
+        "shape-drift": 1394,
+        "rising": 2368
+      },
+      "shapeDeltas": {
+        "rebound": 7,
+        "big-finale": 4,
+        "u-shaped": 4,
+        "rollercoaster": -1,
+        "mid-peak": -3,
+        "consistent": -1,
+        "front-loaded": 3,
+        "slow-burn": -2,
+        "declining": -1,
+        "saved-best-for-last": 2,
+        "rising": -1
+      },
+      "added": [
+        {
+          "seriesId": "tt39394153",
+          "title": "Firefly Wedding",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt38715296",
+          "title": "Small Town Remedy",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt2531336",
+          "title": "Lupin",
+          "season": 4,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt35826715",
+          "title": "Boston Blue",
+          "season": 2,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt41295083",
+          "title": "A Certain Dark Item",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt28313387",
+          "title": "A Returner's Magic Should Be Special",
+          "season": 2,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt16098700",
+          "title": "Fire Country",
+          "season": 5,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt32268630",
+          "title": "Sheriff Country",
+          "season": 2,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt43691408",
+          "title": "The World's Strongest Witch",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt47616772",
+          "title": "Yal",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt32813343",
+          "title": "Magic Knight Rayearth",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt41266040",
+          "title": "The Northumbria Mysteries",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt46658083",
+          "title": "The New Stanford Prison Experiment",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt27524116",
+          "title": "Sasaki and Peeps",
+          "season": 2,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt25531288",
+          "title": "The Iceblade Sorcerer Shall Rule the World",
+          "season": 2,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt47730406",
+          "title": "Corregidora: The Darkest Night in Mexican Soccer",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt42938834",
+          "title": "Suikoden: The Anime",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt34587358",
+          "title": "The Outfit",
+          "season": 3,
+          "seasonYear": 2024
+        },
+        {
+          "seriesId": "tt47778404",
+          "title": "Sam: The Soul of Halloween",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt12169918",
+          "title": "Satina",
+          "season": 1,
+          "seasonYear": 2020
+        },
+        {
+          "seriesId": "tt45831796",
+          "title": "Hitozukiai ga Nigate na Miboujin no Yukionna-san to Noroi no Yubiwa",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt48356732",
+          "title": "Swipe Right on the Devil",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt0094509",
+          "title": "Medisch Centrum West",
+          "season": 9,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt0271894",
+          "title": "48 Hours",
+          "season": 12,
+          "seasonYear": 1998
+        },
+        {
+          "seriesId": "tt1971245",
+          "title": "The Voice UK",
+          "season": 14,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt4508624",
+          "title": "My Lottery Dream Home",
+          "season": 12,
+          "seasonYear": 2022
+        },
+        {
+          "seriesId": "tt0156673",
+          "title": "Kamen Rider Super-1",
+          "season": 1,
+          "seasonYear": 1980
+        },
+        {
+          "seriesId": "tt1245696",
+          "title": "Plutón B.R.B. Nero",
+          "season": 2,
+          "seasonYear": 2009
+        },
+        {
+          "seriesId": "tt0390700",
+          "title": "Escape to the Country",
+          "season": 25,
+          "seasonYear": 2024
+        },
+        {
+          "seriesId": "tt15068816",
+          "title": "Paglet",
+          "season": 1,
+          "seasonYear": 2021
+        },
+        {
+          "seriesId": "tt32327588",
+          "title": "Furia",
+          "season": 2,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt36694933",
+          "title": "90 Day: Hunt for Love",
+          "season": 2,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt49037069",
+          "title": "Timbiriche",
+          "season": 1,
+          "seasonYear": 2026
+        }
+      ],
+      "removed": [
+        {
+          "seriesId": "tt0294023",
+          "title": "Captain Tsubasa",
+          "season": 6,
+          "seasonYear": 1995
+        },
+        {
+          "seriesId": "tt3137940",
+          "title": "Countdown to UFC",
+          "season": 16,
+          "seasonYear": 2022
+        }
+      ],
+      "ratingSwings": [
+        {
+          "seriesId": "tt9355244",
+          "title": "Very Beautiful Movements 2",
+          "season": 9,
+          "from": 6.37,
+          "to": 4.95,
+          "delta": -1.42
+        },
+        {
+          "seriesId": "tt9355244",
+          "title": "Very Beautiful Movements 2",
+          "season": 4,
+          "from": 6.2,
+          "to": 4.81,
+          "delta": -1.39
+        },
+        {
+          "seriesId": "tt9355244",
+          "title": "Very Beautiful Movements 2",
+          "season": 7,
+          "from": 5.67,
+          "to": 4.44,
+          "delta": -1.23
+        },
+        {
+          "seriesId": "tt9355244",
+          "title": "Very Beautiful Movements 2",
+          "season": 8,
+          "from": 5.62,
+          "to": 4.41,
+          "delta": -1.21
+        },
+        {
+          "seriesId": "tt9355244",
+          "title": "Very Beautiful Movements 2",
+          "season": 5,
+          "from": 5.73,
+          "to": 4.57,
+          "delta": -1.16
+        },
+        {
+          "seriesId": "tt9355244",
+          "title": "Very Beautiful Movements 2",
+          "season": 6,
+          "from": 5.47,
+          "to": 4.31,
+          "delta": -1.16
+        },
+        {
+          "seriesId": "tt32063263",
+          "title": "The Forsytes",
+          "season": 2,
+          "from": 6.75,
+          "to": 5.88,
+          "delta": -0.87
+        },
+        {
+          "seriesId": "tt11150950",
+          "title": "Skolan",
+          "season": 1,
+          "from": 9.03,
+          "to": 8.18,
+          "delta": -0.85
+        },
+        {
+          "seriesId": "tt32328599",
+          "title": "Bluey Minisodes",
+          "season": 2,
+          "from": 5.57,
+          "to": 6.31,
+          "delta": 0.74
+        },
+        {
+          "seriesId": "tt0870973",
+          "title": "Celebrity Masterchef",
+          "season": 21,
+          "from": 5.11,
+          "to": 5.85,
+          "delta": 0.74
+        }
+      ],
+      "modifiedCounts": {
+        "seriesVotes": 21327,
+        "avgRating": 1490,
+        "shapes": 236,
+        "episodeCount": 128,
+        "seriesRating": 985,
+        "poster": 24,
+        "overview": 16
+      }
+    },
+    {
       "builtAt": "2026-10-24T11:03:55.709Z",
       "totals": {
         "seasons": 67517,
@@ -9880,184 +10220,6 @@
         "seriesRating": 913,
         "poster": 3,
         "overview": 4
-      }
-    },
-    {
-      "builtAt": "2026-09-10T10:41:58.218Z",
-      "totals": {
-        "seasons": 66687,
-        "delta": 8
-      },
-      "shapeCounts": {
-        "rebound": 10186,
-        "rising": 2615,
-        "slow-burn": 4412,
-        "big-finale": 12172,
-        "u-shaped": 3093,
-        "rollercoaster": 14158,
-        "mid-peak": 4627,
-        "saved-best-for-last": 1507,
-        "front-loaded": 3511,
-        "declining": 1880,
-        "bad-finale": 4651,
-        "consistent": 2627,
-        "shape-drift": 1581
-      },
-      "shapeDeltas": {
-        "rebound": -4,
-        "rising": 3,
-        "slow-burn": -2,
-        "big-finale": -1,
-        "u-shaped": 2,
-        "rollercoaster": 4,
-        "mid-peak": -7,
-        "saved-best-for-last": 2,
-        "front-loaded": 5,
-        "declining": -4,
-        "consistent": -7,
-        "shape-drift": 3
-      },
-      "added": [
-        {
-          "seriesId": "tt0103396",
-          "title": "Dateline NBC",
-          "season": 13,
-          "seasonYear": 2004
-        },
-        {
-          "seriesId": "tt0103396",
-          "title": "Dateline NBC",
-          "season": 11,
-          "seasonYear": 2003
-        },
-        {
-          "seriesId": "tt0103396",
-          "title": "Dateline NBC",
-          "season": 10,
-          "seasonYear": 2001
-        },
-        {
-          "seriesId": "tt37599841",
-          "title": "Skibidi Toilet Multiverse",
-          "season": 12,
-          "seasonYear": 2024
-        },
-        {
-          "seriesId": "tt38197084",
-          "title": "Engineering Europe",
-          "season": 1,
-          "seasonYear": 2025
-        },
-        {
-          "seriesId": "tt39572794",
-          "title": "All Mothers Lie",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt40003445",
-          "title": "Dang!",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt38593439",
-          "title": "The Boys of Fifteen",
-          "season": 1,
-          "seasonYear": 2026
-        }
-      ],
-      "removed": [],
-      "ratingSwings": [
-        {
-          "seriesId": "tt3103208",
-          "title": "We Without Wings: Under the Innocent Sky",
-          "season": 1,
-          "from": 6.3,
-          "to": 5.57,
-          "delta": -0.73
-        },
-        {
-          "seriesId": "tt43562869",
-          "title": "The Crow",
-          "season": 1,
-          "from": 5.46,
-          "to": 5.93,
-          "delta": 0.47
-        },
-        {
-          "seriesId": "tt0103396",
-          "title": "Dateline NBC",
-          "season": 16,
-          "from": 5.98,
-          "to": 6.43,
-          "delta": 0.45
-        },
-        {
-          "seriesId": "tt3878948",
-          "title": "Morph",
-          "season": 1,
-          "from": 8.11,
-          "to": 8.49,
-          "delta": 0.38
-        },
-        {
-          "seriesId": "tt0103396",
-          "title": "Dateline NBC",
-          "season": 14,
-          "from": 6.2,
-          "to": 6.56,
-          "delta": 0.36
-        },
-        {
-          "seriesId": "tt7121818",
-          "title": "Too Loud",
-          "season": 1,
-          "from": 7.55,
-          "to": 7.9,
-          "delta": 0.35
-        },
-        {
-          "seriesId": "tt34060796",
-          "title": "The Traitors Ireland",
-          "season": 2,
-          "from": 7.75,
-          "to": 8.08,
-          "delta": 0.33
-        },
-        {
-          "seriesId": "tt10589896",
-          "title": "MrBeast",
-          "season": 14,
-          "from": 5.38,
-          "to": 5.71,
-          "delta": 0.33
-        },
-        {
-          "seriesId": "tt36996011",
-          "title": "Mousetrap",
-          "season": 1,
-          "from": 8.23,
-          "to": 7.98,
-          "delta": -0.25
-        },
-        {
-          "seriesId": "tt40266274",
-          "title": "Selling Sex",
-          "season": 1,
-          "from": 6.36,
-          "to": 6.13,
-          "delta": -0.23
-        }
-      ],
-      "modifiedCounts": {
-        "seriesVotes": 15755,
-        "avgRating": 718,
-        "shapes": 115,
-        "seriesRating": 155,
-        "episodeCount": 53,
-        "poster": 2,
-        "overview": 1
       }
     }
   ]
