@@ -205,12 +205,17 @@ export function recordScopedPlanVersion(histories, scope, gw, entry) {
 
 /**
  * The version the plan just computed is compared with: the one remembered in
- * this session when it belongs to the same scope, else the latest stored for
- * that scope and gameweek. `memory` is `{ key, record }`; `memoryKey` is the
- * scope key now (sample mode uses its own, and stores nothing).
+ * this session when it belongs to the same scope AND gameweek, else the latest
+ * stored for that scope and gameweek. `memory` is `{ key, record }`;
+ * `memoryKey` is the scope key now (sample mode uses its own, and stores
+ * nothing). The gameweek is the record's own (`plan.gw`): the scope key names
+ * a team and season only, and a plan kept in memory across a deadline is the
+ * previous gameweek's, a different decision, so comparing it said "Plan
+ * updated" about a plan for another week (found reviewing #630, 2026-10-25).
  */
 export function comparableVersion({ memory, memoryKey, history, gw }) {
-  if (memory && memory.key === memoryKey && memory.record) return memory.record;
+  const record = memory && memory.key === memoryKey ? memory.record : null;
+  if (record && record.plan && record.plan.gw === gw) return record;
   return latestVersion(history, gw);
 }
 

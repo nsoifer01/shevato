@@ -369,10 +369,18 @@ export const MUTANTS = [
   {
     id: 'history-memory-any-team',
     file: `${APP}/js/ui/store.js`,
-    find: '  if (memory && memory.key === memoryKey && memory.record) return memory.record;',
-    replace: '  if (memory && memory.record) return memory.record;',
+    find: '  const record = memory && memory.key === memoryKey ? memory.record : null;',
+    replace: '  const record = memory ? memory.record : null;',
     tests: [T('plan-history-scope')],
     guards: 'A team opened after another in the same session is never compared with the other team\'s plan (found verifying #628, 2026-10-25).',
+  },
+  {
+    id: 'history-memory-any-gameweek',
+    file: `${APP}/js/ui/store.js`,
+    find: '  if (record && record.plan && record.plan.gw === gw) return record;',
+    replace: '  if (record) return record;',
+    tests: [T('plan-history-scope')],
+    guards: 'A plan for the next gameweek, computed in the same session after a deadline, is never compared with the previous gameweek\'s plan (reviewing #630, 2026-10-25).',
   },
   {
     id: 'history-mislabelled-bucket-trusted',

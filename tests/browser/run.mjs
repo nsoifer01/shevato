@@ -291,8 +291,9 @@ const SUITE_SECONDS = {
   'apps/fpl-planner/e2e/roll-near-tie.mjs': 27,
   // Added 2026-10-25: 7.4 to 8.2 s locally, 7.9 s in a six-shard parallel run.
   'apps/fpl-planner/e2e/club-limit-notice.mjs': 8,
-  // Added 2026-10-25: 25.6 s locally (two teams, two switches, a reload, demo mode).
-  'apps/fpl-planner/e2e/plan-history.mjs': 26,
+  // Added 2026-10-25: 75.9 s locally (two teams, a gameweek transition across a
+  // deadline, legacy history, four teams for the cap, an unknown season).
+  'apps/fpl-planner/e2e/plan-history.mjs': 76,
   'apps/trip-planner/e2e/pwa.mjs': 5,
 };
 

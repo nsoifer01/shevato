@@ -1524,7 +1524,16 @@ async function reactToDeadline({ retry = false } = {}) {
         code: 'deadline-passed',
         text: `The Gameweek ${wasPlanGw} deadline has passed, so this plan can no longer be acted on. Recalculate for Gameweek ${state.planGw}.`,
       };
-      state.pendingSquad = null;
+      // "Recalculate" plans the squad this holds, and the planner plans the
+      // squad state's own gameweek, so it has to be the NEW gameweek's: with
+      // null, recalculate() fell back to the old squad state and planned the
+      // gameweek whose deadline had just passed (found reviewing #630,
+      // 2026-10-25). Built as connectAndPlan builds it.
+      state.pendingSquad = gameweekMoved && state.picks ? buildSquadState({
+        entry: state.entry, history: state.history, transfers: state.transfers,
+        picks: state.picks, revertPicks: state.revertPicks, priceFloors: state.priceFloors, startPicks: state.startPicks,
+        gameState: state.gameState, gw: state.planGw,
+      }) : null;
     } else {
       // Same gameweek still being planned. Either the deadline that passed was
       // an earlier one, or FPL has not moved on yet (scheduled below). Treat it

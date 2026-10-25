@@ -1158,7 +1158,8 @@ season, touchedAt, gws } } }`, `js/ui/store.js`): each scope holds at most 5
 versions per gameweek and 8 gameweeks, and only the 3 most recently written
 scopes are kept, so the synced value stays bounded (143 KB at every cap, measured
 with real snapshots). Every reader gets one scope's per-gameweek map, so a plan
-is compared only with the same team's earlier plan in the same season, and the
+is compared only with the same team's earlier plan for the same season and
+gameweek (the version kept in memory is used only for its own gameweek), and the
 History tab lists only that team's plans. Sample mode has no scope: it reads
 and writes no stored history. History saved before 2026-10-25 had no team or
 season and is never attributed to anyone; the first scoped write replaces it.

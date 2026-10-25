@@ -204,3 +204,18 @@ test('the whole synced value at every cap, with real plan snapshots, stays far i
   assert.ok(bytes < 350000, `the plan history at every cap is ${bytes} bytes`);
   assert.equal(actionKey(latestVersion(all.scopes[`1|${S}`].gws, 1).plan), actionKey(bundle.current), 'a stored version still compares like the plan');
 });
+
+test('10: a new gameweek in the same session is compared with nothing from the last; the old gameweek stays in history', () => {
+  // The in-memory version outlives a deadline (the page stays open, the
+  // manager presses "Recalculate" for the next gameweek). It is the previous
+  // gameweek's decision, not an earlier version of this one (reviewing #630).
+  const s = session();
+  assert.equal(s.plan('3855835', S, 13, 'GW13 v1'), null);
+  assert.equal(s.plan('3855835', S, 13, 'GW13 v2'), 'GW13 v1', 'a recalculation inside the gameweek still compares');
+  assert.equal(s.plan('3855835', S, 14, 'GW14 v1'), null, 'the next gameweek is not compared with GW13 from memory');
+  assert.equal(s.plan('3855835', S, 14, 'GW14 v2'), 'GW14 v1', 'and its own recalculation compares with its own plan');
+  assert.deepEqual(headlines('3855835'), { 13: ['GW13 v1', 'GW13 v2'], 14: ['GW14 v1', 'GW14 v2'] }, 'GW13 is still in history, beside GW14');
+  // Going back to an earlier gameweek's plan (a hand-set horizon, a replay)
+  // compares with that gameweek's stored version, never the later one in memory.
+  assert.equal(s.plan('3855835', S, 13, 'GW13 v3'), 'GW13 v2');
+});
