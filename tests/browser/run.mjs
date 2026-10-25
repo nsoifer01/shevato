@@ -85,6 +85,9 @@ const SUITES = [
   // The near-tie roll: the alternatives card, roll sentence and confidence
   // band against the engine's own numbers (2026-10-09 audit B7).
   'apps/fpl-planner/e2e/roll-near-tie.mjs',
+  // A squad over the club limit because a player moved club: the notice, on
+  // desktop and a phone, for one club, two clubs and none (2026-10-25).
+  'apps/fpl-planner/e2e/club-limit-notice.mjs',
 ];
 
 // --only=<substring> runs the suites whose path contains it; --shard=<i>/<n>
@@ -283,6 +286,8 @@ const SUITE_SECONDS = {
   'tests/browser/suites/pwa-gym.mjs': 12,
   'apps/fpl-planner/e2e/free-hit.mjs': 10,
   'apps/fpl-planner/e2e/roll-near-tie.mjs': 27,
+  // Added 2026-10-25: 7.4 to 8.2 s locally, 7.9 s in a six-shard parallel run.
+  'apps/fpl-planner/e2e/club-limit-notice.mjs': 8,
   'apps/trip-planner/e2e/pwa.mjs': 5,
 };
 

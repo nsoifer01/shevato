@@ -13,7 +13,7 @@
 import { el, card, disclosure } from './dom.js';
 import { combobox } from './combobox.js';
 import { formatMoney, xp, signedXp, points, countdown, dateTime, relativeTime, chipLabel, plural } from './format.js';
-import { actionText, pairUp, chipDecision, getProjection, describePlayer, fixtureLabel, availability } from './plan-model.js';
+import { actionText, pairUp, chipDecision, getProjection, describePlayer, fixtureLabel, availability, clubLimitSaleNote } from './plan-model.js';
 import { btn, affirm, banner, kv, sampleTag, confidenceStrip, emphasize, priceChangeChip } from './parts.js';
 import { renderPitch, pitchViewModel } from './pitch.js';
 import { renderSquadTable } from './squad-table.js';
@@ -266,7 +266,7 @@ function transferSide({ dir, playerId, gameState, projections, gw, horizon, now 
 // `gameState.fetchedAt` so a decision replays identically, but a badge saying
 // "tonight" is a statement to the person looking at the screen, and the two can
 // only disagree inside the bootstrap cache window.
-export function transfersCard({ bundle, gameState, now = Date.now() }) {
+export function transfersCard({ bundle, gameState, now = Date.now(), clubNotice = null }) {
   const plan = bundle.current;
   const { projections } = bundle;
   const horizon = plan.horizon;
@@ -303,6 +303,12 @@ export function transfersCard({ bundle, gameState, now = Date.now() }) {
     transferSide({ dir: 'out', playerId: pair.out, gameState, projections, gw: plan.gw, horizon, now }),
     el('div', { class: 'fpl-tr-arrow', text: '→' }),
     transferSide({ dir: 'in', playerId: pair.in, gameState, projections, gw: plan.gw, horizon, now }),
+    // A sale the club limit makes necessary says so, inside its own pair and
+    // straight under its cards, so it cannot be read as the next pair's
+    // (inheritedClubNotice).
+    clubLimitSaleNote(clubNotice, pair.out)
+      ? el('p', { class: 'fpl-note fpl-tr-club-note', style: 'flex:1 1 100%;margin:0' }, clubLimitSaleNote(clubNotice, pair.out))
+      : null,
     el('div', { class: 'fpl-tr-gain' }, [
       el('div', {}, [
         el('div', { class: 'fpl-gain-k', text: 'Gain this gameweek' }),
@@ -1140,6 +1146,40 @@ export function squadWarningsBanner(warnings) {
     title: 'One number does not match Fantasy Premier League',
     text: 'The players and bank read for your squad, valued at Fantasy Premier League\'s own listed prices, do not add up to the squad value it reports, by more than ordinary price changes explain. The squad value shown here is expected to be lower than FPL\'s whenever a player has risen since you bought him, because it counts what he would sell for; that gap is not what this is about. Transfers and affordability are planned from the squad read here, so a transfer the app offers could be priced differently by Fantasy Premier League.',
     list: warnings.map(w => w.message),
+  });
+}
+
+// A squad over the club limit because a player moved club (plan-model.js
+// inheritedClubNotice). Informational, as the Free Hit revert is: FPL lets the
+// squad stand, so nothing here is wrong, and the manager is told what the rule
+// means for the next transfer and for this plan.
+export function inheritedClubLimitBanner(notice) {
+  if (!notice || !notice.clubs.length) return null;
+  const { limit, clubs } = notice;
+  const one = clubs.length === 1;
+  const clubLine = (c) => `${c.name}: ${c.count} players (${c.players.join(', ')}), ${c.over} over the limit of ${limit}`;
+  const title = one
+    ? `Your squad holds ${clubs[0].count} players from ${clubs[0].name}`
+    : `Your squad holds more than ${limit} players from ${clubs.length} clubs`;
+  const rule = `A player moved club after you picked them, so your squad is over the limit of ${limit} per club. `
+    + 'FPL lets you keep it exactly as it is. Your next transfer has to bring '
+    + (one ? `${clubs[0].name} back to ${limit}.` : `every one of these clubs back to ${limit}.`);
+  let plan;
+  if (notice.rebuild) {
+    plan = `This plan plays your ${chipLabel(notice.chip)}, which builds a squad within the limit.`;
+  } else if (notice.transferring) {
+    const need = clubs.map(c => `${c.over} ${c.name} ${plural(c.over, 'player')}`).join(' and ');
+    const sold = clubs.flatMap(c => c.soldNames.map(n => (one ? n : `${n} (${c.name})`)));
+    plan = `This plan makes transfers, so the rule requires selling ${need}${sold.length ? `; the plan sells ${sold.join(', ')}` : ''}.`;
+  } else {
+    plan = 'This plan makes no transfer, so your squad stays as it is.';
+  }
+  return banner({
+    tone: 'info',
+    mark: 'i',
+    title,
+    text: `${rule} ${plan}`,
+    list: one ? [clubLine(clubs[0])] : clubs.map(clubLine),
   });
 }
 

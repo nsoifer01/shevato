@@ -149,10 +149,18 @@ cannot reach three), and the throw is held by a squad FPL can never produce, a
 goalkeeper listed as a defender. Plans for the five real GW7 managers, whose
 squads are within the limit, are byte-identical before and after.
 
-**Not changed.** No notice on the page tells a manager that their squad is over
-the limit and why a recommended sale is partly forced by it. Squad warnings
-render under "Data quality", which would misframe a legal squad as bad data;
-a proper notice is a UI change of its own.
+**The page says so (2026-10-25).** An informational banner with the plan
+(`inheritedClubNotice` in `ui/plan-model.js`, `inheritedClubLimitBanner` in
+`ui/dashboard.js`, notice kind `club-limit`) names each club over the limit,
+its count and players, says FPL lets the squad stand and that the next transfer
+must restore the limit, and says what this plan does about it: no transfer, the
+sales the rule requires, or a Wildcard or Free Hit that rebuilds within it. Each
+required sale carries "Partly required by the club limit" in its own transfer
+pair. It is deliberately NOT a squad warning: those render under "Data quality",
+which would call a legal squad bad data. A sale note first sat after its pair's
+gain row, which put it directly above the NEXT sale, where it read as that
+sale's; the browser suite now checks it sits between its own pair's cards and
+gain row, and that check failed on the first placement.
 
 ## The GW8 deadline (23 October 2026): a probe that landed in FPL's update
 

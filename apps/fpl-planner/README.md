@@ -161,7 +161,10 @@ apps/fpl-planner/
     worker.js            plan computation worker (and "why not" answers)
     ui/dom.js            element helpers, card and disclosure shells
     ui/format.js         display formatting (points, money, relative time, countdown)
-    ui/plan-model.js     pure readers over a PlanBundle, plus the worker wire shape
+    ui/plan-model.js     pure readers over a PlanBundle, plus the worker wire shape;
+                         which notices show (noticeKinds), including the
+                         informational club-limit notice for a squad a club
+                         change put over three from one club (inheritedClubNotice)
     ui/store.js          the four localStorage keys, team-id validation, plan versions
     ui/plan-runner.js    worker lifecycle with an inline fallback
     ui/parts.js          banners, the sample-data label, staged loading
