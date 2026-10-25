@@ -118,6 +118,102 @@ export function latestVersion(history, gw) {
   return list[list.length - 1];
 }
 
+// PLAN HISTORY IS PER TEAM AND SEASON (2026-10-25). The key used to hold one
+// map of gameweek -> versions for whoever was planned last, so opening a
+// second team in the same browser compared it with the first team's plan
+// ("Plan updated: previously Calvert-Lewin out", on a team that never owned
+// that player), its History tab listed the other team's plans, and a fresh squad read
+// as "your squad changed". Found verifying #628 in production. Now the stored
+// value is
+//   { v: 2, scopes: { "<teamId>|<season>": { teamId, season, touchedAt, gws } } }
+// where `gws` is the old per-gameweek map with the old limits, and the readers
+// below hand callers ONE scope's map, so nothing downstream changed shape.
+// It is still one synced key (sync-system/app-sync-init.js lists keys, not a
+// prefix), so the number of scopes is capped: the MAX_HISTORY_SCOPES most
+// recently written survive, which bounds the synced size at that many times
+// the old one.
+//
+// History written before this had no team or season, and nothing in it says
+// whose it was (the bug itself mixed teams in it), so it is never attributed:
+// it is not read, and the first scoped write replaces it. A value another
+// device wrote in the old shape is treated the same way. A season that cannot
+// be read from the payload gives no scope, so no history is read or written
+// rather than seasons being mixed.
+export const PLAN_HISTORY_SHAPE = 2;
+export const MAX_HISTORY_SCOPES = 3;
+
+/** The scope a plan belongs to, or null when the team or the season is unknown. */
+export function planHistoryScope(teamId, season) {
+  const team = validateTeamId(teamId);
+  if (!team.ok || typeof season !== 'string' || !season.trim()) return null;
+  return { teamId: team.teamId, season: season.trim(), key: `${team.teamId}|${season.trim()}` };
+}
+
+const isRecord = (v) => !!v && typeof v === 'object' && !Array.isArray(v);
+
+// One scope's per-gameweek map, kept only where it has the shape the views
+// read: integer gameweek keys, arrays of versions with a positive integer
+// `version` and a plan object, within the per-gameweek and per-scope limits.
+function sanitizeGws(gws) {
+  const out = {};
+  if (!isRecord(gws)) return out;
+  const keys = Object.keys(gws).filter(k => /^\d+$/.test(k)).map(Number).sort((a, b) => a - b).slice(-MAX_GWS_KEPT);
+  for (const gw of keys) {
+    const list = Array.isArray(gws[String(gw)]) ? gws[String(gw)] : [];
+    const kept = list.filter(r => isRecord(r) && Number.isInteger(r.version) && r.version > 0 && isRecord(r.plan));
+    if (kept.length) out[String(gw)] = kept.slice(-MAX_VERSIONS_PER_GW);
+  }
+  return out;
+}
+
+/** Every scope in a stored value, sanitized; a value in any other shape holds none. */
+export function readPlanHistories(raw) {
+  const scopes = {};
+  if (isRecord(raw) && raw.v === PLAN_HISTORY_SHAPE && isRecord(raw.scopes)) {
+    for (const [key, bucket] of Object.entries(raw.scopes)) {
+      if (!isRecord(bucket)) continue;
+      const scope = planHistoryScope(bucket.teamId, bucket.season);
+      if (!scope || scope.key !== key) continue;
+      const gws = sanitizeGws(bucket.gws);
+      if (!Object.keys(gws).length) continue;
+      scopes[key] = { teamId: scope.teamId, season: scope.season, touchedAt: typeof bucket.touchedAt === 'string' ? bucket.touchedAt : '', gws };
+    }
+  }
+  return { v: PLAN_HISTORY_SHAPE, scopes };
+}
+
+/** One scope's gameweek -> versions map (empty for no scope or no history). */
+export function historyForScope(histories, scope) {
+  if (!scope) return {};
+  const bucket = histories && histories.scopes && histories.scopes[scope.key];
+  return bucket ? bucket.gws : {};
+}
+
+/** `histories` with a version appended to one scope, then every limit applied. */
+export function recordScopedPlanVersion(histories, scope, gw, entry) {
+  const base = readPlanHistories(histories);
+  if (!scope) return base;
+  const prior = base.scopes[scope.key];
+  const gws = recordPlanVersion(prior ? prior.gws : {}, gw, entry);
+  const touchedAt = (entry && entry.computedAt) || new Date().toISOString();
+  const scopes = { ...base.scopes, [scope.key]: { teamId: scope.teamId, season: scope.season, touchedAt, gws } };
+  const keep = Object.keys(scopes)
+    .sort((a, b) => (a === scope.key ? -1 : b === scope.key ? 1 : String(scopes[b].touchedAt).localeCompare(String(scopes[a].touchedAt))))
+    .slice(0, MAX_HISTORY_SCOPES);
+  return { v: PLAN_HISTORY_SHAPE, scopes: Object.fromEntries(keep.map(k => [k, scopes[k]])) };
+}
+
+/**
+ * The version the plan just computed is compared with: the one remembered in
+ * this session when it belongs to the same scope, else the latest stored for
+ * that scope and gameweek. `memory` is `{ key, record }`; `memoryKey` is the
+ * scope key now (sample mode uses its own, and stores nothing).
+ */
+export function comparableVersion({ memory, memoryKey, history, gw }) {
+  if (memory && memory.key === memoryKey && memory.record) return memory.record;
+  return latestVersion(history, gw);
+}
+
 /* ------------------------------------------------------------- localStorage */
 
 function ls() {
@@ -197,12 +293,15 @@ export function setSettings(patch) {
   return next;
 }
 
-export function getPlanHistory() {
-  return readJson(KEYS.planHistory, {});
+/** One scope's stored plan history (see "PLAN HISTORY IS PER TEAM AND SEASON"). */
+export function getPlanHistory(scope) {
+  return historyForScope(readPlanHistories(readJson(KEYS.planHistory, null)), scope);
 }
 
-export function setPlanHistory(history) {
-  writeJson(KEYS.planHistory, history);
+/** Append a version to one scope's stored history; no scope writes nothing. */
+export function recordPlanHistory(scope, gw, entry) {
+  if (!scope) return;
+  writeJson(KEYS.planHistory, recordScopedPlanVersion(readJson(KEYS.planHistory, null), scope, gw, entry));
 }
 
 // The squad the user built or typed, in a shape that can be READ BACK.

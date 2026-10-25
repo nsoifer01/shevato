@@ -365,6 +365,31 @@ export const MUTANTS = [
     tests: [T('inherited-club-limit')],
     guards: 'Every "why not" answer has the held squad, rolled, as a legal scored baseline even when it is over the limit (2026-10-24).',
   },
+  // ---- plan history per team and season (2026-10-25). ----
+  {
+    id: 'history-memory-any-team',
+    file: `${APP}/js/ui/store.js`,
+    find: '  if (memory && memory.key === memoryKey && memory.record) return memory.record;',
+    replace: '  if (memory && memory.record) return memory.record;',
+    tests: [T('plan-history-scope')],
+    guards: 'A team opened after another in the same session is never compared with the other team\'s plan (found verifying #628, 2026-10-25).',
+  },
+  {
+    id: 'history-mislabelled-bucket-trusted',
+    file: `${APP}/js/ui/store.js`,
+    find: '      if (!scope || scope.key !== key) continue;',
+    replace: '      if (!scope) continue;',
+    tests: [T('plan-history-scope')],
+    guards: 'A stored bucket whose contents claim another team than its key is nobody\'s history (2026-10-25).',
+  },
+  {
+    id: 'history-scopes-uncapped',
+    file: `${APP}/js/ui/store.js`,
+    find: '    .slice(0, MAX_HISTORY_SCOPES);',
+    replace: '    .slice(0);',
+    tests: [T('plan-history-scope')],
+    guards: 'Synced plan history keeps the most recently used teams only, so it cannot grow with every team opened (2026-10-25).',
+  },
   // ---- the inherited club-limit notice (2026-10-25). ----
   {
     id: 'club-notice-for-every-squad',
