@@ -38,7 +38,7 @@ import { optimizeLineup } from './lineup.js';
 import { chooseCaptain } from './captain.js';
 import { searchTransfers } from './transfers.js';
 import { buildSquad } from './squad-builder.js';
-import { validatePlan } from './validate.js';
+import { validatePlan, clubLimitBreaches } from './validate.js';
 import {
   evaluateChips, squadTrajectory, discountWeights, xpOf, chipLabel, makeReason,
   benchBoostDecision, tripleCaptainDecision, timingChipEntry, holdReasons,
@@ -1145,15 +1145,7 @@ function polishTopCandidates({ scoredList, squadState, projections, gameState, r
   }
   for (const list of poolByPosition.values()) list.sort((a, b) => value.get(b) - value.get(a) || a - b);
 
-  const clubsOf = (squad) => {
-    const n = new Map();
-    for (const id of squad) {
-      const t = players.get(id).teamId;
-      n.set(t, (n.get(t) || 0) + 1);
-    }
-    return n;
-  };
-  const legalSquad = (squad) => [...clubsOf(squad).values()].every(n => n <= rules.clubLimit);
+  const legalSquad = (squad) => !clubLimitBreaches(squad, players, rules.clubLimit, held).length;
   const score = (out, inn) => {
     const candidate = { transfersOut: out, transfersIn: inn, squad: held.filter(id => !out.includes(id)).concat(inn) };
     if (!legalSquad(candidate.squad)) return null;

@@ -883,7 +883,13 @@ were not counted, so a hit was only ever generated with one free transfer and a
 manager holding two was never shown a one-hit third move, registry 48): a beam of eight is extended one move at a time from the best
 pairs, with budget at selling prices, the club limit and positions checked at
 every step, and the best candidates of every depth are kept so the planner can
-still choose fewer moves or roll. Until 2026-10-09 it stopped at two, so a
+still choose fewer moves or roll. The club limit binds on a changed squad, not
+on the one held (`clubLimitBreaches` in `js/engine/validate.js`, since
+2026-10-24): a squad over three from a club because a player moved club after
+being bought is FPL's own and is planned, rolled and explained as it stands,
+while any transfer (a Wildcard and a Free Hit included) must leave every club
+at three or under. Validation, the transfer search, the polish and both
+"why not" paths all ask that one function. Until 2026-10-09 it stopped at two, so a
 manager banking three to five transfers was recommended the same two moves he
 would make with two. The pair pool also carries budget enablers (the cheapest
 player at each price step per position), so "downgrade one to fund another" is

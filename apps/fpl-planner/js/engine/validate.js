@@ -94,6 +94,35 @@ export function formationOf(xiIds, positionOf, rules) {
 
 // ---------------------------------------------------------------------------
 
+// THE CLUB LIMIT BINDS ON A CHANGE, NOT ON WHAT IS HELD (2026-10-24). FPL
+// checks three per club when a squad is picked or changed. A player who moves
+// club after being bought can leave a manager holding four from one club
+// (ten Premier League players moved on 2026-09-01, after GW1's deadline; a
+// rank-8M manager who never transferred held Raya, Konsa, Zubimendi and Eze),
+// and FPL lets that squad stand. Any transfer, a Wildcard or a Free Hit
+// included, must leave every club at the limit or under. The planner judged
+// the held squad as if it were a new one and refused to plan it at all, and
+// its transfer search checked only the incoming player's club, so it could
+// offer a move that left four. Every check of the limit goes through here.
+// `heldIds` is the squad the manager holds now (none for a squad built from
+// nothing): a squad identical to it is never a breach, any other squad is
+// judged in full.
+
+/** The clubs `squadIds` holds more than `limit` of, as `{ teamId, count }`, unless it is the squad held. */
+export function clubLimitBreaches(squadIds, players, limit, heldIds = null) {
+  const squad = arr(squadIds);
+  if (heldIds && heldIds.length) {
+    const held = new Set(heldIds);
+    const same = new Set(squad);
+    if (same.size === held.size && squad.length === held.size && squad.every(id => held.has(id))) return [];
+  }
+  const breaches = [];
+  for (const [teamId, count] of countBy(squad.filter(id => players.has(id)), id => players.get(id).teamId)) {
+    if (count > limit) breaches.push({ teamId, count });
+  }
+  return breaches;
+}
+
 export function validatePlan(plan, squadState, gameState, rules) {
   const violations = [];
   const add = (code, message, detail) => violations.push({ code, message, detail });
@@ -152,12 +181,14 @@ export function validatePlan(plan, squadState, gameState, rules) {
     }
   }
 
-  const byClub = countBy(known, id => players.get(id).teamId);
-  for (const [teamId, count] of byClub) {
-    if (count > R.clubLimit) {
-      add('club_limit', `A squad may hold at most ${R.clubLimit} players from one club, this one holds ${count}.`,
-        { teamId, limit: R.clubLimit, actual: count });
-    }
+  // Judged only on a squad the plan changes (clubLimitBreaches above): the
+  // squad held, untouched, is FPL's own and legal to keep.
+  const heldIds = (state.picks || []).map(p => p.playerId);
+  const teams = (gameState && gameState.teams) || new Map();
+  for (const { teamId, count } of clubLimitBreaches(known, players, R.clubLimit, heldIds.length ? heldIds : null)) {
+    const team = teams.get(teamId);
+    add('club_limit', `A squad may hold at most ${R.clubLimit} players from one club after a transfer, and this one would hold ${count} from ${team && team.name ? team.name : 'one club'}.`,
+      { teamId, limit: R.clubLimit, actual: count });
   }
 
   // --- the starting eleven -------------------------------------------------

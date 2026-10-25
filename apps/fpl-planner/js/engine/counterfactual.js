@@ -58,6 +58,7 @@ import { benchBoostDecision, tripleCaptainDecision } from './chips.js';
 import { resolveMaxTransfers } from './transfers.js';
 import { transferAccounting, transferStateOf, isUnlimited } from './transfer-state.js';
 import { planBasis } from './plan-basis.js';
+import { clubLimitBreaches } from './validate.js';
 
 // Statuses the game will not let anyone buy: gone from the league, or not
 // registered in a Premier League squad. Mirrors squad-builder.js.
@@ -221,16 +222,6 @@ function costOf(ctx, ids) {
     const p = ctx.gameState.players.get(id);
     return sum + (p ? p.nowCost : 0);
   }, 0);
-}
-
-function clubCounts(ctx, ids) {
-  const counts = new Map();
-  for (const id of ids) {
-    const p = ctx.gameState.players.get(id);
-    if (!p) continue;
-    counts.set(p.teamId, (counts.get(p.teamId) || 0) + 1);
-  }
-  return counts;
 }
 
 /* ----------------------------------------------------- squad diff and pairs */
@@ -953,7 +944,9 @@ function heldState(ctx) {
 
 function legalSquad(ctx, ids) {
   if (ids.length !== ctx.rules.squadSize) return false;
-  for (const [, n] of clubCounts(ctx, ids)) if (n > ctx.rules.clubLimit) return false;
+  // The held squad, untouched, may be over the limit (a player moved club);
+  // any squad a transfer makes may not (validate.js clubLimitBreaches).
+  if (clubLimitBreaches(ids, ctx.gameState.players, ctx.rules.clubLimit, heldIdsOf(ctx)).length) return false;
   const counts = new Map();
   for (const id of ids) {
     const p = ctx.gameState.players.get(id);

@@ -207,10 +207,10 @@ export const MUTANTS = [
   {
     id: 'transfers-club-limit-off',
     file: `${ENGINE}/transfers.js`,
-    find: '    if (n > limit) return false;\n',
-    replace: '    if (false && n > limit) return false;\n',
-    tests: [T('transfers')],
-    guards: 'No candidate holds more than 3 players from one club (the brute-force reference filtered on a non-existent rules.maxPerClub, 2026-10-16).',
+    find: '    if (clubLimitBreaches(squad, players, R.clubLimit, ownedIds).length) return;\n',
+    replace: '    if (false) return;\n',
+    tests: [T('transfers'), T('inherited-club-limit')],
+    guards: 'No candidate holds more than 3 players from one club, and none keeps a club a player moved to over it (2026-10-16; whole squad since 2026-10-24).',
   },
 
   // ---- planner.js: ranking and what the alternatives show. ----
@@ -323,6 +323,47 @@ export const MUTANTS = [
     replace: 'if (!latest.ok || priorUnsettled) {',
     tests: [NT('fpl-health')],
     guards: 'An hourly recheck that fails exactly as before starts no workflow run, so an open incident is not an email an hour (2026-10-17).',
+  },
+  // ---- the club limit binds on a change, not on what is held (2026-10-24). ----
+  {
+    id: 'club-limit-held-not-exempt',
+    file: `${ENGINE}/validate.js`,
+    find: 'if (same.size === held.size && squad.length === held.size && squad.every(id => held.has(id))) return [];',
+    replace: 'if (false) return [];',
+    tests: [T('inherited-club-limit')],
+    guards: 'A squad held over the limit because a player moved club is legal to keep; the planner refused to plan it (four Arsenal, 2026-10-24).',
+  },
+  {
+    id: 'club-limit-never-binds-in-validate',
+    file: `${ENGINE}/validate.js`,
+    find: 'clubLimitBreaches(known, players, R.clubLimit, heldIds.length ? heldIds : null)',
+    replace: 'clubLimitBreaches(known, players, R.clubLimit, known)',
+    tests: [T('inherited-club-limit'), T('validate')],
+    guards: 'validatePlan still refuses a transferred squad over the limit, including one that keeps four from a club a player moved to (2026-10-24).',
+  },
+  {
+    id: 'club-limit-polish-unchecked',
+    file: `${ENGINE}/planner.js`,
+    find: 'const legalSquad = (squad) => !clubLimitBreaches(squad, players, rules.clubLimit, held).length;',
+    replace: 'const legalSquad = () => true;',
+    tests: [T('inherited-club-limit'), T('search-corrections')],
+    guards: "The planner's polish never swaps into a squad over the club limit (2026-10-24).",
+  },
+  {
+    id: 'club-limit-whynot-incoming-only',
+    file: `${ENGINE}/explain.js`,
+    find: '    if (clubLimitBreaches(squad, gameState.players, rules.clubLimit, held).length) continue;\n',
+    replace: '',
+    tests: [T('inherited-club-limit')],
+    guards: '"Why not" offers no single swap that keeps four from a club a player moved to (2026-10-24).',
+  },
+  {
+    id: 'club-limit-counterfactual-held-judged',
+    file: `${ENGINE}/counterfactual.js`,
+    find: 'clubLimitBreaches(ids, ctx.gameState.players, ctx.rules.clubLimit, heldIdsOf(ctx))',
+    replace: 'clubLimitBreaches(ids, ctx.gameState.players, ctx.rules.clubLimit)',
+    tests: [T('inherited-club-limit')],
+    guards: 'Every "why not" answer has the held squad, rolled, as a legal scored baseline even when it is over the limit (2026-10-24).',
   },
   // ---- FPL's update after a deadline (2026-10-24). ----
   {
