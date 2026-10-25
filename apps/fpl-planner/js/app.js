@@ -27,11 +27,11 @@ import { buildLiveStats, scoreLiveSquad } from './engine/live.js';
 import { formatFreeTransfers } from './engine/transfer-state.js';
 import { el, mount, clear, stat } from './ui/dom.js';
 import { relativeTime, dateTime, formatMoney, rank, points } from './ui/format.js';
-import { assessData, inputFingerprint, fingerprintScope, outdatedReason, noticeKinds, planSources } from './ui/plan-model.js';
+import { assessData, inputFingerprint, fingerprintScope, outdatedReason, noticeKinds, planSources, inheritedClubNotice } from './ui/plan-model.js';
 import { planInputs, diffPlanVersions, actionKey } from './ui/plan-diff.js';
 import * as store from './ui/store.js';
 import { banner, btn, progressView, sampleBanner, sampleTag, freshness, planChangeCard } from './ui/parts.js';
-import { staleSourcesBanner, squadWarningsBanner } from './ui/dashboard.js';
+import { staleSourcesBanner, squadWarningsBanner, inheritedClubLimitBanner } from './ui/dashboard.js';
 import {
   heroCard, transfersCard, draftCard, chipCard, pitchCard, whyCard, whyNotCard,
   futureCard, alternativesCard, statusCard, withheldView,
@@ -959,7 +959,7 @@ function planView() {
         onRebuild: () => { state.manualIds = []; state.bundle = null; state.preSeasonStage = 'intro'; renderApp(); },
         restored: state.restoredSquad,
       })
-      : transfersCard({ bundle, gameState: state.gameState }),
+      : transfersCard({ bundle, gameState: state.gameState, clubNotice: clubNoticeFor(bundle) }),
   ];
 
   if (!state.isDraft) nodes.push(chipCard({ bundle, gameState: state.gameState }));
@@ -1240,6 +1240,14 @@ function sandboxNode() {
 // directly above "We are not showing a plan right now", because both withheld
 // branches called this function and it asked only whether a diff had been
 // computed - which it had, against a plan the view then refused to show.
+// The squad this plan starts from, over the club limit because a player moved
+// club, or null. Not in sample mode or a pre-season draft: neither is a squad
+// FPL holds.
+function clubNoticeFor(bundle) {
+  if (state.sample || state.isDraft || !state.squadState || !bundle) return null;
+  return inheritedClubNotice({ squadState: state.squadState, plan: bundle.current, gameState: state.gameState });
+}
+
 function topNotices({ planShown = true } = {}) {
   const ds = state.bundle ? state.bundle.dataStatus : null;
   const squadWarnings = (ds && ds.squadWarnings) || [];
@@ -1247,6 +1255,7 @@ function topNotices({ planShown = true } = {}) {
     ? staleSourcesBanner(assessData({ sources: fplApi.getDataStatus().sources }))
     : null;
 
+  const clubNotice = state.bundle ? clubNoticeFor(state.bundle) : null;
   const kinds = noticeKinds({
     planShown,
     sample: !!state.sample,
@@ -1256,6 +1265,7 @@ function topNotices({ planShown = true } = {}) {
     stale: !!(ds && ds.stale),
     staleSources: !!staleNotice,
     squadWarnings: squadWarnings.length > 0,
+    clubLimit: !!clubNotice,
   });
 
   const build = {
@@ -1285,6 +1295,7 @@ function topNotices({ planShown = true } = {}) {
     // Squad warnings are their own thing and say so, rather than being reported
     // as the data being old.
     'squad-warnings': () => squadWarningsBanner(squadWarnings),
+    'club-limit': () => inheritedClubLimitBanner(clubNotice),
   };
 
   return kinds.map(k => build[k]()).filter(Boolean);

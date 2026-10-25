@@ -7,6 +7,7 @@
 // comes from `plan.explanation`; the helpers below only restate engine numbers.
 
 import { chipLabel, plural } from './format.js';
+import { clubLimitBreaches } from '../engine/validate.js';
 
 // A PlanBundle as it crosses the worker boundary.
 //
@@ -437,6 +438,57 @@ export function outdatedReason(oldFp, newFp) {
 //     INPUTS. They are true either way and appear on both.
 //
 // Returns the notice kinds, in render order.
+// A SQUAD OVER THE CLUB LIMIT BECAUSE A PLAYER MOVED CLUB (2026-10-25). FPL
+// lets a squad stand that a club change put over three from one club, and any
+// transfer must bring every club back to three (engine/validate.js
+// clubLimitBreaches; FINDINGS ledger row 38). It is a legal squad, so this is
+// told as information, never as a data problem. Facts only: which clubs, how
+// many, who, and which of this plan's sales the rule makes necessary. Null for
+// a squad within the limit, and for a squad with nothing held (pre-season).
+export function inheritedClubNotice({ squadState, plan, gameState }) {
+  const held = ((squadState && squadState.picks) || []).map(p => p.playerId);
+  if (!held.length || !gameState || !gameState.rules) return null;
+  const limit = gameState.rules.clubLimit;
+  const breaches = clubLimitBreaches(held, gameState.players, limit);
+  if (!breaches.length) return null;
+  const nameOf = (id) => { const p = gameState.players.get(id); return p ? p.webName : `player ${id}`; };
+  const teamName = (teamId) => { const t = gameState.teams && gameState.teams.get(teamId); return (t && t.name) || 'one club'; };
+  const transfersOut = (plan && plan.transfersOut) || [];
+  const rebuild = !!(plan && (plan.chip === 'wildcard' || plan.chip === 'freehit'));
+  const clubs = breaches
+    .map(({ teamId, count }) => {
+      const players = held.filter(id => gameState.players.get(id) && gameState.players.get(id).teamId === teamId);
+      return {
+        teamId,
+        name: teamName(teamId),
+        count,
+        over: count - limit,
+        players: players.map(nameOf),
+        // This plan's sales from the club. When it transfers at all, `over` of
+        // them are what the rule requires; which ones is the plan's choice.
+        sold: transfersOut.filter(id => players.includes(id)),
+        soldNames: transfersOut.filter(id => players.includes(id)).map(nameOf),
+      };
+    })
+    .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
+  return {
+    limit,
+    clubs,
+    transferring: !!(plan && plan.transferCount > 0),
+    rebuild,
+    chip: rebuild ? plan.chip : null,
+  };
+}
+
+/** The one-line explanation shown under a sale the club limit makes necessary, or null. */
+export function clubLimitSaleNote(notice, outId) {
+  if (!notice || !notice.transferring || notice.rebuild) return null;
+  const club = notice.clubs.find(c => c.sold.includes(outId));
+  if (!club) return null;
+  const need = club.over === 1 ? `one ${club.name} player has to go` : `${club.over} ${club.name} players have to go`;
+  return `Partly required by the club limit: with any transfer, ${club.name} has to come back to ${notice.limit} from ${club.count}, so ${need}.`;
+}
+
 export function noticeKinds({
   planShown = true,
   sample = false,
@@ -446,6 +498,7 @@ export function noticeKinds({
   stale = false,
   staleSources = false,
   squadWarnings = false,
+  clubLimit = false,
 } = {}) {
   const kinds = [];
   if (sample) kinds.push('sample');
@@ -457,6 +510,9 @@ export function noticeKinds({
     if (outdated) kinds.push('outdated');
     else if (planChange) kinds.push('plan-change');
     else if (notice) kinds.push('rebuilt');
+    // About the squad this plan starts from, so beside the plan and never
+    // among the data notices below (it is a legal squad, not bad data).
+    if (clubLimit) kinds.push('club-limit');
   }
 
   if (stale) kinds.push('stale');

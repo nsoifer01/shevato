@@ -365,6 +365,39 @@ export const MUTANTS = [
     tests: [T('inherited-club-limit')],
     guards: 'Every "why not" answer has the held squad, rolled, as a legal scored baseline even when it is over the limit (2026-10-24).',
   },
+  // ---- the inherited club-limit notice (2026-10-25). ----
+  {
+    id: 'club-notice-for-every-squad',
+    file: `${APP}/js/ui/plan-model.js`,
+    find: '  if (!breaches.length) return null;',
+    replace: '',
+    tests: [T('ui-club-limit-notice')],
+    guards: 'An ordinary squad, three from a club at most, shows no club-limit notice (2026-10-25).',
+  },
+  {
+    id: 'club-notice-not-shown',
+    file: `${APP}/js/ui/plan-model.js`,
+    find: "    if (clubLimit) kinds.push('club-limit');",
+    replace: '',
+    tests: [T('ui-club-limit-notice')],
+    guards: 'A squad over the club limit by a club change is told so beside the plan (2026-10-25).',
+  },
+  {
+    id: 'club-sale-note-missing',
+    file: `${APP}/js/ui/plan-model.js`,
+    find: '  if (!club) return null;',
+    replace: '  return null;',
+    tests: [T('ui-club-limit-notice')],
+    guards: 'A sale the club limit makes necessary carries a note saying so, and no other sale does (2026-10-25).',
+  },
+  {
+    id: 'club-notice-as-warning',
+    file: `${APP}/js/ui/dashboard.js`,
+    find: "    tone: 'info',\n    mark: 'i',\n    title,\n",
+    replace: "    tone: 'warn',\n    mark: '!',\n    title,\n",
+    tests: [T('ui-club-limit-notice')],
+    guards: 'The notice is information, not a warning: FPL lets the squad stand (2026-10-25).',
+  },
   // ---- FPL's update after a deadline (2026-10-24). ----
   {
     id: 'update-window-never',
