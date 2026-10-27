@@ -1,6 +1,301 @@
 {
   "updates": [
     {
+      "builtAt": "2026-10-27T12:07:15.361Z",
+      "totals": {
+        "seasons": 67594,
+        "delta": 25
+      },
+      "shapeCounts": {
+        "rebound": 9793,
+        "big-finale": 11831,
+        "u-shaped": 2650,
+        "rollercoaster": 13493,
+        "mid-peak": 4357,
+        "consistent": 2542,
+        "bad-finale": 4358,
+        "front-loaded": 3076,
+        "slow-burn": 3982,
+        "declining": 1660,
+        "saved-best-for-last": 1378,
+        "shape-drift": 1397,
+        "rising": 2375
+      },
+      "shapeDeltas": {
+        "rebound": 1,
+        "big-finale": 12,
+        "u-shaped": 2,
+        "rollercoaster": -4,
+        "mid-peak": 2,
+        "consistent": -2,
+        "bad-finale": 5,
+        "front-loaded": 9,
+        "slow-burn": 2,
+        "declining": 3,
+        "saved-best-for-last": -2,
+        "shape-drift": -1,
+        "rising": 6
+      },
+      "added": [
+        {
+          "seriesId": "tt39395275",
+          "title": "Dragon Ball Super: Beerus",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt40385667",
+          "title": "Treasure Island",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt19046258",
+          "title": "Ben Shapiro's Book Club",
+          "season": 1,
+          "seasonYear": 2022
+        },
+        {
+          "seriesId": "tt0271894",
+          "title": "48 Hours",
+          "season": 40,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt43650265",
+          "title": "Full Clearing Another World under a Goddess with Zero Believers",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt0159847",
+          "title": "Antiques Roadshow US",
+          "season": 29,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt0059975",
+          "title": "Cool McCool",
+          "season": 1,
+          "seasonYear": 1966
+        },
+        {
+          "seriesId": "tt0274279",
+          "title": "Leipzig Homicide",
+          "season": 27,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt39711345",
+          "title": "Nächste Ausfahrt Glück",
+          "season": 5,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt21822674",
+          "title": "The Great American Baking Show",
+          "season": 3,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt37599841",
+          "title": "Skibidi Toilet Multiverse",
+          "season": 7,
+          "seasonYear": 2024
+        },
+        {
+          "seriesId": "tt37610484",
+          "title": "Is It Cake? Halloween",
+          "season": 2,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt46269844",
+          "title": "A Course Called Ireland",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt46066662",
+          "title": "The Serial Killer Connection",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt49052033",
+          "title": "Kollaps - Profeten i Bærum",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt0159923",
+          "title": "Fighting General Daimos",
+          "season": 1,
+          "seasonYear": 1978
+        },
+        {
+          "seriesId": "tt5365760",
+          "title": "Guldur Guldur Show",
+          "season": 4,
+          "seasonYear": 2015
+        },
+        {
+          "seriesId": "tt7224628",
+          "title": "Shepherd",
+          "season": 2,
+          "seasonYear": 2017
+        },
+        {
+          "seriesId": "tt21811438",
+          "title": "Dr. Nice",
+          "season": 4,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt3734442",
+          "title": "Ha-E",
+          "season": 1,
+          "seasonYear": 2007
+        },
+        {
+          "seriesId": "tt37599841",
+          "title": "Skibidi Toilet Multiverse",
+          "season": 4,
+          "seasonYear": 2023
+        },
+        {
+          "seriesId": "tt37599841",
+          "title": "Skibidi Toilet Multiverse",
+          "season": 6,
+          "seasonYear": 2024
+        },
+        {
+          "seriesId": "tt34651911",
+          "title": "Forræder - Ukendt grund",
+          "season": 3,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt38524448",
+          "title": "Serverblight",
+          "season": 2,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt43221870",
+          "title": "Witch Detectives",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt46683025",
+          "title": "The Pet Cemetery Murders: A Ghost Story",
+          "season": 1,
+          "seasonYear": 2026
+        }
+      ],
+      "removed": [
+        {
+          "seriesId": "tt21054814",
+          "title": "Alles Finster",
+          "season": 1,
+          "seasonYear": 2022
+        }
+      ],
+      "ratingSwings": [
+        {
+          "seriesId": "tt10203472",
+          "title": "Araiya-san! Ore to Aitsu ga Onnayu de!?",
+          "season": 1,
+          "from": 8.77,
+          "to": 7.05,
+          "delta": -1.72
+        },
+        {
+          "seriesId": "tt13321232",
+          "title": "Karma's World",
+          "season": 2,
+          "from": 3.87,
+          "to": 4.86,
+          "delta": 0.99
+        },
+        {
+          "seriesId": "tt5365760",
+          "title": "Guldur Guldur Show",
+          "season": 9,
+          "from": 4.98,
+          "to": 5.88,
+          "delta": 0.9
+        },
+        {
+          "seriesId": "tt5365760",
+          "title": "Guldur Guldur Show",
+          "season": 2,
+          "from": 4.2,
+          "to": 5.07,
+          "delta": 0.87
+        },
+        {
+          "seriesId": "tt5365760",
+          "title": "Guldur Guldur Show",
+          "season": 10,
+          "from": 4.3,
+          "to": 5.15,
+          "delta": 0.85
+        },
+        {
+          "seriesId": "tt8342226",
+          "title": "Twisted Sisters",
+          "season": 3,
+          "from": 7.19,
+          "to": 6.35,
+          "delta": -0.84
+        },
+        {
+          "seriesId": "tt7286488",
+          "title": "Laff Mobb's Laff Tracks",
+          "season": 1,
+          "from": 7.24,
+          "to": 6.4,
+          "delta": -0.84
+        },
+        {
+          "seriesId": "tt5365760",
+          "title": "Guldur Guldur Show",
+          "season": 8,
+          "from": 4.66,
+          "to": 5.49,
+          "delta": 0.83
+        },
+        {
+          "seriesId": "tt13321232",
+          "title": "Karma's World",
+          "season": 3,
+          "from": 4.87,
+          "to": 5.66,
+          "delta": 0.79
+        },
+        {
+          "seriesId": "tt13321232",
+          "title": "Karma's World",
+          "season": 4,
+          "from": 6.84,
+          "to": 7.63,
+          "delta": 0.79
+        }
+      ],
+      "modifiedCounts": {
+        "seriesVotes": 22479,
+        "avgRating": 1186,
+        "shapes": 215,
+        "seriesRating": 312,
+        "episodeCount": 107,
+        "overview": 4,
+        "poster": 3,
+        "providers": 1
+      }
+    },
+    {
       "builtAt": "2026-10-26T12:59:46.171Z",
       "totals": {
         "seasons": 67569,
@@ -9742,286 +10037,6 @@
         "poster": 13,
         "overview": 2,
         "providers": 1
-      }
-    },
-    {
-      "builtAt": "2026-09-12T10:18:32.835Z",
-      "totals": {
-        "seasons": 66664,
-        "delta": -3
-      },
-      "shapeCounts": {
-        "rebound": 10173,
-        "rising": 2609,
-        "slow-burn": 4409,
-        "big-finale": 12161,
-        "u-shaped": 3083,
-        "rollercoaster": 14152,
-        "mid-peak": 4640,
-        "saved-best-for-last": 1493,
-        "front-loaded": 3516,
-        "declining": 1889,
-        "bad-finale": 4646,
-        "consistent": 2618,
-        "shape-drift": 1572
-      },
-      "shapeDeltas": {
-        "rebound": -3,
-        "slow-burn": -4,
-        "big-finale": 2,
-        "u-shaped": -1,
-        "rollercoaster": -12,
-        "mid-peak": -1,
-        "saved-best-for-last": -2,
-        "front-loaded": -1,
-        "declining": 5,
-        "bad-finale": -7,
-        "shape-drift": -8
-      },
-      "added": [
-        {
-          "seriesId": "tt9780442",
-          "title": "RuPaul's Drag Race UK",
-          "season": 8,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt0080236",
-          "title": "Keep It in the Family",
-          "season": 4,
-          "seasonYear": 1982
-        },
-        {
-          "seriesId": "tt0320037",
-          "title": "Jimmy Kimmel Live!",
-          "season": 25,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt38956012",
-          "title": "LOL Next",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt4378376",
-          "title": "Babylon Berlin",
-          "season": 5,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt16227378",
-          "title": "Irai",
-          "season": 1,
-          "seasonYear": 2022
-        },
-        {
-          "seriesId": "tt22189022",
-          "title": "Ingen ängel",
-          "season": 1,
-          "seasonYear": 2023
-        },
-        {
-          "seriesId": "tt38218082",
-          "title": "Crew Girl",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt37439410",
-          "title": "The Perfect Lie",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt43641922",
-          "title": "Miraculous Secrets",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt8835780",
-          "title": "Part-Time Idol",
-          "season": 1,
-          "seasonYear": 2017
-        }
-      ],
-      "removed": [
-        {
-          "seriesId": "tt2733562",
-          "title": "Yagmurdan Kaçarken",
-          "season": 1,
-          "seasonYear": 2013
-        },
-        {
-          "seriesId": "tt3659018",
-          "title": "That's My Life",
-          "season": 4,
-          "seasonYear": 2016
-        },
-        {
-          "seriesId": "tt3659018",
-          "title": "That's My Life",
-          "season": 3,
-          "seasonYear": 2015
-        },
-        {
-          "seriesId": "tt0200358",
-          "title": "Omnibus",
-          "season": 31,
-          "seasonYear": 1993
-        },
-        {
-          "seriesId": "tt1719836",
-          "title": "Hallo K3",
-          "season": 3,
-          "seasonYear": 2012
-        },
-        {
-          "seriesId": "tt0069646",
-          "title": "Toma",
-          "season": 1,
-          "seasonYear": 1973
-        },
-        {
-          "seriesId": "tt0416359",
-          "title": "The Contender",
-          "season": 2,
-          "seasonYear": 2006
-        },
-        {
-          "seriesId": "tt12107408",
-          "title": "Trailer Park Boys: Park After Dark",
-          "season": 1,
-          "seasonYear": 2019
-        },
-        {
-          "seriesId": "tt28254897",
-          "title": "Mystery Files",
-          "season": 2,
-          "seasonYear": 2024
-        },
-        {
-          "seriesId": "tt3357710",
-          "title": "Blind Film Critic",
-          "season": 1,
-          "seasonYear": 2011
-        },
-        {
-          "seriesId": "tt5782294",
-          "title": "24 uur met...",
-          "season": 10,
-          "seasonYear": 2016
-        },
-        {
-          "seriesId": "tt5966234",
-          "title": "Broodje gezond",
-          "season": 1,
-          "seasonYear": 2016
-        },
-        {
-          "seriesId": "tt0416359",
-          "title": "The Contender",
-          "season": 6,
-          "seasonYear": 2018
-        },
-        {
-          "seriesId": "tt6740148",
-          "title": "Boku wa Mari no naka",
-          "season": 1,
-          "seasonYear": 2017
-        }
-      ],
-      "ratingSwings": [
-        {
-          "seriesId": "tt23396714",
-          "title": "Sarmasik Zamani",
-          "season": 1,
-          "from": 6.9,
-          "to": 7.96,
-          "delta": 1.06
-        },
-        {
-          "seriesId": "tt33377409",
-          "title": "Interrogation",
-          "season": 1,
-          "from": 6.93,
-          "to": 7.74,
-          "delta": 0.81
-        },
-        {
-          "seriesId": "tt33090936",
-          "title": "Kötü Kan",
-          "season": 1,
-          "from": 6.67,
-          "to": 7.48,
-          "delta": 0.81
-        },
-        {
-          "seriesId": "tt38866019",
-          "title": "Three Months to Break Your Heart",
-          "season": 1,
-          "from": 9.04,
-          "to": 9.76,
-          "delta": 0.72
-        },
-        {
-          "seriesId": "tt28380138",
-          "title": "Kirli Sepeti",
-          "season": 2,
-          "from": 8.58,
-          "to": 9.28,
-          "delta": 0.7
-        },
-        {
-          "seriesId": "tt31064976",
-          "title": "Kül Masali",
-          "season": 1,
-          "from": 9.34,
-          "to": 9.88,
-          "delta": 0.54
-        },
-        {
-          "seriesId": "tt0229405",
-          "title": "Galaxy High School",
-          "season": 1,
-          "from": 7.46,
-          "to": 7.98,
-          "delta": 0.52
-        },
-        {
-          "seriesId": "tt3659018",
-          "title": "That's My Life",
-          "season": 1,
-          "from": 7.66,
-          "to": 7.16,
-          "delta": -0.5
-        },
-        {
-          "seriesId": "tt22355610",
-          "title": "The Turkish Passion",
-          "season": 1,
-          "from": 5.25,
-          "to": 5.72,
-          "delta": 0.47
-        },
-        {
-          "seriesId": "tt38801678",
-          "title": "Ben Onun Annesiyim",
-          "season": 1,
-          "from": 6,
-          "to": 6.45,
-          "delta": 0.45
-        }
-      ],
-      "modifiedCounts": {
-        "seriesVotes": 15003,
-        "avgRating": 1066,
-        "shapes": 193,
-        "episodeCount": 85,
-        "seriesRating": 210,
-        "poster": 2,
-        "overview": 3
       }
     }
   ]
