@@ -1,6 +1,245 @@
 {
   "updates": [
     {
+      "builtAt": "2026-10-28T12:46:29.166Z",
+      "totals": {
+        "seasons": 67610,
+        "delta": 16
+      },
+      "shapeCounts": {
+        "rebound": 9779,
+        "big-finale": 11840,
+        "u-shaped": 2652,
+        "rollercoaster": 13495,
+        "mid-peak": 4358,
+        "consistent": 2542,
+        "bad-finale": 4360,
+        "front-loaded": 3074,
+        "slow-burn": 3981,
+        "declining": 1666,
+        "saved-best-for-last": 1380,
+        "shape-drift": 1396,
+        "rising": 2369
+      },
+      "shapeDeltas": {
+        "rebound": -14,
+        "big-finale": 9,
+        "u-shaped": 2,
+        "rollercoaster": 2,
+        "mid-peak": 1,
+        "bad-finale": 2,
+        "front-loaded": -2,
+        "slow-burn": -1,
+        "declining": 6,
+        "saved-best-for-last": 2,
+        "shape-drift": -1,
+        "rising": -6
+      },
+      "added": [
+        {
+          "seriesId": "tt43697602",
+          "title": "Black Sea, My Love",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt45246384",
+          "title": "Love in Disguise",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt42220724",
+          "title": "Minimum Wage",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt3395994",
+          "title": "The Most Evil Men and Women in History",
+          "season": 2,
+          "seasonYear": 2001
+        },
+        {
+          "seriesId": "tt0406468",
+          "title": "Shoebox Zoo",
+          "season": 1,
+          "seasonYear": 2004
+        },
+        {
+          "seriesId": "tt0799863",
+          "title": "House of Carters",
+          "season": 1,
+          "seasonYear": 2006
+        },
+        {
+          "seriesId": "tt21063508",
+          "title": "Super Duper Bunny League",
+          "season": 1,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt1442550",
+          "title": "Shark Tank",
+          "season": 18,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt45934344",
+          "title": "Archive X: Unexplained Phenomena",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt0199184",
+          "title": "Arena",
+          "season": 5,
+          "seasonYear": 1979
+        },
+        {
+          "seriesId": "tt5017396",
+          "title": "MTV Roadies",
+          "season": 21,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt17544192",
+          "title": "SOKO Linz",
+          "season": 4,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt29612515",
+          "title": "Kunwari Cheekh",
+          "season": 1,
+          "seasonYear": 2023
+        },
+        {
+          "seriesId": "tt42371777",
+          "title": "Taskmaster Polska",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt38581566",
+          "title": "Super Why's Comic Book Adventures",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt49615116",
+          "title": "Vlad cool cars",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt49615116",
+          "title": "Vlad cool cars",
+          "season": 2,
+          "seasonYear": 2026
+        }
+      ],
+      "removed": [
+        {
+          "seriesId": "tt0089379",
+          "title": "Johann Sebastian Bach",
+          "season": 1,
+          "seasonYear": 1985
+        }
+      ],
+      "ratingSwings": [
+        {
+          "seriesId": "tt0496195",
+          "title": "FETCH! with Ruff Ruffman",
+          "season": 2,
+          "from": 7.68,
+          "to": 6.73,
+          "delta": -0.95
+        },
+        {
+          "seriesId": "tt0496195",
+          "title": "FETCH! with Ruff Ruffman",
+          "season": 3,
+          "from": 7.27,
+          "to": 6.39,
+          "delta": -0.88
+        },
+        {
+          "seriesId": "tt10476258",
+          "title": "Sokagin Çocuklari",
+          "season": 7,
+          "from": 6.91,
+          "to": 7.74,
+          "delta": 0.83
+        },
+        {
+          "seriesId": "tt0496195",
+          "title": "FETCH! with Ruff Ruffman",
+          "season": 4,
+          "from": 8.24,
+          "to": 7.45,
+          "delta": -0.79
+        },
+        {
+          "seriesId": "tt0303635",
+          "title": "American Family",
+          "season": 1,
+          "from": 6.85,
+          "to": 6.16,
+          "delta": -0.69
+        },
+        {
+          "seriesId": "tt5222314",
+          "title": "Total Dreamer",
+          "season": 1,
+          "from": 7.83,
+          "to": 7.17,
+          "delta": -0.66
+        },
+        {
+          "seriesId": "tt0496195",
+          "title": "FETCH! with Ruff Ruffman",
+          "season": 1,
+          "from": 7.96,
+          "to": 7.32,
+          "delta": -0.64
+        },
+        {
+          "seriesId": "tt38781720",
+          "title": "MrBeast Lab",
+          "season": 1,
+          "from": 6.1,
+          "to": 5.58,
+          "delta": -0.52
+        },
+        {
+          "seriesId": "tt26599028",
+          "title": "Körpü",
+          "season": 1,
+          "from": 7.82,
+          "to": 8.34,
+          "delta": 0.52
+        },
+        {
+          "seriesId": "tt4508624",
+          "title": "My Lottery Dream Home",
+          "season": 18,
+          "from": 6.14,
+          "to": 5.63,
+          "delta": -0.51
+        }
+      ],
+      "modifiedCounts": {
+        "seriesVotes": 20428,
+        "avgRating": 1283,
+        "shapes": 233,
+        "episodeCount": 89,
+        "seriesRating": 340,
+        "poster": 10,
+        "overview": 7
+      }
+    },
+    {
       "builtAt": "2026-10-27T12:07:15.361Z",
       "totals": {
         "seasons": 67594,
@@ -9767,276 +10006,6 @@
         "episodeCount": 110,
         "seriesRating": 444,
         "shapes": 299
-      }
-    },
-    {
-      "builtAt": "2026-09-13T11:20:19.464Z",
-      "totals": {
-        "seasons": 66683,
-        "delta": 19
-      },
-      "shapeCounts": {
-        "rebound": 10174,
-        "rising": 2611,
-        "slow-burn": 4414,
-        "big-finale": 12168,
-        "u-shaped": 3086,
-        "rollercoaster": 14147,
-        "mid-peak": 4644,
-        "saved-best-for-last": 1497,
-        "front-loaded": 3516,
-        "declining": 1883,
-        "bad-finale": 4654,
-        "consistent": 2620,
-        "shape-drift": 1571
-      },
-      "shapeDeltas": {
-        "rebound": 1,
-        "rising": 2,
-        "slow-burn": 5,
-        "big-finale": 7,
-        "u-shaped": 3,
-        "rollercoaster": -5,
-        "mid-peak": 4,
-        "saved-best-for-last": 4,
-        "declining": -6,
-        "bad-finale": 8,
-        "consistent": 2,
-        "shape-drift": -1
-      },
-      "added": [
-        {
-          "seriesId": "tt19231492",
-          "title": "Dark Matter",
-          "season": 2,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt14668192",
-          "title": "Elite Short Stories",
-          "season": 6,
-          "seasonYear": 2021
-        },
-        {
-          "seriesId": "tt39632118",
-          "title": "Family Kirana Store",
-          "season": 2,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt0235132",
-          "title": "Rescue Heroes",
-          "season": 1,
-          "seasonYear": 1999
-        },
-        {
-          "seriesId": "tt31091039",
-          "title": "The Secret Lives of Mormon Wives",
-          "season": 5,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt39640519",
-          "title": "Chumbak",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt8085744",
-          "title": "Blacked Raw",
-          "season": 2,
-          "seasonYear": 2018
-        },
-        {
-          "seriesId": "tt13321232",
-          "title": "Karma's World",
-          "season": 4,
-          "seasonYear": 2022
-        },
-        {
-          "seriesId": "tt5660604",
-          "title": "The Cul De Sac",
-          "season": 3,
-          "seasonYear": 2018
-        },
-        {
-          "seriesId": "tt0138254",
-          "title": "Anything for Love",
-          "season": 1,
-          "seasonYear": 1997
-        },
-        {
-          "seriesId": "tt1281973",
-          "title": "Bigg Boss",
-          "season": 20,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt11150950",
-          "title": "Skolan",
-          "season": 2,
-          "seasonYear": 2020
-        },
-        {
-          "seriesId": "tt12718412",
-          "title": "Ishqiya",
-          "season": 1,
-          "seasonYear": 2020
-        },
-        {
-          "seriesId": "tt13364522",
-          "title": "Ice Airport Alaska",
-          "season": 2,
-          "seasonYear": 2022
-        },
-        {
-          "seriesId": "tt33056986",
-          "title": "Dumas",
-          "season": 2,
-          "seasonYear": 2025
-        },
-        {
-          "seriesId": "tt37884940",
-          "title": "The Princess Diaries",
-          "season": 1,
-          "seasonYear": 2025
-        },
-        {
-          "seriesId": "tt43726628",
-          "title": "Your Sky: Hare Nochi Koi",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt44359833",
-          "title": "Kiss or Kill",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt39518375",
-          "title": "2026-2027 UEFA Champions League",
-          "season": 6,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt7684034",
-          "title": "Baaghi",
-          "season": 1,
-          "seasonYear": 2017
-        },
-        {
-          "seriesId": "tt7401162",
-          "title": "Juacas",
-          "season": 1,
-          "seasonYear": 2017
-        }
-      ],
-      "removed": [
-        {
-          "seriesId": "tt16259804",
-          "title": "Elite Short Stories: Samuel Omar",
-          "season": 6,
-          "seasonYear": 2021
-        },
-        {
-          "seriesId": "tt0296374",
-          "title": "Maple Town",
-          "season": 1,
-          "seasonYear": 1986
-        }
-      ],
-      "ratingSwings": [
-        {
-          "seriesId": "tt38956012",
-          "title": "LOL Next",
-          "season": 1,
-          "from": 3.95,
-          "to": 5.25,
-          "delta": 1.3
-        },
-        {
-          "seriesId": "tt4445396",
-          "title": "Portrait Artist of the Year",
-          "season": 9,
-          "from": 8.03,
-          "to": 7.04,
-          "delta": -0.99
-        },
-        {
-          "seriesId": "tt13321232",
-          "title": "Karma's World",
-          "season": 3,
-          "from": 3.9,
-          "to": 4.87,
-          "delta": 0.97
-        },
-        {
-          "seriesId": "tt2169273",
-          "title": "MyMusic",
-          "season": 1,
-          "from": 7.76,
-          "to": 7.11,
-          "delta": -0.65
-        },
-        {
-          "seriesId": "tt43746863",
-          "title": "OJ Unseen: Exploitation of Evil",
-          "season": 1,
-          "from": 4.38,
-          "to": 5.02,
-          "delta": 0.64
-        },
-        {
-          "seriesId": "tt37439410",
-          "title": "The Dinner Club",
-          "season": 1,
-          "from": 6.57,
-          "to": 7.19,
-          "delta": 0.62
-        },
-        {
-          "seriesId": "tt4445396",
-          "title": "Portrait Artist of the Year",
-          "season": 10,
-          "from": 7.73,
-          "to": 7.11,
-          "delta": -0.62
-        },
-        {
-          "seriesId": "tt4445396",
-          "title": "Portrait Artist of the Year",
-          "season": 2,
-          "from": 7.87,
-          "to": 7.26,
-          "delta": -0.61
-        },
-        {
-          "seriesId": "tt8710622",
-          "title": "2019 Cricket World Cup",
-          "season": 1,
-          "from": 6.59,
-          "to": 6.04,
-          "delta": -0.55
-        },
-        {
-          "seriesId": "tt36937503",
-          "title": "Anna Pigeon",
-          "season": 1,
-          "from": 7.04,
-          "to": 6.5,
-          "delta": -0.54
-        }
-      ],
-      "modifiedCounts": {
-        "seriesVotes": 19885,
-        "avgRating": 1104,
-        "seriesRating": 286,
-        "shapes": 202,
-        "episodeCount": 86,
-        "poster": 13,
-        "overview": 2,
-        "providers": 1
       }
     }
   ]
