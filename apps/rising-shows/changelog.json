@@ -1,6 +1,239 @@
 {
   "updates": [
     {
+      "builtAt": "2026-10-30T12:46:24.252Z",
+      "totals": {
+        "seasons": 67637,
+        "delta": 13
+      },
+      "shapeCounts": {
+        "rebound": 9763,
+        "big-finale": 11844,
+        "u-shaped": 2644,
+        "rollercoaster": 13504,
+        "mid-peak": 4368,
+        "consistent": 2541,
+        "bad-finale": 4353,
+        "front-loaded": 3076,
+        "slow-burn": 3993,
+        "declining": 1667,
+        "saved-best-for-last": 1384,
+        "shape-drift": 1397,
+        "rising": 2362
+      },
+      "shapeDeltas": {
+        "rebound": -4,
+        "big-finale": 2,
+        "u-shaped": -3,
+        "rollercoaster": -1,
+        "mid-peak": 10,
+        "consistent": -5,
+        "bad-finale": -6,
+        "front-loaded": -5,
+        "slow-burn": 13,
+        "saved-best-for-last": 4,
+        "shape-drift": 1,
+        "rising": -1
+      },
+      "added": [
+        {
+          "seriesId": "tt18935554",
+          "title": "Rivers of Life Season 2",
+          "season": 2,
+          "seasonYear": 2022
+        },
+        {
+          "seriesId": "tt46060983",
+          "title": "NFL Shorts",
+          "season": 1,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt0063894",
+          "title": "The Dick Cavett Show",
+          "season": 7,
+          "seasonYear": 1972
+        },
+        {
+          "seriesId": "tt0445883",
+          "title": "Koffee with Karan",
+          "season": 9,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt15791630",
+          "title": "The Kardashians",
+          "season": 8,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt9663964",
+          "title": "Rob & Romesh Vs",
+          "season": 9,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt12044608",
+          "title": "Dropout Idol Fruit Tart",
+          "season": 1,
+          "seasonYear": 2020
+        },
+        {
+          "seriesId": "tt0096617",
+          "title": "Island Son",
+          "season": 1,
+          "seasonYear": 1989
+        },
+        {
+          "seriesId": "tt1410219",
+          "title": "SOKO Stuttgart",
+          "season": 18,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt9908414",
+          "title": "Block 13",
+          "season": 3,
+          "seasonYear": 2002
+        },
+        {
+          "seriesId": "tt39371046",
+          "title": "Olipa kerran televisio",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt38747743",
+          "title": "Titans of the Cold War",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt39518375",
+          "title": "2026-2027 UEFA Champions League",
+          "season": 7,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt39029595",
+          "title": "Good Boy",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt43702035",
+          "title": "Marília Mendonça: Sentimento Louco",
+          "season": 1,
+          "seasonYear": 2026
+        }
+      ],
+      "removed": [
+        {
+          "seriesId": "tt18935554",
+          "title": "Rivers of Life Season 2",
+          "season": 1,
+          "seasonYear": 2022
+        },
+        {
+          "seriesId": "tt15455964",
+          "title": "Roy Chubby Brown",
+          "season": 1,
+          "seasonYear": 1990
+        }
+      ],
+      "ratingSwings": [
+        {
+          "seriesId": "tt26450667",
+          "title": "Oasis",
+          "season": 1,
+          "from": 8.54,
+          "to": 7.21,
+          "delta": -1.33
+        },
+        {
+          "seriesId": "tt0058823",
+          "title": "The Long, Hot Summer",
+          "season": 1,
+          "from": 8,
+          "to": 6.9,
+          "delta": -1.1
+        },
+        {
+          "seriesId": "tt0126749",
+          "title": "Gøngehøvdingen",
+          "season": 1,
+          "from": 4.16,
+          "to": 4.82,
+          "delta": 0.66
+        },
+        {
+          "seriesId": "tt39222526",
+          "title": "Underground",
+          "season": 2,
+          "from": 7.6,
+          "to": 6.95,
+          "delta": -0.65
+        },
+        {
+          "seriesId": "tt34127005",
+          "title": "Minimum Wage",
+          "season": 1,
+          "from": 8.93,
+          "to": 8.39,
+          "delta": -0.54
+        },
+        {
+          "seriesId": "tt8883700",
+          "title": "SOKO Potsdam",
+          "season": 8,
+          "from": 6.17,
+          "to": 5.65,
+          "delta": -0.52
+        },
+        {
+          "seriesId": "tt3612226",
+          "title": "The Amazing Gayl Pile",
+          "season": 1,
+          "from": 8.84,
+          "to": 8.39,
+          "delta": -0.45
+        },
+        {
+          "seriesId": "tt37200664",
+          "title": "Aile Saadeti",
+          "season": 1,
+          "from": 8.27,
+          "to": 8.69,
+          "delta": 0.42
+        },
+        {
+          "seriesId": "tt16409202",
+          "title": "Spare Me, Great Lord!",
+          "season": 3,
+          "from": 8.05,
+          "to": 8.46,
+          "delta": 0.41
+        },
+        {
+          "seriesId": "tt31323988",
+          "title": "Mehmed: Sultan of Conquests",
+          "season": 4,
+          "from": 9.55,
+          "to": 9.15,
+          "delta": -0.4
+        }
+      ],
+      "modifiedCounts": {
+        "seriesVotes": 19612,
+        "avgRating": 1319,
+        "seriesRating": 1783,
+        "shapes": 201,
+        "episodeCount": 107,
+        "poster": 4,
+        "overview": 2
+      }
+    },
+    {
       "builtAt": "2026-10-29T13:03:37.075Z",
       "totals": {
         "seasons": 67624,
@@ -9917,35 +10150,6 @@
         "shapes": 1993,
         "episodeCount": 794,
         "overview": 1423
-      }
-    },
-    {
-      "builtAt": "2026-09-14T21:36:02.783Z",
-      "totals": {
-        "seasons": 66707,
-        "delta": 0
-      },
-      "shapeCounts": {
-        "rebound": 10179,
-        "rising": 2612,
-        "slow-burn": 4416,
-        "big-finale": 12163,
-        "u-shaped": 3084,
-        "rollercoaster": 14160,
-        "saved-best-for-last": 1490,
-        "mid-peak": 4642,
-        "front-loaded": 3507,
-        "declining": 1888,
-        "bad-finale": 4653,
-        "consistent": 2620,
-        "shape-drift": 1574
-      },
-      "shapeDeltas": {},
-      "added": [],
-      "removed": [],
-      "ratingSwings": [],
-      "modifiedCounts": {
-        "providers": 2
       }
     }
   ]
