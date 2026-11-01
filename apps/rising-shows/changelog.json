@@ -1,6 +1,267 @@
 {
   "updates": [
     {
+      "builtAt": "2026-11-01T13:25:47.060Z",
+      "totals": {
+        "seasons": 67677,
+        "delta": 18
+      },
+      "shapeCounts": {
+        "rebound": 9763,
+        "big-finale": 11855,
+        "u-shaped": 2648,
+        "rollercoaster": 13500,
+        "mid-peak": 4373,
+        "consistent": 2539,
+        "bad-finale": 4369,
+        "front-loaded": 3082,
+        "slow-burn": 3993,
+        "declining": 1659,
+        "saved-best-for-last": 1385,
+        "shape-drift": 1393,
+        "rising": 2370
+      },
+      "shapeDeltas": {
+        "rebound": 2,
+        "big-finale": 6,
+        "u-shaped": 4,
+        "rollercoaster": -8,
+        "mid-peak": 1,
+        "bad-finale": 8,
+        "front-loaded": 2,
+        "slow-burn": 4,
+        "declining": -5,
+        "saved-best-for-last": -3,
+        "shape-drift": -2,
+        "rising": 4
+      },
+      "added": [
+        {
+          "seriesId": "tt39980704",
+          "title": "Yaga",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt16358384",
+          "title": "Tulsa King",
+          "season": 4,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt6151526",
+          "title": "The Rainmaker",
+          "season": 2,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt0259792",
+          "title": "Monitor",
+          "season": 3,
+          "seasonYear": 1959
+        },
+        {
+          "seriesId": "tt49205110",
+          "title": "The Red and the Black",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt29625288",
+          "title": "Akka",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt36832423",
+          "title": "Rinnan",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt8641686",
+          "title": "Mortimer & Whitehouse: Gone Fishing",
+          "season": 9,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt2412778",
+          "title": "Ruth & Erica",
+          "season": 1,
+          "seasonYear": 2012
+        },
+        {
+          "seriesId": "tt46622693",
+          "title": "Love on Hire",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt7205088",
+          "title": "Nerd: Dragonslayer666",
+          "season": 1,
+          "seasonYear": 2017
+        },
+        {
+          "seriesId": "tt0423730",
+          "title": "SOKO Wismar",
+          "season": 23,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt6055778",
+          "title": "Barbelle",
+          "season": 2,
+          "seasonYear": 2019
+        },
+        {
+          "seriesId": "tt3765628",
+          "title": "Vosmidesyatye",
+          "season": 5,
+          "seasonYear": 2015
+        },
+        {
+          "seriesId": "tt5516894",
+          "title": "Die Kanzlei",
+          "season": 7,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt14132176",
+          "title": "Ikke lov å le på hytta",
+          "season": 6,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt14254752",
+          "title": "Sort Your Life Out",
+          "season": 6,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt15866282",
+          "title": "Offlayn",
+          "season": 2,
+          "seasonYear": 2023
+        },
+        {
+          "seriesId": "tt36118602",
+          "title": "Oldskul",
+          "season": 2,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt0486070",
+          "title": "Juego limpio",
+          "season": 1,
+          "seasonYear": 2005
+        }
+      ],
+      "removed": [
+        {
+          "seriesId": "tt0461004",
+          "title": "Vienna Crime Squad",
+          "season": 21,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt1945805",
+          "title": "Marvel Anime",
+          "season": 1,
+          "seasonYear": 2010
+        }
+      ],
+      "ratingSwings": [
+        {
+          "seriesId": "tt37484311",
+          "title": "Blue Skies",
+          "season": 2,
+          "from": 7.93,
+          "to": 5.7,
+          "delta": -2.23
+        },
+        {
+          "seriesId": "tt4832020",
+          "title": "Hell's Kitchen Italia",
+          "season": 1,
+          "from": 6.73,
+          "to": 6.02,
+          "delta": -0.71
+        },
+        {
+          "seriesId": "tt6055778",
+          "title": "Barbelle",
+          "season": 1,
+          "from": 7.15,
+          "to": 6.57,
+          "delta": -0.58
+        },
+        {
+          "seriesId": "tt13303576",
+          "title": "Suction Cup Man",
+          "season": 1,
+          "from": 8.49,
+          "to": 9.02,
+          "delta": 0.53
+        },
+        {
+          "seriesId": "tt36935784",
+          "title": "Knife Edge: Chasing Michelin Stars",
+          "season": 2,
+          "from": 8.04,
+          "to": 7.56,
+          "delta": -0.48
+        },
+        {
+          "seriesId": "tt36458668",
+          "title": "Dead-End Job",
+          "season": 1,
+          "from": 8.8,
+          "to": 8.33,
+          "delta": -0.47
+        },
+        {
+          "seriesId": "tt37195835",
+          "title": "Slo Pitch",
+          "season": 1,
+          "from": 8.64,
+          "to": 8.2,
+          "delta": -0.44
+        },
+        {
+          "seriesId": "tt45519527",
+          "title": "Apocalypse",
+          "season": 1,
+          "from": 6.52,
+          "to": 6.94,
+          "delta": 0.42
+        },
+        {
+          "seriesId": "tt6931466",
+          "title": "Honobono Log",
+          "season": 1,
+          "from": 6.36,
+          "to": 6.77,
+          "delta": 0.41
+        },
+        {
+          "seriesId": "tt1442550",
+          "title": "Shark Tank",
+          "season": 18,
+          "from": 6.77,
+          "to": 7.18,
+          "delta": 0.41
+        }
+      ],
+      "modifiedCounts": {
+        "seriesVotes": 19529,
+        "avgRating": 1161,
+        "seriesRating": 275,
+        "shapes": 211,
+        "episodeCount": 109
+      }
+    },
+    {
       "builtAt": "2026-10-31T12:13:28.349Z",
       "totals": {
         "seasons": 67659,
@@ -8099,252 +8360,6 @@
         "overview": 13,
         "episodeCount": 74,
         "providers": 1
-      }
-    },
-    {
-      "builtAt": "2026-10-03T11:41:34.324Z",
-      "totals": {
-        "seasons": 66994,
-        "delta": 7
-      },
-      "shapeCounts": {
-        "rebound": 10206,
-        "rising": 2632,
-        "slow-burn": 4437,
-        "big-finale": 12220,
-        "u-shaped": 3084,
-        "rollercoaster": 14209,
-        "saved-best-for-last": 1483,
-        "shape-drift": 1583,
-        "mid-peak": 4627,
-        "front-loaded": 3514,
-        "declining": 1908,
-        "bad-finale": 4671,
-        "consistent": 2636
-      },
-      "shapeDeltas": {
-        "rebound": 3,
-        "rising": -4,
-        "slow-burn": 4,
-        "big-finale": -6,
-        "u-shaped": 4,
-        "rollercoaster": 2,
-        "saved-best-for-last": -4,
-        "shape-drift": -1,
-        "front-loaded": 2,
-        "declining": 2,
-        "bad-finale": 6,
-        "consistent": -6
-      },
-      "added": [
-        {
-          "seriesId": "tt21097264",
-          "title": "East of Eden",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt10590066",
-          "title": "All Creatures Great & Small",
-          "season": 7,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt26735683",
-          "title": "Toxic",
-          "season": 2,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt3886188",
-          "title": "The Fixies",
-          "season": 2,
-          "seasonYear": 2013
-        },
-        {
-          "seriesId": "tt0143068",
-          "title": "Toonsylvania",
-          "season": 2,
-          "seasonYear": 1998
-        },
-        {
-          "seriesId": "tt3444938",
-          "title": "The Tonight Show Starring Jimmy Fallon",
-          "season": 14,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt0305051",
-          "title": "Kiteretsu Daihyakka",
-          "season": 1,
-          "seasonYear": 1988
-        },
-        {
-          "seriesId": "tt1626459",
-          "title": "My Kitchen Rules",
-          "season": 15,
-          "seasonYear": 2025
-        },
-        {
-          "seriesId": "tt1152296",
-          "title": "Who Do You Think You Are?",
-          "season": 9,
-          "seasonYear": 2018
-        },
-        {
-          "seriesId": "tt2141591",
-          "title": "Aircrash Confidential",
-          "season": 1,
-          "seasonYear": 2011
-        },
-        {
-          "seriesId": "tt31925820",
-          "title": "Dupahiya",
-          "season": 2,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt38268282",
-          "title": "Steel Ball Run: JoJo's Bizarre Adventure",
-          "season": 2,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt44144688",
-          "title": "Hold On, Harutora-kun",
-          "season": 1,
-          "seasonYear": 2026
-        }
-      ],
-      "removed": [
-        {
-          "seriesId": "tt14873528",
-          "title": "The Nate & Jeremiah Home Project",
-          "season": 1,
-          "seasonYear": 2021
-        },
-        {
-          "seriesId": "tt6833398",
-          "title": "Nate & Jeremiah by Design",
-          "season": 2,
-          "seasonYear": 2018
-        },
-        {
-          "seriesId": "tt6833398",
-          "title": "Nate & Jeremiah by Design",
-          "season": 3,
-          "seasonYear": 2019
-        },
-        {
-          "seriesId": "tt12011572",
-          "title": "Nate & Jeremiah Save My House",
-          "season": 1,
-          "seasonYear": 2020
-        },
-        {
-          "seriesId": "tt12011572",
-          "title": "Nate & Jeremiah Save My House",
-          "season": 3,
-          "seasonYear": 2021
-        },
-        {
-          "seriesId": "tt24948828",
-          "title": "Outdoor Boys",
-          "season": 1,
-          "seasonYear": 2020
-        }
-      ],
-      "ratingSwings": [
-        {
-          "seriesId": "tt18970320",
-          "title": "Slip",
-          "season": 1,
-          "from": 7.16,
-          "to": 5.4,
-          "delta": -1.76
-        },
-        {
-          "seriesId": "tt2177491",
-          "title": "Ben and Kate",
-          "season": 1,
-          "from": 7.64,
-          "to": 5.9,
-          "delta": -1.74
-        },
-        {
-          "seriesId": "tt15716624",
-          "title": "Vilangu",
-          "season": 1,
-          "from": 7.27,
-          "to": 8.46,
-          "delta": 1.19
-        },
-        {
-          "seriesId": "tt0090496",
-          "title": "Our House",
-          "season": 2,
-          "from": 8.03,
-          "to": 6.93,
-          "delta": -1.1
-        },
-        {
-          "seriesId": "tt34063491",
-          "title": "Uzak Şehir",
-          "season": 3,
-          "from": 7.83,
-          "to": 8.67,
-          "delta": 0.84
-        },
-        {
-          "seriesId": "tt0090496",
-          "title": "Our House",
-          "season": 1,
-          "from": 7.86,
-          "to": 7.26,
-          "delta": -0.6
-        },
-        {
-          "seriesId": "tt31843251",
-          "title": "Snakes and Ladders",
-          "season": 1,
-          "from": 5.57,
-          "to": 6.14,
-          "delta": 0.57
-        },
-        {
-          "seriesId": "tt1281973",
-          "title": "Bigg Boss",
-          "season": 20,
-          "from": 6.44,
-          "to": 5.93,
-          "delta": -0.51
-        },
-        {
-          "seriesId": "tt43732092",
-          "title": "Dar-e-Nijaat",
-          "season": 1,
-          "from": 8.8,
-          "to": 9.3,
-          "delta": 0.5
-        },
-        {
-          "seriesId": "tt7639726",
-          "title": "King Shakir",
-          "season": 3,
-          "from": 7.85,
-          "to": 7.39,
-          "delta": -0.46
-        }
-      ],
-      "modifiedCounts": {
-        "seriesVotes": 20798,
-        "avgRating": 1125,
-        "shapes": 183,
-        "seriesRating": 309,
-        "episodeCount": 64,
-        "providers": 4,
-        "poster": 2,
-        "overview": 2
       }
     }
   ]
