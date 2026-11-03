@@ -1,6 +1,239 @@
 {
   "updates": [
     {
+      "builtAt": "2026-11-03T14:09:37.697Z",
+      "totals": {
+        "seasons": 67713,
+        "delta": 17
+      },
+      "shapeCounts": {
+        "rebound": 9766,
+        "big-finale": 11853,
+        "u-shaped": 2645,
+        "rollercoaster": 13495,
+        "mid-peak": 4375,
+        "consistent": 2545,
+        "bad-finale": 4375,
+        "front-loaded": 3090,
+        "slow-burn": 3987,
+        "declining": 1652,
+        "saved-best-for-last": 1380,
+        "shape-drift": 1392,
+        "rising": 2379
+      },
+      "shapeDeltas": {
+        "rebound": 1,
+        "big-finale": 4,
+        "u-shaped": -4,
+        "mid-peak": 3,
+        "consistent": 5,
+        "bad-finale": -1,
+        "front-loaded": 4,
+        "slow-burn": -6,
+        "declining": -5,
+        "saved-best-for-last": -5,
+        "shape-drift": -2,
+        "rising": 6
+      },
+      "added": [
+        {
+          "seriesId": "tt33359676",
+          "title": "Maigret",
+          "season": 2,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt1800864",
+          "title": "Gold Rush",
+          "season": 17,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt28184020",
+          "title": "Contraband: Seized at the Border",
+          "season": 2,
+          "seasonYear": 2023
+        },
+        {
+          "seriesId": "tt43012917",
+          "title": "Der Geier",
+          "season": 1,
+          "seasonYear": 2024
+        },
+        {
+          "seriesId": "tt49250618",
+          "title": "The Fall of El Mayo",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt2614298",
+          "title": "Imprescindibles",
+          "season": 1,
+          "seasonYear": 2010
+        },
+        {
+          "seriesId": "tt16994878",
+          "title": "7 vs. Wild",
+          "season": 6,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt31003509",
+          "title": "Kopuk",
+          "season": 1,
+          "seasonYear": 2024
+        },
+        {
+          "seriesId": "tt1034368",
+          "title": "Daydreaming",
+          "season": 3,
+          "seasonYear": 2009
+        },
+        {
+          "seriesId": "tt37721997",
+          "title": "Smosh Summer Games: Class of 2005",
+          "season": 1,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt3219166",
+          "title": "MasterChef Canada",
+          "season": 9,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt2317751",
+          "title": "Indian Premier League",
+          "season": 6,
+          "seasonYear": 2013
+        },
+        {
+          "seriesId": "tt1468453",
+          "title": "Çok Güzel Hareketler Bunlar",
+          "season": 1,
+          "seasonYear": 2008
+        },
+        {
+          "seriesId": "tt1468453",
+          "title": "Çok Güzel Hareketler Bunlar",
+          "season": 4,
+          "seasonYear": 2010
+        },
+        {
+          "seriesId": "tt38598404",
+          "title": "Sher",
+          "season": 1,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt43707276",
+          "title": "Blindspot Berlin",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt38973495",
+          "title": "Camarades",
+          "season": 1,
+          "seasonYear": 2026
+        }
+      ],
+      "removed": [],
+      "ratingSwings": [
+        {
+          "seriesId": "tt35932166",
+          "title": "Mr. Fanboy",
+          "season": 1,
+          "from": 7.3,
+          "to": 6.18,
+          "delta": -1.12
+        },
+        {
+          "seriesId": "tt40856774",
+          "title": "The Traitors Telugu",
+          "season": 1,
+          "from": 8.52,
+          "to": 7.43,
+          "delta": -1.09
+        },
+        {
+          "seriesId": "tt43736405",
+          "title": "A Love Other Than Yours",
+          "season": 1,
+          "from": 6.71,
+          "to": 5.89,
+          "delta": -0.82
+        },
+        {
+          "seriesId": "tt35674433",
+          "title": "Rise and Fall",
+          "season": 2,
+          "from": 5.95,
+          "to": 6.61,
+          "delta": 0.66
+        },
+        {
+          "seriesId": "tt43688849",
+          "title": "Harvest",
+          "season": 1,
+          "from": 7.1,
+          "to": 6.5,
+          "delta": -0.6
+        },
+        {
+          "seriesId": "tt14183314",
+          "title": "Yalanci",
+          "season": 1,
+          "from": 8.25,
+          "to": 7.69,
+          "delta": -0.56
+        },
+        {
+          "seriesId": "tt43088191",
+          "title": "Dive Into You",
+          "season": 1,
+          "from": 5.33,
+          "to": 5.89,
+          "delta": 0.56
+        },
+        {
+          "seriesId": "tt35132299",
+          "title": "Kardelenler",
+          "season": 1,
+          "from": 8.53,
+          "to": 7.98,
+          "delta": -0.55
+        },
+        {
+          "seriesId": "tt11617414",
+          "title": "1000-lb Sisters",
+          "season": 9,
+          "from": 7.8,
+          "to": 7.25,
+          "delta": -0.55
+        },
+        {
+          "seriesId": "tt36458668",
+          "title": "Dead-End Job",
+          "season": 1,
+          "from": 7.95,
+          "to": 7.41,
+          "delta": -0.54
+        }
+      ],
+      "modifiedCounts": {
+        "seriesVotes": 20245,
+        "avgRating": 1158,
+        "seriesRating": 1900,
+        "shapes": 202,
+        "episodeCount": 99,
+        "poster": 7,
+        "providers": 7,
+        "overview": 8
+      }
+    },
+    {
       "builtAt": "2026-11-02T15:30:09.625Z",
       "totals": {
         "seasons": 67696,
@@ -8082,255 +8315,6 @@
         "episodeCount": 66,
         "poster": 7,
         "providers": 2
-      }
-    },
-    {
-      "builtAt": "2026-10-05T14:34:47.413Z",
-      "totals": {
-        "seasons": 67040,
-        "delta": 20
-      },
-      "shapeCounts": {
-        "rebound": 10215,
-        "rising": 2644,
-        "slow-burn": 4446,
-        "big-finale": 12243,
-        "u-shaped": 3087,
-        "rollercoaster": 14215,
-        "saved-best-for-last": 1477,
-        "shape-drift": 1588,
-        "mid-peak": 4627,
-        "front-loaded": 3511,
-        "declining": 1907,
-        "bad-finale": 4678,
-        "consistent": 2645
-      },
-      "shapeDeltas": {
-        "rebound": 5,
-        "rising": 5,
-        "slow-burn": -1,
-        "big-finale": 13,
-        "u-shaped": 4,
-        "rollercoaster": 2,
-        "saved-best-for-last": -3,
-        "shape-drift": 1,
-        "front-loaded": -4,
-        "declining": -1,
-        "bad-finale": -5
-      },
-      "added": [
-        {
-          "seriesId": "tt48055802",
-          "title": "Solo für Schwarz",
-          "season": 1,
-          "seasonYear": 2003
-        },
-        {
-          "seriesId": "tt2555320",
-          "title": "Pesadilla en la cocina",
-          "season": 5,
-          "seasonYear": 2016
-        },
-        {
-          "seriesId": "tt39328073",
-          "title": "Distance and Timing",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt43706317",
-          "title": "Unmasking a Monster: Aileen Wuornos",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt41359588",
-          "title": "Oops! Mysterious Sounds",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt0221740",
-          "title": "Crime Stories",
-          "season": 3,
-          "seasonYear": 2006
-        },
-        {
-          "seriesId": "tt2182427",
-          "title": "Bering Sea Gold",
-          "season": 19,
-          "seasonYear": 2025
-        },
-        {
-          "seriesId": "tt0902735",
-          "title": "On the Track",
-          "season": 37,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt6136416",
-          "title": "Indetectables",
-          "season": 5,
-          "seasonYear": 2023
-        },
-        {
-          "seriesId": "tt2555320",
-          "title": "Pesadilla en la cocina",
-          "season": 7,
-          "seasonYear": 2019
-        },
-        {
-          "seriesId": "tt2555320",
-          "title": "Pesadilla en la cocina",
-          "season": 4,
-          "seasonYear": 2015
-        },
-        {
-          "seriesId": "tt44933696",
-          "title": "The Center Seat II: 60 Years of Star Trek",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt15156682",
-          "title": "SuperMarioLogan",
-          "season": 8,
-          "seasonYear": 2014
-        },
-        {
-          "seriesId": "tt19818812",
-          "title": "Fallen",
-          "season": 2,
-          "seasonYear": 2025
-        },
-        {
-          "seriesId": "tt36955280",
-          "title": "Inside CDU",
-          "season": 1,
-          "seasonYear": 2025
-        },
-        {
-          "seriesId": "tt14348758",
-          "title": "The Sisters Grimm",
-          "season": 2,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt38674953",
-          "title": "#Love",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt0983200",
-          "title": "Media Watch",
-          "season": 36,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt40182966",
-          "title": "Days That Shocked the World",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt4566846",
-          "title": "Blue Building Detectives",
-          "season": 9,
-          "seasonYear": 2017
-        }
-      ],
-      "removed": [],
-      "ratingSwings": [
-        {
-          "seriesId": "tt0293725",
-          "title": "Butt-Ugly Martians",
-          "season": 1,
-          "from": 8.27,
-          "to": 6.75,
-          "delta": -1.52
-        },
-        {
-          "seriesId": "tt37187505",
-          "title": "Tall Tales & Murder",
-          "season": 1,
-          "from": 4.9,
-          "to": 6.33,
-          "delta": 1.43
-        },
-        {
-          "seriesId": "tt4255166",
-          "title": "American Horror Story FreakShow: Extra-Ordinary-Artists",
-          "season": 1,
-          "from": 8.54,
-          "to": 7.52,
-          "delta": -1.02
-        },
-        {
-          "seriesId": "tt35932166",
-          "title": "Mr. Fanboy",
-          "season": 1,
-          "from": 6.2,
-          "to": 6.87,
-          "delta": 0.67
-        },
-        {
-          "seriesId": "tt29794599",
-          "title": "Bolo Sezoni",
-          "season": 1,
-          "from": 8.86,
-          "to": 9.38,
-          "delta": 0.52
-        },
-        {
-          "seriesId": "tt20883126",
-          "title": "Red Queen",
-          "season": 2,
-          "from": 7.1,
-          "to": 6.58,
-          "delta": -0.52
-        },
-        {
-          "seriesId": "tt43736405",
-          "title": "A Love Other Than Yours",
-          "season": 1,
-          "from": 7.13,
-          "to": 6.62,
-          "delta": -0.51
-        },
-        {
-          "seriesId": "tt32321928",
-          "title": "Betty La Fea: The Story Continues",
-          "season": 3,
-          "from": 4.96,
-          "to": 4.5,
-          "delta": -0.46
-        },
-        {
-          "seriesId": "tt43587102",
-          "title": "Mebius Dust",
-          "season": 1,
-          "from": 6.8,
-          "to": 7.26,
-          "delta": 0.46
-        },
-        {
-          "seriesId": "tt16116866",
-          "title": "Trivial Pursuit",
-          "season": 2,
-          "from": 7.15,
-          "to": 6.7,
-          "delta": -0.45
-        }
-      ],
-      "modifiedCounts": {
-        "seriesVotes": 22647,
-        "avgRating": 1185,
-        "shapes": 200,
-        "seriesRating": 398,
-        "episodeCount": 93,
-        "providers": 2,
-        "poster": 1
       }
     }
   ]
