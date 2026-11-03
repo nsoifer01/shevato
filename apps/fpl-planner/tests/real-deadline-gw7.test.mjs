@@ -102,6 +102,8 @@ test('owner: the captain is the top projection in the eleven, so no explanation 
 });
 
 // Registry 47: at a shortlist of 16 the better plan was generated and cut.
+// The width-16 arm is the search as it was then, so it also leaves out
+// registry 50's corrections, which reach this plan at any width.
 test('deep-search (3 free transfers): the better legal three-move plan reaches the planner', async () => {
   const { bundle } = await planFor('deep-search');
   const plan = bundle.current;
@@ -121,7 +123,7 @@ test('deep-search (3 free transfers): the better legal three-move plan reaches t
   assert.ok(other && mine.objective - other.objective > 0.2, `${mine.objective} against ${other && other.objective}`);
   const raw = searchTransfers({
     squadState: bundle.squadState, projections: bundle.projections, gameState: GAME_STATE, rules, horizon: cfg.horizon,
-    opts: { discount: cfg.discount, maxHits: cfg.maxHits, maxCandidates: cfg.maxCandidates, seed: cfg.seed, ...cfg.lineupOptions, rerankCandidates: 16 },
+    opts: { discount: cfg.discount, maxHits: cfg.maxHits, maxCandidates: cfg.maxCandidates, seed: cfg.seed, ...cfg.lineupOptions, rerankCandidates: 16, fundingPairs: false, shortlistOnObjective: false },
   });
   const key = (o, i) => `${[...o].sort()}>${[...i].sort()}`;
   const scored = raw.map(r => scoreOf(r.transfersOut, r.transfersIn)).filter(Boolean);

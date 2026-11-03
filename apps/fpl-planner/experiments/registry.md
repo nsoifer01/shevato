@@ -1707,6 +1707,63 @@ xG/xA rate quality, and early-window squad construction where a wrong opening
 channel; running more weights is known to be useless, because no flat weight
 can satisfy three seasons whose optima genuinely differ.
 
+## 50. Funding pairs and the shortlist on the objective: ACCEPT (the shortlist by OWNER OVERRIDE of its guard)
+
+- **Date:** 2026-11-02
+- **Decision:** `fundingPairs: true` ACCEPT under the pre-registered rule.
+  `shortlistOnObjective: true` failed that rule (2023-24 at -15.4 a window
+  against a -15 limit) and ships anyway: **the owner overrode the guard** on
+  2026-11-02, on the reasoning below. Both in transfers.js.
+- **Pre-registered** in `experiments/configs/pair-search.mjs` (registry 35's
+  standard for a correction: kept unless it loses with t <= -2.0 or any season
+  loses more than 15 a window).
+- **Why it was run.** Ledger row 33: the exact 0 to 2 move reference in
+  `tests/optimizer-reference.test.mjs` beat the planner's free pair on two
+  squads (0.18 and 0.40 on its own objective), pinned as `todo`. Sweeping the
+  reference over 396 seeded squads (0, 1, 2, 4, 5 free transfers) found 7
+  misses, of two causes. FUNDING: the better pair sold a player only for the
+  money he frees (João Pedro to Gonzalo, paying for Mudryk to Mbeumo), who is
+  neither a top upgrade nor top cash per point, so the outgoing prune never
+  offered him. SHORTLIST: the better plan was generated but ranked 25th to
+  54th and cut, because the shortlist ranked on `squadHorizonValue`, which adds
+  the bench's auto-substitution value that the planner's objective
+  (`squadObjective`) leaves out. With that term removed, the search's exact
+  score equals `scoreCandidate`'s objective to the last digit within one move
+  count; with it they disagreed by 0.5 to 0.8 (one sd).
+
+| arm vs control | per window | se | t | W-L-T | 2023-24 | 2024-25 | 2025-26 |
+| --- | ---: | ---: | ---: | --- | ---: | ---: | ---: |
+| funding | +1.3 | 1.6 | 0.82 | 3-2-10 | +5.0 | +1.1 | -2.1 |
+| objective | -2.4 | 5.3 | -0.45 | 5-4-6 | **-15.4** | +0.1 | +8.0 |
+| both | -3.2 | 5.4 | -0.59 | 5-5-5 | -14.7 | +0.1 | +4.9 |
+
+Paired instrument, chips off, 180 cells in 314 s. Totals: control 34,532,
+funding 34,592, objective 34,422, both 34,386 (the new control on this tree).
+The 2023-24 loss is two windows: gw7-19 at -56 on all three seeds (one
+deterministic decision) and gw1-13 at -32; 2025-26 gains +39.7 in gw27-38.
+
+**Why the override.** The shortlist correction changes nothing about what the
+planner maximizes; it only lets the planner see the plans its own objective
+prefers, which the proxy had been cutting. Neither correction alone closes
+either `todo` (funding alone generates variant-21's pair and the proxy then
+cuts it). The overall effect is noise (t -0.45, CI -14 to +9), and the season
+that trips the line does so by 0.4 a window. What the loss does suggest is
+worth stating: auto-substitution points are real FPL points, and the proxy
+that counted them carried information the objective throws away. That is a
+question about the OBJECTIVE, not the search, and it is the next experiment if
+this family is revisited: put the bench's auto-sub value into
+`squadObjective` (a model change that moves reported xP on every surface).
+
+On the reference: 7 of 396 misses before, 0 after (funding alone: 4 of 118 at
+1 to 3 free transfers, as many as before, a different four). Plan CPU on those
+squads 601 ms to 640 ms. Ranking the fast stage on `squadObjective` itself (a
+real armband per eleven) closed nothing more on 118 squads at 2.2x CPU, so the
+fast stage only drops the auto-sub term. Pinned by
+`tests/optimizer-reference.test.mjs` (five reference cases, the two former
+`todo`s among them, and a same-move-count ordering property against
+`scoreCandidate`), `tests/transfers.test.mjs` (restated on chips.js
+`squadTrajectory`) and four mutants.
+
 ## 49. One basis for a Triple Captain's later weeks: ACCEPT (the fixed-rate variant REJECT)
 
 - **Date:** 2026-10-16

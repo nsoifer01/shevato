@@ -996,9 +996,12 @@ export function optimizeLineup(squadPlayerIds, projections, gw, rules, opts = {}
 //     from captain.js and is a certainty-equivalent choice that often differs.
 //
 // A squad ranked on the proxy is therefore not the squad that maximizes the
-// number the app prints. That is tolerable in transfers.js, where the proxy
-// only shortlists and planner.js re-scores every survivor on `squadTrajectory`
-// before choosing. It was NOT tolerable in squad-builder.js, whose answer was
+// number the app prints. transfers.js used to shortlist on it in full, on the
+// reasoning that planner.js re-scores every survivor, but the survivors were
+// the problem: the bench term moved plans the planner preferred out of the
+// shortlist before it could see them (registry 50). Since 2026-11-02 the search's
+// fast stage reads this function WITHOUT `autosubValue` and its exact stage
+// reads `squadObjective`. It was NOT tolerable in squad-builder.js, whose answer was
 // final: the builder returned the proxy's optimum and the counterfactual then
 // reported the objective, so a squad with a forced-in player could and did read
 // higher than the app's own recommendation. See

@@ -77,10 +77,38 @@
 //      affordable replacement's horizon value minus their own), unioned with
 //      the players who free the most cash per point of value, which is the
 //      other half of a funding move.
+//   6. FUNDING PAIRS (2026-11-02, registry 50, `fundingPairs`). Rule 5 still
+//      misses the sale made for the money it frees: a 7.6m forward sold for
+//      the best 6.1m one has neither the largest upgrade nor the best cash per
+//      point, yet it is what pays for the other move (variant-21 of
+//      tests/optimizer-reference.test.mjs: Mudryk to Mbeumo funded by João
+//      Pedro to Gonzalo, 0.18 better than the plan returned). So every
+//      outgoing candidate is also paired with every OTHER owned player through
+//      the budget-aware completion (BUDGET-AWARE PAIRS below): the candidate's
+//      slot takes each player of its full pool, the other slot the best the
+//      money left buys. Selling every owned player for his best affordable
+//      replacement is the funding move by definition, at about 2 x 24 extra
+//      pairs per partner.
 //
 // Every generated candidate is checked for squad-position counts, club limit,
 // affordability to the tenth using SELLING prices, and hit count BEFORE it is
 // scored. Illegal candidates never reach the scorer.
+//
+// THE SHORTLIST RANKS ON THE OBJECTIVE (2026-11-02, registry 50,
+// `shortlistOnObjective`). The search generates thousands of candidates and
+// only the best `rerankCandidates` reach an exact score, and only the best
+// `maxCandidates` of those reach the planner. Until this date both cuts ranked
+// on squadHorizonValue, which ADDS the bench's auto-substitution value that
+// the planner's objective (lineup.js squadObjective) deliberately leaves out.
+// Within one move count that term was the whole disagreement: the exact
+// re-score minus it equals the planner's objective to the last digit, and with
+// it the two differed by 0.5 to 0.8 points (one sd), so plans 0.04 to 0.40
+// better on the planner's own number sat 25th to 54th and were cut (stress-5
+// and three more of 118 seeded squads). So the fast stage drops the auto-sub
+// term (it keeps the top projection as captain, which costs nothing), and the
+// exact stage scores squadObjective itself, with one armband cache for the
+// search. Picking a real armband in the fast stage as well was measured: it
+// closes nothing more on those squads and costs 2.2x the plan's CPU.
 //
 // HOW A CANDIDATE IS SCORED
 //
@@ -89,9 +117,11 @@
 //         - hits * hitMargin             (the documented margin a hit must clear)
 //         + rollValue                    (what keeping a free transfer is worth)
 //
-// The horizon value is the squad's best legal eleven each gameweek plus what
-// auto-substitutions recover from the bench plus the armband, discounted per
-// gameweek (see lineup.js squadHorizonValue).
+// The horizon value is the squad's best legal eleven each gameweek plus the
+// armband, discounted per gameweek: lineup.js squadObjective in the exact
+// stage, and in the fast stage squadHorizonValue without its auto-substitution
+// term (THE SHORTLIST RANKS ON THE OBJECTIVE above). `shortlistOnObjective:
+// false` restores squadHorizonValue in both, bench recovery included.
 //
 // ROLLING IS A FIRST-CLASS CANDIDATE. A banked free transfer is an option on a
 // better move next week, and it is worth `ftValuePoints` per transfer carried
@@ -205,7 +235,7 @@
 // because the finding is worth being able to reproduce, and at zero the search
 // is bit-for-bit what it was before it existed.
 
-import { squadHorizonValue, optimizeLineup, DEFAULT_DISCOUNT, DEFAULT_HORIZON } from './lineup.js';
+import { squadHorizonValue, squadObjective, optimizeLineup, DEFAULT_DISCOUNT, DEFAULT_HORIZON } from './lineup.js';
 import { availabilityCeiling } from './minutes.js';
 import { chooseCaptain } from './captain.js';
 import { validatePlan, clubLimitBreaches } from './validate.js';
@@ -243,6 +273,14 @@ export const TRANSFER_DEFAULTS = Object.freeze({
   // for every player of a slot's full pool, the best this many of the other
   // slot the remaining money buys. 0 turns it off.
   pairBestResponse: 2,
+  // Pair every outgoing candidate with every other owned player through the
+  // budget-aware completion (rule 6 above). false is the pair search before
+  // 2026-11-02, for a control arm (registry 50).
+  fundingPairs: true,
+  // Rank the shortlist on the planner's objective (THE SHORTLIST RANKS ON THE
+  // OBJECTIVE above). false ranks both stages on squadHorizonValue, bench
+  // recovery included, as before 2026-11-02 (registry 50's control arm).
+  shortlistOnObjective: true,
   // Union the enablers into the pair and beam pools (rule 4 above). false is
   // the pre-2026-10-09 pair pool, for a control arm.
   pairEnablers: true,
@@ -326,6 +364,19 @@ export function searchTransfers({ squadState, projections, gameState, rules, hor
     minutesRiskWeight: cfg.minutesRiskWeight,
   };
   const horizonOpts = { ...lineupOpts, horizon: cfg.horizon, discount: cfg.discount, mode: 'fast' };
+  // One armband per eleven and gameweek for the whole search (lineup.js
+  // squadObjective): the shortlist re-picks the same elevens many times.
+  const armbandCache = new Map();
+  const fastHorizon = (squad) => {
+    const r = squadHorizonValue(squad, projections, gw, R, horizonOpts);
+    if (!cfg.shortlistOnObjective) return r;
+    let total = 0;
+    for (const g of r.byGw) total += g.weight * (g.value - g.autosubValue);
+    return { ...r, total };
+  };
+  const exactHorizon = (squad, opts) => (cfg.shortlistOnObjective
+    ? squadObjective(squad, projections, gw, R, { ...opts, armbandCache })
+    : squadHorizonValue(squad, projections, gw, R, opts));
   const lastGw = Math.min(gw + cfg.horizon - 1, projections.gwTo);
 
   const horizonValue = playerHorizonValues(projections, gw, lastGw, cfg.discount);
@@ -392,7 +443,7 @@ export function searchTransfers({ squadState, projections, gameState, rules, hor
     c.sortScore = c.score + c.priceAdjustment;
   };
   const fastScore = (c) => {
-    const horizonResult = squadHorizonValue(c.squad, projections, gw, R, horizonOpts);
+    const horizonResult = fastHorizon(c.squad);
     c.horizonRaw = horizonResult.total;
     c.horizonByGw = horizonResult.byGw;
     c.rollValue = rollValue(c.freeTransfersNextGw, cfg);
@@ -483,6 +534,17 @@ export function searchTransfers({ squadState, projections, gameState, rules, hor
         }
       }
     }
+    // FUNDING PAIRS (rule 6 in the header). Not under `outIds`, where every
+    // sellable player is already an outgoing candidate above.
+    if (cfg.fundingPairs && cfg.pairBestResponse > 0 && !sellable) {
+      const chosen = new Set(outCandidates.map(r => r.playerId));
+      for (const outA of outCandidates) {
+        for (const outB of picks) {
+          if (chosen.has(outB.playerId)) continue;
+          bestResponsePairs(outA, outB, bankBefore + outA.sellingTenths + outB.sellingTenths);
+        }
+      }
+    }
   }
 
   // --- deeper: a beam over the best pairs, one move at a time --------------
@@ -550,7 +612,7 @@ export function searchTransfers({ squadState, projections, gameState, rules, hor
 
   const exactHorizonOpts = { ...horizonOpts, mode: 'exact' };
   for (const c of shortlist) {
-    const horizonResult = squadHorizonValue(c.squad, projections, gw, R, exactHorizonOpts);
+    const horizonResult = exactHorizon(c.squad, exactHorizonOpts);
     c.horizonRaw = horizonResult.total;
     c.horizonByGw = horizonResult.byGw;
     score(c);
