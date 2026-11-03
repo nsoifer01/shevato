@@ -18,7 +18,7 @@ import { fileURLToPath } from 'node:url';
 import { buildRules } from '../js/engine/rules.js';
 import { searchTransfers, TRANSFER_DEFAULTS } from '../js/engine/transfers.js';
 import { validatePlan } from '../js/engine/validate.js';
-import { squadHorizonValue } from '../js/engine/lineup.js';
+import { squadTrajectory } from '../js/engine/chips.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const read = (...p) => JSON.parse(readFileSync(join(here, ...p), 'utf8'));
@@ -538,21 +538,31 @@ test('a clear upgrade is taken rather than rolled', () => {
 
 // --- the objective the decision is made under -------------------------------
 
-test('the recommendation is decided under the objective the squad is played with', () => {
-  // The wide search ranks squads with the fast lineup model, which cannot
-  // represent starting a doubtful player because a same-position substitute
-  // covers him. The squad is then PLAYED with the exact model, which can. Here
-  // that difference is the whole decision:
+// The planner's objective, through chips.js squadTrajectory: a code path the
+// search does not call, so it is an oracle for the number the search ranks on.
+function objectiveOf(world, squad) {
+  return squadTrajectory({
+    squadIds: squad, projections: world.projections, gameState: world.gameState, rules,
+    gwFrom: GW, horizon: HORIZON, discount: TRANSFER_DEFAULTS.discount, opts: { risk: TRANSFER_DEFAULTS.risk },
+  }).total;
+}
+
+test('the recommendation is decided under the objective the planner ranks on', () => {
+  // The planner ranks a squad on its best eleven and the armband
+  // (squadTrajectory); the bench's auto-substitution value is chosen with but
+  // never paid (lineup.js squadObjective). Until 2026-11-02 the search ranked
+  // on squadHorizonValue, which ADDS that value, and here that difference is
+  // the whole decision:
   //
   //   owned keeper 1: 4.0 a week, nailed
   //   owned keeper 2: 1.0 a week, nailed, the reserve
   //   for sale, 4.5m each: keeper 20, 3.0 a week nailed
   //                        keeper 21, 2.9 a week but a coin flip to play
   //
-  // Under the fast objective both signings are worth exactly what holding is
-  // worth, because the reserve keeper never comes on behind a nailed starter.
-  // Under the exact objective signing 21 is worth two points a gameweek: he
-  // starts, and keeper 1 becomes real cover behind him.
+  // The proxy credits signing 21 with the points keeper 1 recovers behind him
+  // and puts it first; on the planner's objective that squad is worth less
+  // than holding, so the planner would re-score it and refuse it, and a better
+  // plan the proxy had pushed out of the shortlist was never seen (registry 50).
   const world = buildWorld({
     ownedOverrides: { 2: { xPoints: 1.0 } },
     agents: [
@@ -561,30 +571,22 @@ test('the recommendation is decided under the objective the squad is played with
     ],
     freeTransfers: 1,
   });
+  const held = world.squadState.picks.map(p => p.playerId);
 
-  // Deciding on the fast objective alone (no exact re-rank) cannot separate
-  // the two signings from doing nothing, so it rolls the transfer.
-  // At a depth of two: from three up every depth's best are re-scored exactly
-  // whatever `rerankCandidates` says (`deepReserve`), and this file's search
-  // allows two hits, so one free transfer searches three moves since
-  // 2026-10-16 (`hitDepth`, registry 48).
-  const fastOnly = search(world, { rerankCandidates: 0, hitDepth: false });
-  assert.equal(fastOnly[0].transferCount, 0, 'the fast objective sees no gain worth taking');
+  const proxy = search(world, { shortlistOnObjective: false });
+  assert.deepEqual(proxy[0].transfersIn, [21], 'the bench-credited proxy prefers the doubtful keeper');
+  assert.ok(objectiveOf(world, proxy[0].squad) < objectiveOf(world, held) - 1,
+    'and on the planner\'s objective that squad is worth less than holding');
 
-  const reranked = search(world);
-  assert.equal(reranked[0].transferCount, 1);
-  assert.deepEqual(reranked[0].transfersIn, [21], 'the doubtful keeper with cover behind him is the better squad');
-  assert.deepEqual(reranked[0].transfersOut, [2]);
-  assert.ok(reranked[0].horizonRaw > fastOnly[0].horizonRaw);
-
-  // And the signing the fast objective would have preferred on paper, the
-  // nailed keeper who never gets on the pitch, is ranked below it.
-  const nailed = reranked.find(p => p.transfersIn.includes(20));
-  assert.ok(nailed);
-  assert.ok(nailed.score < reranked[0].score);
+  const plans = search(world);
+  assert.equal(plans[0].transferCount, 0, 'the search rolls, as the planner would');
+  for (const plan of plans) {
+    assert.ok(Math.abs(plan.horizonRaw - objectiveOf(world, plan.squad)) < 1e-9,
+      `plan ${plan.key} ranked on ${plan.horizonRaw}, the planner's objective is ${objectiveOf(world, plan.squad)}`);
+  }
 });
 
-test('every returned plan is scored under the exact lineup objective', () => {
+test('every returned plan is scored under the planner\'s objective, the exact lineup', () => {
   const world = buildWorld({
     agents: [
       { id: 20, position: 4, teamId: 14, xPoints: 6.5, nowCost: 55 },
@@ -600,13 +602,7 @@ test('every returned plan is scored under the exact lineup objective', () => {
   assert.ok(plans.length > 5);
 
   for (const plan of plans) {
-    const exact = squadHorizonValue(plan.squad, world.projections, GW, rules, {
-      gameState: world.gameState,
-      risk: TRANSFER_DEFAULTS.risk,
-      horizon: HORIZON,
-      discount: TRANSFER_DEFAULTS.discount,
-      mode: 'exact',
-    }).total;
+    const exact = objectiveOf(world, plan.squad);
     assert.ok(
       Math.abs(plan.horizonRaw - exact) < 1e-9,
       `plan ${plan.key} was ranked on ${plan.horizonRaw} but is played for ${exact}`,

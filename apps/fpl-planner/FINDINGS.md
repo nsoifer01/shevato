@@ -64,11 +64,12 @@ column names the guard added so the whole category is covered, not the case.
 | 30 | e2e GW1 states impossible for any manager | CI (#613) | R5 fixture realism | GW1 states rebuilt |
 | 31 | Late-joiner floor documented as never above the price paid | audit (#613) | R5 unverified claim | claim corrected |
 | 32 | A transfer list ending before a Wildcard week priced Wildcard buys at their start price, silently (5.9 for 5.5) | CI: manager-state-properties (new, 2026-10-17) | R1 coherence | squad.js unexplainedPlayers (every held player is in the starting squad or a listed buy; 0 false flags on 21 real managers and 1,000 generated seasons); mutation-check |
-| 33 | With 2 free transfers a free pair 0.18 and 0.40 better than the plan is never generated (it differs in both moves, beyond the one-swap polish) | CI: optimizer-reference (new) | R2 search | OPEN: two `todo` tests pin it; follow-up is a pair-level polish, measured as registry 48 was |
+| 33 | With 2 free transfers a free pair 0.18 and 0.40 better than the plan was never recommended. Two causes, not one: a sale made only to fund the other move was never an outgoing candidate (variant-21), and the shortlist ranked on a proxy that adds the bench's auto-sub value the planner's objective leaves out, so plans it preferred sat 25th to 54th and were cut (stress-5). A sweep of 396 seeded squads found 7 such misses on master | CI: optimizer-reference (new); closed 2026-11-02 | R2 search | `fundingPairs` and `shortlistOnObjective` (registry 50; the shortlist half by owner override of its replay guard, 2023-24 at -15.4 a window); both `todo`s and three neighbours (1 and 2 FT, one more of each cause) are reference cases; a property that within one move count the search orders plans exactly as `scoreCandidate` does; transfers.test restated on chips.js `squadTrajectory`; 0 of 396 after; 4 mutants |
 | 34 | The "held on a tie" test never tested a tie (`>=` survived) | mutation-check (new) | R5 dead test | tie assertion in chips.test |
 | 35 | The search's own club-limit check was unguarded; illegal plans could crowd the shortlist and a legal +15 upgrade be dropped for a roll | mutation-check (new) | R5 dead test | crowded-shortlist case in transfers.test |
 | 36 | One 403 backed the whole proxy off for 120 s (503s for every uncached path, the app's own retry defeated); the probe read once where the app retries; a red result then stood six hours (#616) | monitor (#616, 2026-10-17) | R6 ops path | corroborated backoff, `x-fpl-upstream`, probe re-read, hourly recheck while red; fpl.test, fpl-health.test; 5 mutants |
 | 37 | Both health probes judged FPL's routine update after a deadline as a failure: GitHub started the probe 5 s after GW8's deadline and every manager read 503'd (red, exit 2), and the Netlify 18:41 run would have opened an incident 11 min after GW10's 18:30 deadline | monitor (GitHub probe run 39995547754, 2026-10-23) | R6 ops path | `UPDATE_WINDOW_MS` / `updateWindowAt`: the CLI waits the window out, the Netlify run defers to the next hour, deferral counts as the scheduler running; probe-sample, fpl-health, probe-freshness; 6 mutants |
+| 43 | Registry 50's search reached every plan `search-corrections` pins without the polish, so `planner-polish-off` survived: the polish was unguarded although it still improves deep plans (5 of 117 squads at 3 to 5 FT, up to 1.40) | mutation-check (2026-11-02, the round that caused it) | R5 dead test | variant-31 at 4 FT and variant-21 at 5 FT in optimizer-reference's exhaustive one-swap neighbourhood; the mutant now runs that file too |
 | 42 | The probe's sample paced its FPL requests on `Date.now()`: a wall clock stepping forward made it send two requests 21 ms apart, and one stepping back (the owner's WSL machine, about -964 ms every 32 s) made its polite gaps read as short to the test, which failed intermittently ("280 ms", 2026-10-25 04:34:18 UTC, the moment a logged clock step) | intermittent `npm test` failure, investigated (2026-10-25) | R6 ops path | pacing on `performance.now()`; probe-sample logs requests on the monotonic clock and runs the polite case under clocks stepping forward and back; mutant `probe-pacing-on-wall-clock` |
 | 41 | After a deadline passed with the page open, the "Recalculate for Gameweek N+1" button planned gameweek N again (`reactToDeadline` left no pending squad, so `recalculate` reused the old squad state, whose gameweek the planner plans) | Claude, building the gameweek-transition e2e for #630 (2026-10-25) | R4 boundary | the moved branch builds the new gameweek's squad state as `connectAndPlan` does; e2e/plan-history G (fails on the old code: still "Gameweek 13") |
 | 40 | A plan for the next gameweek, computed in the same session after a deadline, was compared with the previous gameweek's in-memory plan ("Plan updated", previously the GW N plan); the scope key named team and season only, and `diffPlanVersions` does not check the gameweek | owner review of #630 (2026-10-25) | R4 boundary | `comparableVersion` takes the in-memory record only for the same gameweek (`plan.gw`); plan-history-scope test 10, e2e/plan-history G; mutant `history-memory-any-gameweek` |
@@ -438,11 +439,32 @@ What was found and fixed, by area:
   to 1.3) were ranked out on the search's fast proxy, which disagrees with the
   objective; #611's wider shortlist moved that line but half were out of reach
   of any width. Now the depth counts the allowed hits, and the two leading
-  plans are polished on the objective itself. Nine 0.1 to 1.3 misses remain,
+  plans are polished on the objective itself. Nine 0.1 to 1.3 misses remained,
   each differing from the better plan in two or more moves; a whole-move swap
-  closed none of them at twice the CPU. That residual is the honest limit of a
-  heuristic over 10^10 plans, stated rather than hidden: the five real GW7
-  managers and the owner match an exhaustive search for 0 to 3 transfers.
+  closed none of them at twice the CPU. **Most of that residual was one
+  mismatch, found 2026-11-02 (registry 50, ledger 33):** the search ranked its
+  shortlist on `squadHorizonValue`, which adds the bench's auto-sub value, and
+  the planner's objective does not pay it. With that term removed the search's
+  exact score equals `scoreCandidate`'s objective to the last digit within one
+  move count; with it they disagreed by 0.5 to 0.8 points (one sd) on plans
+  0.04 to 0.40 apart. Together with funding pairs this took the exact 0 to 2
+  move reference from 7 misses in 396 seeded squads to none. On the replay
+  the shortlist change failed its pre-registered guard (2023-24 at -15.4 a
+  window, limit -15; overall -2.4, t -0.45) and ships by owner override: it
+  only lets the planner see what its own objective prefers. Deeper plans
+  (three to five moves) are still a heuristic over 10^10 and are checked only
+  by the one-swap neighbourhood; the five real GW7 managers and the owner match
+  an exhaustive search for 0 to 3 transfers.
+- **The search and the planner rank on one number; do not put the bench back
+  into the search alone.** `optimizeLineup` still uses auto-sub value to choose
+  WHICH eleven starts; what the planner does not do is add it to a squad's
+  value, and a search that does ranks squads the planner will then refuse
+  (transfers.test: a coin-flip keeper ranked first at 228.9 on the proxy is
+  220.7 on the objective, 4.5 below holding). If bench points should count,
+  and registry 50's 2023-24 loss hints they might, they go into
+  `squadObjective` so both move together: a pre-registered model experiment,
+  not a search setting. A real armband in the fast stage closes nothing more on
+  118 squads at 2.2x the plan's CPU.
 - **The Triple Captain compared weeks on two scales** (`chips.js`; registry
   49): projections inside the horizon, an extrapolation past it, so the same
   week was worth 5.45 or 6.30 and the week named best moved with the Horizon

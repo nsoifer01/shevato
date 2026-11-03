@@ -205,6 +205,38 @@ export const MUTANTS = [
     guards: 'The search depth counts allowed hits, so 2 free transfers can reach a third move (registry 48, 2026-10-16).',
   },
   {
+    id: 'transfers-funding-pairs-off',
+    file: `${ENGINE}/transfers.js`,
+    find: '  fundingPairs: true,\n',
+    replace: '  fundingPairs: false,\n',
+    tests: [T('optimizer-reference')],
+    guards: 'A sale made only for the money it frees reaches the pair search (variant-21, registry 50, 2026-11-02).',
+  },
+  {
+    id: 'transfers-shortlist-proxy',
+    file: `${ENGINE}/transfers.js`,
+    find: '  shortlistOnObjective: true,\n',
+    replace: '  shortlistOnObjective: false,\n',
+    tests: [T('optimizer-reference')],
+    guards: 'The shortlist ranks on the planner\'s objective, not a proxy with the bench\'s auto-sub value (stress-5, registry 50, 2026-11-02).',
+  },
+  {
+    id: 'transfers-exact-stage-proxy',
+    file: `${ENGINE}/transfers.js`,
+    find: '    ? squadObjective(squad, projections, gw, R, { ...opts, armbandCache })\n',
+    replace: '    ? squadHorizonValue(squad, projections, gw, R, opts)\n',
+    tests: [T('optimizer-reference')],
+    guards: 'The exact re-score is squadObjective itself, so within a move count it orders plans as the planner does (registry 50, 2026-11-02).',
+  },
+  {
+    id: 'transfers-fast-stage-autosubs',
+    file: `${ENGINE}/transfers.js`,
+    find: '    for (const g of r.byGw) total += g.weight * (g.value - g.autosubValue);\n',
+    replace: '    for (const g of r.byGw) total += g.weight * g.value;\n',
+    tests: [T('optimizer-reference')],
+    guards: 'The fast stage leaves out the bench\'s auto-sub value, which cut the variant-29 and stress-5 plans (registry 50, 2026-11-02).',
+  },
+  {
     id: 'transfers-club-limit-off',
     file: `${ENGINE}/transfers.js`,
     find: '    if (clubLimitBreaches(squad, players, R.clubLimit, ownedIds).length) return;\n',
@@ -219,7 +251,10 @@ export const MUTANTS = [
     file: `${ENGINE}/planner.js`,
     find: 'polish: options.polish === undefined ? true : !!options.polish,',
     replace: 'polish: options.polish === undefined ? false : !!options.polish,',
-    tests: [T('search-corrections')],
+    // search-corrections alone stopped noticing this mutant on 2026-11-02:
+    // registry 50's search reaches its plans unpolished. The neighbourhood
+    // test's deep squads (variant-31 at 4 FT, variant-21 at 5) still need it.
+    tests: [T('search-corrections'), T('optimizer-reference')],
     guards: 'The leading transfer plans are polished on the ranking objective by default (registry 48, 2026-10-16).',
   },
   {

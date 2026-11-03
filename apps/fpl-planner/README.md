@@ -903,16 +903,27 @@ one case of fourteen tight-budget variants the search still missed (a 1.0m
 bank with selling prices cut to three quarters: Gabriel to Senesi and Garner to
 Zubimendi, 174.49, two players ranked 9th to 24th by value who are the best
 pair only once the money is counted); 20 of 20 variants now match a screened
-optimum. The search ranks its candidates on a fast lineup proxy and re-scores
-the best 24 exactly before the planner ranks them (16 until 2026-10-16, when a
-real manager's better three-move plan was cut at 16; registry 47). Because
-that proxy and the planner's objective still disagree, the best plan without a
+optimum. Since 2026-11-02 every outgoing candidate is also paired, the same
+budget-aware way, with every other owned player, because a sale made only for
+the money it frees (a 7.6m forward for the best 6.1m one, paying for a winger
+upgrade) is neither a big upgrade nor cheap cash per point, so the outgoing
+prune never offered it (registry 50). The search ranks its candidates on a
+fast lineup proxy and re-scores the best 24 exactly before the planner ranks
+them (16 until 2026-10-16, when a real manager's better three-move plan was cut
+at 16; registry 47). Both stages rank on the planner's own objective: the fast
+stage leaves out the bench's auto-substitution value and the exact stage is
+`squadObjective` itself. Until 2026-11-02 both added that bench value, which
+the planner's objective does not pay, and that alone moved plans the planner
+preferred out of the shortlist (registry 50). Because the fast stage still
+plays a quicker lineup and captains the top projection, the best plan without a
 hit and the best with one are then POLISHED on the objective itself
 (`polishTopCandidates` in planner.js): single swaps of a move's incoming or
 outgoing player within his position, legal and scored exactly, taken while they
-improve (registry 48). On 40 stress squads this closed six of thirteen misses;
-the nine left are 0.1 to 1.3 points over a five-week objective of about 200,
-plans that differ in two or more moves at once.
+improve (registry 48). On 40 stress squads this closed six of thirteen misses,
+nine of 0.1 to 1.3 points left that differ in two or more moves at once.
+Against the exact 0 to 2 move reference in `tests/optimizer-reference.test.mjs`
+the search missed 7 of 396 seeded squads (0, 1, 2, 4 and 5 free transfers)
+before registry 50 and misses none after it.
 Deterministic throughout; a full plan costs one to two seconds of CPU on a
 live-sized pool against a ten-second budget, up to about five for a manager
 holding a Wildcard and a Free Hit.
@@ -1246,8 +1257,10 @@ prevention: the defect ledger"; the rules are in the repository `CLAUDE.md`):
   exactly on squads derived from real managers (0 to 5 free transfers, bank 0,
   a binding club limit, each risk profile), differential checks between paths
   that answer the same question ("why not" depth, re-scored plans, ordering,
-  determinism) and metamorphic properties. About 18 s. Two `todo` tests pin
-  the open pair-search gap (ledger row 33).
+  determinism) and metamorphic properties, plus a property that within one
+  move count the search's exact stage orders plans exactly as the planner's
+  `scoreCandidate` does. About 28 s. The five squads registry 50 was found on
+  are reference cases (they were `todo` until 2026-11-02, ledger row 33).
 - `tests/surface-consistency.test.mjs`: 60 real plans (managers, risk
   profiles, horizons, chip states, the GW19 expiry week) rendered with the
   shipped dashboard code in worker threads; the surfaces must agree with the

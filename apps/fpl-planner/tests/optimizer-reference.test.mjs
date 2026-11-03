@@ -297,6 +297,20 @@ const REFERENCE_CASES = [
   { name: 'variant-37', make: () => variant(37) },
   { name: 'variant-12 (bank 0)', make: () => variant(12, { bankTenths: 0 }) },
   { name: 'club-bound', make: () => clubBound() },
+  // Registry 50, both causes and a neighbour of each, found by sweeping 118
+  // seeded squads (1 to 3 FT) against this reference. FUNDING: the better
+  // pair sells a player only for the money he frees, so the outgoing prune
+  // never offered him (variant-21 at 2 FT: 578,165>427,569 at 194.936 against
+  // 194.759; variant-10 at 2 FT: 48,165>427,569, 0.73 better). SHORTLIST: the
+  // better plan was generated but ranked 25th to 54th on a proxy that adds
+  // the bench's auto-sub value, and cut (stress-5: 391,565>112,427 at 190.403
+  // against 190.003; variant-29 at 1 FT: 449>4, 0.13 better; variant-10 at
+  // 1 FT: 40>12, 0.04 better). Until 2026-11-02 the first two were `todo`.
+  { name: 'variant-21 (2 FT, funding)', make: () => variant(21) },
+  { name: 'variant-10 (2 FT, funding)', make: () => variant(10, { freeTransfers: 2 }) },
+  { name: 'audit stress-5 (2 FT, shortlist)', make: () => stress5() },
+  { name: 'variant-29 (1 FT, shortlist)', make: () => variant(29, { freeTransfers: 1 }) },
+  { name: 'variant-10 (1 FT, shortlist)', make: () => variant(10, { freeTransfers: 1 }) },
 ];
 
 // A squad holding three players of the club whose best unowned player is the
@@ -333,6 +347,20 @@ function clubBound() {
   return CLUB.state;
 }
 
+// The audit's stress-5 squad (tests/fixtures/gw7-2026/search-cases.json).
+function stress5() {
+  const { cases } = JSON.parse(readFileSync(join(HERE, 'fixtures', 'gw7-2026', 'search-cases.json'), 'utf8'));
+  const c = cases.find(x => x.name === 'stress-5');
+  const base = squadFor(c.label);
+  return spent({
+    ...base,
+    picks: c.picks.map(([playerId, purchaseTenths, sellingTenths], k) => ({
+      ...base.picks[k], playerId, purchaseTenths, sellingTenths, isCaptain: false, isViceCaptain: false,
+    })),
+    bankTenths: c.bankTenths, freeTransfers: c.freeTransfers,
+  });
+}
+
 let referencePlans = 0;
 let referenceSquads = 0;
 const planned = new Map();
@@ -357,56 +385,17 @@ for (const c of REFERENCE_CASES) {
   });
 }
 
-// Squads where the property FAILS on the shipped search. Kept as named cases
-// so the gap is visible and so the day the search closes it, the todo turns
-// into a pass that can be promoted. Both are free two-move plans, each
-// differing from the recommendation in both moves: the residual the registry
-// (48) describes as the honest limit of the heuristic, here at TWO free
-// transfers, inside the space the planner claims to search.
-const KNOWN_MISSES = [
-  {
-    name: 'variant-21 (2 FT)',
-    make: () => variant(21),
-    todo: 'free pair 578,165>427,569 scores 194.936 against the plan 578,153>542,112 at 194.759; the pair search never generates it',
-  },
-  {
-    name: 'audit stress-5 (2 FT)',
-    make: () => stress5(),
-    todo: 'free pair 391,565>112,427 scores 190.403, against the plan 565,165>427,569 at 190.003; the pair search never generates it',
-  },
-];
-
-function stress5() {
-  const { cases } = JSON.parse(readFileSync(join(HERE, 'fixtures', 'gw7-2026', 'search-cases.json'), 'utf8'));
-  const c = cases.find(x => x.name === 'stress-5');
-  const base = squadFor(c.label);
-  return spent({
-    ...base,
-    picks: c.picks.map(([playerId, purchaseTenths, sellingTenths], k) => ({
-      ...base.picks[k], playerId, purchaseTenths, sellingTenths, isCaptain: false, isViceCaptain: false,
-    })),
-    bankTenths: c.bankTenths, freeTransfers: c.freeTransfers,
-  });
-}
-
-for (const c of KNOWN_MISSES) {
-  test(`exact reference, ${c.name}: the recommendation scores at least the best admissible 0-2 move plan`, { todo: c.todo }, async (t) => {
-    await anchor();
-    const bundle = await plan(c.make());
-    const ref = reference(bundle);
-    const { list } = shortfalls(bundle, ref);
-    t.diagnostic(`${describe(bundle)}; shortfalls ${JSON.stringify(list)}`);
-    assert.deepEqual(list, []);
-  });
-}
-
 // The polish (registry 48) is a local search; this is its neighbourhood,
-// enumerated exactly, on every reference squad plus two holding five free
-// transfers (variants 1 and 17), where the plans are four and five moves deep
-// and outside what the pair reference can reach.
+// enumerated exactly, on every reference squad plus four deep ones, where the
+// plans are four and five moves deep and outside what the pair reference can
+// reach: variants 1 and 17 at five free transfers, and variant-31 at four and
+// variant-21 at five, where the unpolished search returns a plan one swap
+// worse by 1.40 and 1.38 (found 2026-11-02, when registry 50's search reached
+// every plan search-corrections pins without the polish, so this is the test
+// that still fails when the polish is off).
 test('exact neighbourhood: no one-player swap improves any recommendation', async (t) => {
   await anchor();
-  const extra = [variant(1), variant(17)];
+  const extra = [variant(1), variant(17), variant(31, { freeTransfers: 4 }), variant(21, { freeTransfers: 5 })];
   const bundles = [...planned.values()];
   for (const s of extra) bundles.push(await plan(s));
   let tried = 0;
@@ -467,6 +456,46 @@ function searchAsPlanner(bundle, squadState, options = {}) {
     },
   });
 }
+
+// The search's exact stage ranks on the planner's own number (registry 50).
+// Under the balanced profile (no variance term), plans of one move count share
+// their hit cost and their banked-transfer value, so the planner's objectives
+// differ exactly by the squads' horizon totals. scoreCandidate reaches its
+// total through chips.js squadTrajectory, a code path the search does not
+// use, so it is the oracle here. Until 2026-11-02 the search's total added the
+// bench's auto-sub value and these differences disagreed by 0.5 to 0.8 points
+// (one sd), which is what cut the stress-5 and variant-29 plans above.
+test('shortlist: within a move count the search ranks on the planner\'s objective', async (t) => {
+  await anchor();
+  const squads = [ANCHOR.state, stress5(), variant(29, { freeTransfers: 1 }), variant(37)];
+  let compared = 0;
+  for (const s of squads) {
+    const bundle = await plan(s);
+    const S = scorerFor(bundle);
+    assert.equal(S.cfg.variancePreference, 0, 'the balanced profile has no variance term');
+    const raw = searchAsPlanner(bundle, bundle.squadState);
+    const byCount = new Map();
+    for (const r of raw) {
+      if (!r.transferCount) continue;
+      const scored = S.score(r.transfersOut, r.transfersIn);
+      if (!scored) continue;
+      if (!byCount.has(r.transferCount)) byCount.set(r.transferCount, []);
+      byCount.get(r.transferCount).push({ r, objective: scored.objective });
+    }
+    for (const [count, list] of byCount) {
+      const [first, ...rest] = list;
+      for (const x of rest) {
+        compared++;
+        const searchGap = x.r.horizonRaw - first.r.horizonRaw;
+        const plannerGap = x.objective - first.objective;
+        assert.ok(Math.abs(searchGap - plannerGap) < 1e-6,
+          `${describe(bundle)}, ${count} moves, ${x.r.key} against ${first.r.key}: search ${searchGap.toFixed(4)}, planner ${plannerGap.toFixed(4)}`);
+      }
+    }
+  }
+  t.diagnostic(`${compared} same-count pairs compared`);
+  assert.ok(compared > 40, `only ${compared} pairs compared`);
+});
 
 // ...and the search really generates plans that deep: with two free transfers
 // and one hit allowed, three-move plans exist (the stress-12 class), and with

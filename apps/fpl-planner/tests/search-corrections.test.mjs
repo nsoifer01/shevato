@@ -48,7 +48,12 @@ async function objectives(c, options) {
 
 for (const c of cases) {
   test(`${c.name} (${c.freeTransfers} free transfers): the planner reaches the better plan`, async () => {
-    const shipped = await objectives(c, { polish: false, transferOptions: { hitDepth: false } });
+    // The search as shipped then: before registry 48 (hit depth, polish) and
+    // registry 50 (funding pairs, the shortlist on the objective), which on its
+    // own also reaches three of these plans.
+    const shipped = await objectives(c, {
+      polish: false, transferOptions: { hitDepth: false, fundingPairs: false, shortlistOnObjective: false },
+    });
     assert.ok(Math.abs(shipped.better - c.better.objective) < 1e-6, 'the fixture still scores as recorded');
     assert.ok(shipped.plan < shipped.better - 0.05, `the search as shipped until 2026-10-16 returned ${shipped.plan.toFixed(3)} against ${shipped.better.toFixed(3)}`);
     const now = await objectives(c, {});
