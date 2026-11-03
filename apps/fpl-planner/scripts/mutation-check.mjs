@@ -251,7 +251,10 @@ export const MUTANTS = [
     file: `${ENGINE}/planner.js`,
     find: 'polish: options.polish === undefined ? true : !!options.polish,',
     replace: 'polish: options.polish === undefined ? false : !!options.polish,',
-    tests: [T('search-corrections')],
+    // search-corrections alone stopped noticing this mutant on 2026-11-02:
+    // registry 50's search reaches its plans unpolished. The neighbourhood
+    // test's deep squads (variant-31 at 4 FT, variant-21 at 5) still need it.
+    tests: [T('search-corrections'), T('optimizer-reference')],
     guards: 'The leading transfer plans are polished on the ranking objective by default (registry 48, 2026-10-16).',
   },
   {

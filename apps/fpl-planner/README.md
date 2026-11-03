@@ -1259,7 +1259,7 @@ prevention: the defect ledger"; the rules are in the repository `CLAUDE.md`):
   that answer the same question ("why not" depth, re-scored plans, ordering,
   determinism) and metamorphic properties, plus a property that within one
   move count the search's exact stage orders plans exactly as the planner's
-  `scoreCandidate` does. About 26 s. The five squads registry 50 was found on
+  `scoreCandidate` does. About 28 s. The five squads registry 50 was found on
   are reference cases (they were `todo` until 2026-11-02, ledger row 33).
 - `tests/surface-consistency.test.mjs`: 60 real plans (managers, risk
   profiles, horizons, chip states, the GW19 expiry week) rendered with the

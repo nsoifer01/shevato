@@ -386,12 +386,16 @@ for (const c of REFERENCE_CASES) {
 }
 
 // The polish (registry 48) is a local search; this is its neighbourhood,
-// enumerated exactly, on every reference squad plus two holding five free
-// transfers (variants 1 and 17), where the plans are four and five moves deep
-// and outside what the pair reference can reach.
+// enumerated exactly, on every reference squad plus four deep ones, where the
+// plans are four and five moves deep and outside what the pair reference can
+// reach: variants 1 and 17 at five free transfers, and variant-31 at four and
+// variant-21 at five, where the unpolished search returns a plan one swap
+// worse by 1.40 and 1.38 (found 2026-11-02, when registry 50's search reached
+// every plan search-corrections pins without the polish, so this is the test
+// that still fails when the polish is off).
 test('exact neighbourhood: no one-player swap improves any recommendation', async (t) => {
   await anchor();
-  const extra = [variant(1), variant(17)];
+  const extra = [variant(1), variant(17), variant(31, { freeTransfers: 4 }), variant(21, { freeTransfers: 5 })];
   const bundles = [...planned.values()];
   for (const s of extra) bundles.push(await plan(s));
   let tried = 0;
