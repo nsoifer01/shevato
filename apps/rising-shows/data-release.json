@@ -1,14 +1,14 @@
 {
-  "releaseId": "20261103-141005-102f226",
-  "builtAt": "2026-11-03T14:10:10.140Z",
+  "releaseId": "20261104-142632-10e7e89",
+  "builtAt": "2026-11-04T14:26:35.782Z",
   "assets": {
     "data.json.gz": {
-      "sha256": "4c5cc2cde1f3a59f2e23960ad153bcb08caf782aa6a5275cd2556dbc8847acc5",
-      "bytes": 18452700
+      "sha256": "6b224df56bddbeadf88079e389b18ed46831247007a0109132fe7a20e2f04953",
+      "bytes": 18458567
     },
     "show-modal-extras.json.gz": {
-      "sha256": "69c39bdadcfa0f87d634949e44b34b7cbf6f327c8d70ba209e4db5c5ecb16e35",
-      "bytes": 22893407
+      "sha256": "2b606a8c4834406f74eda063eaac450c90cfdd0e43ce645d45b0174ec0324d8e",
+      "bytes": 22897799
     }
   }
 }
