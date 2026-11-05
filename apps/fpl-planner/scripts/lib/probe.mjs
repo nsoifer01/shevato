@@ -522,8 +522,9 @@ export async function runProbe({ bootstrap, fixtures, fetchedAt, now = null, sou
   // withholds advice from EVERY manager, so it is an incident whichever way it
   // is wrong: the data broke, or the check misread a real week. GW10 2026/27
   // was the second (ledger row 44): `projection_inverted` held the app at
-  // `display` for a day while every check here passed, because this probe only
-  // ever asked whether the ladder licensed too much.
+  // `display` for five days (31 October to 5 November) while every check here
+  // passed, because this probe only ever asked whether the ladder licensed too
+  // much.
   const shapeBlocks = evidence.usable && evidence.kind === 'current-season'
     ? readiness.blocked.filter((b) => POOL_SHAPE_BLOCKS.includes(b.code))
     : [];
