@@ -43,3 +43,35 @@ test('a non-payload is refused by shape before anything is built', () => {
   assert.equal(payloadShapeFailures({ error: 'updating' }, []).length, 2);
   assert.deepEqual(payloadShapeFailures(bootstrap, fixtures), []);
 });
+
+// Ledger row 44: a pool-shape refusal on this season's evidence withholds
+// advice from every manager, so the probe fails on it whichever way it is
+// wrong. Both directions on real payloads.
+const SHAPE_CHECK = "the pool's shape does not withhold the plan";
+const gw10 = (() => {
+  const dir = join(APP, 'tests', 'fixtures', 'gw10-2026');
+  const J = (f) => JSON.parse(readFileSync(join(dir, f), 'utf8'));
+  const expand = ({ fields, rows }) => rows.map((r) => Object.fromEntries(fields.map((f, i) => [f, r[i]])));
+  const raw = J('bootstrap.json');
+  return { bootstrap: { ...raw, elements: expand(raw.elements) }, fixtures: expand(J('fixtures.json')), fetchedAt: '2026-11-05T13:10:22.000Z' };
+})();
+
+test('GW10 2026/27, one defender above every attacker: the shape check passes and the ladder licenses chips', async () => {
+  const r = await runProbe({ ...gw10, now: gw10.fetchedAt, source: 'files', loadShipped });
+  const c = r.checks.find((x) => x.name === SHAPE_CHECK);
+  assert.ok(c, 'the check ran');
+  assert.equal(c.ok, true, `saw ${c.saw}`);
+  assert.equal(r.reading.readiness, 'chips', r.lines.join('\n'));
+});
+
+test('attacking numerators cleared mid-season (the 2026-08-22 shape): the shape check fails', async () => {
+  const CLEARED = ['goals_scored', 'assists', 'expected_goals', 'expected_assists', 'expected_goal_involvements',
+    'bonus', 'bps', 'threat', 'creativity', 'ict_index', 'total_points', 'form', 'points_per_game', 'ep_next', 'event_points'];
+  const elements = gw10.bootstrap.elements.map((e) => (e.element_type === 3 || e.element_type === 4
+    ? { ...e, ...Object.fromEntries(CLEARED.filter((k) => k in e).map((k) => [k, typeof e[k] === 'string' ? '0.0' : 0])) }
+    : e));
+  const r = await runProbe({ ...gw10, bootstrap: { ...gw10.bootstrap, elements }, now: gw10.fetchedAt, source: 'files', loadShipped });
+  const c = r.checks.find((x) => x.name === SHAPE_CHECK);
+  assert.equal(c.ok, false, r.lines.join('\n'));
+  assert.match(c.saw, /projection_inverted/);
+});

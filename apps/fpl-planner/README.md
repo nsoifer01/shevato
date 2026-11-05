@@ -715,10 +715,13 @@ Chips are not evaluated at all without a chip-grade licence, and transfer
 candidates are not built without a transfer-grade one, so a refusal degrades to
 holding the squad rather than to a blank screen. Every refusal carries a code
 and a sentence. The pool is also checked for shape - a collapsed spread, start
-rates pinned at one, a best eleven that is not a football score, and the best
-forwards and midfielders projecting BELOW the best defender (`projection_inverted`,
-the 2026-08-22 shape, which every aggregate check passed) - and those checks
-apply only to a real-sized pool, because they are claims about a league.
+rates pinned at one, a best eleven that is not a football score, and three or
+more defenders projecting ABOVE the best forward or midfielder (`projection_inverted`,
+the 2026-08-22 shape, which every aggregate check passed; one defender on top is
+an ordinary fixture week, as in GW10 2026/27) - and those checks apply only to a
+real-sized pool, because they are claims about a league. Any of them firing on
+current-season evidence fails the health probe ("the pool's shape does not
+withhold the plan"), because it withholds advice from every manager.
 
 Two more shape checks came from the 2026-09-16 xP audit, whose compressed
 league passed every check above: `minutes_compressed` (the median available
@@ -1266,7 +1269,7 @@ prevention: the defect ledger"; the rules are in the repository `CLAUDE.md`):
   shipped dashboard code in worker threads; the surfaces must agree with the
   numbers and each other, and a copy lint runs over every rendered line.
 - `scripts/mutation-check.mjs` (`npm run test:mutation:fpl`, and weekly in
-  `scheduled.yml`): breaks 22 critical rules one at a time in a temporary copy
+  `scheduled.yml`): breaks 56 critical rules one at a time in a temporary copy
   and requires the mapped tests to fail; `tests/mutation-check.test.mjs` keeps
   the table in step with the code on every run.
 
@@ -1313,6 +1316,13 @@ app does and runs every `plan-audit.mjs` check on it; it is derived by
 is 411 real managers' season histories reduced to transfers, charged hits and
 chips; `tests/transfer-state-real.test.mjs` holds the free-transfer replay to
 every one of those 2,454 charges.
+
+`tests/fixtures/gw10-2026/` is the whole league on 2026-11-05 (GW9 finished,
+GW10 next), with no managers, derived the same way. That gameweek one defender
+out-projects every attacker, which the old `projection_inverted` rule read as a
+collapsed pool; `tests/real-deadline-gw10.test.mjs` holds the app to its full
+licence there, and `tests/probe.test.mjs` runs the probe on it with and without
+the attackers' numerators cleared.
 
 `tests/fixtures/gw4-2026/` is the payload served on 2026-09-13 with MUN v MCI in
 play, plus that gameweek's live stats per player, derived by

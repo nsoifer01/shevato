@@ -33,6 +33,12 @@ import {
 // One minute past a deadline FPL still names that gameweek as next; it flips
 // within minutes. A next deadline more than this far in the past is stale.
 export const DEADLINE_GRACE_HOURS = 3;
+// readiness.js refusals that judge the projection pool's shape rather than
+// the manager's records or the gameweek's lifecycle.
+export const POOL_SHAPE_BLOCKS = Object.freeze([
+  'projection_implausible', 'projection_collapsed', 'start_rates_pinned',
+  'projection_inverted', 'minutes_compressed', 'appearance_inverted',
+]);
 // Spearman between the engine's gameweek projection and FPL's own ep_next over
 // every player with a fixture. Measured 0.835 over all 667 players (0.764 over
 // the 421 with minutes) on the live payload before the 2026/27 GW6 deadline
@@ -511,6 +517,20 @@ export async function runProbe({ bootstrap, fixtures, fetchedAt, now = null, sou
   check('the readiness ladder agrees with the evidence',
     !(readiness.allow.chips && !evidence.usable),
     `${readiness.level}`, 'a chip is never licensed on unusable evidence');
+
+  // The other direction. A pool-shape block on this season's own evidence
+  // withholds advice from EVERY manager, so it is an incident whichever way it
+  // is wrong: the data broke, or the check misread a real week. GW10 2026/27
+  // was the second (ledger row 44): `projection_inverted` held the app at
+  // `display` for a day while every check here passed, because this probe only
+  // ever asked whether the ladder licensed too much.
+  const shapeBlocks = evidence.usable && evidence.kind === 'current-season'
+    ? readiness.blocked.filter((b) => POOL_SHAPE_BLOCKS.includes(b.code))
+    : [];
+  check("the pool's shape does not withhold the plan",
+    shapeBlocks.length === 0,
+    shapeBlocks.length ? `${readiness.level}, blocked ${shapeBlocks.map((b) => b.code).join(', ')}` : `${readiness.level}`,
+    'no pool-shape refusal on current-season evidence', { skip: !evidence.usable });
 
   const lines = [];
     lines.push(`season          ${rules.season}`);
