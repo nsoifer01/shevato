@@ -1,6 +1,282 @@
 {
   "updates": [
     {
+      "builtAt": "2026-11-05T14:47:19.979Z",
+      "totals": {
+        "seasons": 67744,
+        "delta": 18
+      },
+      "shapeCounts": {
+        "rebound": 9783,
+        "big-finale": 11864,
+        "u-shaped": 2653,
+        "rollercoaster": 13515,
+        "mid-peak": 4381,
+        "consistent": 2544,
+        "bad-finale": 4373,
+        "front-loaded": 3090,
+        "slow-burn": 3990,
+        "declining": 1642,
+        "saved-best-for-last": 1383,
+        "shape-drift": 1393,
+        "rising": 2381
+      },
+      "shapeDeltas": {
+        "rebound": 9,
+        "big-finale": 16,
+        "u-shaped": 9,
+        "rollercoaster": 13,
+        "mid-peak": 3,
+        "bad-finale": -1,
+        "front-loaded": -3,
+        "slow-burn": 8,
+        "declining": -5,
+        "saved-best-for-last": 1,
+        "shape-drift": -3,
+        "rising": 10
+      },
+      "added": [
+        {
+          "seriesId": "tt39325975",
+          "title": "The Remarried Empress",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt38411336",
+          "title": "Halef: Köklerin Çagrisi",
+          "season": 1,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt38411336",
+          "title": "Halef: Köklerin Çagrisi",
+          "season": 2,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt39957390",
+          "title": "Bass x Machina",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt40002142",
+          "title": "Blue Planet III",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt11425668",
+          "title": "Augie Doggie and Doggie Daddy",
+          "season": 1,
+          "seasonYear": 1959
+        },
+        {
+          "seriesId": "tt11575212",
+          "title": "Las aventuras de Roberto Manfinfla",
+          "season": 1,
+          "seasonYear": 2002
+        },
+        {
+          "seriesId": "tt14985042",
+          "title": "The 2021 NBA Finals",
+          "season": 1,
+          "seasonYear": 2021
+        },
+        {
+          "seriesId": "tt27814427",
+          "title": "Skibidi Toilet",
+          "season": 27,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt15943282",
+          "title": "The Golden Cobra",
+          "season": 2,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt36119015",
+          "title": "Adultery",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt38890881",
+          "title": "Émigrés européens, des récits oubliés",
+          "season": 1,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt49211076",
+          "title": "Taxi",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt5365760",
+          "title": "Guldur Guldur Show",
+          "season": 3,
+          "seasonYear": 2014
+        },
+        {
+          "seriesId": "tt5365760",
+          "title": "Guldur Guldur Show",
+          "season": 12,
+          "seasonYear": 2023
+        },
+        {
+          "seriesId": "tt1092076",
+          "title": "Mega Man Star Force",
+          "season": 1,
+          "seasonYear": 2006
+        },
+        {
+          "seriesId": "tt1183335",
+          "title": "The Hotel Inspector",
+          "season": 8,
+          "seasonYear": 2011
+        },
+        {
+          "seriesId": "tt32206190",
+          "title": "RWBY Beyond",
+          "season": 1,
+          "seasonYear": 2024
+        },
+        {
+          "seriesId": "tt39206339",
+          "title": "Last Night Out",
+          "season": 1,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt43691343",
+          "title": "Uncle's Obsession with Cute Things",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt1324007",
+          "title": "Willy Fog 2",
+          "season": 1,
+          "seasonYear": 1993
+        }
+      ],
+      "removed": [
+        {
+          "seriesId": "tt38413198",
+          "title": "Halef: Köklerin Çagrisi",
+          "season": 1,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt38413198",
+          "title": "Halef: Köklerin Çagrisi",
+          "season": 2,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt39848811",
+          "title": "Kafeel",
+          "season": 1,
+          "seasonYear": 2025
+        }
+      ],
+      "ratingSwings": [
+        {
+          "seriesId": "tt7122766",
+          "title": "In the Vault",
+          "season": 2,
+          "from": 5.99,
+          "to": 7.8,
+          "delta": 1.81
+        },
+        {
+          "seriesId": "tt27921165",
+          "title": "Professor King",
+          "season": 2,
+          "from": 5.63,
+          "to": 7.28,
+          "delta": 1.65
+        },
+        {
+          "seriesId": "tt5365760",
+          "title": "Guldur Guldur Show",
+          "season": 11,
+          "from": 5.1,
+          "to": 3.85,
+          "delta": -1.25
+        },
+        {
+          "seriesId": "tt4267324",
+          "title": "Variety Studio: Actors on Actors",
+          "season": 9,
+          "from": 6.57,
+          "to": 7.6,
+          "delta": 1.03
+        },
+        {
+          "seriesId": "tt43669648",
+          "title": "Günesin Dogdugu Yer",
+          "season": 1,
+          "from": 7.25,
+          "to": 6.36,
+          "delta": -0.89
+        },
+        {
+          "seriesId": "tt4267324",
+          "title": "Variety Studio: Actors on Actors",
+          "season": 3,
+          "from": 7.37,
+          "to": 8.2,
+          "delta": 0.83
+        },
+        {
+          "seriesId": "tt8796226",
+          "title": "Checkout",
+          "season": 6,
+          "from": 7.85,
+          "to": 8.67,
+          "delta": 0.82
+        },
+        {
+          "seriesId": "tt15059482",
+          "title": "Burning Questions",
+          "season": 5,
+          "from": 6.83,
+          "to": 7.6,
+          "delta": 0.77
+        },
+        {
+          "seriesId": "tt5365760",
+          "title": "Guldur Guldur Show",
+          "season": 9,
+          "from": 5.94,
+          "to": 5.19,
+          "delta": -0.75
+        },
+        {
+          "seriesId": "tt27440690",
+          "title": "Jaatishawr",
+          "season": 1,
+          "from": 6.13,
+          "to": 5.39,
+          "delta": -0.74
+        }
+      ],
+      "modifiedCounts": {
+        "seriesVotes": 20088,
+        "avgRating": 1454,
+        "shapes": 278,
+        "episodeCount": 82,
+        "seriesRating": 318,
+        "poster": 7,
+        "providers": 6,
+        "overview": 7
+      }
+    },
+    {
       "builtAt": "2026-11-04T14:25:54.017Z",
       "totals": {
         "seasons": 67726,
@@ -8002,246 +8278,6 @@
         "overview": 6,
         "episodeCount": 65,
         "providers": 1
-      }
-    },
-    {
-      "builtAt": "2026-10-07T13:20:11.216Z",
-      "totals": {
-        "seasons": 67077,
-        "delta": 16
-      },
-      "shapeCounts": {
-        "rebound": 10233,
-        "rising": 2635,
-        "slow-burn": 4446,
-        "big-finale": 12234,
-        "u-shaped": 3079,
-        "rollercoaster": 14218,
-        "saved-best-for-last": 1475,
-        "shape-drift": 1587,
-        "mid-peak": 4629,
-        "front-loaded": 3523,
-        "declining": 1909,
-        "bad-finale": 4684,
-        "consistent": 2649
-      },
-      "shapeDeltas": {
-        "rebound": 9,
-        "rising": -3,
-        "slow-burn": -1,
-        "big-finale": -3,
-        "u-shaped": -4,
-        "rollercoaster": -3,
-        "saved-best-for-last": -4,
-        "mid-peak": -2,
-        "front-loaded": 11,
-        "declining": -1,
-        "bad-finale": 3,
-        "consistent": 3
-      },
-      "added": [
-        {
-          "seriesId": "tt27416748",
-          "title": "Billionaire Island",
-          "season": 1,
-          "seasonYear": 2024
-        },
-        {
-          "seriesId": "tt39365612",
-          "title": "Line of Fire",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt37357034",
-          "title": "Shadow Punisher",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt0123366",
-          "title": "The View",
-          "season": 30,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt0045397",
-          "title": "I Led 3 Lives",
-          "season": 3,
-          "seasonYear": 1955
-        },
-        {
-          "seriesId": "tt0421099",
-          "title": "Grand Designs",
-          "season": 28,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt3330720",
-          "title": "The Last Leg",
-          "season": 20,
-          "seasonYear": 2020
-        },
-        {
-          "seriesId": "tt7316998",
-          "title": "Richard Osman's House of Games",
-          "season": 10,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt38483587",
-          "title": "Gènesi",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt44123117",
-          "title": "Criminal Persian Style",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt0123338",
-          "title": "60 Minutes",
-          "season": 59,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt9280252",
-          "title": "Tozkoparan",
-          "season": 3,
-          "seasonYear": 2019
-        },
-        {
-          "seriesId": "tt4397866",
-          "title": "Storyville",
-          "season": 30,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt12368998",
-          "title": "Marriage of Inconvenience",
-          "season": 1,
-          "seasonYear": 2023
-        },
-        {
-          "seriesId": "tt30422469",
-          "title": "Pickle Storm",
-          "season": 1,
-          "seasonYear": 2024
-        },
-        {
-          "seriesId": "tt32495765",
-          "title": "The Face Doctors",
-          "season": 1,
-          "seasonYear": 2024
-        },
-        {
-          "seriesId": "tt27957332",
-          "title": "Himlands",
-          "season": 3,
-          "seasonYear": 2021
-        }
-      ],
-      "removed": [
-        {
-          "seriesId": "tt29306091",
-          "title": "Billionaire Island",
-          "season": 1,
-          "seasonYear": 2024
-        }
-      ],
-      "ratingSwings": [
-        {
-          "seriesId": "tt0112066",
-          "title": "Maybe This Time",
-          "season": 1,
-          "from": 2.87,
-          "to": 4.43,
-          "delta": 1.56
-        },
-        {
-          "seriesId": "tt0174388",
-          "title": "The Famous Jett Jackson",
-          "season": 3,
-          "from": 6.6,
-          "to": 5.83,
-          "delta": -0.77
-        },
-        {
-          "seriesId": "tt0174388",
-          "title": "The Famous Jett Jackson",
-          "season": 2,
-          "from": 6.02,
-          "to": 5.3,
-          "delta": -0.72
-        },
-        {
-          "seriesId": "tt31841438",
-          "title": "Prefiero la Muerte",
-          "season": 1,
-          "from": 6.91,
-          "to": 6.21,
-          "delta": -0.7
-        },
-        {
-          "seriesId": "tt31975566",
-          "title": "Adv. Achinta Aich",
-          "season": 3,
-          "from": 7.1,
-          "to": 6.41,
-          "delta": -0.69
-        },
-        {
-          "seriesId": "tt33096993",
-          "title": "Have I Got News for You",
-          "season": 5,
-          "from": 7.67,
-          "to": 7,
-          "delta": -0.67
-        },
-        {
-          "seriesId": "tt35990713",
-          "title": "Sneak Me in Your Closet My Prince",
-          "season": 1,
-          "from": 8.54,
-          "to": 7.87,
-          "delta": -0.67
-        },
-        {
-          "seriesId": "tt0174388",
-          "title": "The Famous Jett Jackson",
-          "season": 1,
-          "from": 6.4,
-          "to": 5.76,
-          "delta": -0.64
-        },
-        {
-          "seriesId": "tt10590066",
-          "title": "All Creatures Great & Small",
-          "season": 7,
-          "from": 5.87,
-          "to": 6.47,
-          "delta": 0.6
-        },
-        {
-          "seriesId": "tt0418387",
-          "title": "Epta thanasimes petheres",
-          "season": 2,
-          "from": 6.8,
-          "to": 7.3,
-          "delta": 0.5
-        }
-      ],
-      "modifiedCounts": {
-        "seriesVotes": 20443,
-        "avgRating": 1065,
-        "poster": 13,
-        "providers": 15,
-        "overview": 14,
-        "shapes": 169,
-        "seriesRating": 290,
-        "episodeCount": 72
       }
     }
   ]
