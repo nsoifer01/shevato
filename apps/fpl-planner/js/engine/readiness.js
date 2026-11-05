@@ -92,9 +92,20 @@ export const MIN_GROUP_FOR_MINUTES_CHECKS = 30;
 const BENCH_APPEARANCE_MARGIN = 0.2;
 
 // FPL position ids. The inversion check below is a statement about the sport:
-// the best forward and the best midfielder in a league out-project the best
-// defender, because goals outscore clean sheets. When both fall below him the
-// attacking rates have collapsed, whatever the best-eleven total reads.
+// goals outscore clean sheets, so the top of a league's projections belongs to
+// attackers. One defender can still top it in a real week (GW10 2026/27:
+// Gabriel, Arsenal at home to Hull, 5.98 over Mbeumo's 5.45), so the check
+// counts DEFENDERS above the best attacker rather than comparing the two best.
+// Measured on every deadline of four replayed seasons (2022-23 to 2025-26,
+// 152 deadlines) plus GW10 2026/27: a real week puts at most ONE defender
+// above the best attacker. Collapsed attacking rates put many there: 4 to 21
+// in 2022-23's first sixteen weeks (that season's replay has no expected-goals
+// data yet), and at least five on the 2026-08-22 production payload (best
+// forward 1.9, best midfielder 2.7, top defenders 4.8 to 5.5). Three sits in
+// the gap. Until 2026-11-05 the rule was "the best defender beats both", which
+// withheld every recommendation for GW10 2026/27 and would have for 2025-26
+// GW22 (ledger row 44).
+export const MIN_DEFENDERS_ABOVE_ATTACK = 3;
 const DEF = 2;
 const MID = 3;
 const FWD = 4;
@@ -119,9 +130,11 @@ export function projectionVitals(rows) {
   let counted = 0;
   const everPresent = [];
   const bench = [];
+  const defenders = [];
   for (const r of rows) {
     if (!r || !Number.isFinite(r.xPoints)) continue;
     xps.push(r.xPoints);
+    if (r.position === DEF) defenders.push(r.xPoints);
     if (Number.isFinite(r.clubMatches) && r.clubMatches >= MIN_CLUB_MATCHES_FOR_MINUTES_CHECKS
         && r.fixtureCount === 1 && Number.isFinite(r.pStart) && Number.isFinite(r.pAppear)) {
       if (r.seasonStarts >= r.clubMatches) {
@@ -144,6 +157,9 @@ export function projectionVitals(rows) {
   const best11 = xps.slice(0, 11).reduce((a, b) => a + b, 0);
   const median = xps[Math.floor(xps.length / 2)];
   const benchAppearMedian = medianOf(bench.map((r) => r.pAppear));
+  const positioned = [DEF, MID, FWD].every((k) => Number.isFinite(bestByPosition[k]));
+  const bestAttacker = positioned ? Math.max(bestByPosition[MID], bestByPosition[FWD]) : null;
+  const defendersAboveAttack = positioned ? defenders.filter((x) => x > bestAttacker).length : null;
   return {
     empty: false,
     count: xps.length,
@@ -151,11 +167,11 @@ export function projectionVitals(rows) {
     median,
     best11,
     bestByPosition,
-    // Null when the rows carried no positions; otherwise whether the best
-    // forward AND the best midfielder both sit below the best defender.
-    attackInverted: [DEF, MID, FWD].every((k) => Number.isFinite(bestByPosition[k]))
-      ? bestByPosition[FWD] < bestByPosition[DEF] && bestByPosition[MID] < bestByPosition[DEF]
-      : null,
+    // Null when the rows carried no positions; otherwise how many defenders
+    // out-project the best midfielder or forward, and whether that is the
+    // collapsed-attack shape (MIN_DEFENDERS_ABOVE_ATTACK or more).
+    defendersAboveAttack,
+    attackInverted: positioned ? defendersAboveAttack >= MIN_DEFENDERS_ABOVE_ATTACK : null,
     topMedianGap: xps[0] - median,
     pinnedHighShare: counted ? pinnedHigh / counted : 0,
     pinnedLowShare: counted ? pinnedLow / counted : 0,
@@ -221,7 +237,7 @@ export function assessReadiness({ evidence, lifecycle, vitals = null, baseline =
     // restored. The best eleven and the spread both looked healthy.
     if (vitals.attackInverted === true) {
       block('projection_inverted',
-        'The best forwards and midfielders in the game are projecting below the best defenders, which happens '
+        `${vitals.defendersAboveAttack} defenders are projecting above the best forward or midfielder in the game, which happens `
         + 'when scoring rates have been cleared while minutes have not. The projection inputs are not trustworthy.',
         LEVEL.DISPLAY);
     }

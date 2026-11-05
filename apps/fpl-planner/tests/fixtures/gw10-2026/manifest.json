@@ -1,0 +1,10 @@
+{
+  "source": "public FPL API, 2026-11-05T13:10Z (GW9 finished; GW10 deadline 2026-11-06T18:30Z)",
+  "derivedBy": "scripts/derive-gw7-fixtures.mjs",
+  "pool": 670,
+  "sha256": {
+    "bootstrap": "e6d8256afc59b7f9a3257f49d53b045df6a3ff8ca3f2a6f31dd84ca1f8394727",
+    "fixtures": "21380a7c757c88115650449f3e7fbd7d81ddb5fd53f5261117fcc9fa6fdc43e2"
+  },
+  "entries": []
+}

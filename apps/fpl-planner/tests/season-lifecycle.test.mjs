@@ -135,7 +135,20 @@ function bestByPosition(gs, projections, gw) {
   return best;
 }
 
-const named = (gs, webName) => [...gs.players.values()].find((p) => p.webName === webName);
+/** How many defenders out-project the best midfielder or forward, straight off the projection map. */
+function defendersAboveBestAttacker(gs, projections, gw) {
+  const best = bestByPosition(gs, projections, gw);
+  const attack = Math.max(best[POS.MID], best[POS.FWD]);
+  let n = 0;
+  for (const [id, rows] of projections.byPlayer) {
+    const p = gs.players.get(id);
+    const row = rows.find((r) => r.gw === gw);
+    if (p && p.position === POS.DEF && row && row.xPoints > attack) n++;
+  }
+  return n;
+}
+
+const named =(gs, webName) => [...gs.players.values()].find((p) => p.webName === webName);
 
 /* ========================================================================== */
 /* THE FIXTURE PHASE FPL LEAVES A MATCH IN FOR HOURS                          */
@@ -528,11 +541,14 @@ test('a legacy minutes-only snapshot is read honestly: priors for rates, a named
   // and on this payload they still rank the best defender a whisker above the
   // best attacker. That is exactly what the structural invariant is for: an
   // inverted pool is never allowed to order a lineup, whatever produced it.
+  // Inverted means three or more defenders above the best attacker (a real
+  // week puts at most one there; readiness.js MIN_DEFENDERS_ABOVE_ATTACK).
   const best = bestByPosition(gs, bundle.projections, 2);
-  const inverted = best[POS.FWD] < best[POS.DEF] && best[POS.MID] < best[POS.DEF];
+  const above = defendersAboveBestAttacker(gs, bundle.projections, 2);
+  const inverted = above >= 3;
   assert.equal(r.allow.lineup, !inverted,
     `an inverted pool must be withheld: best GKP/DEF/MID/FWD ${[1, 2, 3, 4].map((k) => (best[k] || 0).toFixed(2)).join('/')}, `
-    + `blocked ${r.blocked.map((b) => b.code).join(',')}`);
+    + `${above} defenders above the best attacker, blocked ${r.blocked.map((b) => b.code).join(',')}`);
   assert.equal(inverted, r.blocked.some((b) => b.code === 'projection_inverted'));
 });
 
@@ -609,6 +625,26 @@ test('a pool whose best attackers sit below its best defender is refused by shap
   assert.ok(r.blocked.some((b) => b.code === 'projection_inverted'));
   // Rows without positions cannot make the claim either way.
   assert.equal(projectionVitals(rows.map(({ xPoints, pStart }) => ({ xPoints, pStart }))).attackInverted, null);
+});
+
+test('one or two defenders above every attacker is a fixture week, three is a collapse', () => {
+  // GW10 2026/27 put one defender (Gabriel, Arsenal at home to Hull) above the
+  // best attacker, and the old rule withheld every recommendation for it. A
+  // healthy 300-player pool: attackers from 5.4 down, defenders from 4.0 down,
+  // then `n` defenders lifted above the best attacker.
+  const pool = (n) => Array.from({ length: 300 }, (_, i) => {
+    const position = i % 3 === 0 ? 2 : (i % 3 === 1 ? 3 : 4);
+    const xPoints = position === 2 ? (i / 3 < n ? 6 - i * 0.01 : 4 - i * 0.01) : 5.4 - i * 0.01;
+    return { xPoints, pStart: 0.6, position };
+  });
+  for (const [n, inverted] of [[0, false], [1, false], [2, false], [3, true], [5, true]]) {
+    const v = projectionVitals(pool(n));
+    assert.equal(v.defendersAboveAttack, n, `the pool was built with ${n} defenders above the best attacker`);
+    assert.equal(v.attackInverted, inverted, `${n} defenders above the best attacker`);
+    const r = assessReadiness({ evidence: { usable: true }, lifecycle: null, vitals: v });
+    assert.equal(r.blocked.some((b) => b.code === 'projection_inverted'), inverted, `${n}: ${r.blocked.map((b) => b.code).join(',')}`);
+    assert.equal(r.allow.lineup, !inverted, `${n} defenders above the best attacker`);
+  }
 });
 
 /**

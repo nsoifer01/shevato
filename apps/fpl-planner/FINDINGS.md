@@ -69,6 +69,7 @@ column names the guard added so the whole category is covered, not the case.
 | 35 | The search's own club-limit check was unguarded; illegal plans could crowd the shortlist and a legal +15 upgrade be dropped for a roll | mutation-check (new) | R5 dead test | crowded-shortlist case in transfers.test |
 | 36 | One 403 backed the whole proxy off for 120 s (503s for every uncached path, the app's own retry defeated); the probe read once where the app retries; a red result then stood six hours (#616) | monitor (#616, 2026-10-17) | R6 ops path | corroborated backoff, `x-fpl-upstream`, probe re-read, hourly recheck while red; fpl.test, fpl-health.test; 5 mutants |
 | 37 | Both health probes judged FPL's routine update after a deadline as a failure: GitHub started the probe 5 s after GW8's deadline and every manager read 503'd (red, exit 2), and the Netlify 18:41 run would have opened an incident 11 min after GW10's 18:30 deadline | monitor (GitHub probe run 39995547754, 2026-10-23) | R6 ops path | `UPDATE_WINDOW_MS` / `updateWindowAt`: the CLI waits the window out, the Netlify run defers to the next hour, deferral counts as the scheduler running; probe-sample, fpl-health, probe-freshness; 6 mutants |
+| 44 | `projection_inverted` fired when the best defender beat both the best midfielder and the best forward. GW10 2026/27 is such a week for real (Gabriel 5.98, Arsenal at home to Hull; Mbeumo 5.45, Haaland 4.97; FPL's own ep_next also tops its midfielders with a defender), so readiness fell to `display` and the app withheld lineup, transfers and chips from every manager for at least a day before the deadline. The probe passed throughout: its readiness check only asked whether the ladder licensed too much | session (a "we good?" check, 2026-11-05) reading the probe report it had passed | R6 ops path (the readiness gate misread a real state) | the rule counts defenders above the best attacker (3 or more; measured: a real deadline has at most 1, collapsed rates 4 to 21); new probe check "the pool's shape does not withhold the plan"; `real-deadline-gw10` on the GW10 payload, neighbours 0 to 5 in season-lifecycle, both directions in probe.test; 4 mutants |
 | 43 | Registry 50's search reached every plan `search-corrections` pins without the polish, so `planner-polish-off` survived: the polish was unguarded although it still improves deep plans (5 of 117 squads at 3 to 5 FT, up to 1.40) | mutation-check (2026-11-02, the round that caused it) | R5 dead test | variant-31 at 4 FT and variant-21 at 5 FT in optimizer-reference's exhaustive one-swap neighbourhood; the mutant now runs that file too |
 | 42 | The probe's sample paced its FPL requests on `Date.now()`: a wall clock stepping forward made it send two requests 21 ms apart, and one stepping back (the owner's WSL machine, about -964 ms every 32 s) made its polite gaps read as short to the test, which failed intermittently ("280 ms", 2026-10-25 04:34:18 UTC, the moment a logged clock step) | intermittent `npm test` failure, investigated (2026-10-25) | R6 ops path | pacing on `performance.now()`; probe-sample logs requests on the monotonic clock and runs the polite case under clocks stepping forward and back; mutant `probe-pacing-on-wall-clock` |
 | 41 | After a deadline passed with the page open, the "Recalculate for Gameweek N+1" button planned gameweek N again (`reactToDeadline` left no pending squad, so `recalculate` reused the old squad state, whose gameweek the planner plans) | Claude, building the gameweek-transition e2e for #630 (2026-10-25) | R4 boundary | the moved branch builds the new gameweek's squad state as `connectAndPlan` does; e2e/plan-history G (fails on the old code: still "Gameweek 13") |
@@ -930,6 +931,17 @@ without a reason" invariant on every scheduled run.
 - **Recovering by hand:** check `fpl-health-status` answers 200 with a fresh
   `latest.at`, then run the workflow with mode `monitor`. That closed #604
   at 16:08 UTC. Never close the issue by hand.
+- **It recurred on 2026-11-05 at 06:41 UTC (#644), the same slot.** The
+  proxy served bootstrap-static and the owner's GW9 picks with
+  `x-fpl-stale: true` at 21,601 to 21,603 s, the 00:41 copies, while FPL itself
+  answered the probe's direct read 200 in 32 ms. The run took 25.1 s against
+  a usual 15, which fits the proxy waiting out its 9 s upstream timeout. So
+  the proxy's own read stalled while FPL was up a moment later. The
+  hourly recheck passed at 07:41 and closed #644, and the proxy served fresh
+  copies when read by hand at 13:09. Both incidents fell in the 06:41 slot.
+  The function log that would name the cause is still out of reach, so
+  this is recorded, not fixed. A third stale answer at 06:41 would make the
+  slot itself the lead.
 
 ### The data layer around a deadline
 
@@ -3568,9 +3580,30 @@ baseline** - phases progress `in-progress` to `finalising` to `complete`,
 `settled` flips only at the last, evidence stays `previous-season`, readiness
 stays `transfers`, and the plan reads 44.5 to 47.6 xP. The total was never the
 tell: it stayed a football score all through the collapse, which is why a
-best-eleven range cannot be the health check and `projection_inverted` (best
-forward AND best midfielder below the best defender) had to be added to
-readiness. With the version 2 baseline the same states captain a midfielder.
+best-eleven range cannot be the health check and `projection_inverted` had to
+be added to readiness. With the version 2 baseline the same states captain a
+midfielder.
+
+As first written, `projection_inverted` fired when the best forward AND the
+best midfielder sat below the best defender. That shape also happens in real
+weeks: on GW10 2026/27 Gabriel (Arsenal at home to Hull) projected 5.98
+against Mbeumo's 5.45 and Haaland's 4.97, and FPL's own ep_next also put a
+defender (Konsa, 9.2) above every midfielder. Readiness fell to `display`
+and the app withheld lineup, transfers and chips from everyone (ledger 44).
+What separates a fixture week from a collapse is depth, not the top spot.
+Across all 152 deadlines of the 2022-23 to 2025-26 production-regime replays,
+plus GW10, at most ONE defender out-projected the best attacker (2025-26 GW22
+and GW10 2026/27). Collapsed attacking rates put 4 to 21 defenders there
+(2022-23 weeks 1 to 16, whose replay has no expected-goals data), and the
+2026-08-22 payload put at least five there (best forward 1.9, best midfielder
+2.7, top defenders 4.8 to 5.5). The check now needs three or more
+(`MIN_DEFENDERS_ABOVE_ATTACK`). A ratio margin was considered and rejected,
+because the starved 2022-23 weeks sit at a best-attacker-to-best-defender
+ratio of 0.79 to 0.90 and GW10 at 0.91. The probe only ever checked that the
+ladder never licensed too much, so it passed all day. It now also fails on any
+pool-shape refusal on current-season evidence ("the pool's shape does not
+withhold the plan"). Such a refusal withholds advice from every manager, so it
+is an incident either way.
 
 For a manager whose FIRST EVER visit is after the rollover there is no baseline
 to keep, and one gameweek of this season is genuinely not enough: the underlying

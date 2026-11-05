@@ -28,7 +28,8 @@
 //   node apps/fpl-planner/scripts/derive-gw7-fixtures.mjs <raw-dir> [out-dir] [served] [source]
 //
 // `served` and `source` describe a capture other than GW7's (the GW8 one of
-// 2026-10-24, tests/fixtures/gw8-2026, is derived the same way); without them
+// 2026-10-24, tests/fixtures/gw8-2026, and the GW10 one of 2026-11-05,
+// tests/fixtures/gw10-2026, with an empty entries/, are derived the same way); without them
 // the GW7 fixture is written exactly as before.
 //
 // <raw-dir> holds bootstrap-static.json, fixtures.json and

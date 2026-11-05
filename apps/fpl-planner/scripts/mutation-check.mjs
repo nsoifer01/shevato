@@ -286,6 +286,40 @@ export const MUTANTS = [
     guards: 'An XI outside 1 GK, 3-5 DEF, 2-5 MID, 1-3 FWD is rejected as illegal (mutant added 2026-10-16).',
   },
 
+  // ---- the pool-shape readiness checks (ledger row 44, 2026-11-05). ----
+  {
+    id: 'readiness-inverted-best-defender',
+    file: `${APP}/js/engine/readiness.js`,
+    find: 'export const MIN_DEFENDERS_ABOVE_ATTACK = 3;',
+    replace: 'export const MIN_DEFENDERS_ABOVE_ATTACK = 1;',
+    tests: [T('real-deadline-gw10'), T('season-lifecycle'), T('probe')],
+    guards: 'One defender above every attacker is a fixture week, not a collapsed pool (GW10 2026/27 was withheld from every manager, 2026-11-05).',
+  },
+  {
+    id: 'readiness-inverted-never',
+    file: `${APP}/js/engine/readiness.js`,
+    find: 'export const MIN_DEFENDERS_ABOVE_ATTACK = 3;',
+    replace: 'export const MIN_DEFENDERS_ABOVE_ATTACK = 10;',
+    tests: [T('season-lifecycle'), T('probe')],
+    guards: 'Three or more defenders above every attacker (the 2026-08-22 shape) still withholds the lineup (2026-11-05).',
+  },
+  {
+    id: 'probe-shape-check-off',
+    file: `${APP}/scripts/lib/probe.mjs`,
+    find: '    shapeBlocks.length === 0,',
+    replace: '    true,',
+    tests: [T('probe')],
+    guards: 'A pool-shape refusal on current-season evidence fails the health probe instead of passing silently (GW10, 2026-11-05).',
+  },
+  {
+    id: 'probe-shape-blocks-partial',
+    file: `${APP}/scripts/lib/probe.mjs`,
+    find: "  'projection_inverted', 'minutes_compressed', 'appearance_inverted',\n]);",
+    replace: ']);',
+    tests: [T('probe')],
+    guards: 'The probe reads every pool-shape refusal code, not just the ones it was written for (2026-11-05).',
+  },
+
   // ---- the production probe and the FPL proxy. ----
   {
     id: 'probe-fresh-limit-flat',
