@@ -180,6 +180,153 @@ test('a failing required check leaves the pull request open and reports it', asy
   assert.equal(calls.some((c) => c.path === '/graphql'), false, 'and auto-merge is not even armed');
 });
 
+// #534 (2026-09-13) and #650 (2026-11-08): a pull request nobody pushes to
+// stays red after the fix reaches master, and every refresh after it stops.
+function staleRedApi({ behindBy = 3, heads = ['sha1', 'sha2'], conclusions = ['failure', 'success'], update, pullOver = {} } = {}) {
+  const state = { tick: 0 };
+  const at = (list) => list[Math.min(state.tick, list.length - 1)];
+  const stub = stubApi(({ method, path }) => {
+    if (path === `/repos/${REPO}/pulls/515`) {
+      return pull({
+        head: { sha: at(heads), ref: `${BOT_BRANCH_PREFIX}20261107-130020` },
+        ...(state.armed ? { merged: true, merge_commit_sha: 'merged' } : {}),
+        ...pullOver,
+      });
+    }
+    if (path.includes('/compare/')) return typeof behindBy === 'function' ? behindBy() : { behind_by: behindBy };
+    if (path.endsWith('/update-branch')) return update ? update() : { status: 202, body: {} };
+    if (path.includes('/actions/runs')) return { workflow_runs: [] };
+    if (path.includes('/check-runs')) {
+      return { check_runs: [check({ name: 'test-shard (1)', conclusion: at(conclusions), html_url: 'https://example.test/job/1' })] };
+    }
+    if (method === 'POST' && path === '/graphql') {
+      state.armed = true;
+      state.armedOnHead = at(heads);
+      return { data: {} };
+    }
+    return {};
+  });
+  const sleep = async () => { state.tick += 1; };
+  const updates = () => stub.calls.filter((c) => c.path.endsWith('/update-branch')).length;
+  return { ...stub, state, sleep, updates };
+}
+
+test('a red check that predates a move of master is re-tested on an updated branch', async () => {
+  const { api, sleep, updates, state } = staleRedApi();
+  const result = await drivePullRequest(api, 515, { log: () => {}, sleep, pollMs: 0 });
+  assert.equal(result.outcome, 'merged');
+  assert.equal(updates(), 1, 'the branch is updated exactly once');
+  assert.equal(state.armedOnHead, 'sha2', 'and auto-merge is armed only on the new, green head');
+});
+
+test('the compare asks how far the head is behind the base, for the exact head commit', async () => {
+  const { api, calls, sleep } = staleRedApi({ behindBy: 0 });
+  await drivePullRequest(api, 515, { log: () => {}, sleep, pollMs: 0 });
+  assert.ok(calls.some((c) => c.method === 'GET' && c.path === `/repos/${REPO}/compare/master...sha1`));
+});
+
+test('a red check on an up-to-date branch stays final: there is no blind retry', async () => {
+  const { api, calls, sleep, updates } = staleRedApi({ behindBy: 0 });
+  const result = await drivePullRequest(api, 515, { log: () => {}, sleep, pollMs: 0 });
+  assert.equal(result.outcome, 'failed');
+  assert.equal(updates(), 0);
+  assert.equal(calls.some((c) => c.path === '/graphql'), false, 'and auto-merge is not armed');
+});
+
+test('a branch that is red again after the update ends failed, with one update', async () => {
+  let compares = 0;
+  const { api, sleep, updates } = staleRedApi({
+    conclusions: ['failure'],
+    behindBy: () => { compares += 1; return { behind_by: compares === 1 ? 3 : 0 }; },
+  });
+  const result = await drivePullRequest(api, 515, { log: () => {}, sleep, pollMs: 0 });
+  assert.equal(result.outcome, 'failed');
+  assert.equal(updates(), 1);
+  assert.equal(result.pr.head.sha, 'sha2', 'the verdict is about the new head');
+});
+
+test('a head GitHub has not moved yet is waited for and not updated twice', async () => {
+  const { api, sleep, updates, state } = staleRedApi({
+    heads: ['sha1', 'sha1', 'sha1', 'sha2'],
+    conclusions: ['failure', 'failure', 'failure', 'failure'],
+    behindBy: () => ({ behind_by: state.tick === 0 ? 3 : 0 }),
+  });
+  const result = await drivePullRequest(api, 515, { log: () => {}, sleep, pollMs: 0 });
+  assert.equal(updates(), 1);
+  assert.equal(result.pr.head.sha, 'sha2');
+});
+
+test('a head that never moves ends failed at the watch window, not in a loop', async () => {
+  let clock = 0;
+  const { api, updates } = staleRedApi({ heads: ['sha1'], conclusions: ['failure'] });
+  const result = await drivePullRequest(api, 515, {
+    log: () => {}, sleep: async () => { clock += 1000; }, now: () => clock, timeoutMs: 5000, pollMs: 0,
+  });
+  assert.equal(result.outcome, 'failed');
+  assert.equal(updates(), 1);
+});
+
+test('updates of a red branch stop at the cap even if master keeps moving', async () => {
+  const { api, sleep, updates } = staleRedApi({
+    heads: ['a', 'b', 'c', 'd', 'e', 'f'],
+    conclusions: ['failure'],
+  });
+  const result = await drivePullRequest(api, 515, { log: () => {}, sleep, pollMs: 0, maxBranchUpdates: 3 });
+  assert.equal(result.outcome, 'failed');
+  assert.equal(updates(), 3);
+});
+
+for (const [name, over, expectUpdates] of [
+  ['a compare that errors', { behindBy: () => ({ status: 500, body: { message: 'boom' } }) }, 0],
+  ['a refused update', { update: () => ({ status: 422, body: { message: 'merge conflict' } }) }, 1],
+  ['a forbidden update', { update: () => ({ status: 403, body: { message: 'forbidden' } }) }, 1],
+  ['a conflicted branch', { pullOver: { mergeable_state: 'dirty' } }, 0],
+]) {
+  test(`${name} still reports the red checks and merges nothing`, async () => {
+    const { api, calls, sleep, updates } = staleRedApi(over);
+    const result = await drivePullRequest(api, 515, { log: () => {}, sleep, pollMs: 0 });
+    assert.equal(result.outcome, 'failed');
+    assert.deepEqual(result.failures.map((f) => f.name), ['test-shard (1)']);
+    assert.equal(updates(), expectUpdates);
+    assert.equal(calls.some((c) => c.path.endsWith('/merge') || c.path === '/graphql'), false);
+  });
+}
+
+test('both failure annotations name the check and link to its log', async () => {
+  const env = { GITHUB_TOKEN: 't', GITHUB_REPOSITORY: REPO };
+  const original = globalThis.fetch;
+  globalThis.fetch = async (url) => {
+    const path = String(url).replace('https://api.github.com', '');
+    const answer = (() => {
+      if (path.startsWith(`/repos/${REPO}/pulls?state=open`)) {
+        return [{ number: 650, head: { ref: `${BOT_BRANCH_PREFIX}20261107-130020` } }];
+      }
+      if (path === `/repos/${REPO}/pulls/650`) return pull({ number: 650 });
+      if (path.includes('/compare/')) return { behind_by: 0 };
+      if (path.includes('/actions/runs')) return { workflow_runs: [] };
+      if (path.includes('/check-runs')) {
+        return { check_runs: [check({ name: 'test-shard (1)', conclusion: 'failure', html_url: 'https://github.com/x/job/9' })] };
+      }
+      return {};
+    })();
+    return { ok: true, status: 200, text: async () => JSON.stringify(answer) };
+  };
+  try {
+    const reconcile = [];
+    assert.equal(await main(['reconcile'], env, (l) => reconcile.push(l)), 1);
+    const reconcileError = reconcile.find((l) => l.startsWith('::error::'));
+    assert.match(reconcileError, /#650 has failing checks: test-shard \(1\) \(https:\/\/github\.com\/x\/job\/9\)/);
+    assert.match(reconcileError, /next refresh updates this branch/);
+
+    const single = [];
+    assert.equal(await main(['run', '--pr', '650'], env, (l) => single.push(l)), 1);
+    assert.match(single.find((l) => l.startsWith('::error::')),
+      /#650 did not merge \(failed\): test-shard \(1\) \(https:\/\/github\.com\/x\/job\/9\)/);
+  } finally {
+    globalThis.fetch = original;
+  }
+});
+
 test('the hold is released again after auto-merge updates a behind branch', async () => {
   // A strict base branch means auto-merge can push a new head commit, and the
   // approval hold is re-applied to that commit. Releasing only once would
