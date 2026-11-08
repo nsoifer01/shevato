@@ -1,6 +1,275 @@
 {
   "updates": [
     {
+      "builtAt": "2026-11-06T14:15:58.079Z",
+      "totals": {
+        "seasons": 67753,
+        "delta": 9
+      },
+      "shapeCounts": {
+        "rebound": 9791,
+        "big-finale": 11870,
+        "u-shaped": 2656,
+        "rollercoaster": 13524,
+        "mid-peak": 4385,
+        "consistent": 2544,
+        "bad-finale": 4371,
+        "front-loaded": 3091,
+        "slow-burn": 3986,
+        "declining": 1643,
+        "saved-best-for-last": 1381,
+        "shape-drift": 1396,
+        "rising": 2383
+      },
+      "shapeDeltas": {
+        "rebound": 8,
+        "big-finale": 6,
+        "u-shaped": 3,
+        "rollercoaster": 9,
+        "mid-peak": 4,
+        "bad-finale": -2,
+        "front-loaded": 1,
+        "slow-burn": -4,
+        "declining": 1,
+        "saved-best-for-last": -2,
+        "shape-drift": 3,
+        "rising": 2
+      },
+      "added": [
+        {
+          "seriesId": "tt30291387",
+          "title": "All's Fair",
+          "season": 2,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt43681696",
+          "title": "Taken: Natalee Holloway",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt15715850",
+          "title": "The Greatest",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt0332960",
+          "title": "Nikolaj og Julie",
+          "season": 3,
+          "seasonYear": 2003
+        },
+        {
+          "seriesId": "tt44840674",
+          "title": "Extraordinary Attorney Minami",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt0853228",
+          "title": "Nynne",
+          "season": 1,
+          "seasonYear": 2006
+        },
+        {
+          "seriesId": "tt14524878",
+          "title": "The Defender",
+          "season": 4,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt37449924",
+          "title": "Fazbear and Friends - Shorts",
+          "season": 1,
+          "seasonYear": 2021
+        },
+        {
+          "seriesId": "tt2059031",
+          "title": "Scaredy Squirrel",
+          "season": 2,
+          "seasonYear": 2012
+        },
+        {
+          "seriesId": "tt2059031",
+          "title": "Scaredy Squirrel",
+          "season": 3,
+          "seasonYear": 2013
+        },
+        {
+          "seriesId": "tt16434950",
+          "title": "The Honest Realtor",
+          "season": 2,
+          "seasonYear": 2024
+        },
+        {
+          "seriesId": "tt31513912",
+          "title": "Cleopatra's Secret Tomb",
+          "season": 1,
+          "seasonYear": 2023
+        },
+        {
+          "seriesId": "tt40649134",
+          "title": "Le Charles",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt38747743",
+          "title": "Titans of the Cold War",
+          "season": 2,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt39518375",
+          "title": "2026-2027 UEFA Champions League",
+          "season": 9,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt48138370",
+          "title": "USA 1960-1980: La révolution conservatrice",
+          "season": 1,
+          "seasonYear": 2026
+        }
+      ],
+      "removed": [
+        {
+          "seriesId": "tt4267324",
+          "title": "Variety Studio: Actors on Actors",
+          "season": 3,
+          "seasonYear": 2015
+        },
+        {
+          "seriesId": "tt4267324",
+          "title": "Variety Studio: Actors on Actors",
+          "season": 13,
+          "seasonYear": 2021
+        },
+        {
+          "seriesId": "tt4267324",
+          "title": "Variety Studio: Actors on Actors",
+          "season": 15,
+          "seasonYear": 2022
+        },
+        {
+          "seriesId": "tt4267324",
+          "title": "Variety Studio: Actors on Actors",
+          "season": 16,
+          "seasonYear": 2022
+        },
+        {
+          "seriesId": "tt4267324",
+          "title": "Variety Studio: Actors on Actors",
+          "season": 18,
+          "seasonYear": 2023
+        },
+        {
+          "seriesId": "tt4267324",
+          "title": "Variety Studio: Actors on Actors",
+          "season": 20,
+          "seasonYear": 2024
+        },
+        {
+          "seriesId": "tt4267324",
+          "title": "Variety Studio: Actors on Actors",
+          "season": 22,
+          "seasonYear": 2025
+        }
+      ],
+      "ratingSwings": [
+        {
+          "seriesId": "tt14402938",
+          "title": "Tesla Note",
+          "season": 1,
+          "from": 7.69,
+          "to": 6.61,
+          "delta": -1.08
+        },
+        {
+          "seriesId": "tt0287196",
+          "title": "Big Brother",
+          "season": 17,
+          "from": 7.37,
+          "to": 6.52,
+          "delta": -0.85
+        },
+        {
+          "seriesId": "tt3385730",
+          "title": "Wangan Midnight",
+          "season": 1,
+          "from": 8.27,
+          "to": 7.55,
+          "delta": -0.72
+        },
+        {
+          "seriesId": "tt38946984",
+          "title": "Still Flipping Out",
+          "season": 1,
+          "from": 6.68,
+          "to": 6.04,
+          "delta": -0.64
+        },
+        {
+          "seriesId": "tt2059031",
+          "title": "Scaredy Squirrel",
+          "season": 1,
+          "from": 7.58,
+          "to": 8.21,
+          "delta": 0.63
+        },
+        {
+          "seriesId": "tt15811920",
+          "title": "Futsal Boys!!!!!",
+          "season": 1,
+          "from": 7.75,
+          "to": 7.14,
+          "delta": -0.61
+        },
+        {
+          "seriesId": "tt26735683",
+          "title": "Toxic",
+          "season": 2,
+          "from": 5.16,
+          "to": 5.75,
+          "delta": 0.59
+        },
+        {
+          "seriesId": "tt45854934",
+          "title": "The Gift of Deceit",
+          "season": 1,
+          "from": 6.12,
+          "to": 6.65,
+          "delta": 0.53
+        },
+        {
+          "seriesId": "tt15128074",
+          "title": "Legend of Mana: The Teardrop Crystal",
+          "season": 1,
+          "from": 6.61,
+          "to": 6.08,
+          "delta": -0.53
+        },
+        {
+          "seriesId": "tt49702110",
+          "title": "Matargashti",
+          "season": 1,
+          "from": 6.38,
+          "to": 5.9,
+          "delta": -0.48
+        }
+      ],
+      "modifiedCounts": {
+        "seriesVotes": 18350,
+        "avgRating": 1158,
+        "seriesRating": 295,
+        "shapes": 189,
+        "episodeCount": 103,
+        "poster": 1,
+        "overview": 2
+      }
+    },
+    {
       "builtAt": "2026-11-05T14:47:19.979Z",
       "totals": {
         "seasons": 67744,
@@ -8067,216 +8336,6 @@
         "seriesRating": 432,
         "poster": 5,
         "overview": 3,
-        "providers": 1
-      }
-    },
-    {
-      "builtAt": "2026-10-08T13:39:43.592Z",
-      "totals": {
-        "seasons": 67088,
-        "delta": 11
-      },
-      "shapeCounts": {
-        "rebound": 10226,
-        "rising": 2632,
-        "slow-burn": 4451,
-        "big-finale": 12235,
-        "u-shaped": 3082,
-        "rollercoaster": 14215,
-        "saved-best-for-last": 1474,
-        "shape-drift": 1587,
-        "mid-peak": 4631,
-        "front-loaded": 3519,
-        "declining": 1905,
-        "bad-finale": 4683,
-        "consistent": 2648
-      },
-      "shapeDeltas": {
-        "rebound": -7,
-        "rising": -3,
-        "slow-burn": 5,
-        "big-finale": 1,
-        "u-shaped": 3,
-        "rollercoaster": -3,
-        "saved-best-for-last": -1,
-        "mid-peak": 2,
-        "front-loaded": -4,
-        "declining": -4,
-        "bad-finale": -1,
-        "consistent": -1
-      },
-      "added": [
-        {
-          "seriesId": "tt13172612",
-          "title": "Happy Face",
-          "season": 1,
-          "seasonYear": 2025
-        },
-        {
-          "seriesId": "tt36885662",
-          "title": "Best Medicine",
-          "season": 2,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt28251824",
-          "title": "The Traitors Canada",
-          "season": 4,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt11231226",
-          "title": "Reasonable Doubt",
-          "season": 4,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt1877368",
-          "title": "The Great British Baking Show",
-          "season": 17,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt6823138",
-          "title": "Mysteries of the Abandoned",
-          "season": 12,
-          "seasonYear": 2025
-        },
-        {
-          "seriesId": "tt37196425",
-          "title": "Pierre",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt8069682",
-          "title": "Backyard Builds",
-          "season": 4,
-          "seasonYear": 2021
-        },
-        {
-          "seriesId": "tt36473890",
-          "title": "Britain's Countryside Killers",
-          "season": 1,
-          "seasonYear": 2025
-        },
-        {
-          "seriesId": "tt36933506",
-          "title": "Celebrity Weakest Link",
-          "season": 2,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt44265827",
-          "title": "Emergency 24/7",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt44925660",
-          "title": "PowerSMP",
-          "season": 2,
-          "seasonYear": 2026
-        }
-      ],
-      "removed": [
-        {
-          "seriesId": "tt15977292",
-          "title": "Happy Face",
-          "season": 1,
-          "seasonYear": 2025
-        }
-      ],
-      "ratingSwings": [
-        {
-          "seriesId": "tt34774903",
-          "title": "Nissesvingen",
-          "season": 1,
-          "from": 4.45,
-          "to": 5.33,
-          "delta": 0.88
-        },
-        {
-          "seriesId": "tt1156535",
-          "title": "Wipeout",
-          "season": 4,
-          "from": 8.35,
-          "to": 7.56,
-          "delta": -0.79
-        },
-        {
-          "seriesId": "tt0123366",
-          "title": "The View",
-          "season": 30,
-          "from": 3.92,
-          "to": 4.5,
-          "delta": 0.58
-        },
-        {
-          "seriesId": "tt1156535",
-          "title": "Wipeout",
-          "season": 3,
-          "from": 8.23,
-          "to": 7.66,
-          "delta": -0.57
-        },
-        {
-          "seriesId": "tt36210894",
-          "title": "The Drop: A Snowfall Saga",
-          "season": 1,
-          "from": 8.3,
-          "to": 7.8,
-          "delta": -0.5
-        },
-        {
-          "seriesId": "tt1156535",
-          "title": "Wipeout",
-          "season": 6,
-          "from": 9.01,
-          "to": 8.52,
-          "delta": -0.49
-        },
-        {
-          "seriesId": "tt1156535",
-          "title": "Wipeout",
-          "season": 2,
-          "from": 7.67,
-          "to": 7.19,
-          "delta": -0.48
-        },
-        {
-          "seriesId": "tt4806982",
-          "title": "Aspirin",
-          "season": 1,
-          "from": 5.33,
-          "to": 5.81,
-          "delta": 0.48
-        },
-        {
-          "seriesId": "tt1156535",
-          "title": "Wipeout",
-          "season": 1,
-          "from": 6.79,
-          "to": 6.43,
-          "delta": -0.36
-        },
-        {
-          "seriesId": "tt2361816",
-          "title": "Seksenler",
-          "season": 1,
-          "from": 6.8,
-          "to": 7.12,
-          "delta": 0.32
-        }
-      ],
-      "modifiedCounts": {
-        "seriesVotes": 14950,
-        "avgRating": 781,
-        "seriesRating": 179,
-        "shapes": 131,
-        "poster": 6,
-        "overview": 6,
-        "episodeCount": 65,
         "providers": 1
       }
     }
