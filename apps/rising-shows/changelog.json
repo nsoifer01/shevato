@@ -1,6 +1,251 @@
 {
   "updates": [
     {
+      "builtAt": "2026-11-08T18:33:29.746Z",
+      "totals": {
+        "seasons": 67788,
+        "delta": 15
+      },
+      "shapeCounts": {
+        "rebound": 9806,
+        "big-finale": 11870,
+        "u-shaped": 2657,
+        "rollercoaster": 13519,
+        "mid-peak": 4388,
+        "consistent": 2537,
+        "bad-finale": 4364,
+        "front-loaded": 3089,
+        "slow-burn": 3986,
+        "declining": 1639,
+        "saved-best-for-last": 1378,
+        "shape-drift": 1398,
+        "rising": 2385
+      },
+      "shapeDeltas": {
+        "rebound": 8,
+        "big-finale": 1,
+        "rollercoaster": -12,
+        "mid-peak": 2,
+        "consistent": -5,
+        "bad-finale": -4,
+        "front-loaded": -2,
+        "slow-burn": -3,
+        "declining": -5,
+        "saved-best-for-last": -2,
+        "shape-drift": 3,
+        "rising": 3
+      },
+      "added": [
+        {
+          "seriesId": "tt2580046",
+          "title": "Miraculous: Tales of Ladybug & Cat Noir",
+          "season": 7,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt26598805",
+          "title": "Nocturne",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt39469996",
+          "title": "Newlyweds",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt31106862",
+          "title": "Happy's Place",
+          "season": 3,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt38681812",
+          "title": "Anaesthesia",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt4152216",
+          "title": "Carnival Eats",
+          "season": 3,
+          "seasonYear": 2016
+        },
+        {
+          "seriesId": "tt3330720",
+          "title": "The Last Leg",
+          "season": 36,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt15499118",
+          "title": "The Madame Blanc Mysteries",
+          "season": 5,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt2095924",
+          "title": "Con el culo al aire",
+          "season": 2,
+          "seasonYear": 2013
+        },
+        {
+          "seriesId": "tt0075593",
+          "title": "Target",
+          "season": 2,
+          "seasonYear": 1978
+        },
+        {
+          "seriesId": "tt1430047",
+          "title": "Joseph Rosendo's Travelscope",
+          "season": 7,
+          "seasonYear": 2013
+        },
+        {
+          "seriesId": "tt36501922",
+          "title": "Holly Jolly Homicides",
+          "season": 1,
+          "seasonYear": 2024
+        },
+        {
+          "seriesId": "tt38592526",
+          "title": "Wild Bees",
+          "season": 1,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt42337055",
+          "title": "Vikings: La saga des Bluetooth",
+          "season": 1,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt42934023",
+          "title": "Mystery Science Theater 3000: The RiffTrax Experiments",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt39378892",
+          "title": "Built in Love",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt49791829",
+          "title": "Kauriburir Mandir",
+          "season": 1,
+          "seasonYear": 2026
+        }
+      ],
+      "removed": [
+        {
+          "seriesId": "tt0281447",
+          "title": "Big Family",
+          "season": 10,
+          "seasonYear": 2010
+        },
+        {
+          "seriesId": "tt1945805",
+          "title": "Marvel Anime",
+          "season": 2,
+          "seasonYear": 2011
+        }
+      ],
+      "ratingSwings": [
+        {
+          "seriesId": "tt3598030",
+          "title": "K.C. Undercover",
+          "season": 3,
+          "from": 5.44,
+          "to": 6.2,
+          "delta": 0.76
+        },
+        {
+          "seriesId": "tt47816221",
+          "title": "Zmora",
+          "season": 1,
+          "from": 6.46,
+          "to": 5.7,
+          "delta": -0.76
+        },
+        {
+          "seriesId": "tt45934344",
+          "title": "Archive X: Unexplained Phenomena",
+          "season": 1,
+          "from": 8.2,
+          "to": 7.48,
+          "delta": -0.72
+        },
+        {
+          "seriesId": "tt3598030",
+          "title": "K.C. Undercover",
+          "season": 2,
+          "from": 5.85,
+          "to": 6.55,
+          "delta": 0.7
+        },
+        {
+          "seriesId": "tt4648640",
+          "title": "Talking Tom & Friends",
+          "season": 2,
+          "from": 7.95,
+          "to": 8.64,
+          "delta": 0.69
+        },
+        {
+          "seriesId": "tt0118517",
+          "title": "Working",
+          "season": 2,
+          "from": 5.36,
+          "to": 6.04,
+          "delta": 0.68
+        },
+        {
+          "seriesId": "tt36838527",
+          "title": "Obsess",
+          "season": 1,
+          "from": 4.9,
+          "to": 5.55,
+          "delta": 0.65
+        },
+        {
+          "seriesId": "tt0096636",
+          "title": "Live with Kelly and Mark",
+          "season": 27,
+          "from": 7.7,
+          "to": 8.33,
+          "delta": 0.63
+        },
+        {
+          "seriesId": "tt18970320",
+          "title": "Slip",
+          "season": 1,
+          "from": 5.24,
+          "to": 5.86,
+          "delta": 0.62
+        },
+        {
+          "seriesId": "tt35417736",
+          "title": "Judwaa",
+          "season": 1,
+          "from": 8.47,
+          "to": 7.87,
+          "delta": -0.6
+        }
+      ],
+      "modifiedCounts": {
+        "seriesVotes": 20065,
+        "avgRating": 1398,
+        "shapes": 224,
+        "seriesRating": 283,
+        "poster": 5,
+        "episodeCount": 99,
+        "overview": 3
+      }
+    },
+    {
       "builtAt": "2026-11-07T12:59:31.297Z",
       "totals": {
         "seasons": 67773,
@@ -7966,285 +8211,6 @@
         "poster": 28,
         "overview": 29,
         "providers": 10
-      }
-    },
-    {
-      "builtAt": "2026-10-10T12:29:32.665Z",
-      "totals": {
-        "seasons": 67140,
-        "delta": 25
-      },
-      "shapeCounts": {
-        "rebound": 10221,
-        "rising": 2646,
-        "slow-burn": 4448,
-        "big-finale": 12243,
-        "u-shaped": 3087,
-        "rollercoaster": 14242,
-        "saved-best-for-last": 1474,
-        "shape-drift": 1587,
-        "mid-peak": 4647,
-        "front-loaded": 3510,
-        "declining": 1907,
-        "bad-finale": 4680,
-        "consistent": 2658
-      },
-      "shapeDeltas": {
-        "rebound": -4,
-        "rising": 1,
-        "slow-burn": 2,
-        "big-finale": -4,
-        "u-shaped": -1,
-        "rollercoaster": 12,
-        "saved-best-for-last": -1,
-        "shape-drift": -1,
-        "mid-peak": 9,
-        "front-loaded": -1,
-        "consistent": 4
-      },
-      "added": [
-        {
-          "seriesId": "tt35934755",
-          "title": "Below",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt33248156",
-          "title": "The Celebrity Traitors UK",
-          "season": 2,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt10413786",
-          "title": "Rifftrax Shorts",
-          "season": 15,
-          "seasonYear": 2022
-        },
-        {
-          "seriesId": "tt7914040",
-          "title": "The Floor",
-          "season": 6,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt0221740",
-          "title": "Crime Stories",
-          "season": 7,
-          "seasonYear": 2009
-        },
-        {
-          "seriesId": "tt0437005",
-          "title": "Hell's Kitchen",
-          "season": 25,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt1874258",
-          "title": "The History of Power Rangers",
-          "season": 4,
-          "seasonYear": 2015
-        },
-        {
-          "seriesId": "tt43652440",
-          "title": "L.O.L. Surprise! The Next Headliner",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt27954448",
-          "title": "Law & Order Toronto: Criminal Intent",
-          "season": 4,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt0211192",
-          "title": "Through the Looking-Glass",
-          "season": 1,
-          "seasonYear": 1982
-        },
-        {
-          "seriesId": "tt34333196",
-          "title": "The Real Housewives of London",
-          "season": 2,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt36933520",
-          "title": "99 to Beat",
-          "season": 2,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt8465918",
-          "title": "Homicide: Hours to Kill",
-          "season": 5,
-          "seasonYear": 2023
-        },
-        {
-          "seriesId": "tt9079966",
-          "title": "Cinemassacre Video",
-          "season": 6,
-          "seasonYear": 2023
-        },
-        {
-          "seriesId": "tt13545674",
-          "title": "StarStarSpace",
-          "season": 1,
-          "seasonYear": 2016
-        },
-        {
-          "seriesId": "tt14074568",
-          "title": "BrewStew",
-          "season": 6,
-          "seasonYear": 2018
-        },
-        {
-          "seriesId": "tt15754974",
-          "title": "Project 863",
-          "season": 2,
-          "seasonYear": 2021
-        },
-        {
-          "seriesId": "tt15754974",
-          "title": "Project 863",
-          "season": 4,
-          "seasonYear": 2021
-        },
-        {
-          "seriesId": "tt1663054",
-          "title": "Telecinema",
-          "season": 1,
-          "seasonYear": 2009
-        },
-        {
-          "seriesId": "tt29902205",
-          "title": "Fear Fear Roblox Horror Stories",
-          "season": 6,
-          "seasonYear": 2025
-        },
-        {
-          "seriesId": "tt32832433",
-          "title": "Tôhai ~Ura Rêto Mâjan Tôhai Roku~",
-          "season": 1,
-          "seasonYear": 2024
-        },
-        {
-          "seriesId": "tt36625953",
-          "title": "Les Loups Garous Germany",
-          "season": 2,
-          "seasonYear": 2025
-        },
-        {
-          "seriesId": "tt38588981",
-          "title": "The Celebrity Traitors: Uncloaked",
-          "season": 2,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt44733941",
-          "title": "Haysiyet",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt45584297",
-          "title": "Africa Earth's Wild Home",
-          "season": 1,
-          "seasonYear": 2026
-        }
-      ],
-      "removed": [],
-      "ratingSwings": [
-        {
-          "seriesId": "tt0463398",
-          "title": "Dancing with the Stars",
-          "season": 16,
-          "from": 5.79,
-          "to": 4.63,
-          "delta": -1.16
-        },
-        {
-          "seriesId": "tt4267324",
-          "title": "Variety Studio: Actors on Actors",
-          "season": 19,
-          "from": 7.85,
-          "to": 6.8,
-          "delta": -1.05
-        },
-        {
-          "seriesId": "tt0320037",
-          "title": "Jimmy Kimmel Live!",
-          "season": 10,
-          "from": 6.7,
-          "to": 5.78,
-          "delta": -0.92
-        },
-        {
-          "seriesId": "tt39747556",
-          "title": "Real History with Matt Walsh",
-          "season": 1,
-          "from": 5.54,
-          "to": 6.44,
-          "delta": 0.9
-        },
-        {
-          "seriesId": "tt4267324",
-          "title": "Variety Studio: Actors on Actors",
-          "season": 21,
-          "from": 7.77,
-          "to": 6.9,
-          "delta": -0.87
-        },
-        {
-          "seriesId": "tt3371194",
-          "title": "Under the Gunn",
-          "season": 1,
-          "from": 7.93,
-          "to": 7.14,
-          "delta": -0.79
-        },
-        {
-          "seriesId": "tt5714712",
-          "title": "Greatest Hits",
-          "season": 1,
-          "from": 8.33,
-          "to": 7.83,
-          "delta": -0.5
-        },
-        {
-          "seriesId": "tt0111909",
-          "title": "Can't Hurry Love",
-          "season": 1,
-          "from": 6.9,
-          "to": 7.4,
-          "delta": 0.5
-        },
-        {
-          "seriesId": "tt14330440",
-          "title": "Tuttle Twins",
-          "season": 3,
-          "from": 5.53,
-          "to": 5.09,
-          "delta": -0.44
-        },
-        {
-          "seriesId": "tt31804242",
-          "title": "The 50",
-          "season": 3,
-          "from": 6.94,
-          "to": 6.51,
-          "delta": -0.43
-        }
-      ],
-      "modifiedCounts": {
-        "seriesVotes": 20112,
-        "avgRating": 1169,
-        "shapes": 193,
-        "seriesRating": 316,
-        "episodeCount": 65,
-        "providers": 2,
-        "poster": 1
       }
     }
   ]
