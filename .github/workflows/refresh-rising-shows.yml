@@ -95,7 +95,11 @@ jobs:
       # last one: releases the approval hold on its checks, arms auto-merge and
       # waits. If that pull request cannot merge (a red check, a conflict), the
       # step fails HERE, cheaply, before anything is uploaded or committed, and
-      # says which pull request to look at. Nothing is left half done.
+      # says which pull request and which check to look at. Nothing is left
+      # half done. A red check is only final for the master it was tested
+      # against: if master has moved since, this step updates the branch and
+      # waits for the new result, so a fix landing on master frees the refresh
+      # without anyone touching the pull request.
       #
       # On an ordinary day this is one API call and no wait.
       - name: Finish any refresh pull request still open

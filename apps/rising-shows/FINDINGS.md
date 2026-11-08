@@ -3,6 +3,45 @@
 A living document: best current understanding, not a diary. See the
 repo-root `CLAUDE.md` for the convention.
 
+## A test in another app stopped the refresh, and nothing could restart it (2026-11-07)
+
+The refresh went red on 7 and 8 November with nothing wrong in this app. One
+cause, two symptoms, and a second defect that made it permanent:
+
+- **7 November (run 42373355453, 32 minutes).** Everything through the upload
+  passed. Bot pull request #650 then failed its required `test` check on an FPL
+  Planner test, `real-deadline-gw10`, which read the machine's clock against a
+  frozen payload and so broke at GW10's real deadline on 6 November 18:30 UTC
+  (`apps/fpl-planner/FINDINGS.md`, ledger row 45). #649's run the afternoon
+  before passed the identical test.
+- **8 November (run 42482468416, 8 seconds).** The reconcile step found #650
+  still open and red and stopped, as designed.
+- **The wedge.** A red result was treated as final forever, but nobody pushes
+  to these branches, so nothing ever re-tests them. A fix on master could not
+  reach #650, and the job would have stopped every day until someone updated or
+  closed it by hand. The same thing happened to #534 on 2026-09-13.
+
+`drivePullRequest` now treats a red check as final only for the master it was
+tested against. If the compare API says the head is behind, it updates the
+branch and judges the new commit, with the existing cap of three updates. With
+master unchanged it still stops at once, so this is not a retry of a flaky
+check. It asks the compare API because `mergeable_state` reports one condition
+at a time, and a pull request that is both red and out of date can read
+`blocked`.
+
+Both annotations now name the failing check and link its log. They used to say
+only "did not merge (failed)", which sent the reader through three pages to
+learn it was an FPL test.
+
+**Do not close a stuck refresh pull request to clear it.** The release baseline
+has already moved to that day's data, so the next build diffs against it and
+that day's changelog entry is gone for good. Let it merge.
+
+**What a stuck day costs.** Nothing is corrupted: the pin lives in the pull
+request, so the site keeps its last good dataset. On 8 November the 7 November
+pair on the release still matched #650's pin byte for byte (SHA-256), and the
+site simply stayed on 6 November's data.
+
 ## The page build had no test, and took the coverage floor with it (2026-10-17)
 
 The weekly coverage run failed on 2026-10-12 with Rising Shows at 86.72% of

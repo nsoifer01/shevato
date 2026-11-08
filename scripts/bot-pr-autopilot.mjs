@@ -199,6 +199,20 @@ export async function updateBranch(api, number) {
   return api.request('PUT', `/repos/${api.repo}/pulls/${number}/update-branch`, {});
 }
 
+// How many commits the base branch has that this pull request's head lacks.
+// Asked of the compare API rather than read from `mergeable_state`, because
+// that field reports one state at a time: a pull request that is both red and
+// out of date can read `blocked`, not `behind`.
+export async function commitsBehindBase(api, pr) {
+  const out = await api.request('GET', `/repos/${api.repo}/compare/${encodeURIComponent(pr.base.ref)}...${pr.head.sha}`);
+  return Number(out?.behind_by) || 0;
+}
+
+// The failing checks by name, each with the link to its log.
+export function describeFailures(failures = []) {
+  return failures.map((c) => (c.html_url ? `${c.name} (${c.html_url})` : c.name)).join(', ');
+}
+
 // Delete the merged branch, because GitHub does not.
 //
 // The repository has "Automatically delete head branches" ON, and it works for
@@ -248,6 +262,7 @@ export async function drivePullRequest(api, number, {
   const deadline = now() + timeoutMs;
   let armed = false;
   let branchUpdates = 0;
+  let updatedFromSha = null;
   let lastState = '';
 
   for (;;) {
@@ -267,9 +282,48 @@ export async function drivePullRequest(api, number, {
 
     const checks = await listCheckRuns(api, pr.head.sha);
     const failures = failedChecks(checks);
+
+    // GitHub accepted the update below and has not moved the head yet. These
+    // are still the old commit's results, so they say nothing about the new one.
+    if (failures.length && pr.head.sha === updatedFromSha && now() < deadline) {
+      await sleep(pollMs);
+      continue;
+    }
+
     if (failures.length) {
       log(`#${number} has failing checks: ${failures.map((c) => `${c.name}=${c.conclusion}`).join(', ')}`);
-      return { outcome: 'failed', pr, failures };
+
+      // A red result is only final for the master it was tested against. These
+      // pull requests are the one kind nobody pushes to, so once master moves
+      // (the usual reason being that the failure was fixed there) nothing else
+      // would ever re-test them, and every later refresh stopped on the same
+      // old red check: #534 on 2026-09-13 and #650 on 2026-11-08. Updating the
+      // branch merges master in and earns a new run on the new head.
+      //
+      // This is not a retry. With master unchanged a red check stays final,
+      // and branch protection still judges the new commit.
+      let behind = 0;
+      if (pr.mergeable_state !== 'dirty' && pr.head.sha !== updatedFromSha && branchUpdates < maxBranchUpdates) {
+        try {
+          behind = await commitsBehindBase(api, pr);
+        } catch (err) {
+          log(`#${number}: could not compare with ${pr.base.ref} (${err.message})`);
+        }
+      }
+      if (behind === 0) return { outcome: 'failed', pr, failures };
+
+      branchUpdates += 1;
+      log(`#${number} is ${behind} commit(s) behind ${pr.base.ref}, so its red checks predate it; `
+        + `updating the branch to re-test it (${branchUpdates}/${maxBranchUpdates})`);
+      try {
+        await updateBranch(api, number);
+      } catch (err) {
+        log(`#${number}: GitHub refused the branch update (${err.message})`);
+        return { outcome: 'failed', pr, failures };
+      }
+      updatedFromSha = pr.head.sha;
+      await sleep(pollMs);
+      continue;
     }
 
     if (!armed) {
@@ -395,9 +449,16 @@ export async function main(argv, env = process.env, log = console.log) {
     const { blocked } = await reconcileOpenBotPullRequests(api, { prefix, log, timeoutMs, pollMs });
     if (blocked.length) {
       for (const b of blocked) {
-        log(`::error::the previous refresh pull request #${b.number} is ${b.outcome}. `
-          + 'A second refresh would conflict with it on changelog.json and the exports, so this run stops here. '
-          + 'Resolve or close it and re-run the refresh.');
+        // Named here because the annotation is what the failure email quotes.
+        const cause = b.outcome === 'failed'
+          ? `has failing checks: ${describeFailures(b.failures)}`
+          : `is ${b.outcome}`;
+        const next = b.outcome === 'failed'
+          ? 'Fix the cause on master and the next refresh updates this branch and re-tests it. '
+            + 'Closing it instead loses that day\'s changelog entry.'
+          : 'Resolve it and re-run the refresh.';
+        log(`::error::the previous refresh pull request #${b.number} ${cause}. `
+          + `A second refresh would conflict with it on changelog.json and the exports, so this run stops here. ${next}`);
       }
       return 1;
     }
@@ -415,7 +476,8 @@ export async function main(argv, env = process.env, log = console.log) {
     // human can point it at one. Printed unconditionally it told an owner
     // driving an unrelated pull request that a Rising Shows deploy was
     // blocked, which is a false alarm about a different part of the site.
-    log(`::error::pull request #${number} did not merge (${result.outcome}).`);
+    const detail = result.outcome === 'failed' ? `: ${describeFailures(result.failures)}` : '';
+    log(`::error::pull request #${number} did not merge (${result.outcome})${detail}.`);
     if (result.pr?.head?.ref?.startsWith(BOT_BRANCH_PREFIX)) {
       log('The refreshed data is already on the rising-shows-data release under an immutable name, and '
         + 'apps/rising-shows/data-release.json pins it from inside this pull request, so nothing deploys '
