@@ -39,6 +39,9 @@ const raw = J('bootstrap.json');
 const BOOTSTRAP = { ...raw, elements: expand(raw.elements) };
 const FIXTURES = expand(J('fixtures.json'));
 const FETCHED_AT = '2026-11-05T13:10:22.000Z';
+// The moment this payload describes. A frozen payload is never compared with
+// the machine's clock.
+const NOW = Date.parse(FETCHED_AT);
 const DEF = 2;
 const MID = 3;
 const FWD = 4;
@@ -60,7 +63,20 @@ test('the payload is a real fixture week: FPL itself ranks a defender above ever
   // Nine finished gameweeks of a league: hundreds of expected goals among the
   // attackers, against zero on the cleared 2026-08-22 payload.
   assert.ok(attackXg > 150, `midfielders and forwards carry ${attackXg.toFixed(1)} expected goals`);
-  assert.equal(gameweekLifecycle(GAME_STATE).planGw, 10);
+  assert.equal(gameweekLifecycle(GAME_STATE, { now: NOW }).planGw, 10);
+});
+
+// Ledger row 45. The assertion above used to read the machine's clock against
+// a payload frozen on 2026-11-05, so it passed until GW10's real deadline and
+// failed from then on, which held the Rising Shows data refresh's pull request
+// red. The expected weeks come from FPL's own published deadlines.
+test('the planned week turns over exactly at the deadlines FPL published, whatever the clock says', () => {
+  const deadlineOf = (id) => Date.parse(BOOTSTRAP.events.find((e) => e.id === id).deadline_time);
+  const planGwAt = (now) => gameweekLifecycle(GAME_STATE, { now }).planGw;
+  assert.equal(planGwAt(deadlineOf(10) - 1), 10, 'one millisecond before the GW10 deadline');
+  assert.equal(planGwAt(deadlineOf(10)), 11, 'at the GW10 deadline');
+  assert.equal(planGwAt(deadlineOf(11) - 1), 11, 'one millisecond before the GW11 deadline');
+  assert.equal(planGwAt(deadlineOf(11)), 12, 'at the GW11 deadline');
 });
 
 test('GW10 2026/27: one defender above the best attacker does not withhold the plan', async () => {

@@ -63,6 +63,11 @@ Step 7 runs BEFORE the download on the next day too: a refresh first
 finishes any pull request still open from the last one, and refuses to
 start a second while one is stuck. Two of them would both rewrite
 `changelog.json` and the exports, so the second could only conflict.
+A red check is final only for the `master` it was tested against: if
+`master` has moved since, the refresh updates that branch and waits for
+the new result, so a fix landing on `master` frees it on the next run.
+Do not close a stuck refresh pull request to clear it, because that
+day's changelog entry is then lost.
 
 If TMDB is unavailable (token missing or rate-limited), the workflow
 still produces a valid `data.json`: the UI falls back to a gradient
