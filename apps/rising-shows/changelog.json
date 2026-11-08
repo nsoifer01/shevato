@@ -1,6 +1,281 @@
 {
   "updates": [
     {
+      "builtAt": "2026-11-07T12:59:31.297Z",
+      "totals": {
+        "seasons": 67773,
+        "delta": 20
+      },
+      "shapeCounts": {
+        "rebound": 9798,
+        "big-finale": 11869,
+        "u-shaped": 2657,
+        "rollercoaster": 13531,
+        "mid-peak": 4386,
+        "consistent": 2542,
+        "bad-finale": 4368,
+        "front-loaded": 3091,
+        "slow-burn": 3989,
+        "declining": 1644,
+        "saved-best-for-last": 1380,
+        "shape-drift": 1395,
+        "rising": 2382
+      },
+      "shapeDeltas": {
+        "rebound": 7,
+        "big-finale": -1,
+        "u-shaped": 1,
+        "rollercoaster": 7,
+        "mid-peak": 1,
+        "consistent": -2,
+        "bad-finale": -3,
+        "slow-burn": 3,
+        "declining": 1,
+        "saved-best-for-last": -1,
+        "shape-drift": -1,
+        "rising": -1
+      },
+      "added": [
+        {
+          "seriesId": "tt27995113",
+          "title": "Black Doves",
+          "season": 2,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt8532412",
+          "title": "Damaged",
+          "season": 2,
+          "seasonYear": 2019
+        },
+        {
+          "seriesId": "tt0247134",
+          "title": "Cursed",
+          "season": 1,
+          "seasonYear": 2000
+        },
+        {
+          "seriesId": "tt0118356",
+          "title": "Jenny",
+          "season": 1,
+          "seasonYear": 1997
+        },
+        {
+          "seriesId": "tt0068033",
+          "title": "Alcock and Gander",
+          "season": 1,
+          "seasonYear": 1972
+        },
+        {
+          "seriesId": "tt2334429",
+          "title": "The Voice",
+          "season": 5,
+          "seasonYear": 2016
+        },
+        {
+          "seriesId": "tt40450811",
+          "title": "Crime of love",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt2334429",
+          "title": "The Voice",
+          "season": 9,
+          "seasonYear": 2020
+        },
+        {
+          "seriesId": "tt2334429",
+          "title": "The Voice",
+          "season": 11,
+          "seasonYear": 2022
+        },
+        {
+          "seriesId": "tt29011445",
+          "title": "Where's Wanda?",
+          "season": 2,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt27760834",
+          "title": "Amores inesperados",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt37469215",
+          "title": "Teach Me, Touch Me",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt47743462",
+          "title": "Love Always",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt5146640",
+          "title": "Irate the 80's",
+          "season": 2,
+          "seasonYear": 2014
+        },
+        {
+          "seriesId": "tt2334429",
+          "title": "The Voice",
+          "season": 13,
+          "seasonYear": 2024
+        },
+        {
+          "seriesId": "tt13434040",
+          "title": "Top Chef Amateurs",
+          "season": 1,
+          "seasonYear": 2021
+        },
+        {
+          "seriesId": "tt15302838",
+          "title": "My Mother's Penguins",
+          "season": 2,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt28234493",
+          "title": "Untold",
+          "season": 2,
+          "seasonYear": 2023
+        },
+        {
+          "seriesId": "tt33085825",
+          "title": "Libera",
+          "season": 1,
+          "seasonYear": 2024
+        },
+        {
+          "seriesId": "tt35240064",
+          "title": "Ostfriesenkrimis",
+          "season": 2,
+          "seasonYear": 2024
+        },
+        {
+          "seriesId": "tt35665810",
+          "title": "The Flight Attendant Murders",
+          "season": 1,
+          "seasonYear": 2023
+        },
+        {
+          "seriesId": "tt0407456",
+          "title": "Uchastok",
+          "season": 1,
+          "seasonYear": 2003
+        }
+      ],
+      "removed": [
+        {
+          "seriesId": "tt11541884",
+          "title": "Damaged 2",
+          "season": 1,
+          "seasonYear": 2020
+        },
+        {
+          "seriesId": "tt1945805",
+          "title": "Marvel Anime",
+          "season": 3,
+          "seasonYear": 2011
+        }
+      ],
+      "ratingSwings": [
+        {
+          "seriesId": "tt37594662",
+          "title": "Bakaiti",
+          "season": 2,
+          "from": 7.3,
+          "to": 6.66,
+          "delta": -0.64
+        },
+        {
+          "seriesId": "tt49702110",
+          "title": "Matargashti",
+          "season": 1,
+          "from": 5.9,
+          "to": 5.3,
+          "delta": -0.6
+        },
+        {
+          "seriesId": "tt0078711",
+          "title": "Working Stiffs",
+          "season": 1,
+          "from": 5.88,
+          "to": 5.3,
+          "delta": -0.58
+        },
+        {
+          "seriesId": "tt38411336",
+          "title": "Halef: Köklerin Çagrisi",
+          "season": 2,
+          "from": 6.04,
+          "to": 6.58,
+          "delta": 0.54
+        },
+        {
+          "seriesId": "tt2334429",
+          "title": "The Voice",
+          "season": 6,
+          "from": 6.44,
+          "to": 6.94,
+          "delta": 0.5
+        },
+        {
+          "seriesId": "tt2334429",
+          "title": "The Voice",
+          "season": 7,
+          "from": 6.87,
+          "to": 7.35,
+          "delta": 0.48
+        },
+        {
+          "seriesId": "tt16233524",
+          "title": "Univer. 10 let spustya",
+          "season": 1,
+          "from": 5.78,
+          "to": 6.23,
+          "delta": 0.45
+        },
+        {
+          "seriesId": "tt27755929",
+          "title": "Blood Red - Under the Moonlight",
+          "season": 2,
+          "from": 9.63,
+          "to": 9.18,
+          "delta": -0.45
+        },
+        {
+          "seriesId": "tt45854934",
+          "title": "The Gift of Deceit",
+          "season": 1,
+          "from": 6.65,
+          "to": 7.08,
+          "delta": 0.43
+        },
+        {
+          "seriesId": "tt27687545",
+          "title": "Gen Z",
+          "season": 1,
+          "from": 9.01,
+          "to": 9.41,
+          "delta": 0.4
+        }
+      ],
+      "modifiedCounts": {
+        "seriesVotes": 18839,
+        "avgRating": 1334,
+        "shapes": 221,
+        "seriesRating": 338,
+        "episodeCount": 82,
+        "poster": 1,
+        "overview": 2
+      }
+    },
+    {
       "builtAt": "2026-11-06T14:15:58.079Z",
       "totals": {
         "seasons": 67753,
@@ -7970,373 +8245,6 @@
         "episodeCount": 65,
         "providers": 2,
         "poster": 1
-      }
-    },
-    {
-      "builtAt": "2026-10-09T13:11:45.618Z",
-      "totals": {
-        "seasons": 67115,
-        "delta": 27
-      },
-      "shapeCounts": {
-        "rebound": 10225,
-        "rising": 2645,
-        "slow-burn": 4446,
-        "big-finale": 12247,
-        "u-shaped": 3088,
-        "rollercoaster": 14230,
-        "saved-best-for-last": 1475,
-        "shape-drift": 1588,
-        "mid-peak": 4638,
-        "front-loaded": 3511,
-        "declining": 1907,
-        "bad-finale": 4680,
-        "consistent": 2654
-      },
-      "shapeDeltas": {
-        "rebound": -1,
-        "rising": 13,
-        "slow-burn": -5,
-        "big-finale": 12,
-        "u-shaped": 6,
-        "rollercoaster": 15,
-        "saved-best-for-last": 1,
-        "shape-drift": 1,
-        "mid-peak": 7,
-        "front-loaded": -8,
-        "declining": 2,
-        "bad-finale": -3,
-        "consistent": 6
-      },
-      "added": [
-        {
-          "seriesId": "tt11540908",
-          "title": "Carrie",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt40197357",
-          "title": "Scrubs",
-          "season": 2,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt0239195",
-          "title": "Survivor",
-          "season": 51,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt26748321",
-          "title": "Doc",
-          "season": 3,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt43657771",
-          "title": "Justiça 2",
-          "season": 1,
-          "seasonYear": 2024
-        },
-        {
-          "seriesId": "tt0285335",
-          "title": "The Amazing Race",
-          "season": 39,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt0354293",
-          "title": "Family Business",
-          "season": 2,
-          "seasonYear": 2004
-        },
-        {
-          "seriesId": "tt37537251",
-          "title": "World White Hate",
-          "season": 1,
-          "seasonYear": 2025
-        },
-        {
-          "seriesId": "tt0418432",
-          "title": "Supernanny",
-          "season": 4,
-          "seasonYear": 2007
-        },
-        {
-          "seriesId": "tt9397882",
-          "title": "Our Yorkshire Farm",
-          "season": 4,
-          "seasonYear": 2021
-        },
-        {
-          "seriesId": "tt1045263",
-          "title": "Adventures in Architecture",
-          "season": 1,
-          "seasonYear": 2008
-        },
-        {
-          "seriesId": "tt4180738",
-          "title": "Storage Hunters UK",
-          "season": 2,
-          "seasonYear": 2015
-        },
-        {
-          "seriesId": "tt4180738",
-          "title": "Storage Hunters UK",
-          "season": 4,
-          "seasonYear": 2015
-        },
-        {
-          "seriesId": "tt10764462",
-          "title": "Unexplained: Caught on Camera",
-          "season": 4,
-          "seasonYear": 2023
-        },
-        {
-          "seriesId": "tt4598136",
-          "title": "Cassandre",
-          "season": 9,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt1199743",
-          "title": "39 i pól",
-          "season": 1,
-          "seasonYear": 2008
-        },
-        {
-          "seriesId": "tt4087032",
-          "title": "Good Mythical Morning",
-          "season": 19,
-          "seasonYear": 2021
-        },
-        {
-          "seriesId": "tt29083271",
-          "title": "Guy Montgomery's Guy Mont-Spelling Bee",
-          "season": 3,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt32459296",
-          "title": "Scotland: The New Wild",
-          "season": 1,
-          "seasonYear": 2023
-        },
-        {
-          "seriesId": "tt34385400",
-          "title": "Vampirina: Teenage Vampire",
-          "season": 2,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt36095180",
-          "title": "Monsters",
-          "season": 2,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt35880295",
-          "title": "Ages of Ice",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt11717526",
-          "title": "Belzebubs",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt7526498",
-          "title": "Shakespeare & Hathaway: Private Investigators",
-          "season": 6,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt13491734",
-          "title": "Name That Tune",
-          "season": 6,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt1360443",
-          "title": "Mei-chan's Butler",
-          "season": 1,
-          "seasonYear": 2009
-        },
-        {
-          "seriesId": "tt16984340",
-          "title": "Forensics: Catching the Killer",
-          "season": 3,
-          "seasonYear": 2023
-        },
-        {
-          "seriesId": "tt33305795",
-          "title": "Scariest House in America",
-          "season": 3,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt3247224",
-          "title": "Can We Get Married?",
-          "season": 1,
-          "seasonYear": 2012
-        },
-        {
-          "seriesId": "tt35513078",
-          "title": "Lego Ninjago: Legends",
-          "season": 2,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt36935784",
-          "title": "Knife Edge: Chasing Michelin Stars",
-          "season": 2,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt38348835",
-          "title": "Calabasas Confidential",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt39443739",
-          "title": "The Crow Club",
-          "season": 1,
-          "seasonYear": 2026
-        }
-      ],
-      "removed": [
-        {
-          "seriesId": "tt0954837",
-          "title": "Three Piece Suite",
-          "season": 1,
-          "seasonYear": 1977
-        },
-        {
-          "seriesId": "tt0122332",
-          "title": "Absolutely",
-          "season": 2,
-          "seasonYear": 1990
-        },
-        {
-          "seriesId": "tt26915869",
-          "title": "Destiny Seeker",
-          "season": 1,
-          "seasonYear": 2023
-        },
-        {
-          "seriesId": "tt39014301",
-          "title": "Tide of Love",
-          "season": 1,
-          "seasonYear": 2025
-        },
-        {
-          "seriesId": "tt37658649",
-          "title": "Reloved",
-          "season": 1,
-          "seasonYear": 2025
-        },
-        {
-          "seriesId": "tt43587624",
-          "title": "Unfold",
-          "season": 1,
-          "seasonYear": 2026
-        }
-      ],
-      "ratingSwings": [
-        {
-          "seriesId": "tt0123366",
-          "title": "The View",
-          "season": 30,
-          "from": 4.5,
-          "to": 3.51,
-          "delta": -0.99
-        },
-        {
-          "seriesId": "tt10764462",
-          "title": "Unexplained: Caught on Camera",
-          "season": 3,
-          "from": 6.64,
-          "to": 5.91,
-          "delta": -0.73
-        },
-        {
-          "seriesId": "tt1841204",
-          "title": "Lizard Lick Towing",
-          "season": 2,
-          "from": 7.27,
-          "to": 6.56,
-          "delta": -0.71
-        },
-        {
-          "seriesId": "tt35836959",
-          "title": "Medusa",
-          "season": 2,
-          "from": 5.32,
-          "to": 5.97,
-          "delta": 0.65
-        },
-        {
-          "seriesId": "tt43088191",
-          "title": "Dive Into You",
-          "season": 1,
-          "from": 8.47,
-          "to": 7.85,
-          "delta": -0.62
-        },
-        {
-          "seriesId": "tt38946694",
-          "title": "Tomei na Yoru ni Kakeru Kimi to, Me ni Mienai Koi wo Shita",
-          "season": 1,
-          "from": 6.93,
-          "to": 7.53,
-          "delta": 0.6
-        },
-        {
-          "seriesId": "tt0111877",
-          "title": "Almost Perfect",
-          "season": 1,
-          "from": 7.7,
-          "to": 8.28,
-          "delta": 0.58
-        },
-        {
-          "seriesId": "tt0111924",
-          "title": "The Client",
-          "season": 1,
-          "from": 6.54,
-          "to": 7.11,
-          "delta": 0.57
-        },
-        {
-          "seriesId": "tt45382417",
-          "title": "Alikara",
-          "season": 1,
-          "from": 9.25,
-          "to": 8.75,
-          "delta": -0.5
-        },
-        {
-          "seriesId": "tt0088531",
-          "title": "Happy Families",
-          "season": 1,
-          "from": 8.02,
-          "to": 7.53,
-          "delta": -0.49
-        }
-      ],
-      "modifiedCounts": {
-        "seriesVotes": 23278,
-        "avgRating": 1924,
-        "shapes": 285,
-        "episodeCount": 117,
-        "seriesRating": 432,
-        "poster": 5,
-        "overview": 3,
-        "providers": 1
       }
     }
   ]
