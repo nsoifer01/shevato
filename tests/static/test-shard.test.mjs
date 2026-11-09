@@ -6,7 +6,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
-import { REPO_ROOT, FILE_SECONDS, testScript, testFiles, partition } from '../../scripts/test-shard.mjs';
+import { REPO_ROOT, FILE_SECONDS, testScript, testFiles, partition, budgetFiles } from '../../scripts/test-shard.mjs';
 
 const PKG = JSON.parse(readFileSync(join(REPO_ROOT, 'package.json'), 'utf8'));
 const { flags, globs } = testScript(PKG);
@@ -44,4 +44,21 @@ test('every cost entry names a file npm test still runs', () => {
 
 test('a "test" script of another shape is refused rather than misread', () => {
   assert.throws(() => testScript({ scripts: { test: 'jest' } }), /is not `node --test/);
+});
+
+test('the budget files run alone, and shares plus budgets are still every file exactly once', () => {
+  const alone = budgetFiles(FILES);
+  assert.deepEqual(alone, [
+    'apps/fpl-planner/tests/invariants.test.mjs',
+    'apps/fpl-planner/tests/perf-budget.test.mjs',
+    'apps/fpl-planner/tests/perf-live-size.test.mjs',
+  ]);
+  const rest = FILES.filter((f) => !alone.includes(f));
+  const shares = partition(rest, 2).flatMap((b) => b.files);
+  assert.deepEqual([...shares, ...alone].sort(), FILES);
+});
+
+test('the budget run asks for the tighter ceilings and runs one file at a time', () => {
+  const src = readFileSync(join(REPO_ROOT, 'scripts/test-shard.mjs'), 'utf8');
+  assert.match(src, /'--test-concurrency=1', \.\.\.selected\], \{ \.\.\.process\.env, CPU_BUDGETS_ALONE: '1' \}/);
 });

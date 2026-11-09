@@ -153,7 +153,10 @@ test('handler: a blob HIT inside the window emits the collapsed edge window minu
   assert.equal(res.status, 200);
   assert.equal(res.headers.get('x-fpl-cache'), 'hit');
   const age = Number(res.headers.get('x-fpl-age-seconds'));
-  assert.ok(age >= 30 && age <= 32, `x-fpl-age-seconds is the copy's age when the function answered (${age})`);
+  // At most the 30 s seeded plus however long this handler really took, so a
+  // starved machine moves the bound with it and no fixed window can flake.
+  const longestAge = 30 + Math.ceil((Date.now() - now) / 1000);
+  assert.ok(age >= 30 && age <= longestAge, `x-fpl-age-seconds is the copy's age when the function answered (${age}, at most ${longestAge})`);
   // The frozen header plus everything the edge can add on top stays inside
   // the collapsed TTL, which is what makes a CDN-served copy's reported age
   // (x-fpl-age-seconds + Age) honest at every moment the edge serves it.

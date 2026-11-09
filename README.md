@@ -373,7 +373,9 @@ Fixing the product bug is a separate change from the test that documents it.
     `test-shard` pair with its `test` verdict (every `node:test` file, split in
     two by measured cost by `scripts/test-shard.mjs`, with the Rising Shows dataset present, so the
     real-catalogue tests run; `dot` output plus a summary on every run that
-    states the totals and names every skipped test), the
+    states the totals and names every skipped test), `test-budgets` (the FPL
+    Planner's CPU budget files, alone on a runner so they measure the planner
+    and not their neighbours, part of the same `test` verdict), the
     `browser-shard` matrix (eight shards) with its `browser` verdict, and the
     `rules-shard` pair with its `rules` verdict (the Arena rules suite and the
     multi-client e2e against the emulators, split across two machines and

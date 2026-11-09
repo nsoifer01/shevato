@@ -22,6 +22,13 @@
 // 2026-10-17 (every file of 10 s or more; the rest count as one second). A
 // stale or missing entry can unbalance the halves, never drop a file; the
 // static test fails when an entry names a file that no longer exists.
+//
+// THE CPU BUDGET FILES RUN ALONE (2026-11-09). `node scripts/test-shard.mjs
+// budgets` runs them one at a time on their own runner, and the shares leave
+// them out. Measured on GitHub's runners, the same transfer search cost 764 to
+// 1,121 ms by itself and 912 to 1,564 ms (one run 2,238) beside the rest of a
+// share: a process's CPU time rises when its neighbours share the core's cache
+// and siblings, so a budget compared in a share measured the neighbours.
 import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -62,6 +69,15 @@ export const FILE_SECONDS = {
 };
 export const DEFAULT_SECONDS = 1;
 
+// What marks a file as carrying a CPU budget (tests/helpers/cpu-budget.mjs).
+export const BUDGET_MARK = 'assertCpuBudget(t,';
+
+/** The test files that compare a CPU budget, relative to the repo. */
+export function budgetFiles(files, root = REPO_ROOT) {
+  // The helper's own test file calls it with a fake, and measures nothing.
+  return files.filter((f) => !f.endsWith('/cpu-budget.test.mjs') && fs.readFileSync(path.join(root, f), 'utf8').includes(BUDGET_MARK));
+}
+
 /** The "test" script's node flags and globs, as package.json writes them. */
 export function testScript(pkg) {
   const script = pkg.scripts && pkg.scripts.test;
@@ -95,24 +111,38 @@ export function partition(files, n, costs = FILE_SECONDS) {
   return bins;
 }
 
+function runNode(args, env = process.env) {
+  const child = spawn(process.execPath, args, { cwd: REPO_ROOT, stdio: 'inherit', env });
+  child.on('exit', (code, signal) => process.exit(signal ? 1 : code));
+}
+
 async function main(argv) {
+  if (argv[0] === 'budgets') {
+    const { flags: budgetFlags, globs: budgetGlobs } = testScript(JSON.parse(fs.readFileSync(path.join(REPO_ROOT, 'package.json'), 'utf8')));
+    const selected = budgetFiles(testFiles(budgetGlobs));
+    if (!selected.length) { console.error('no test file carries a CPU budget'); process.exit(1); }
+    console.log(`CPU budgets, one file at a time: ${selected.join(' ')}`);
+    runNode(['--test', ...budgetFlags, '--test-concurrency=1', ...selected], { ...process.env, CPU_BUDGETS_ALONE: '1' });
+    return;
+  }
   const m = /^([1-9][0-9]*)\/([1-9][0-9]*)$/.exec(argv[0] || '');
   if (!m || Number(m[1]) > Number(m[2])) {
-    console.error('usage: node scripts/test-shard.mjs <i>/<n>   (1-based, i <= n)');
+    console.error('usage: node scripts/test-shard.mjs <i>/<n> | budgets   (1-based, i <= n)');
     process.exit(2);
   }
   const [index, total] = [Number(m[1]), Number(m[2])];
   const pkg = JSON.parse(fs.readFileSync(path.join(REPO_ROOT, 'package.json'), 'utf8'));
   const { flags, globs } = testScript(pkg);
-  const files = testFiles(globs);
+  const all = testFiles(globs);
+  const alone = new Set(budgetFiles(all));
+  const files = all.filter((f) => !alone.has(f));
   const share = partition(files, total)[index - 1];
   console.log(`test shard ${index}/${total}: ${share.files.length} of ${files.length} files, ~${share.load}s of measured work`);
   if (!share.files.length) {
     console.error(`test shard ${index}/${total} selects no file`);
     process.exit(1);
   }
-  const child = spawn(process.execPath, ['--test', ...flags, ...share.files], { cwd: REPO_ROOT, stdio: 'inherit' });
-  child.on('exit', (code, signal) => process.exit(signal ? 1 : code));
+  runNode(['--test', ...flags, ...share.files]);
 }
 
 if (import.meta.url === pathToFileURL(process.argv[1] || '').href) await main(process.argv.slice(2));

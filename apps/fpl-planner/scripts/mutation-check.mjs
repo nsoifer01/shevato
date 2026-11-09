@@ -33,8 +33,8 @@
 // WHY A BASELINE. A mutant counts as KILLED when its tests fail. If those tests
 // already fail on the unmutated code (an environment problem, a missing file in
 // the working copy, someone's in-flight work), every mutant would read KILLED
-// and the report would be worthless. So the mapped test files are also run on
-// the pristine copy, and the check fails unless that baseline is green. Each
+// and the report would be worthless. So the mapped test files run first on the
+// pristine copy, and nothing else runs unless that baseline is green. Each
 // mutated file is also parsed (`node --check`) so a replacement that is simply
 // a syntax error is reported as INVALID rather than counted as a kill.
 //
@@ -47,6 +47,7 @@
 //   node apps/fpl-planner/scripts/mutation-check.mjs            run every mutant
 //   node apps/fpl-planner/scripts/mutation-check.mjs --list     print the table
 //   node apps/fpl-planner/scripts/mutation-check.mjs --only a,b run these ids
+//   node apps/fpl-planner/scripts/mutation-check.mjs --shard 1/3 run one third
 // Exit 1 when any mutant survives, is invalid, or cannot be applied, or when
 // the baseline is red.
 
@@ -80,6 +81,46 @@ export const COPY_PATHS = [
 // should kill it (they run in a fresh `node --test` per mutant, so a slow file
 // costs its full runtime every time it is mapped), and the rule it guards.
 export const MUTANTS = [
+  {
+    id: 'probe-refusal-waiver-without-proof',
+    file: `${APP}/scripts/lib/probe.mjs`,
+    find: "return Object.values(responses).some((r) => r.get('x-fpl-cache') === 'miss' && r.get('x-fpl-stale') !== 'true' && !(Number(r.get('age')) > 0));",
+    replace: 'return true;',
+    tests: [T('probe-refusal-waiver')],
+    guards: 'A run where nothing was fetched fresh from FPL is a block and stays red; only a partial refusal is waived (2026-11-09, ledger row 48).',
+  },
+  {
+    id: 'probe-refusal-waiver-replayed-miss',
+    file: `${APP}/scripts/lib/probe.mjs`,
+    find: " && !(Number(r.get('age')) > 0));",
+    replace: ');',
+    tests: [T('probe-refusal-waiver')],
+    guards: 'A miss the CDN replayed from before a block is no proof FPL is answering now (2026-11-09, ledger row 48).',
+  },
+  {
+    id: 'health-recheck-ignores-waiver',
+    file: 'netlify/functions/lib/fpl-health-run.mjs',
+    find: 'if (before && (before.ok === false || before.waived > 0)) return',
+    replace: 'if (before && before.ok === false) return',
+    tests: [T('probe-refusal-waiver')],
+    guards: 'A waived run is rechecked within the hour, as a red one is, or a lasting refusal waits six hours (2026-11-09, ledger row 48).',
+  },
+  {
+    id: 'health-waiver-every-run',
+    file: 'netlify/functions/lib/fpl-health-run.mjs',
+    find: 'allowRefusalWaiver: !(before && before.waived > 0) });',
+    replace: 'allowRefusalWaiver: true });',
+    tests: [NT('fpl-health')],
+    guards: 'A second partial refusal in a row fails the run, so a refusal that lasts cannot read green (2026-11-09, ledger row 48).',
+  },
+  {
+    id: 'probe-refusal-waiver-any-cause',
+    file: `${APP}/scripts/lib/probe.mjs`,
+    find: "|| !FPL_REFUSAL_CAUSES.includes(headers.get('x-fpl-upstream'))) return false;",
+    replace: ') return false;',
+    tests: [T('probe-refusal-waiver')],
+    guards: 'A stale copy from an FPL error, our quota or no stated cause is never waived; only an FPL refusal is (2026-11-09, ledger row 48).',
+  },
   // ---- transfer-state.js: the free-transfer bank (FPL's five rules). ----
   {
     id: 'ts-chip-week-plus-one',
@@ -380,7 +421,7 @@ export const MUTANTS = [
   {
     id: 'health-no-hourly-recheck',
     file: 'netlify/functions/lib/fpl-health-run.mjs',
-    find: 'if (before && before.ok === false) return { slot: slotOf(at, RECHECK_HOURS), recheck: true };',
+    find: 'if (before && (before.ok === false || before.waived > 0)) return { slot: slotOf(at, RECHECK_HOURS), recheck: true };',
     replace: 'if (false) return { slot: slotOf(at, RECHECK_HOURS), recheck: true };',
     tests: [NT('fpl-health')],
     guards: 'While red, the health run re-checks every hour, so a recovery closes the incident within an hour (#616, 2026-10-17).',
@@ -569,16 +610,56 @@ export function occurrences(text, needle) {
   return n;
 }
 
+// What one full run of each mapped test file costs, in seconds, rounded up from
+// a run of the whole table without stopping at the first failure (2026-11-09,
+// five workers). A mutant killed early costs less, so this is the worst case.
+// Only two things read it: packShards, where a wrong number only unbalances the
+// shards, and the guard in tests/mutation-check.test.mjs that fails `npm test`
+// when the table no longer fits the weekly job's limit.
+export const FILE_COST_SECONDS = {
+  'fpl-health': 220, 'probe-freshness': 205, chips: 190, 'gw7-audit-followup-ui': 85,
+  'optimizer-reference': 75, 'probe-sample': 65, 'search-corrections': 40,
+  'real-deadline-gw7': 25, 'real-deadline-gw10': 25, 'season-lifecycle': 25, probe: 25,
+  transfers: 20, 'manager-state-properties': 15, 'inherited-club-limit': 14,
+  'probe-refusal-waiver': 1, 'manager-state-lag': 7, 'ui-club-limit-notice': 4, 'plan-history-scope': 3,
+  squad: 2, validate: 1, rules: 1, fpl: 1, 'transfer-state': 1, 'transfer-state-real': 1,
+};
+
+const fileCostName = (test) => path.basename(test, '.test.mjs');
+export const mutantCostSeconds = (m) => m.tests.reduce((sum, t) => sum + (FILE_COST_SECONDS[fileCostName(t)] ?? 0), 0);
+
+// Splits the table into `n` shards of similar cost: heaviest mutant first, each
+// to the lightest shard, ties by id, so the split is the same on every machine.
+export function packShards(mutants, n) {
+  const shards = Array.from({ length: n }, () => ({ cost: 0, mutants: [] }));
+  const heaviestFirst = [...mutants].sort((a, b) => mutantCostSeconds(b) - mutantCostSeconds(a) || a.id.localeCompare(b.id));
+  for (const m of heaviestFirst) {
+    const lightest = shards.reduce((best, s) => (s.cost < best.cost ? s : best));
+    lightest.cost += mutantCostSeconds(m);
+    lightest.mutants.push(m);
+  }
+  return shards;
+}
+
 function parseArgs(argv) {
-  const out = { list: false, only: null };
+  const out = { list: false, only: null, shard: null };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--list') out.list = true;
     else if (a === '--only') out.only = String(argv[++i] || '').split(',').filter(Boolean);
     else if (a.startsWith('--only=')) out.only = a.slice(7).split(',').filter(Boolean);
+    else if (a === '--shard') out.shard = parseShard(argv[++i]);
+    else if (a.startsWith('--shard=')) out.shard = parseShard(a.slice(8));
     else throw new Error(`unknown argument: ${a}`);
   }
   return out;
+}
+
+function parseShard(text) {
+  const m = /^(\d+)\/(\d+)$/.exec(String(text));
+  const [index, total] = m ? [Number(m[1]), Number(m[2])] : [0, 0];
+  if (!(index >= 1 && index <= total)) throw new Error(`--shard expects i/n with 1 <= i <= n, got: ${text}`);
+  return { index, total };
 }
 
 function copyInto(dest) {
@@ -606,16 +687,49 @@ function cloneCopy(from, to) {
   fs.cpSync(from, to, { recursive: true, verbatimSymlinks: true });
 }
 
-function run(cmd, args, cwd, timeoutMs) {
+// The name of the failing test on one TAP line, or null. A `todo` or `skip`
+// that fails is not a failure, so it never counts as a kill.
+export function failingTestOn(line) {
+  const m = /^\s*not ok \d+ - (.*)$/.exec(line);
+  if (!m || /\s#\s*(TODO|SKIP)\b/i.test(m[1])) return null;
+  return m[1];
+}
+
+// `stopOnFailure` ends the run at the first failing test. A mutant needs only
+// one test to go red, and running the rest of the file is what took a 4-core
+// runner past the job's limit three weeks in a row (ledger row 47). Each run is
+// its own process group, because `node --test` starts a child per file and
+// killing only the parent left those children running against a file the next
+// mutant was about to rewrite.
+// Runs still going, so a Ctrl-C or a job cancel takes them with it: being their
+// own process group, they no longer hear the terminal's signal.
+const liveRuns = new Set();
+for (const signal of ['SIGINT', 'SIGTERM']) {
+  process.on(signal, () => { for (const kill of liveRuns) kill(); process.exit(1); });
+}
+
+export function run(cmd, args, cwd, timeoutMs, { stopOnFailure = false } = {}) {
   return new Promise((resolve) => {
-    const child = spawn(cmd, args, { cwd, stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, NODE_OPTIONS: '' } });
+    const child = spawn(cmd, args, { cwd, detached: true, stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, NODE_OPTIONS: '' } });
+    const killGroup = () => { try { process.kill(-child.pid, 'SIGKILL'); } catch { /* already gone */ } };
+    liveRuns.add(killGroup);
     let output = '';
+    let partial = '';
+    const failedTests = [];
     const keep = (d) => { output = (output + d).slice(-20000); };
-    child.stdout.on('data', keep);
+    child.stdout.on('data', (d) => {
+      keep(d);
+      if (stopOnFailure && failedTests.length) return;
+      partial += d;
+      const lines = partial.split('\n');
+      partial = lines.pop();
+      failedTests.push(...lines.map(failingTestOn).filter(Boolean));
+      if (stopOnFailure && failedTests.length) killGroup();
+    });
     child.stderr.on('data', keep);
     let timedOut = false;
-    const timer = setTimeout(() => { timedOut = true; child.kill('SIGKILL'); }, timeoutMs);
-    child.on('close', (code) => { clearTimeout(timer); resolve({ code, timedOut, output }); });
+    const timer = setTimeout(() => { timedOut = true; killGroup(); }, timeoutMs);
+    child.on('close', (code) => { clearTimeout(timer); liveRuns.delete(killGroup); resolve({ code, timedOut, output, failedTest: failedTests[0] || null, failedTests }); });
   });
 }
 
@@ -633,18 +747,22 @@ async function runMutant(m, copy) {
   try {
     const check = await run(process.execPath, ['--check', abs], copy, 60000);
     if (check.code !== 0) return { status: 'INVALID', detail: check.output.trim().split('\n').slice(0, 4).join(' | ') };
-    const res = await run(process.execPath, ['--test', ...m.tests], copy, RUN_TIMEOUT_MS);
+    const res = await run(process.execPath, ['--test', '--test-reporter=tap', ...m.tests], copy, RUN_TIMEOUT_MS, { stopOnFailure: true });
     const seconds = (Date.now() - started) / 1000;
     if (res.timedOut) return { status: 'KILLED', detail: 'timeout', seconds };
-    return res.code === 0 ? { status: 'SURVIVED', detail: '', seconds } : { status: 'KILLED', detail: '', seconds };
+    if (res.failedTest) return { status: 'KILLED', detail: '', killedBy: res.failedTest, seconds };
+    if (res.code === 0) return { status: 'SURVIVED', detail: '', seconds };
+    // No test failed and the runner died anyway (out of memory, a crash): that
+    // says nothing about the mutant, so it must not count as a kill.
+    return { status: 'INVALID', detail: `runner exited ${res.code} with no failing test`, seconds };
   } finally {
     fs.writeFileSync(abs, original);
   }
 }
 
 function printTable(rows) {
-  const head = ['id', 'status', 'secs', 'file', 'tests'];
-  const lines = rows.map(r => [r.id, r.status + (r.detail ? ` (${r.detail})` : ''), r.seconds === undefined ? '-' : r.seconds.toFixed(1), r.file.replace(`${APP}/`, ''), r.tests.map(t => path.basename(t)).join(' ')]);
+  const head = ['id', 'status', 'secs', 'file', 'killed by'];
+  const lines = rows.map(r => [r.id, r.status + (r.detail ? ` (${r.detail})` : ''), r.seconds === undefined ? '-' : r.seconds.toFixed(1), r.file.replace(`${APP}/`, ''), (r.killedBy || '-').slice(0, 90)]);
   const widths = head.map((h, i) => Math.max(h.length, ...lines.map(l => String(l[i]).length)));
   const fmt = (l) => l.map((c, i) => String(c).padEnd(widths[i])).join('  ').trimEnd();
   console.log(fmt(head));
@@ -660,6 +778,7 @@ async function main() {
     if (unknown.length) throw new Error(`unknown mutant id(s): ${unknown.join(', ')}`);
     mutants = MUTANTS.filter(m => args.only.includes(m.id));
   }
+  if (args.shard) mutants = packShards(mutants, args.shard.total)[args.shard.index - 1].mutants;
   if (args.list) {
     for (const m of mutants) console.log(`${m.id}\n  file:   ${m.file}\n  tests:  ${m.tests.join(' ')}\n  guards: ${m.guards}`);
     return 0;
@@ -682,10 +801,19 @@ async function main() {
     }
     console.log(`mutation-check: ${mutants.length} mutant(s), ${workers} worker(s), working copy ${work}`);
 
-    // The baseline runs on the pristine copy alongside the mutants: every
-    // mapped test file must pass unmutated, or a "kill" proves nothing.
+    // The baseline runs on the pristine copy FIRST, and alone: every mapped test
+    // file must pass unmutated, or a "kill" proves nothing. It used to run
+    // beside the mutants, and on a 4-core runner that starved it past
+    // RUN_TIMEOUT_MS, which read as a red baseline on healthy code (2 of 3
+    // GitHub runs of one shard, 2026-11-09, ledger row 49).
     const baselineFiles = [...new Set(mutants.flatMap(m => m.tests))];
-    const baseline = run(process.execPath, ['--test', ...baselineFiles], base, RUN_TIMEOUT_MS);
+    const base0 = await run(process.execPath, ['--test', '--test-reporter=tap', ...baselineFiles], base, RUN_TIMEOUT_MS);
+    const baselineSeconds = (Date.now() - t0) / 1000;
+    if (base0.code !== 0) {
+      console.log(`\nBASELINE RED after ${baselineSeconds.toFixed(0)} s: the mapped tests fail on the UNMUTATED copy, so no mutant was run.${base0.timedOut ? ` It hit the ${RUN_TIMEOUT_MS / 60000}-minute limit.` : ''}\nFailing tests:\n${base0.failedTests.map((n) => `  - ${n}`).join('\n') || '  (none named)'}\n${base0.output.slice(-4000)}`);
+      return 1;
+    }
+    console.log(`baseline green in ${baselineSeconds.toFixed(0)} s over ${baselineFiles.length} file(s)`);
 
     const results = new Map();
     let next = 0;
@@ -694,10 +822,9 @@ async function main() {
         const m = mutants[next++];
         const r = await runMutant(m, copy);
         results.set(m.id, r);
-        console.log(`  ${m.id}: ${r.status}${r.detail ? ` (${r.detail})` : ''}`);
+        console.log(`  ${m.id}: ${r.status}${r.detail ? ` (${r.detail})` : ''}${r.seconds === undefined ? '' : ` ${r.seconds.toFixed(1)}s`}${r.killedBy ? ` by: ${r.killedBy.slice(0, 90)}` : ''}`);
       }
     }));
-    const base0 = await baseline;
 
     const rows = mutants.map(m => ({ ...m, ...results.get(m.id) }));
     console.log('');
@@ -705,11 +832,8 @@ async function main() {
     const bad = rows.filter(r => r.status !== 'KILLED');
     const killed = rows.length - bad.length;
     console.log(`\n${killed}/${rows.length} killed in ${((Date.now() - t0) / 1000).toFixed(0)} s`);
-    if (base0.code !== 0) {
-      console.log(`\nBASELINE RED: the mapped tests fail on the UNMUTATED copy, so no kill above means anything.\n${base0.output.slice(-4000)}`);
-    }
     for (const r of bad) console.log(`\n${r.status}: ${r.id}\n  ${r.guards}\n  ${r.file}\n  tests: ${r.tests.join(' ')}`);
-    return bad.length || base0.code !== 0 ? 1 : 0;
+    return bad.length ? 1 : 0;
   } finally {
     fs.rmSync(work, { recursive: true, force: true });
   }

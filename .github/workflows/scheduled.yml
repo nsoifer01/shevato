@@ -30,6 +30,9 @@ name: scheduled
 #                    party's moving git branch, so it is fetched here, weekly,
 #                    and never on the pull-request path, and the job fails if
 #                    any of them still skips.
+#   future-clock ... the unit estate at future dates and at both ends of the
+#                    time zones, so a test tied to the real clock fails here
+#                    before it can hold a pull request.
 #
 # Formerly three separate schedules (test.yml's coverage job on Wednesday,
 # arena-rules.yml on Tuesday, cross-browser.yml on Monday); one run means one
@@ -98,19 +101,68 @@ jobs:
 
   mutation:
     runs-on: ubuntu-24.04
-    # About two and a half minutes on 11 local workers (2026-10-16); the slowest
-    # mapped file (chips.test.mjs) is 70 s on its own and a 4-core runner runs
-    # two mutants at a time, so 20 leaves headroom without hiding a hang. Plain
-    # node, no npm install: the check copies the app into a temp dir and runs
-    # `node --test` there.
+    # Split across runners because one could no longer hold the table: on two
+    # workers it was cancelled at this limit on 2026-10-26, 11-02 and 11-09,
+    # and a cancelled run prints no result table. On three shards the worst of
+    # nine GitHub runs took 15 minutes 15 s, so four leave real room.
+    # tests/mutation-check.test.mjs fails `npm test` if the table
+    # outgrows the limit, and a hang is bounded by the check's own 10-minute
+    # limit per mutant. Plain node, no npm install: the check copies the app
+    # into a temp dir and runs `node --test` there.
     timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-node@v6
         with:
           node-version-file: '.nvmrc'
-      - name: FPL Planner mutation check
-        run: npm run test:mutation:fpl
+      - name: FPL Planner mutation check (share ${{ matrix.shard }})
+        run: npm run test:mutation:fpl -- --shard ${{ matrix.shard }}/${{ strategy.job-total }}
+
+  # The estate at the dates and zones it will meet. A test frozen against the
+  # real clock passes until the day it does not, and then fails on whichever
+  # pull request runs next: #650, the data refresh, was held for days by one
+  # (FPL ledger row 45). Run ahead of time, the same test fails here first, a
+  # week before it can block anything. The CPU budget files are left out by
+  # the share itself: they are compared on their own runner.
+  future-clock:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { label: next-weekly-run, shift: '+8 days', tz: UTC }
+          - { label: five-weeks-on, shift: '+35 days', tz: UTC }
+          - { label: six-months-on, shift: '+180 days', tz: UTC }
+          - { label: furthest-ahead-zone, shift: '', tz: Pacific/Kiritimati }
+          - { label: furthest-behind-zone, shift: '', tz: Etc/GMT+12 }
+    name: future-clock (${{ matrix.label }})
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          # privacy-review-date compares the policy with git history.
+          fetch-depth: 0
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: '.nvmrc'
+      - name: Rising Shows dataset
+        uses: ./.github/actions/rising-shows-dataset
+      - name: Unit estate at this date and zone
+        env:
+          TZ: ${{ matrix.tz }}
+          SHIFT: ${{ matrix.shift }}
+        run: |
+          if [ -n "$SHIFT" ]; then
+            FAKE_NOW=$(date -u -d "$SHIFT" +%Y-%m-%dT%H:%M:%SZ)
+            export FAKE_NOW
+            export NODE_OPTIONS="--import $GITHUB_WORKSPACE/apps/fpl-planner/tests/helpers/shift-clock.mjs"
+            echo "the clock reads $FAKE_NOW"
+          fi
+          node scripts/test-shard.mjs 1/1
 
   fpl-archive:
     runs-on: ubuntu-24.04

@@ -66,7 +66,7 @@ import { assembleSampleBundle } from '../js/data/sample.js';
 import { buildGameState } from '../js/engine/normalize.js';
 import { buildSquadState } from '../js/engine/squad.js';
 import { buildPlan } from '../js/engine/planner.js';
-import { assertCpuBudget } from './helpers/cpu-budget.mjs';
+import { assertCpuBudget, budgetMs } from './helpers/cpu-budget.mjs';
 
 // Measured in CPU TIME, not wall time.
 //
@@ -112,7 +112,7 @@ async function fastest(fn) {
 // raised only to keep the ordering true, because the longest horizon is always
 // at least as much work as the default one, and a ceiling equal to the default
 // budget would stop meaning anything.
-const LONGEST_HORIZON_BUDGET_MS = 16000;
+const LONGEST_HORIZON_BUDGET_MS = budgetMs(16000, 8500);
 
 const APP = join(dirname(fileURLToPath(import.meta.url)), '..');
 const sample = (name) => JSON.parse(readFileSync(join(APP, 'data', 'sample', `${name}.json`), 'utf8'));

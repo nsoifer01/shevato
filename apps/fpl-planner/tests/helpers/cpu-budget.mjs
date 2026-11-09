@@ -23,6 +23,26 @@ import assert from 'node:assert/strict';
 export const underCoverage = (env = process.env) => Boolean(env.NODE_V8_COVERAGE);
 
 /**
+ * The ceiling for this run: the tighter one when the budget files have a runner
+ * to themselves (`node scripts/test-shard.mjs budgets`, CI's test-budgets job).
+ * Measured there on 2026-11-09 (24 jobs on GitHub, five CPU models), the worst
+ * healthy costs were 1195, 3412, 6437 and 9238 ms; each ceiling is about 1.3
+ * times that. The shared ceiling is for `npm test`, where the neighbours inflate
+ * the same work by up to two times and only a large regression can be told apart.
+ */
+export const budgetMs = (sharedMs, aloneMs, env = process.env) => (env.CPU_BUDGETS_ALONE === '1' ? aloneMs : sharedMs);
+
+/**
+ * The cost to judge a repeated measurement by: its cheapest run. Noise on a
+ * shared runner (JIT and GC threads, a busy neighbour) only ever ADDS CPU time,
+ * so the minimum is the closest reading of what the work costs, and a real
+ * slowdown still raises it. A median does not do this: on 2026-11-09 one
+ * process measured the same search at 2260, 2016 and 1491 ms, and the median
+ * failed a 2000 ms budget sized from a 1509 ms measurement.
+ */
+export const cheapestRunMs = (timings) => Math.min(...timings);
+
+/**
  * Assert `ms < budgetMs`, unless the process is collecting V8 coverage.
  * Returns true when the budget was compared, false when it was only reported.
  */
@@ -33,6 +53,7 @@ export function assertCpuBudget(t, ms, budgetMs, message, env = process.env) {
     t.diagnostic(`CPU budget not compared under V8 coverage: ${Math.round(ms)} ms measured against a ${budgetMs} ms budget`);
     return false;
   }
+  t.diagnostic(`CPU budget compared: ${Math.round(ms)} ms measured against a ${budgetMs} ms budget`);
   assert.ok(ms < budgetMs, message);
   return true;
 }

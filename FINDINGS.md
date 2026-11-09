@@ -445,6 +445,44 @@ last 30 days.
 - **A credit-based plan.** Irreversible, and 20 or 66 production deploys a month
   is below what this site ships.
 
+## Sixty days of red runs, classified (2026-11-09)
+
+58 failed or cancelled runs from 2026-09-10 to 11-09, every one read from its
+logs (PR #656). What they were:
+
+| Class | Runs | Cause | State |
+| --- | --- | --- | --- |
+| Superseded by a newer push, or cancelled before any work | 8 | `cancel-in-progress` doing its job | not a defect |
+| Real defect on its own pull request | 9 | the gate working (browser, Rising Shows, FPL budgets, privacy date) | not a defect |
+| FPL health probe, stale copy after a partial refusal by FPL | 9 | a monitor judging a designed fallback as a failure | changed: excused once, with proof |
+| Arena emulator e2e | 8 | the multiplayer e2e, removed 2026-10-17 | gone, none since |
+| Refresh blocked by a red required check | 5 | downstream of a red test on its pull request | clock guard below |
+| Coverage job | 4 | budgets compared under instrumentation, one real floor | fixed 2026-09-14; floor passed the next week |
+| Weekly mutation limit (3rd also a noisy CPU budget) | 3 | a job that outgrew its runner; budgets measuring neighbours | fixed, FPL ledger 46, 47, 49 |
+| MapTap cross-tab write race (the `UTC+12` suite) | 2 | a real app bug: a hidden tab rewrote the log | fixed, unit guard in `app-helpers.test.js` |
+| Browser flake on a no-code pull request | 2 | shared-state suites (hermetic rework #542); one a11y one-off | none since 2026-09-17 |
+| FPL probe, real upstream or app failure | 2 | FPL 503s (10-23); the club-limit defect (10-24, #628) | the gate working |
+| Deliberate drill or draft probe | 2 | a monitor drill, an autopilot probe on a draft | not a defect |
+| Refresh: merge conflict, 6-hour cap on a full rebuild | 2 | one of each, neither repeated | not recurring |
+| A fixture read against the real clock | 1 | FPL ledger row 45 | fixed; `future-clock` below |
+| Gym Tracker unit race | 1 | fixed in 6a00ece1 | none since |
+
+What a future session should keep:
+
+- **A monitor, a budget or a baseline that runs beside other work measures the
+  other work.** CPU budgets inflated by up to two times in a share, and a
+  mutation baseline starved past its limit when it ran next to the mutants. Run
+  the thing that judges alone.
+- **A job that grows needs a guard at the point of growth.** The mutation table
+  grew for weeks before any run noticed. `mutation-check.test` fails on the pull
+  request that adds too much.
+- **`future-clock` in `scheduled.yml` runs the estate at +8, +35 and +180 days and
+  in both extreme zones**, so a test frozen against the real clock fails there
+  first. Ten date and zone combinations were run on GitHub on 2026-11-09 (7,528
+  tests each, no failures).
+- Browser suites have not gone red on a no-code pull request since the hermetic
+  rework (#542); the last two such flakes were 2026-09-13 and 09-17.
+
 ## Why pull-request CI failed, and what the pipeline is now (2026-09-14)
 
 Evidence: the 400 most recent Actions runs (2026-09-08 to 09-14), every failed

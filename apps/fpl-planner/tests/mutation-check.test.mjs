@@ -14,10 +14,13 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { existsSync, readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { basename, join } from 'node:path';
 
-import { MUTANTS, REPO_ROOT, COPY_PATHS, occurrences } from '../scripts/mutation-check.mjs';
+import {
+  MUTANTS, REPO_ROOT, COPY_PATHS, FILE_COST_SECONDS, occurrences, failingTestOn, packShards, mutantCostSeconds, run,
+} from '../scripts/mutation-check.mjs';
 
 test('the mutant table is well-formed: unique ids, every field present, a dated guard', () => {
   assert.ok(MUTANTS.length >= 20, `the curated table has ${MUTANTS.length} mutants`);
@@ -64,4 +67,78 @@ test('occurrences counts non-overlapping matches', () => {
   assert.equal(occurrences('aaaa', 'aa'), 2);
   assert.equal(occurrences('abc', 'x'), 0);
   assert.equal(occurrences('abc', ''), 0);
+});
+
+test('a failing test ends a run, but a failing todo or skip does not', () => {
+  assert.equal(failingTestOn('not ok 3 - the rule holds'), 'the rule holds');
+  assert.equal(failingTestOn('    not ok 1 - a nested case'), 'a nested case');
+  assert.equal(failingTestOn('ok 3 - the rule holds'), null);
+  assert.equal(failingTestOn('not ok 4 - known gap # TODO pinned'), null);
+  assert.equal(failingTestOn('not ok 5 - not here # SKIP no data'), null);
+  assert.equal(failingTestOn('# not ok in a comment'), null);
+});
+
+test('the first failing test stops the run and takes every child process with it', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'mutation-run-'));
+  try {
+    const pidFile = join(dir, 'child.pid');
+    const script = join(dir, 'parent.mjs');
+    writeFileSync(script, `
+      import { spawn } from 'node:child_process';
+      import { writeFileSync } from 'node:fs';
+      const child = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { stdio: 'ignore' });
+      writeFileSync(${JSON.stringify(pidFile)}, String(child.pid));
+      console.log('ok 1 - fine');
+      console.log('not ok 2 - the killer');
+      setInterval(() => {}, 1000);
+    `);
+    const res = await run(process.execPath, [script], dir, 60000, { stopOnFailure: true });
+    assert.equal(res.failedTest, 'the killer');
+    assert.equal(res.timedOut, false);
+    const pid = Number(readFileSync(pidFile, 'utf8'));
+    const gone = () => { try { process.kill(pid, 0); return false; } catch { return true; } };
+    const until = Date.now() + 10000;
+    while (!gone() && Date.now() < until) await new Promise((r) => setTimeout(r, 50));
+    assert.ok(gone(), 'the grandchild was killed with the run');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('every mutant lands in exactly one shard, the same way every time', () => {
+  for (const n of [1, 2, 3, 7]) {
+    const shards = packShards(MUTANTS, n);
+    assert.equal(shards.length, n);
+    const ids = shards.flatMap((s) => s.mutants.map((m) => m.id)).sort();
+    assert.deepEqual(ids, MUTANTS.map((m) => m.id).sort());
+    assert.deepEqual(packShards([...MUTANTS].reverse(), n).map((s) => s.mutants.map((m) => m.id)), shards.map((s) => s.mutants.map((m) => m.id)));
+  }
+});
+
+test('every mapped test file has a measured cost', () => {
+  const missing = new Set(MUTANTS.flatMap((m) => m.tests).map((t) => basename(t, '.test.mjs')).filter((n) => !(n in FILE_COST_SECONDS)));
+  assert.deepEqual([...missing], [], 'time the file and add it to FILE_COST_SECONDS');
+});
+
+test('the table fits the weekly job, so outgrowing it fails here and not on the schedule', () => {
+  // A shard's cost is split over two workers on a 4-core runner. The worst of
+  // nine GitHub runs on 2026-11-09 was 908 s for a shard of about 1,540
+  // cost-seconds with the baseline first: 1.18 times cost / 2. The factor of
+  // 1.5 leaves about 1.3 times that for a slower runner.
+  const yml = readFileSync(join(REPO_ROOT, '.github/workflows/scheduled.yml'), 'utf8');
+  const job = yml.slice(yml.indexOf('\n  mutation:'), yml.indexOf('\n  fpl-archive:'));
+  const limit = Number(/timeout-minutes: (\d+)/.exec(job)[1]) * 60;
+  const shardCount = /shard: \[([\d, ]+)\]/.exec(job)[1].split(',').length;
+  assert.match(job, /--shard \$\{\{ matrix\.shard \}\}\/\$\{\{ strategy\.job-total \}\}/, 'the job passes its shard');
+  const heaviest = Math.max(...packShards(MUTANTS, shardCount).map((s) => s.cost));
+  assert.ok((heaviest / 2) * 1.5 <= limit, `heaviest shard ${heaviest} s against a ${limit} s limit: add a shard`);
+  assert.equal(MUTANTS.reduce((n, m) => n + mutantCostSeconds(m), 0) > 0, true);
+});
+
+test('no mutant is judged by a CPU budget, which a busy runner can fail by itself', () => {
+  for (const m of MUTANTS) {
+    for (const t of m.tests) {
+      assert.doesNotMatch(readFileSync(join(REPO_ROOT, t), 'utf8'), /assertCpuBudget\(t,/, `${m.id}: ${t}`);
+    }
+  }
 });

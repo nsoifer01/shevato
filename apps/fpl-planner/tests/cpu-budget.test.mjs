@@ -8,7 +8,7 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { assertCpuBudget, underCoverage } from './helpers/cpu-budget.mjs';
+import { assertCpuBudget, budgetMs, cheapestRunMs, underCoverage } from './helpers/cpu-budget.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const fakeT = () => ({ diagnostics: [], diagnostic(m) { this.diagnostics.push(m); } });
@@ -20,10 +20,10 @@ test('without coverage a cost over the budget fails with its message', () => {
     (e) => e instanceof assert.AssertionError && /a live-sized plan took 10062ms/.test(e.message));
 });
 
-test('without coverage a cost inside the budget passes and says it was compared', () => {
+test('without coverage a cost inside the budget passes and says what it measured', () => {
   const t = fakeT();
   assert.equal(assertCpuBudget(t, 9000, 10000, 'fine', PLAIN), true);
-  assert.deepEqual(t.diagnostics, []);
+  assert.deepEqual(t.diagnostics, ['CPU budget compared: 9000 ms measured against a 10000 ms budget']);
 });
 
 test('the boundary is strict, as the budgets always were', () => {
@@ -49,6 +49,35 @@ test('coverage is read from NODE_V8_COVERAGE, and an empty value is not coverage
   assert.equal(underCoverage(COVERED), true);
   assert.equal(underCoverage(PLAIN), false);
   assert.equal(underCoverage({ NODE_V8_COVERAGE: '' }), false);
+});
+
+test('noisy runs of work inside its budget pass: the 2026-11-09 runner measurement', () => {
+  // Measured by the weekly run on GitHub; its median (2016) failed the budget.
+  assert.equal(assertCpuBudget(fakeT(), cheapestRunMs([2260, 2016, 1491]), 2000, 'noise', PLAIN), true);
+});
+
+test('a real slowdown still fails, because every run gets slower', () => {
+  assert.throws(() => assertCpuBudget(fakeT(), cheapestRunMs([2600, 2100, 2350]), 2000, 'slower', PLAIN),
+    (e) => e instanceof assert.AssertionError && /slower/.test(e.message));
+});
+
+test('the cheapest run is the smallest whatever the order, including a single run', () => {
+  assert.equal(cheapestRunMs([1491, 2260, 2016]), 1491);
+  assert.equal(cheapestRunMs([2260, 2016, 1491]), 1491);
+  assert.equal(cheapestRunMs([1800]), 1800);
+});
+
+test('the tighter ceiling applies only when the budget files have the runner to themselves', () => {
+  assert.equal(budgetMs(2000, 1600, { CPU_BUDGETS_ALONE: '1' }), 1600);
+  assert.equal(budgetMs(2000, 1600, {}), 2000);
+});
+
+test('every repeated CPU measurement is judged by its cheapest run', () => {
+  // Hand-rolled medians in these tests are what failed on 2026-11-09.
+  const medians = readdirSync(HERE)
+    .filter((n) => n.endsWith('.test.mjs') && n !== 'cpu-budget.test.mjs')
+    .filter((n) => /sort\(\(a, b\) => a - b\)\[1\]/.test(readFileSync(join(HERE, n), 'utf8')));
+  assert.deepEqual(medians, []);
 });
 
 test('every CPU budget in these tests goes through assertCpuBudget', () => {

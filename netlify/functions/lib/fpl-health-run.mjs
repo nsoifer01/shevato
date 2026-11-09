@@ -120,7 +120,7 @@ export const RECHECK_HOURS = 1;
 export const slotFor = (at, claimedSlot, before) => {
   const slot = slotOf(at);
   if (!claimedSlot || claimedSlot < slot) return { slot, recheck: false };
-  if (before && before.ok === false) return { slot: slotOf(at, RECHECK_HOURS), recheck: true };
+  if (before && (before.ok === false || before.waived > 0)) return { slot: slotOf(at, RECHECK_HOURS), recheck: true };
   return null;
 };
 
@@ -263,7 +263,7 @@ export async function readEntry(id, bootstrapReady, fetchImpl, responses = {}) {
 }
 
 /** One probe of production. Pure apart from `fetchImpl` and the clock. */
-export async function probeProduction({ fetchImpl: rawFetch = fetch, now = new Date().toISOString(), prev = null, entryId = healthEntryId(), rereadDelayMs = REREAD_DELAY_MS } = {}) {
+export async function probeProduction({ fetchImpl: rawFetch = fetch, now = new Date().toISOString(), prev = null, entryId = healthEntryId(), rereadDelayMs = REREAD_DELAY_MS, allowRefusalWaiver = false } = {}) {
   const responses = {};
   const transient = [];
   const fetchImpl = rereadingFetch(rawFetch, transient, { delayMs: rereadDelayMs });
@@ -288,7 +288,7 @@ export async function probeProduction({ fetchImpl: rawFetch = fetch, now = new D
   const result = await runProbe({
     // The real entry's squad state is checked; his plan is the GitHub
     // workflow's (see planEntry in scripts/lib/probe.mjs).
-    bootstrap, fixtures, fetchedAt: now, now, source: 'proxy', responses, prev, entry, planEntry: false,
+    bootstrap, fixtures, fetchedAt: now, now, source: 'proxy', responses, prev, entry, planEntry: false, allowRefusalWaiver,
     // What a first-time visitor's browser fetches (js/data/opening-baseline.js).
     loadShipped: async () => {
       const res = await fetchImpl(`${SITE}/apps/fpl-planner/data/opening-baseline.json`, { headers: { Accept: 'application/json' } });
@@ -320,7 +320,7 @@ const transientLines = (notes) => (notes.length ? ['', ...notes.map((n) => `tran
  * The scheduled run: claim the slot, probe, store, alert. Returns what was
  * stored (or `{ skipped }`).
  */
-export async function runScheduledProbe({ store, fetchImpl = fetch, now = () => new Date().toISOString(), alert = null, archiveStore = null, entryId = healthEntryId(), proxyStore = null, slowRunMs = SLOW_RUN_MS, rereadDelayMs = REREAD_DELAY_MS } = {}) {
+export async function runScheduledProbe({ store, fetchImpl = fetch, now = () => new Date().toISOString(), alert = null, archiveStore = null, entryId = healthEntryId(), proxyStore = null, slowRunMs = SLOW_RUN_MS, rereadDelayMs = REREAD_DELAY_MS, clockMs = () => Date.now() } = {}) {
   const at = now();
   const before = await store.get('latest', { type: 'json' });
   const updateWindow = await updateWindowFor(proxyStore, at);
@@ -331,7 +331,7 @@ export async function runScheduledProbe({ store, fetchImpl = fetch, now = () => 
   }
   if (!claimed) return { skipped: `slot ${slot} already probed${before && before.ok === false ? '' : ', and the last result passed'}` };
 
-  const started = Date.now();
+  const started = clockMs();
   let result;
   // Everything between the claim and the stored result is inside this try
   // (2026-10-16): the slot is claimed by now, so a throw that escaped here
@@ -341,7 +341,7 @@ export async function runScheduledProbe({ store, fetchImpl = fetch, now = () => 
   // unparseable body ends up quoted in a JSON error.
   try {
     const prev = await store.get('last-reading', { type: 'json' });
-    result = await probeProduction({ fetchImpl, now: at, prev, entryId, rereadDelayMs });
+    result = await probeProduction({ fetchImpl, now: at, prev, entryId, rereadDelayMs, allowRefusalWaiver: !(before && before.waived > 0) });
   } catch (err) {
     result = { checks: [failure('the probe runs to completion', `threw: ${scrubUpstreamText(err && err.message)}`, 'no exception')], reading: null, lines: [] };
   }
@@ -377,14 +377,14 @@ export async function runScheduledProbe({ store, fetchImpl = fetch, now = () => 
       result.checks.push(failure(name, `could not read the proxy's refusal record: ${err && err.message}`, 'a readable fpl-planner store'));
     }
   }
-  const elapsed = Date.now() - started;
+  const elapsed = clockMs() - started;
   const slowName = 'the run finishes well inside Netlify\'s 30-second limit';
   result.checks.push(elapsed > slowRunMs
     ? failure(slowName, `${(elapsed / 1000).toFixed(1)} s`, `under ${slowRunMs / 1000} s`)
     : { name: slowName, ok: true });
   const failed = result.checks.filter((c) => c.ok === false);
   const latest = {
-    at, slot, ok: failed.length === 0, durationMs: Date.now() - started,
+    at, slot, ok: failed.length === 0, durationMs: elapsed,
     failed: failed.map(({ name, saw, expected }) => ({ name, saw, expected })),
     checks: result.checks.filter((c) => c.ok !== null).map(({ name, ok }) => ({ name, ok })),
     reading: result.reading,
@@ -392,6 +392,10 @@ export async function runScheduledProbe({ store, fetchImpl = fetch, now = () => 
     // Answers FPL degraded and the re-read recovered (or did not): how often
     // the upstream blips, kept in the history so a rising rate is visible.
     transient: (result.transient || []).length,
+    // Freshness checks a partial FPL refusal excused (probe.mjs
+    // refusedWhileFplAnswered). More than zero asks for the hourly recheck and
+    // refuses the excuse to the run after this one.
+    waived: (result.waived || []).length,
   };
 
   await store.setJSON('latest', latest);
@@ -400,9 +404,11 @@ export async function runScheduledProbe({ store, fetchImpl = fetch, now = () => 
   // asked, so a red run told nobody.
   try {
     const history = (await store.get('history', { type: 'json' })) || [];
-    history.push({ at, slot, ok: latest.ok, failed: latest.failed.map((f) => f.name), durationMs: latest.durationMs, transient: latest.transient });
+    history.push({ at, slot, ok: latest.ok, failed: latest.failed.map((f) => f.name), durationMs: latest.durationMs, transient: latest.transient, waived: latest.waived });
     await store.setJSON('history', history.slice(-HISTORY_LIMIT));
-    if (latest.ok && result.reading) await store.setJSON('last-reading', result.reading);
+    // Never a waived run's reading: part of it is a stale copy, and the next run
+    // compares against this.
+    if (latest.ok && !latest.waived && result.reading) await store.setJSON('last-reading', result.reading);
   } catch (err) {
     console.error('fpl-health history write failed', String((err && err.message) || err));
   }

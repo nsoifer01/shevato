@@ -24,7 +24,7 @@ import { assembleSampleBundle } from '../js/data/sample.js';
 import { buildGameState } from '../js/engine/normalize.js';
 import { buildSquadState } from '../js/engine/squad.js';
 import { buildPlan } from '../js/engine/planner.js';
-import { assertCpuBudget } from './helpers/cpu-budget.mjs';
+import { assertCpuBudget, budgetMs } from './helpers/cpu-budget.mjs';
 
 // The live 2026/27 pool, measured against the real API on 2026-08-14.
 const LIVE_POOL = 587;
@@ -67,8 +67,8 @@ async function fastest(fn) {
 // cannot breach a ceiling the 587-player pool is held under. The horizon-8
 // number below is still shared with perf-budget.test.mjs. Both moved on
 // 2026-08-15 after CI measured this pool at 5772ms; that file documents why.
-const FULL_PLAN_BUDGET_MS = 10000;
-const LONGEST_HORIZON_BUDGET_MS = 16000;
+const FULL_PLAN_BUDGET_MS = budgetMs(10000, 4500);
+const LONGEST_HORIZON_BUDGET_MS = budgetMs(16000, 8500);
 
 // The opening build gets its OWN budget rather than inheriting the one above,
 // because it is a different and heavier operation: a full fifteen-man search
@@ -92,7 +92,7 @@ const LONGEST_HORIZON_BUDGET_MS = 16000;
 // Worker behind a loading state so the page never freezes, but a manager on a
 // slow phone in the week before GW1 waits that long. That is a real number to
 // weigh after the season opens, not something to tune during a release.
-const OPENING_BUILD_BUDGET_MS = 18000;
+const OPENING_BUILD_BUDGET_MS = budgetMs(18000, 12000);
 
 const APP = join(dirname(fileURLToPath(import.meta.url)), '..');
 const sample = (n) => JSON.parse(readFileSync(join(APP, 'data', 'sample', `${n}.json`), 'utf8'));
