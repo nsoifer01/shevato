@@ -445,6 +445,38 @@ last 30 days.
 - **A credit-based plan.** Irreversible, and 20 or 66 production deploys a month
   is below what this site ships.
 
+## Sixty days of red runs, classified (2026-11-09)
+
+58 failed or cancelled runs from 2026-09-10 to 11-09, every one read from its
+logs (PR #656). What they were:
+
+| Class | Runs | Cause | State |
+| --- | --- | --- | --- |
+| Superseded by a newer push, or a run cancelled before starting | 9 | `cancel-in-progress` doing its job | not a defect |
+| Real defects on their own pull request (browser, Rising Shows, FPL, privacy date) | 11 | the gate working | not a defect |
+| FPL health probe, a partial 403 from FPL's edge | 9 | a monitor judging a designed fallback as a failure | changed, excused once with proof |
+| Deliberate probes and drills | 5 | `probe/*` branches, a monitor drill, a draft | not a defect |
+| Arena emulator suite | 8 | the multiplayer e2e, removed 2026-10-17 | gone, none since |
+| Early coverage, budgets and FPL real-data failures | 7 | fixed at the time (#542, #545, #558, #628) | none since |
+| Refresh cascades from one red test, one merge conflict, one full rebuild | 6 | downstream of a red required check | the clock guard below |
+| Weekly mutation limit and the noisy CPU budget | 3 | the job outgrew its runner; budgets measured neighbours | fixed, FPL ledger 46, 47, 49 |
+
+What a future session should keep:
+
+- **A monitor, a budget or a baseline that runs beside other work measures the
+  other work.** CPU budgets inflated by up to two times in a share, and a
+  mutation baseline starved past its limit when it ran next to the mutants. Run
+  the thing that judges alone.
+- **A job that grows needs a guard at the point of growth.** The mutation table
+  grew for weeks before any run noticed. `mutation-check.test` fails on the pull
+  request that adds too much.
+- **`future-clock` in `scheduled.yml` runs the estate at +8, +35 and +180 days and
+  in both extreme zones**, so a test frozen against the real clock fails there
+  first. Ten date and zone combinations were run on GitHub on 2026-11-09 (7,528
+  tests each, no failures).
+- Browser suites have not gone red on a no-code pull request since the hermetic
+  rework (#542); the last two such flakes were 2026-09-13 and 09-17.
+
 ## Why pull-request CI failed, and what the pipeline is now (2026-09-14)
 
 Evidence: the 400 most recent Actions runs (2026-09-08 to 09-14), every failed

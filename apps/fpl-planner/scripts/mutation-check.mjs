@@ -33,8 +33,8 @@
 // WHY A BASELINE. A mutant counts as KILLED when its tests fail. If those tests
 // already fail on the unmutated code (an environment problem, a missing file in
 // the working copy, someone's in-flight work), every mutant would read KILLED
-// and the report would be worthless. So the mapped test files are also run on
-// the pristine copy, and the check fails unless that baseline is green. Each
+// and the report would be worthless. So the mapped test files run first on the
+// pristine copy, and nothing else runs unless that baseline is green. Each
 // mutated file is also parsed (`node --check`) so a replacement that is simply
 // a syntax error is reported as INVALID rather than counted as a kill.
 //
@@ -801,10 +801,19 @@ async function main() {
     }
     console.log(`mutation-check: ${mutants.length} mutant(s), ${workers} worker(s), working copy ${work}`);
 
-    // The baseline runs on the pristine copy alongside the mutants: every
-    // mapped test file must pass unmutated, or a "kill" proves nothing.
+    // The baseline runs on the pristine copy FIRST, and alone: every mapped test
+    // file must pass unmutated, or a "kill" proves nothing. It used to run
+    // beside the mutants, and on a 4-core runner that starved it past
+    // RUN_TIMEOUT_MS, which read as a red baseline on healthy code (2 of 3
+    // GitHub runs of one shard, 2026-11-09, ledger row 49).
     const baselineFiles = [...new Set(mutants.flatMap(m => m.tests))];
-    const baseline = run(process.execPath, ['--test', '--test-reporter=tap', ...baselineFiles], base, RUN_TIMEOUT_MS);
+    const base0 = await run(process.execPath, ['--test', '--test-reporter=tap', ...baselineFiles], base, RUN_TIMEOUT_MS);
+    const baselineSeconds = (Date.now() - t0) / 1000;
+    if (base0.code !== 0) {
+      console.log(`\nBASELINE RED after ${baselineSeconds.toFixed(0)} s: the mapped tests fail on the UNMUTATED copy, so no mutant was run.${base0.timedOut ? ` It hit the ${RUN_TIMEOUT_MS / 60000}-minute limit.` : ''}\nFailing tests:\n${base0.failedTests.map((n) => `  - ${n}`).join('\n') || '  (none named)'}\n${base0.output.slice(-4000)}`);
+      return 1;
+    }
+    console.log(`baseline green in ${baselineSeconds.toFixed(0)} s over ${baselineFiles.length} file(s)`);
 
     const results = new Map();
     let next = 0;
@@ -816,7 +825,6 @@ async function main() {
         console.log(`  ${m.id}: ${r.status}${r.detail ? ` (${r.detail})` : ''}${r.seconds === undefined ? '' : ` ${r.seconds.toFixed(1)}s`}${r.killedBy ? ` by: ${r.killedBy.slice(0, 90)}` : ''}`);
       }
     }));
-    const base0 = await baseline;
 
     const rows = mutants.map(m => ({ ...m, ...results.get(m.id) }));
     console.log('');
@@ -824,11 +832,8 @@ async function main() {
     const bad = rows.filter(r => r.status !== 'KILLED');
     const killed = rows.length - bad.length;
     console.log(`\n${killed}/${rows.length} killed in ${((Date.now() - t0) / 1000).toFixed(0)} s`);
-    if (base0.code !== 0) {
-      console.log(`\nBASELINE RED: the mapped tests fail on the UNMUTATED copy, so no kill above means anything.${base0.timedOut ? ' It timed out.' : ''}\nFailing tests:\n${base0.failedTests.map((n) => `  - ${n}`).join('\n') || '  (none named: the runner died)'}\n${base0.output.slice(-4000)}`);
-    }
     for (const r of bad) console.log(`\n${r.status}: ${r.id}\n  ${r.guards}\n  ${r.file}\n  tests: ${r.tests.join(' ')}`);
-    return bad.length || base0.code !== 0 ? 1 : 0;
+    return bad.length ? 1 : 0;
   } finally {
     fs.rmSync(work, { recursive: true, force: true });
   }
