@@ -25,8 +25,8 @@
 //
 // THE CPU BUDGET FILES RUN ALONE (2026-11-09). `node scripts/test-shard.mjs
 // budgets` runs them one at a time on their own runner, and the shares leave
-// them out. Measured on GitHub's runners, the same transfer search cost 764 to
-// 1,121 ms by itself and 912 to 1,564 ms (one run 2,238) beside the rest of a
+// them out. Measured on GitHub's runners, the same transfer search cost 678 to
+// 1,195 ms by itself and 912 to 1,564 ms (one run 2,238) beside the rest of a
 // share: a process's CPU time rises when its neighbours share the core's cache
 // and siblings, so a budget compared in a share measured the neighbours.
 import { spawn } from 'node:child_process';
