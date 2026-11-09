@@ -215,6 +215,22 @@ export function entryVerdictChecks(e, rules) {
  *   squad state and plan the built squad (false: the Netlify run's budget)
  * @returns {Promise<{ reading, checks, readiness, blocked, failed, usable, lines }>}
  */
+// A stale copy FPL's edge refused, in a run where FPL still answered the proxy.
+// On 2026-11-05, 11-06 and 11-09 one Fastly node (cache-iad-*) answered 403 to
+// two or three of a run's parallel reads, the proxy served its last copy marked
+// stale exactly as designed, the rest of the run was fetched fresh, FPL answered
+// the run's own direct request 200 in about 30 ms, and the next hourly probe
+// passed. The re-read cannot recover it, because two refusals are a corroborated
+// refusal and the proxy honours that for 120 s. Whether a refusal is an incident
+// is refusalCheck's question (REFUSAL_ALERT_MINUTES), so this one is reported
+// and not failed. A real block is still red here: nothing in the run was fetched
+// fresh, so there is no proof FPL was answering.
+export const FPL_REFUSAL_CAUSES = ['refused', 'backoff'];
+export function refusedWhileFplAnswered(headers, responses) {
+  if (headers.get('x-fpl-stale') !== 'true' || !FPL_REFUSAL_CAUSES.includes(headers.get('x-fpl-upstream'))) return false;
+  return Object.values(responses).some((r) => r.get('x-fpl-cache') === 'miss' && r.get('x-fpl-stale') !== 'true');
+}
+
 export async function runProbe({ bootstrap, fixtures, fetchedAt, now = null, source, responses = {}, prev = null, loadShipped, entry = null, planEntry = true }) {
   const { first, gameState, resolution } = await resolveProbeWorld({ bootstrap, fixtures, fetchedAt, loadShipped });
   const rules = gameState.rules;
@@ -510,7 +526,8 @@ export async function runProbe({ bootstrap, fixtures, fetchedAt, now = null, sou
       check(`the proxy serves ${name} fresh and uncached by browsers`,
         cc.includes('no-store') && h.get('x-fpl-stale') !== 'true' && Number.isFinite(age) && age < limit,
         `cache-control "${cc}", stale ${h.get('x-fpl-stale')}, age ${age}s`,
-        `no-store, not stale, under ${limit === FRESH_PROXY_SECONDS ? 'an hour' : `${limit / 3600} hours`} old`);
+        `no-store, not stale, under ${limit === FRESH_PROXY_SECONDS ? 'an hour' : `${limit / 3600} hours`} old`,
+        { skip: refusedWhileFplAnswered(h, responses) });
     }
   }
 

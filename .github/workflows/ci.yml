@@ -169,11 +169,35 @@ jobs:
           if-no-files-found: ignore
           retention-days: 14
 
+  # The CPU budgets, alone on a runner and one file at a time, so they measure
+  # the planner and not whatever shares its cores (scripts/test-shard.mjs).
+  test-budgets:
+    needs: plan
+    if: ${{ !cancelled() && (github.event_name != 'push' || needs.plan.result != 'success' || needs.plan.outputs.run == 'true') }}
+    runs-on: ubuntu-24.04
+    # About two minutes measured; a budget test is bounded by --test-timeout.
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: '.nvmrc'
+      - name: CPU budgets, one file at a time
+        env:
+          NODE_OPTIONS: --test-reporter=dot --test-reporter-destination=stdout --test-reporter=junit --test-reporter-destination=budget-tests.junit.xml
+        run: node scripts/test-shard.mjs budgets
+      # Green or red, so the margin is visible before a budget is ever crossed.
+      - name: What each budget measured
+        if: always()
+        run: |
+          node scripts/ci-junit-summary.mjs budget-tests.junit.xml | tee -a "$GITHUB_STEP_SUMMARY"
+          grep -hoE '(CPU budget compared|transfer search runs|buildPlan runs): [^<]*' budget-tests.junit.xml | sort -u | tee -a "$GITHUB_STEP_SUMMARY"
+
   # One verdict for both halves, under the name branch protection requires.
   # `if: always()` for the same reason as `browser`: a failed or cancelled
   # half must not leave the required check skipped.
   test:
-    needs: [plan, test-shard]
+    needs: [plan, test-shard, test-budgets]
     if: always()
     runs-on: ubuntu-24.04
     timeout-minutes: 5
@@ -184,14 +208,19 @@ jobs:
           PLAN: ${{ needs.plan.result }}
           PLAN_RUN: ${{ needs.plan.outputs.run }}
           SHARDS: ${{ needs.test-shard.result }}
+          BUDGETS: ${{ needs.test-budgets.result }}
         run: |
           if [ "$EVENT" = push ] && [ "$PLAN" = success ] && [ "$PLAN_RUN" = false ]; then
             echo "this tree already passed the unit estate on its pull request"
             exit 0
           fi
-          echo "test-shard result: $SHARDS"
+          echo "test-shard result: $SHARDS; test-budgets result: $BUDGETS"
           if [ "$SHARDS" != success ]; then
             echo "::error::the unit estate did not pass (halves: $SHARDS)"
+            exit 1
+          fi
+          if [ "$BUDGETS" != success ]; then
+            echo "::error::the CPU budgets did not pass ($BUDGETS)"
             exit 1
           fi
 

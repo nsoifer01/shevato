@@ -20,7 +20,7 @@ import { readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { loadModel, selectModel, currentEntry, describeModelStatus, declaresNothing } from '../js/data/model.js';
+import { loadModel, selectModel, currentEntry, describeModelStatus, declaresNothing, MODEL_FETCH_TIMEOUT_MS } from '../js/data/model.js';
 import { buildGameState } from '../js/engine/normalize.js';
 import { buildSquadState } from '../js/engine/squad.js';
 import { buildStrength } from '../js/engine/strength.js';
@@ -297,7 +297,7 @@ test('a model fetch that never answers fails with a reason instead of holding th
   });
   assert.equal(status.ok, false);
   assert.match(status.reason, /index\.json could not be read: timed out/);
-  assert.ok(Date.now() - started < 2000);
+  assert.ok(Date.now() - started < MODEL_FETCH_TIMEOUT_MS, 'the 30 ms given, not the default wait');
   assert.match(describeModelStatus(status), /not loaded .*analytic priors/);
 });
 

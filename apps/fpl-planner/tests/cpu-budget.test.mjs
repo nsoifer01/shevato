@@ -20,10 +20,10 @@ test('without coverage a cost over the budget fails with its message', () => {
     (e) => e instanceof assert.AssertionError && /a live-sized plan took 10062ms/.test(e.message));
 });
 
-test('without coverage a cost inside the budget passes and says it was compared', () => {
+test('without coverage a cost inside the budget passes and says what it measured', () => {
   const t = fakeT();
   assert.equal(assertCpuBudget(t, 9000, 10000, 'fine', PLAIN), true);
-  assert.deepEqual(t.diagnostics, []);
+  assert.deepEqual(t.diagnostics, ['CPU budget compared: 9000 ms measured against a 10000 ms budget']);
 });
 
 test('the boundary is strict, as the budgets always were', () => {

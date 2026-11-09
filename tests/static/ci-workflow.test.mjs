@@ -53,7 +53,7 @@ test('a gated job is skipped only when plan positively decided the tree already 
   // other than a successful "already tested" answer would wave a pull request
   // through untested. The only skip path: a push, plan succeeded, run=false.
   const GATE = "${{ !cancelled() && (github.event_name != 'push' || needs.plan.result != 'success' || needs.plan.outputs.run == 'true') }}";
-  for (const id of ['lint', 'test-shard', 'browser-shard', 'rules-shard']) {
+  for (const id of ['lint', 'test-shard', 'test-budgets', 'browser-shard', 'rules-shard']) {
     assert.equal(ifOf(id), GATE, `job "${id}" must use the fail-open gate`);
     assert.match(J[id], /^ {4}needs: plan$/m, `job "${id}" reads plan's answer`);
   }
@@ -134,3 +134,20 @@ test('every workflow job runs on a pinned image, never ubuntu-latest', () => {
   }
 });
 
+
+test('the CPU budgets run alone on a runner, and the required test verdict depends on them', () => {
+  assert.match(J['test-budgets'], /^ {8}run: node scripts\/test-shard\.mjs budgets$/m);
+  assert.match(J.test, /^ {4}needs: \[plan, test-shard, test-budgets\]$/m);
+  assert.match(J.test, /BUDGETS: \$\{\{ needs\.test-budgets\.result \}\}/);
+  assert.match(J.test, /\[ "\$BUDGETS" != success \]/, 'a failed budget job fails the required check');
+});
+
+test('the weekly run tries the estate at future dates and at both ends of the time zones', () => {
+  const yml = readFileSync(join(REPO_ROOT, '.github/workflows/scheduled.yml'), 'utf8');
+  const job = yml.slice(yml.indexOf('\n  future-clock:'), yml.indexOf('\n  fpl-archive:'));
+  for (const shift of ['+8 days', '+35 days', '+180 days']) assert.ok(job.includes(`shift: '${shift}'`), shift);
+  for (const tz of ['Pacific/Kiritimati', 'Etc/GMT+12']) assert.ok(job.includes(`tz: ${tz}`), tz);
+  assert.match(job, /shift-clock\.mjs/, 'the clock moves by the preload the frozen-fixture guard uses');
+  assert.match(job, /node scripts\/test-shard\.mjs 1\/1/, 'the whole estate, without the budget files');
+  assert.ok(existsSync(join(REPO_ROOT, 'apps/fpl-planner/tests/helpers/shift-clock.mjs')));
+});

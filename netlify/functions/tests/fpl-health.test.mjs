@@ -535,10 +535,14 @@ test('a long refusal by FPL since the last run fails the run with what FPL said;
 test('a run near Netlify\'s 30-second kill fails while it can still say so', async () => {
   assert.equal(SLOW_RUN_MS, 24e3);
   const name = 'the run finishes well inside Netlify\'s 30-second limit';
-  const fine = await runScheduledProbe({ store: memoryStore(), fetchImpl: production(), now: () => NOW });
-  assert.ok(fine.checks.some((c) => c.name === name && c.ok));
-  const slow = await runScheduledProbe({ store: memoryStore(), fetchImpl: production(), now: () => NOW, slowRunMs: 0 });
-  assert.match(slow.failed.find((f) => f.name === name).saw, /^\d+\.\d s$/);
+  // A clock that says how long the run took, so the verdict is about the rule
+  // and not about how busy the machine is: a real planning run here is
+  // seconds of CPU, and under `npm test` it crossed 24 s on 2026-11-09.
+  const lasting = (ms) => { const times = [0, ms]; return () => (times.length > 1 ? times.shift() : times[0]); };
+  const run = (ms) => runScheduledProbe({ store: memoryStore(), fetchImpl: production(), now: () => NOW, clockMs: lasting(ms) });
+  assert.ok((await run(24e3)).checks.some((c) => c.name === name && c.ok), 'at the line it still passes');
+  const slow = await run(24001);
+  assert.equal(slow.failed.find((f) => f.name === name).saw, '24.0 s');
 });
 
 /* ------------------------------------------- 2026-10-16 follow-up audit */
@@ -661,6 +665,15 @@ test('a second degraded answer fails the check exactly as one did before, with b
     assert.ok(r.failed.some((f) => f.name === `the proxy serves entry ${ENTRY_ID}` || /fresh and uncached/.test(f.name)), `${label}: ${JSON.stringify(r.failed)}`);
     assert.ok(r.lines.some((l) => l.startsWith('transient ') && !l.endsWith(': fresh')), `${label}: ${r.lines.join('\n')}`);
   }
+});
+
+test('the 2026-11-09 shape: FPL refuses part of a run and answers the rest, so the run says so and passes', async () => {
+  const fetchedFresh = (body) => new Response(JSON.stringify(body), { status: 200, headers: { ...healthyHeaders, 'x-fpl-cache': 'miss' } });
+  const entries = entryBodies({ [TRANSFERS]: () => degraded('refused'), [PICKS]: () => fetchedFresh(REAL_ENTRY.picks) });
+  const r = await runScheduledProbe({ store: memoryStore(), fetchImpl: production({ entries }), now: () => NOW, rereadDelayMs: 0 });
+  assert.equal(r.ok, true, JSON.stringify(r.failed));
+  assert.equal(r.transient, 1);
+  assert.ok(r.lines.some((l) => l === `transient       ${TRANSFERS}: a stale copy (refused), re-read 0 s later: a stale copy again`), r.lines.join('\n'));
 });
 
 test('an answer degraded for our own reasons is never re-read: no cause, our quota, or a status FPL did not cause', async () => {

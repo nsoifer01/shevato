@@ -47,6 +47,7 @@
 //   node apps/fpl-planner/scripts/mutation-check.mjs            run every mutant
 //   node apps/fpl-planner/scripts/mutation-check.mjs --list     print the table
 //   node apps/fpl-planner/scripts/mutation-check.mjs --only a,b run these ids
+//   node apps/fpl-planner/scripts/mutation-check.mjs --shard 1/3 run one third
 // Exit 1 when any mutant survives, is invalid, or cannot be applied, or when
 // the baseline is red.
 
@@ -80,6 +81,22 @@ export const COPY_PATHS = [
 // should kill it (they run in a fresh `node --test` per mutant, so a slow file
 // costs its full runtime every time it is mapped), and the rule it guards.
 export const MUTANTS = [
+  {
+    id: 'probe-refusal-waiver-without-proof',
+    file: `${APP}/scripts/lib/probe.mjs`,
+    find: "return Object.values(responses).some((r) => r.get('x-fpl-cache') === 'miss' && r.get('x-fpl-stale') !== 'true');",
+    replace: 'return true;',
+    tests: [T('probe-refusal-waiver')],
+    guards: 'A run where nothing was fetched fresh from FPL is a block and stays red; only a partial refusal is waived (2026-11-09, ledger row 48).',
+  },
+  {
+    id: 'probe-refusal-waiver-any-cause',
+    file: `${APP}/scripts/lib/probe.mjs`,
+    find: "|| !FPL_REFUSAL_CAUSES.includes(headers.get('x-fpl-upstream'))) return false;",
+    replace: ') return false;',
+    tests: [T('probe-refusal-waiver')],
+    guards: 'A stale copy from an FPL error, our quota or no stated cause is never waived; only an FPL refusal is (2026-11-09, ledger row 48).',
+  },
   // ---- transfer-state.js: the free-transfer bank (FPL's five rules). ----
   {
     id: 'ts-chip-week-plus-one',
@@ -569,16 +586,56 @@ export function occurrences(text, needle) {
   return n;
 }
 
+// What one full run of each mapped test file costs, in seconds, rounded up from
+// a run of the whole table without stopping at the first failure (2026-11-09,
+// five workers). A mutant killed early costs less, so this is the worst case.
+// Only two things read it: packShards, where a wrong number only unbalances the
+// shards, and the guard in tests/mutation-check.test.mjs that fails `npm test`
+// when the table no longer fits the weekly job's limit.
+export const FILE_COST_SECONDS = {
+  'fpl-health': 220, 'probe-freshness': 205, chips: 190, 'gw7-audit-followup-ui': 85,
+  'optimizer-reference': 75, 'probe-sample': 65, 'search-corrections': 40,
+  'real-deadline-gw7': 25, 'real-deadline-gw10': 25, 'season-lifecycle': 25, probe: 25,
+  transfers: 20, 'manager-state-properties': 15, 'inherited-club-limit': 14,
+  'probe-refusal-waiver': 1, 'manager-state-lag': 7, 'ui-club-limit-notice': 4, 'plan-history-scope': 3,
+  squad: 2, validate: 1, rules: 1, fpl: 1, 'transfer-state': 1, 'transfer-state-real': 1,
+};
+
+const fileCostName = (test) => path.basename(test, '.test.mjs');
+export const mutantCostSeconds = (m) => m.tests.reduce((sum, t) => sum + (FILE_COST_SECONDS[fileCostName(t)] ?? 0), 0);
+
+// Splits the table into `n` shards of similar cost: heaviest mutant first, each
+// to the lightest shard, ties by id, so the split is the same on every machine.
+export function packShards(mutants, n) {
+  const shards = Array.from({ length: n }, () => ({ cost: 0, mutants: [] }));
+  const heaviestFirst = [...mutants].sort((a, b) => mutantCostSeconds(b) - mutantCostSeconds(a) || a.id.localeCompare(b.id));
+  for (const m of heaviestFirst) {
+    const lightest = shards.reduce((best, s) => (s.cost < best.cost ? s : best));
+    lightest.cost += mutantCostSeconds(m);
+    lightest.mutants.push(m);
+  }
+  return shards;
+}
+
 function parseArgs(argv) {
-  const out = { list: false, only: null };
+  const out = { list: false, only: null, shard: null };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--list') out.list = true;
     else if (a === '--only') out.only = String(argv[++i] || '').split(',').filter(Boolean);
     else if (a.startsWith('--only=')) out.only = a.slice(7).split(',').filter(Boolean);
+    else if (a === '--shard') out.shard = parseShard(argv[++i]);
+    else if (a.startsWith('--shard=')) out.shard = parseShard(a.slice(8));
     else throw new Error(`unknown argument: ${a}`);
   }
   return out;
+}
+
+function parseShard(text) {
+  const m = /^(\d+)\/(\d+)$/.exec(String(text));
+  const [index, total] = m ? [Number(m[1]), Number(m[2])] : [0, 0];
+  if (!(index >= 1 && index <= total)) throw new Error(`--shard expects i/n with 1 <= i <= n, got: ${text}`);
+  return { index, total };
 }
 
 function copyInto(dest) {
@@ -606,16 +663,41 @@ function cloneCopy(from, to) {
   fs.cpSync(from, to, { recursive: true, verbatimSymlinks: true });
 }
 
-function run(cmd, args, cwd, timeoutMs) {
+// The name of the failing test on one TAP line, or null. A `todo` or `skip`
+// that fails is not a failure, so it never counts as a kill.
+export function failingTestOn(line) {
+  const m = /^\s*not ok \d+ - (.*)$/.exec(line);
+  if (!m || /\s#\s*(TODO|SKIP)\b/i.test(m[1])) return null;
+  return m[1];
+}
+
+// `stopOnFailure` ends the run at the first failing test. A mutant needs only
+// one test to go red, and running the rest of the file is what took a 4-core
+// runner past the job's limit three weeks in a row (ledger row 47). Each run is
+// its own process group, because `node --test` starts a child per file and
+// killing only the parent left those children running against a file the next
+// mutant was about to rewrite.
+export function run(cmd, args, cwd, timeoutMs, { stopOnFailure = false } = {}) {
   return new Promise((resolve) => {
-    const child = spawn(cmd, args, { cwd, stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, NODE_OPTIONS: '' } });
+    const child = spawn(cmd, args, { cwd, detached: true, stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, NODE_OPTIONS: '' } });
+    const killGroup = () => { try { process.kill(-child.pid, 'SIGKILL'); } catch { /* already gone */ } };
     let output = '';
+    let partial = '';
+    let failedTest = null;
     const keep = (d) => { output = (output + d).slice(-20000); };
-    child.stdout.on('data', keep);
+    child.stdout.on('data', (d) => {
+      keep(d);
+      if (!stopOnFailure || failedTest) return;
+      partial += d;
+      const lines = partial.split('\n');
+      partial = lines.pop();
+      failedTest = lines.map(failingTestOn).find(Boolean) || null;
+      if (failedTest) killGroup();
+    });
     child.stderr.on('data', keep);
     let timedOut = false;
-    const timer = setTimeout(() => { timedOut = true; child.kill('SIGKILL'); }, timeoutMs);
-    child.on('close', (code) => { clearTimeout(timer); resolve({ code, timedOut, output }); });
+    const timer = setTimeout(() => { timedOut = true; killGroup(); }, timeoutMs);
+    child.on('close', (code) => { clearTimeout(timer); resolve({ code, timedOut, output, failedTest }); });
   });
 }
 
@@ -633,18 +715,19 @@ async function runMutant(m, copy) {
   try {
     const check = await run(process.execPath, ['--check', abs], copy, 60000);
     if (check.code !== 0) return { status: 'INVALID', detail: check.output.trim().split('\n').slice(0, 4).join(' | ') };
-    const res = await run(process.execPath, ['--test', ...m.tests], copy, RUN_TIMEOUT_MS);
+    const res = await run(process.execPath, ['--test', '--test-reporter=tap', ...m.tests], copy, RUN_TIMEOUT_MS, { stopOnFailure: true });
     const seconds = (Date.now() - started) / 1000;
     if (res.timedOut) return { status: 'KILLED', detail: 'timeout', seconds };
-    return res.code === 0 ? { status: 'SURVIVED', detail: '', seconds } : { status: 'KILLED', detail: '', seconds };
+    if (res.failedTest) return { status: 'KILLED', detail: '', killedBy: res.failedTest, seconds };
+    return res.code === 0 ? { status: 'SURVIVED', detail: '', seconds } : { status: 'KILLED', detail: `exit ${res.code}, no failing test named`, seconds };
   } finally {
     fs.writeFileSync(abs, original);
   }
 }
 
 function printTable(rows) {
-  const head = ['id', 'status', 'secs', 'file', 'tests'];
-  const lines = rows.map(r => [r.id, r.status + (r.detail ? ` (${r.detail})` : ''), r.seconds === undefined ? '-' : r.seconds.toFixed(1), r.file.replace(`${APP}/`, ''), r.tests.map(t => path.basename(t)).join(' ')]);
+  const head = ['id', 'status', 'secs', 'file', 'killed by'];
+  const lines = rows.map(r => [r.id, r.status + (r.detail ? ` (${r.detail})` : ''), r.seconds === undefined ? '-' : r.seconds.toFixed(1), r.file.replace(`${APP}/`, ''), (r.killedBy || '-').slice(0, 90)]);
   const widths = head.map((h, i) => Math.max(h.length, ...lines.map(l => String(l[i]).length)));
   const fmt = (l) => l.map((c, i) => String(c).padEnd(widths[i])).join('  ').trimEnd();
   console.log(fmt(head));
@@ -660,6 +743,7 @@ async function main() {
     if (unknown.length) throw new Error(`unknown mutant id(s): ${unknown.join(', ')}`);
     mutants = MUTANTS.filter(m => args.only.includes(m.id));
   }
+  if (args.shard) mutants = packShards(mutants, args.shard.total)[args.shard.index - 1].mutants;
   if (args.list) {
     for (const m of mutants) console.log(`${m.id}\n  file:   ${m.file}\n  tests:  ${m.tests.join(' ')}\n  guards: ${m.guards}`);
     return 0;
@@ -694,7 +778,7 @@ async function main() {
         const m = mutants[next++];
         const r = await runMutant(m, copy);
         results.set(m.id, r);
-        console.log(`  ${m.id}: ${r.status}${r.detail ? ` (${r.detail})` : ''}`);
+        console.log(`  ${m.id}: ${r.status}${r.detail ? ` (${r.detail})` : ''}${r.seconds === undefined ? '' : ` ${r.seconds.toFixed(1)}s`}${r.killedBy ? ` by: ${r.killedBy.slice(0, 90)}` : ''}`);
       }
     }));
     const base0 = await baseline;

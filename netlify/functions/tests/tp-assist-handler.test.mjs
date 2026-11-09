@@ -160,7 +160,9 @@ test('step 5: every 429 says WHEN, not just that it is full', opts, async () => 
   for (const [scope, usage, atMost] of cases) {
     seedBlobs({ config: { geminiKeyV2: 'k' }, usage });
     stubGemini(200, geminiJson([{ text: 'never' }]));
+    const before = Date.now();
     const res = await handler(req(goodBody()));
+    const after = Date.now();
     assert.equal(res.status, 429, scope);
     const body = await res.json();
     assert.equal(body.scope, scope);
@@ -171,9 +173,12 @@ test('step 5: every 429 says WHEN, not just that it is full', opts, async () => 
     assert.ok(Date.parse(body.resetAt) > Date.now(), `${scope}: resetAt is in the future`);
     // The two must agree, or a client that trusts the header waits a different
     // length of time from one that trusts the body.
-    assert.equal(Math.abs(Date.parse(body.resetAt) - (Date.now() + seconds * 1000)) < 2000, true,
+    // Bounded by when the handler really ran (before..after), so a busy machine
+    // cannot fail it: Retry-After is resetAt minus the handler's clock, rounded up.
+    const reset = Date.parse(body.resetAt);
+    assert.ok(reset > before + (seconds - 1) * 1000 && reset <= after + seconds * 1000,
       `${scope}: Retry-After and resetAt describe the same moment`);
-    assert.ok(Math.abs(Date.parse(body.resetAt) - resetAtFor(scope, Date.now())) < 2000,
+    assert.ok(reset === resetAtFor(scope, before) || reset === resetAtFor(scope, after),
       `${scope}: the bucket edge the server's own math names`);
     if (scope !== 'global_month') {
       assert.ok(seconds * 1000 <= atMost, `${scope}: never promises longer than its own window`);

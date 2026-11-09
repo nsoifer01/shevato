@@ -320,7 +320,7 @@ const transientLines = (notes) => (notes.length ? ['', ...notes.map((n) => `tran
  * The scheduled run: claim the slot, probe, store, alert. Returns what was
  * stored (or `{ skipped }`).
  */
-export async function runScheduledProbe({ store, fetchImpl = fetch, now = () => new Date().toISOString(), alert = null, archiveStore = null, entryId = healthEntryId(), proxyStore = null, slowRunMs = SLOW_RUN_MS, rereadDelayMs = REREAD_DELAY_MS } = {}) {
+export async function runScheduledProbe({ store, fetchImpl = fetch, now = () => new Date().toISOString(), alert = null, archiveStore = null, entryId = healthEntryId(), proxyStore = null, slowRunMs = SLOW_RUN_MS, rereadDelayMs = REREAD_DELAY_MS, clockMs = () => Date.now() } = {}) {
   const at = now();
   const before = await store.get('latest', { type: 'json' });
   const updateWindow = await updateWindowFor(proxyStore, at);
@@ -331,7 +331,7 @@ export async function runScheduledProbe({ store, fetchImpl = fetch, now = () => 
   }
   if (!claimed) return { skipped: `slot ${slot} already probed${before && before.ok === false ? '' : ', and the last result passed'}` };
 
-  const started = Date.now();
+  const started = clockMs();
   let result;
   // Everything between the claim and the stored result is inside this try
   // (2026-10-16): the slot is claimed by now, so a throw that escaped here
@@ -377,14 +377,14 @@ export async function runScheduledProbe({ store, fetchImpl = fetch, now = () => 
       result.checks.push(failure(name, `could not read the proxy's refusal record: ${err && err.message}`, 'a readable fpl-planner store'));
     }
   }
-  const elapsed = Date.now() - started;
+  const elapsed = clockMs() - started;
   const slowName = 'the run finishes well inside Netlify\'s 30-second limit';
   result.checks.push(elapsed > slowRunMs
     ? failure(slowName, `${(elapsed / 1000).toFixed(1)} s`, `under ${slowRunMs / 1000} s`)
     : { name: slowName, ok: true });
   const failed = result.checks.filter((c) => c.ok === false);
   const latest = {
-    at, slot, ok: failed.length === 0, durationMs: Date.now() - started,
+    at, slot, ok: failed.length === 0, durationMs: elapsed,
     failed: failed.map(({ name, saw, expected }) => ({ name, saw, expected })),
     checks: result.checks.filter((c) => c.ok !== null).map(({ name, ok }) => ({ name, ok })),
     reading: result.reading,

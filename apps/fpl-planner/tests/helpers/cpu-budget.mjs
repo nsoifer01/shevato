@@ -43,6 +43,7 @@ export function assertCpuBudget(t, ms, budgetMs, message, env = process.env) {
     t.diagnostic(`CPU budget not compared under V8 coverage: ${Math.round(ms)} ms measured against a ${budgetMs} ms budget`);
     return false;
   }
+  t.diagnostic(`CPU budget compared: ${Math.round(ms)} ms measured against a ${budgetMs} ms budget`);
   assert.ok(ms < budgetMs, message);
   return true;
 }
