@@ -98,12 +98,13 @@ jobs:
 
   mutation:
     runs-on: ubuntu-24.04
-    # About two and a half minutes on 11 local workers (2026-10-16); the slowest
-    # mapped file (chips.test.mjs) is 70 s on its own and a 4-core runner runs
-    # two mutants at a time, so 20 leaves headroom without hiding a hang. Plain
-    # node, no npm install: the check copies the app into a temp dir and runs
-    # `node --test` there.
-    timeout-minutes: 20
+    # A 4-core runner runs two mutants at a time, and the table only grows: 20
+    # minutes cancelled this job on 2026-10-26, 11-02 and 11-09, the last with
+    # 55 of 56 mutants done, and a cancelled run prints no result table. 40
+    # leaves headroom; a hang is still bounded by the check's own 10-minute
+    # limit per mutant. Plain node, no npm install: the check copies the app
+    # into a temp dir and runs `node --test` there.
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-node@v6

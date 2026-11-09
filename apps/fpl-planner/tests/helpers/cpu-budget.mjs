@@ -23,6 +23,16 @@ import assert from 'node:assert/strict';
 export const underCoverage = (env = process.env) => Boolean(env.NODE_V8_COVERAGE);
 
 /**
+ * The cost to judge a repeated measurement by: its cheapest run. Noise on a
+ * shared runner (JIT and GC threads, a busy neighbour) only ever ADDS CPU time,
+ * so the minimum is the closest reading of what the work costs, and a real
+ * slowdown still raises it. A median does not do this: on 2026-11-09 one
+ * process measured the same search at 2260, 2016 and 1491 ms, and the median
+ * failed a 2000 ms budget sized from a 1509 ms measurement.
+ */
+export const cheapestRunMs = (timings) => Math.min(...timings);
+
+/**
  * Assert `ms < budgetMs`, unless the process is collecting V8 coverage.
  * Returns true when the budget was compared, false when it was only reported.
  */
