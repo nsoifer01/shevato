@@ -1269,9 +1269,11 @@ prevention: the defect ledger"; the rules are in the repository `CLAUDE.md`):
   shipped dashboard code in worker threads; the surfaces must agree with the
   numbers and each other, and a copy lint runs over every rendered line.
 - `scripts/mutation-check.mjs` (`npm run test:mutation:fpl`, and weekly in
-  `scheduled.yml`): breaks 56 critical rules one at a time in a temporary copy
-  and requires the mapped tests to fail; `tests/mutation-check.test.mjs` keeps
-  the table in step with the code on every run.
+  `scheduled.yml`, in four shards): breaks 61 critical rules one at a time in a
+  temporary copy and requires the mapped tests to fail, after those tests pass
+  on the unmutated copy; `--shard i/n` runs one share, and each kill names the
+  test that made it. `tests/mutation-check.test.mjs` keeps the table in step
+  with the code on every run and fails if it outgrows the weekly job's limit.
 
 The GitHub health probe also plans a rotating sample of real managers every
 six hours (`--sample`, top, deep and newest ranks, at most about 70 polite
