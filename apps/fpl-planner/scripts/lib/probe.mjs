@@ -223,15 +223,19 @@ export function entryVerdictChecks(e, rules) {
 // passed. The re-read cannot recover it, because two refusals are a corroborated
 // refusal and the proxy honours that for 120 s. Whether a refusal is an incident
 // is refusalCheck's question (REFUSAL_ALERT_MINUTES), so this one is reported
-// and not failed. A real block is still red here: nothing in the run was fetched
-// fresh, so there is no proof FPL was answering.
+// and not failed, ONCE: a waived run is rechecked within the hour like a red
+// one, and a second waived run in a row fails (allowRefusalWaiver, set by
+// runScheduledProbe), so a refusal that lasts is an incident. A real block is
+// red at once: nothing in the run was fetched fresh, so there is no proof FPL
+// was answering. A `miss` the CDN replayed (an Age header) proves nothing about
+// now, so it does not count.
 export const FPL_REFUSAL_CAUSES = ['refused', 'backoff'];
 export function refusedWhileFplAnswered(headers, responses) {
   if (headers.get('x-fpl-stale') !== 'true' || !FPL_REFUSAL_CAUSES.includes(headers.get('x-fpl-upstream'))) return false;
-  return Object.values(responses).some((r) => r.get('x-fpl-cache') === 'miss' && r.get('x-fpl-stale') !== 'true');
+  return Object.values(responses).some((r) => r.get('x-fpl-cache') === 'miss' && r.get('x-fpl-stale') !== 'true' && !(Number(r.get('age')) > 0));
 }
 
-export async function runProbe({ bootstrap, fixtures, fetchedAt, now = null, source, responses = {}, prev = null, loadShipped, entry = null, planEntry = true }) {
+export async function runProbe({ bootstrap, fixtures, fetchedAt, now = null, source, responses = {}, prev = null, loadShipped, entry = null, planEntry = true, allowRefusalWaiver = false }) {
   const { first, gameState, resolution } = await resolveProbeWorld({ bootstrap, fixtures, fetchedAt, loadShipped });
   const rules = gameState.rules;
 
@@ -384,6 +388,7 @@ export async function runProbe({ bootstrap, fixtures, fetchedAt, now = null, sou
   // Each one is a claim about football or about the pipeline, named so a failure
   // says WHICH claim broke rather than that a number left a range.
   const checks = [];
+  const waived = [];
   const check = (name, ok, saw, expected, { skip = false } = {}) => {
     checks.push({ name, ok: skip ? null : !!ok, saw, expected });
   };
@@ -520,6 +525,8 @@ export async function runProbe({ bootstrap, fixtures, fetchedAt, now = null, sou
   if (source === 'proxy') {
     const currentEvent = (bootstrap.events.find((e) => e.is_current) || {}).id;
     for (const [name, h] of Object.entries(responses)) {
+      const waive = allowRefusalWaiver && refusedWhileFplAnswered(h, responses);
+      if (waive) waived.push(name);
       const age = Number(h.get('x-fpl-age-seconds')) + (Number(h.get('age')) || 0);
       const cc = String(h.get('cache-control') || '');
       const limit = freshLimitSeconds(name, currentEvent);
@@ -527,7 +534,7 @@ export async function runProbe({ bootstrap, fixtures, fetchedAt, now = null, sou
         cc.includes('no-store') && h.get('x-fpl-stale') !== 'true' && Number.isFinite(age) && age < limit,
         `cache-control "${cc}", stale ${h.get('x-fpl-stale')}, age ${age}s`,
         `no-store, not stale, under ${limit === FRESH_PROXY_SECONDS ? 'an hour' : `${limit / 3600} hours`} old`,
-        { skip: refusedWhileFplAnswered(h, responses) });
+        { skip: waive });
     }
   }
 
@@ -586,5 +593,5 @@ export async function runProbe({ bootstrap, fixtures, fetchedAt, now = null, sou
   } else {
     lines.push('OK: every invariant holds.');
   }
-  return { reading, checks, readiness: readiness.level, blocked: readiness.blocked, failed, usable: evidence.usable, lines };
+  return { reading, checks, waived, readiness: readiness.level, blocked: readiness.blocked, failed, usable: evidence.usable, lines };
 }

@@ -23,6 +23,16 @@ import assert from 'node:assert/strict';
 export const underCoverage = (env = process.env) => Boolean(env.NODE_V8_COVERAGE);
 
 /**
+ * The ceiling for this run: the tighter one when the budget files have a runner
+ * to themselves (`node scripts/test-shard.mjs budgets`, CI's test-budgets job).
+ * Measured there on 2026-11-09 (24 jobs on GitHub, five CPU models), the worst
+ * healthy costs were 1195, 3412, 6437 and 9238 ms; each ceiling is about 1.3
+ * times that. The shared ceiling is for `npm test`, where the neighbours inflate
+ * the same work by up to two times and only a large regression can be told apart.
+ */
+export const budgetMs = (sharedMs, aloneMs, env = process.env) => (env.CPU_BUDGETS_ALONE === '1' ? aloneMs : sharedMs);
+
+/**
  * The cost to judge a repeated measurement by: its cheapest run. Noise on a
  * shared runner (JIT and GC threads, a busy neighbour) only ever ADDS CPU time,
  * so the minimum is the closest reading of what the work costs, and a real

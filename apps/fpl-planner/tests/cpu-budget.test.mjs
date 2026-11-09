@@ -8,7 +8,7 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { assertCpuBudget, cheapestRunMs, underCoverage } from './helpers/cpu-budget.mjs';
+import { assertCpuBudget, budgetMs, cheapestRunMs, underCoverage } from './helpers/cpu-budget.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const fakeT = () => ({ diagnostics: [], diagnostic(m) { this.diagnostics.push(m); } });
@@ -65,6 +65,11 @@ test('the cheapest run is the smallest whatever the order, including a single ru
   assert.equal(cheapestRunMs([1491, 2260, 2016]), 1491);
   assert.equal(cheapestRunMs([2260, 2016, 1491]), 1491);
   assert.equal(cheapestRunMs([1800]), 1800);
+});
+
+test('the tighter ceiling applies only when the budget files have the runner to themselves', () => {
+  assert.equal(budgetMs(2000, 1600, { CPU_BUDGETS_ALONE: '1' }), 1600);
+  assert.equal(budgetMs(2000, 1600, {}), 2000);
 });
 
 test('every repeated CPU measurement is judged by its cheapest run', () => {

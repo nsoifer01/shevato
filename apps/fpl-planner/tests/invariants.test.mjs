@@ -30,7 +30,7 @@ import { validatePlan, assertValidPlan } from '../js/engine/validate.js';
 import { buildPlan } from '../js/engine/planner.js';
 import { makeRng } from '../js/engine/ml.js';
 import { assembleSampleBundle } from '../js/data/sample.js';
-import { assertCpuBudget, cheapestRunMs } from './helpers/cpu-budget.mjs';
+import { assertCpuBudget, budgetMs, cheapestRunMs } from './helpers/cpu-budget.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const read = (...p) => JSON.parse(readFileSync(join(here, ...p), 'utf8'));
@@ -438,7 +438,7 @@ test('an illegal squad is caught rather than quietly optimised', () => {
 // depth four, nearly all of it the exact lineup (optimizeLineup, orderBench)
 // of the extra candidates every depth from three up guarantees an exact score;
 // the runner measured 1509 ms. The balanced profile (one hit) searches three.
-const TRANSFER_SEARCH_BUDGET_CPU_MS = 2000;
+const TRANSFER_SEARCH_BUDGET_CPU_MS = budgetMs(2000, 1600);
 
 test('a full transfer search over the sample dataset stays inside its budget', (t) => {
   const names = ['meta', 'bootstrap', 'fixtures', 'entry', 'entry-history', 'entry-transfers', 'entry-picks'];
@@ -527,7 +527,7 @@ test('a full transfer search over the sample dataset stays inside its budget', (
 // This used to be the one wall-clock timing assertion left in the suite, and
 // it flaked exactly when the machine was loaded, never when the planner was
 // slow.
-const PLAN_GENERATION_BUDGET_MS = 10000;
+const PLAN_GENERATION_BUDGET_MS = budgetMs(10000, 4500);
 
 function cpuMs() {
   const u = process.cpuUsage();

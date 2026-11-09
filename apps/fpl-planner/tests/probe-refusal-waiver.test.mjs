@@ -7,6 +7,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 import { refusedWhileFplAnswered } from '../scripts/lib/probe.mjs';
+import { slotFor } from '../../../netlify/functions/lib/fpl-health-run.mjs';
 
 const headers = (o) => new Headers(o);
 const refused = headers({ 'x-fpl-stale': 'true', 'x-fpl-upstream': 'refused', 'x-fpl-cache': 'hit' });
@@ -44,4 +45,17 @@ test('only a refusal is waived, whatever else the run fetched', () => {
 
 test('an answer that is not stale is never waived', () => {
   assert.equal(refusedWhileFplAnswered(freshFromFpl, { entry: freshFromFpl }), false);
+});
+
+test('a miss the CDN replayed proves nothing about FPL answering now', () => {
+  const replayed = headers({ 'x-fpl-stale': 'false', 'x-fpl-cache': 'miss', age: '1500' });
+  assert.equal(refusedWhileFplAnswered(refused, { history: refused, fixtures: replayed }), false);
+  const justFetched = headers({ 'x-fpl-stale': 'false', 'x-fpl-cache': 'miss', age: '0' });
+  assert.equal(refusedWhileFplAnswered(refused, { history: refused, fixtures: justFetched }), true);
+});
+
+test('a waived run is rechecked within the hour, as a red one is', () => {
+  const at = '2026-11-09T19:41:00Z';
+  assert.deepEqual(slotFor(at, '2026-11-09T18', { ok: true, waived: 2 }), { slot: '2026-11-09T19', recheck: true });
+  assert.equal(slotFor(at, '2026-11-09T18', { ok: true, waived: 0 }), null);
 });

@@ -57,3 +57,8 @@ test('the budget files run alone, and shares plus budgets are still every file e
   const shares = partition(rest, 2).flatMap((b) => b.files);
   assert.deepEqual([...shares, ...alone].sort(), FILES);
 });
+
+test('the budget run asks for the tighter ceilings and runs one file at a time', () => {
+  const src = readFileSync(join(REPO_ROOT, 'scripts/test-shard.mjs'), 'utf8');
+  assert.match(src, /'--test-concurrency=1', \.\.\.selected\], \{ \.\.\.process\.env, CPU_BUDGETS_ALONE: '1' \}/);
+});

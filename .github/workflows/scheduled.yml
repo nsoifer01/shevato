@@ -30,6 +30,9 @@ name: scheduled
 #                    party's moving git branch, so it is fetched here, weekly,
 #                    and never on the pull-request path, and the job fails if
 #                    any of them still skips.
+#   future-clock ... the unit estate at future dates and at both ends of the
+#                    time zones, so a test tied to the real clock fails here
+#                    before it can hold a pull request.
 #
 # Formerly three separate schedules (test.yml's coverage job on Wednesday,
 # arena-rules.yml on Tuesday, cross-browser.yml on Monday); one run means one

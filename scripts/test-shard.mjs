@@ -111,8 +111,8 @@ export function partition(files, n, costs = FILE_SECONDS) {
   return bins;
 }
 
-function runNode(args) {
-  const child = spawn(process.execPath, args, { cwd: REPO_ROOT, stdio: 'inherit' });
+function runNode(args, env = process.env) {
+  const child = spawn(process.execPath, args, { cwd: REPO_ROOT, stdio: 'inherit', env });
   child.on('exit', (code, signal) => process.exit(signal ? 1 : code));
 }
 
@@ -122,7 +122,7 @@ async function main(argv) {
     const selected = budgetFiles(testFiles(budgetGlobs));
     if (!selected.length) { console.error('no test file carries a CPU budget'); process.exit(1); }
     console.log(`CPU budgets, one file at a time: ${selected.join(' ')}`);
-    runNode(['--test', ...budgetFlags, '--test-concurrency=1', ...selected]);
+    runNode(['--test', ...budgetFlags, '--test-concurrency=1', ...selected], { ...process.env, CPU_BUDGETS_ALONE: '1' });
     return;
   }
   const m = /^([1-9][0-9]*)\/([1-9][0-9]*)$/.exec(argv[0] || '');

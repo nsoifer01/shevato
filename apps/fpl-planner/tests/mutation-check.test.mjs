@@ -121,16 +121,17 @@ test('every mapped test file has a measured cost', () => {
 });
 
 test('the table fits the weekly job, so outgrowing it fails here and not on the schedule', () => {
-  // The cost of a shard is what its slowest worker does: two workers on a
-  // 4-core runner. The factor of 1.6 is headroom over the measured cost for
-  // the baseline that runs beside the mutants and for a slower runner.
+  // A shard's cost is split over two workers on a 4-core runner. Measured on
+  // GitHub on 2026-11-09, a shard of 1,465 cost-seconds took 549 s, 0.75 of
+  // cost / 2 (stopping at the first failure saves some). The factor of 1.2 is
+  // 1.6 times that measurement: headroom for a slower runner and the baseline.
   const yml = readFileSync(join(REPO_ROOT, '.github/workflows/scheduled.yml'), 'utf8');
   const job = yml.slice(yml.indexOf('\n  mutation:'), yml.indexOf('\n  fpl-archive:'));
   const limit = Number(/timeout-minutes: (\d+)/.exec(job)[1]) * 60;
   const shardCount = /shard: \[([\d, ]+)\]/.exec(job)[1].split(',').length;
   assert.match(job, /--shard \$\{\{ matrix\.shard \}\}\/\$\{\{ strategy\.job-total \}\}/, 'the job passes its shard');
   const heaviest = Math.max(...packShards(MUTANTS, shardCount).map((s) => s.cost));
-  assert.ok((heaviest / 2) * 1.6 <= limit, `heaviest shard ${heaviest} s against a ${limit} s limit: add a shard`);
+  assert.ok((heaviest / 2) * 1.2 <= limit, `heaviest shard ${heaviest} s against a ${limit} s limit: add a shard`);
   assert.equal(MUTANTS.reduce((n, m) => n + mutantCostSeconds(m), 0) > 0, true);
 });
 

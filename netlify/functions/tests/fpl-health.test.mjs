@@ -674,6 +674,20 @@ test('the 2026-11-09 shape: FPL refuses part of a run and answers the rest, so t
   assert.equal(r.ok, true, JSON.stringify(r.failed));
   assert.equal(r.transient, 1);
   assert.ok(r.lines.some((l) => l === `transient       ${TRANSFERS}: a stale copy (refused), re-read 0 s later: a stale copy again`), r.lines.join('\n'));
+  assert.equal(r.waived, 1);
+});
+
+test('a partial refusal is excused once: the next run still refused fails, and a waived run is no baseline', async () => {
+  const fetchedFresh = (body) => new Response(JSON.stringify(body), { status: 200, headers: { ...healthyHeaders, 'x-fpl-cache': 'miss' } });
+  const entries = () => entryBodies({ [TRANSFERS]: () => degraded('refused'), [PICKS]: () => fetchedFresh(REAL_ENTRY.picks) });
+  const store = memoryStore();
+  const first = await runScheduledProbe({ store, fetchImpl: production({ entries: entries() }), now: () => NOW, rereadDelayMs: 0 });
+  assert.equal(first.ok, true, JSON.stringify(first.failed));
+  assert.equal(store.map.has('last-reading'), false, 'part of a waived run is a stale copy');
+  const anHourOn = new Date(Date.parse(NOW) + 3600e3).toISOString();
+  const second = await runScheduledProbe({ store, fetchImpl: production({ entries: entries() }), now: () => anHourOn, rereadDelayMs: 0 });
+  assert.equal(second.ok, false);
+  assert.ok(second.failed.some((f) => f.name === `the proxy serves ${TRANSFERS} fresh and uncached by browsers`), JSON.stringify(second.failed));
 });
 
 test('an answer degraded for our own reasons is never re-read: no cause, our quota, or a status FPL did not cause', async () => {

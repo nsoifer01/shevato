@@ -84,10 +84,34 @@ export const MUTANTS = [
   {
     id: 'probe-refusal-waiver-without-proof',
     file: `${APP}/scripts/lib/probe.mjs`,
-    find: "return Object.values(responses).some((r) => r.get('x-fpl-cache') === 'miss' && r.get('x-fpl-stale') !== 'true');",
+    find: "return Object.values(responses).some((r) => r.get('x-fpl-cache') === 'miss' && r.get('x-fpl-stale') !== 'true' && !(Number(r.get('age')) > 0));",
     replace: 'return true;',
     tests: [T('probe-refusal-waiver')],
     guards: 'A run where nothing was fetched fresh from FPL is a block and stays red; only a partial refusal is waived (2026-11-09, ledger row 48).',
+  },
+  {
+    id: 'probe-refusal-waiver-replayed-miss',
+    file: `${APP}/scripts/lib/probe.mjs`,
+    find: " && !(Number(r.get('age')) > 0));",
+    replace: ');',
+    tests: [T('probe-refusal-waiver')],
+    guards: 'A miss the CDN replayed from before a block is no proof FPL is answering now (2026-11-09, ledger row 48).',
+  },
+  {
+    id: 'health-recheck-ignores-waiver',
+    file: 'netlify/functions/lib/fpl-health-run.mjs',
+    find: 'if (before && (before.ok === false || before.waived > 0)) return',
+    replace: 'if (before && before.ok === false) return',
+    tests: [T('probe-refusal-waiver')],
+    guards: 'A waived run is rechecked within the hour, as a red one is, or a lasting refusal waits six hours (2026-11-09, ledger row 48).',
+  },
+  {
+    id: 'health-waiver-every-run',
+    file: 'netlify/functions/lib/fpl-health-run.mjs',
+    find: 'allowRefusalWaiver: !(before && before.waived > 0) });',
+    replace: 'allowRefusalWaiver: true });',
+    tests: [NT('fpl-health')],
+    guards: 'A second partial refusal in a row fails the run, so a refusal that lasts cannot read green (2026-11-09, ledger row 48).',
   },
   {
     id: 'probe-refusal-waiver-any-cause',
@@ -397,7 +421,7 @@ export const MUTANTS = [
   {
     id: 'health-no-hourly-recheck',
     file: 'netlify/functions/lib/fpl-health-run.mjs',
-    find: 'if (before && before.ok === false) return { slot: slotOf(at, RECHECK_HOURS), recheck: true };',
+    find: 'if (before && (before.ok === false || before.waived > 0)) return { slot: slotOf(at, RECHECK_HOURS), recheck: true };',
     replace: 'if (false) return { slot: slotOf(at, RECHECK_HOURS), recheck: true };',
     tests: [NT('fpl-health')],
     guards: 'While red, the health run re-checks every hour, so a recovery closes the incident within an hour (#616, 2026-10-17).',
@@ -677,27 +701,35 @@ export function failingTestOn(line) {
 // its own process group, because `node --test` starts a child per file and
 // killing only the parent left those children running against a file the next
 // mutant was about to rewrite.
+// Runs still going, so a Ctrl-C or a job cancel takes them with it: being their
+// own process group, they no longer hear the terminal's signal.
+const liveRuns = new Set();
+for (const signal of ['SIGINT', 'SIGTERM']) {
+  process.on(signal, () => { for (const kill of liveRuns) kill(); process.exit(1); });
+}
+
 export function run(cmd, args, cwd, timeoutMs, { stopOnFailure = false } = {}) {
   return new Promise((resolve) => {
     const child = spawn(cmd, args, { cwd, detached: true, stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, NODE_OPTIONS: '' } });
     const killGroup = () => { try { process.kill(-child.pid, 'SIGKILL'); } catch { /* already gone */ } };
+    liveRuns.add(killGroup);
     let output = '';
     let partial = '';
-    let failedTest = null;
+    const failedTests = [];
     const keep = (d) => { output = (output + d).slice(-20000); };
     child.stdout.on('data', (d) => {
       keep(d);
-      if (!stopOnFailure || failedTest) return;
+      if (stopOnFailure && failedTests.length) return;
       partial += d;
       const lines = partial.split('\n');
       partial = lines.pop();
-      failedTest = lines.map(failingTestOn).find(Boolean) || null;
-      if (failedTest) killGroup();
+      failedTests.push(...lines.map(failingTestOn).filter(Boolean));
+      if (stopOnFailure && failedTests.length) killGroup();
     });
     child.stderr.on('data', keep);
     let timedOut = false;
     const timer = setTimeout(() => { timedOut = true; killGroup(); }, timeoutMs);
-    child.on('close', (code) => { clearTimeout(timer); resolve({ code, timedOut, output, failedTest }); });
+    child.on('close', (code) => { clearTimeout(timer); liveRuns.delete(killGroup); resolve({ code, timedOut, output, failedTest: failedTests[0] || null, failedTests }); });
   });
 }
 
@@ -719,7 +751,10 @@ async function runMutant(m, copy) {
     const seconds = (Date.now() - started) / 1000;
     if (res.timedOut) return { status: 'KILLED', detail: 'timeout', seconds };
     if (res.failedTest) return { status: 'KILLED', detail: '', killedBy: res.failedTest, seconds };
-    return res.code === 0 ? { status: 'SURVIVED', detail: '', seconds } : { status: 'KILLED', detail: `exit ${res.code}, no failing test named`, seconds };
+    if (res.code === 0) return { status: 'SURVIVED', detail: '', seconds };
+    // No test failed and the runner died anyway (out of memory, a crash): that
+    // says nothing about the mutant, so it must not count as a kill.
+    return { status: 'INVALID', detail: `runner exited ${res.code} with no failing test`, seconds };
   } finally {
     fs.writeFileSync(abs, original);
   }
@@ -769,7 +804,7 @@ async function main() {
     // The baseline runs on the pristine copy alongside the mutants: every
     // mapped test file must pass unmutated, or a "kill" proves nothing.
     const baselineFiles = [...new Set(mutants.flatMap(m => m.tests))];
-    const baseline = run(process.execPath, ['--test', ...baselineFiles], base, RUN_TIMEOUT_MS);
+    const baseline = run(process.execPath, ['--test', '--test-reporter=tap', ...baselineFiles], base, RUN_TIMEOUT_MS);
 
     const results = new Map();
     let next = 0;
@@ -790,7 +825,7 @@ async function main() {
     const killed = rows.length - bad.length;
     console.log(`\n${killed}/${rows.length} killed in ${((Date.now() - t0) / 1000).toFixed(0)} s`);
     if (base0.code !== 0) {
-      console.log(`\nBASELINE RED: the mapped tests fail on the UNMUTATED copy, so no kill above means anything.\n${base0.output.slice(-4000)}`);
+      console.log(`\nBASELINE RED: the mapped tests fail on the UNMUTATED copy, so no kill above means anything.${base0.timedOut ? ' It timed out.' : ''}\nFailing tests:\n${base0.failedTests.map((n) => `  - ${n}`).join('\n') || '  (none named: the runner died)'}\n${base0.output.slice(-4000)}`);
     }
     for (const r of bad) console.log(`\n${r.status}: ${r.id}\n  ${r.guards}\n  ${r.file}\n  tests: ${r.tests.join(' ')}`);
     return bad.length || base0.code !== 0 ? 1 : 0;
