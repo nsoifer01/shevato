@@ -103,8 +103,9 @@ jobs:
     runs-on: ubuntu-24.04
     # Split across runners because one could no longer hold the table: on two
     # workers it was cancelled at this limit on 2026-10-26, 11-02 and 11-09,
-    # and a cancelled run prints no result table. A shard costs one third of
-    # that, tests/mutation-check.test.mjs fails `npm test` if the table
+    # and a cancelled run prints no result table. On three shards the worst of
+    # nine GitHub runs took 15 minutes 15 s, so four leave real room.
+    # tests/mutation-check.test.mjs fails `npm test` if the table
     # outgrows the limit, and a hang is bounded by the check's own 10-minute
     # limit per mutant. Plain node, no npm install: the check copies the app
     # into a temp dir and runs `node --test` there.
@@ -112,7 +113,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2, 3]
+        shard: [1, 2, 3, 4]
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-node@v6

@@ -452,14 +452,20 @@ logs (PR #656). What they were:
 
 | Class | Runs | Cause | State |
 | --- | --- | --- | --- |
-| Superseded by a newer push, or a run cancelled before starting | 9 | `cancel-in-progress` doing its job | not a defect |
-| Real defects on their own pull request (browser, Rising Shows, FPL, privacy date) | 11 | the gate working | not a defect |
-| FPL health probe, a partial 403 from FPL's edge | 9 | a monitor judging a designed fallback as a failure | changed, excused once with proof |
-| Deliberate probes and drills | 5 | `probe/*` branches, a monitor drill, a draft | not a defect |
-| Arena emulator suite | 8 | the multiplayer e2e, removed 2026-10-17 | gone, none since |
-| Early coverage, budgets and FPL real-data failures | 7 | fixed at the time (#542, #545, #558, #628) | none since |
-| Refresh cascades from one red test, one merge conflict, one full rebuild | 6 | downstream of a red required check | the clock guard below |
-| Weekly mutation limit and the noisy CPU budget | 3 | the job outgrew its runner; budgets measured neighbours | fixed, FPL ledger 46, 47, 49 |
+| Superseded by a newer push, or cancelled before any work | 8 | `cancel-in-progress` doing its job | not a defect |
+| Real defect on its own pull request | 9 | the gate working (browser, Rising Shows, FPL budgets, privacy date) | not a defect |
+| FPL health probe, stale copy after a partial refusal by FPL | 9 | a monitor judging a designed fallback as a failure | changed: excused once, with proof |
+| Arena emulator e2e | 8 | the multiplayer e2e, removed 2026-10-17 | gone, none since |
+| Refresh blocked by a red required check | 5 | downstream of a red test on its pull request | clock guard below |
+| Coverage job | 4 | budgets compared under instrumentation, one real floor | fixed 2026-09-14; floor passed the next week |
+| Weekly mutation limit (3rd also a noisy CPU budget) | 3 | a job that outgrew its runner; budgets measuring neighbours | fixed, FPL ledger 46, 47, 49 |
+| MapTap cross-tab write race (the `UTC+12` suite) | 2 | a real app bug: a hidden tab rewrote the log | fixed, unit guard in `app-helpers.test.js` |
+| Browser flake on a no-code pull request | 2 | shared-state suites (hermetic rework #542); one a11y one-off | none since 2026-09-17 |
+| FPL probe, real upstream or app failure | 2 | FPL 503s (10-23); the club-limit defect (10-24, #628) | the gate working |
+| Deliberate drill or draft probe | 2 | a monitor drill, an autopilot probe on a draft | not a defect |
+| Refresh: merge conflict, 6-hour cap on a full rebuild | 2 | one of each, neither repeated | not recurring |
+| A fixture read against the real clock | 1 | FPL ledger row 45 | fixed; `future-clock` below |
+| Gym Tracker unit race | 1 | fixed in 6a00ece1 | none since |
 
 What a future session should keep:
 
