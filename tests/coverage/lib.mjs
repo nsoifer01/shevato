@@ -222,3 +222,57 @@ export function evaluateAreas(srcRows, floors, areas = AREAS) {
   }
   return { results, failures };
 }
+
+const SUMMARY_FIELDS = ['tests', 'pass', 'fail', 'skipped', 'todo'];
+
+/**
+ * Everything that makes a set of shard manifests incomplete. Any entry means
+ * no coverage verdict can be given: a missing shard is less coverage, and
+ * would read as a lower or even passing number. `total` comes from the caller
+ * and not from the manifests, so a lost artifact cannot shrink what is expected.
+ */
+export function shardProblems(manifests, expectedFiles, total) {
+  const problems = [];
+  const seen = new Set();
+  for (const m of manifests) {
+    if (m.total !== total) problems.push(`shard ${m.shard}: it was run as one of ${m.total}, expected ${total}`);
+    if (seen.has(m.shard)) problems.push(`shard ${m.shard}: reported twice`);
+    seen.add(m.shard);
+    if (!m.sha) problems.push(`shard ${m.shard}: its manifest names no commit`);
+    if (!m.lcov || !m.lcov.includes('end_of_record')) problems.push(`shard ${m.shard}: its LCOV report is missing or empty`);
+    for (const k of SUMMARY_FIELDS) {
+      if (!Number.isInteger(m.summary && m.summary[k])) problems.push(`shard ${m.shard}: its test summary has no ${k} count`);
+    }
+  }
+  for (let i = 1; i <= total; i++) if (!seen.has(i)) problems.push(`shard ${i}: no result (its artifact is missing)`);
+  const shas = new Set(manifests.map((m) => m.sha));
+  if (shas.size > 1) problems.push(`the shards ran on different commits: ${[...shas].join(', ')}`);
+  const expected = new Set(expectedFiles);
+  const ranIn = new Map();
+  for (const m of manifests) {
+    for (const f of m.files || []) {
+      if (!expected.has(f)) problems.push(`shard ${m.shard}: ran ${f}, which is not in the test estate`);
+      if (ranIn.has(f)) problems.push(`${f}: ran in shards ${ranIn.get(f)} and ${m.shard}`);
+      ranIn.set(f, m.shard);
+    }
+  }
+  for (const f of expectedFiles) if (!ranIn.has(f)) problems.push(`${f}: ran in no shard`);
+  return problems;
+}
+
+/**
+ * One result from complete shards. LCOV reports are concatenated because
+ * parseLcov already unions separate records of the same file; a file measured
+ * by two shards is the same case as a file loaded as two module instances.
+ */
+export function mergeShards(manifests) {
+  const ordered = [...manifests].sort((a, b) => a.shard - b.shard);
+  const summary = Object.fromEntries(SUMMARY_FIELDS.map((k) => [k, ordered.reduce((n, m) => n + m.summary[k], 0)]));
+  return {
+    summary,
+    lcov: ordered.map((m) => m.lcov).join('\n'),
+    failures: ordered.flatMap((m) => m.failures || []),
+    code: ordered.some((m) => m.code !== 0) ? 1 : 0,
+    fileTimes: ordered.map((m) => `#### Shard ${m.shard} of ${m.total}\n\n${String(m.fileTimes || '').trim()}`).join('\n\n'),
+  };
+}
