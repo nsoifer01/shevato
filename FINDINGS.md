@@ -467,6 +467,17 @@ logs (PR #656). What they were:
 | A fixture read against the real clock | 1 | FPL ledger row 45 | fixed; `future-clock` below |
 | Gym Tracker unit race | 1 | fixed in 6a00ece1 | none since |
 
+Coverage can mark lines run that never ran (2026-11-10). Two unsharded runs
+read `apps/fpl-planner/js/engine/explain.js` at 99.13% and 98.25%: lines 742
+to 748 (the `no_slot` answer of `whyNot`) were reported executed twice in one
+and not at all in the other. A tracer written into line 742 recorded no
+execution on GitHub with coverage on (2 runs, LCOV still reporting those
+lines executed twice) or off (2 runs), or locally. So the variation is V8 or
+Node attributing a count to lines that did not run, not a test that runs
+differently. It reproduces in an unsharded run, so the shards did not cause
+it; it moves one file by under a point, and nothing here can change it short
+of replacing Node's coverage.
+
 What a future session should keep:
 
 - **A monitor, a budget or a baseline that runs beside other work measures the
