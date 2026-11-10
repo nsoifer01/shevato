@@ -460,7 +460,7 @@ logs (PR #656). What they were:
 | Coverage job | 4 | budgets compared under instrumentation, one line-coverage floor | fixed 2026-09-14; floor passed the next week |
 | Weekly mutation limit (3rd also a noisy CPU budget) | 3 | a job that outgrew its runner; budgets measuring neighbours | fixed, FPL ledger 46, 47, 49 |
 | MapTap cross-tab write race (the `UTC+12` suite) | 2 | a real app bug: a hidden tab rewrote the log | fixed, unit guard in `app-helpers.test.js` |
-| Browser flake on a no-code pull request | 2 | Gym Tracker at 390 px (09-13) and an a11y contrast one-off (09-17); root causes not established | none since 2026-09-17 |
+| Browser flake on a no-code pull request | 2 | Gym Tracker at 390 px (09-13): a stalled Google CDN request, fixed in #535 and guarded by `third-party-boot-path`. An a11y contrast one-off (09-17): cause not established (trip-planner FINDINGS) | none since 2026-09-17 |
 | FPL probe, real upstream or app failure | 2 | FPL 503s (10-23); the club-limit defect (10-24, #628) | the gate working |
 | Deliberate drill or draft probe | 2 | a monitor drill, an autopilot probe on a draft | not a defect |
 | Refresh: merge conflict, 6-hour cap on a full rebuild | 2 | one of each, neither repeated | not recurring |
