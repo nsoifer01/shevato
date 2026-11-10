@@ -33,7 +33,7 @@ import { execFileSync, spawn } from 'node:child_process';
 import { mkdir, readdir, writeFile, readFile, rm } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { parseLcov, parseTapSummary, parseTapFailures, isTestFile, aggregate, evaluateAreas, shardProblems, mergeShards } from './lib.mjs';
+import { parseLcov, parseTapSummary, parseTapFailures, isTestFile, aggregate, evaluateAreas, shardProblems, mergeShards, keepRepoCoverage, replayRawCoverage } from './lib.mjs';
 import { partition, testFiles } from '../../scripts/test-shard.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -109,7 +109,7 @@ const FILE_TIMEOUT_MS = 1200000;
 
 const FILE_SECONDS = JSON.parse(await readFile(path.join(HERE, 'file-seconds.json'), 'utf8'));
 
-function runCoverage(targets, lcovPath, timesPath, secondsPath) {
+function runCoverage(targets, lcovPath, timesPath, secondsPath, rawDir) {
   return new Promise((resolve) => {
     // TAP on stdout for the test counts, LCOV to a file for the coverage, each
     // file's cost against the bound to a third, and every file's seconds to a
@@ -122,7 +122,7 @@ function runCoverage(targets, lcovPath, timesPath, secondsPath) {
       `--test-reporter=${pathToFileURL(path.join(HERE, 'file-seconds-reporter.mjs')).href}`,
       `--test-reporter-destination=${secondsPath}`,
       ...targets];
-    const child = spawn(process.execPath, args, { cwd: REPO });
+    const child = spawn(process.execPath, args, { cwd: REPO, env: rawDir ? { ...process.env, NODE_V8_COVERAGE: rawDir } : process.env });
     let out = '';
     child.stdout.on('data', (c) => { out += c; });
     child.stderr.on('data', (c) => { out += c; });
@@ -134,13 +134,13 @@ const relativeLocations = (failures) => failures.map((f) => ({ ...f, location: f
 
 // A report left over from an earlier run must never be read as this run's: if
 // the reporter writes nothing, the rows come back empty and every floor fails.
-async function runAndCollect(targets, dir) {
+async function runAndCollect(targets, dir, rawDir = null) {
   await mkdir(dir, { recursive: true });
   const lcovPath = path.join(dir, 'lcov.info');
   const timesPath = path.join(dir, 'file-times.md');
   const secondsPath = path.join(dir, 'file-seconds.json');
   for (const f of [lcovPath, timesPath, secondsPath]) await rm(f, { force: true });
-  const { code, out } = await runCoverage(targets, lcovPath, timesPath, secondsPath);
+  const { code, out } = await runCoverage(targets, lcovPath, timesPath, secondsPath, rawDir);
   let lcov = '';
   try { lcov = await readFile(lcovPath, 'utf8'); }
   catch { console.error(`No LCOV report was written to ${path.relative(REPO, lcovPath)}.`); }
@@ -189,9 +189,12 @@ if (shardArg) {
   const { files } = partition(testFiles(SUITE_GLOBS), total, FILE_SECONDS)[shard - 1];
   const dir = path.join(REPO, '.coverage', `shard-${shard}`);
   console.log(`coverage shard ${shard}/${total}: ${files.length} files`);
-  const r = await runAndCollect(files, dir);
+  const rawDir = path.join(dir, 'raw');
+  await rm(rawDir, { recursive: true, force: true });
+  const r = await runAndCollect(files, dir, rawDir);
+  const rawFiles = await keepRepoCoverage(rawDir, REPO).catch((err) => { console.error(`No raw coverage: ${err.message}`); return 0; });
   const sha = process.env.GITHUB_SHA || execFileSync('git', ['rev-parse', 'HEAD'], { cwd: REPO, encoding: 'utf8' }).trim();
-  await writeFile(path.join(dir, 'manifest.json'), JSON.stringify({ shard, total, sha, files, summary: r.summary, failures: r.failures, code: r.code, fileTimes: r.fileTimes }));
+  await writeFile(path.join(dir, 'manifest.json'), JSON.stringify({ shard, total, sha, files, summary: r.summary, failures: r.failures, code: r.code, fileTimes: r.fileTimes, rawFiles }));
   for (const f of r.failures) console.error(`  not ok: ${f.name}${f.location ? ` (${f.location})` : ''}`);
   console.log(`shard ${shard}: tests ${r.summary.tests ?? '?'}, fail ${r.summary.fail ?? '?'}, exit ${r.code}`);
   process.exit(r.code || r.summary.fail ? 1 : 0);
@@ -208,8 +211,9 @@ if (mergeDir) {
   for (const e of entries.filter((x) => x.isDirectory())) {
     try {
       const manifest = JSON.parse(await readFile(path.join(root, e.name, 'manifest.json'), 'utf8'));
-      const lcov = await readFile(path.join(root, e.name, 'lcov.info'), 'utf8').catch(() => '');
-      manifests.push({ ...manifest, lcov });
+      const rawDir = path.join(root, e.name, 'raw');
+      const foundRawFiles = (await readdir(rawDir).catch(() => [])).filter((n) => /^coverage-\d+-\d{13}-\d+\.json$/.test(n)).length;
+      manifests.push({ ...manifest, rawDir, foundRawFiles });
     } catch (err) { console.error(`${e.name}: unreadable shard result (${err.message})`); }
   }
   const problems = shardProblems(manifests, testFiles(SUITE_GLOBS), total);
@@ -218,7 +222,9 @@ if (mergeDir) {
     for (const p of problems) console.error(`  ${p}`);
     process.exit(1);
   }
-  run = mergeShards(manifests);
+  const rawDirs = [...manifests].sort((a, b) => a.shard - b.shard).map((m) => m.rawDir);
+  const lcov = await replayRawCoverage(rawDirs, manifests.reduce((n, m) => n + m.rawFiles, 0), REPO, path.join(REPO, '.coverage'));
+  run = { ...mergeShards(manifests), lcov };
 } else {
   run = await runAndCollect(SUITE_GLOBS, path.join(REPO, '.coverage'));
 }

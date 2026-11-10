@@ -4,12 +4,12 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { mergeShards, parseLcov, shardProblems } from '../coverage/lib.mjs';
+import { keepRepoCoverage, mergeShards, parseLcov, replayRawCoverage, shardProblems } from '../coverage/lib.mjs';
 import { partition, testFiles } from '../../scripts/test-shard.mjs';
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
@@ -29,6 +29,8 @@ export function onlyB(x) {
 
 export function both() { return 'both'; }
 
+export const pick = (x) => (x ? 'left' : 'right');
+
 export function nobody() {
   return 'never';
 }
@@ -38,13 +40,13 @@ export function nobody() {
 // also loads a second instance of it through a query string.
 const TESTS = {
   'a.test.mjs': `import { test } from 'node:test';
-import { onlyA, both } from './module.mjs';
-test('a', () => { onlyA(1); both(); });
+import { onlyA, both, pick } from './module.mjs';
+test('a', () => { onlyA(1); both(); pick(true); });
 `,
   'b.test.mjs': `import { test } from 'node:test';
-import { onlyB, both } from './module.mjs';
+import { onlyB, both, pick } from './module.mjs';
 import './only-in-b.mjs';
-test('b', () => { onlyB(1); both(); });
+test('b', () => { onlyB(1); both(); pick(false); });
 `,
   'c.test.mjs': `import { test } from 'node:test';
 test('c', async () => {
@@ -64,39 +66,58 @@ function fixture() {
   return dir;
 }
 
-function lcovOf(dir, files) {
+function runCovered(dir, files, rawDir) {
   const out = join(dir, `${files.join('-')}.lcov`);
   execFileSync(process.execPath, ['--test', '--experimental-test-coverage', '--test-reporter=lcov', `--test-reporter-destination=${out}`, ...files], {
     cwd: dir,
-    env: { ...process.env, NODE_OPTIONS: '', NODE_V8_COVERAGE: undefined, NODE_TEST_CONTEXT: undefined },
+    env: { ...process.env, NODE_OPTIONS: '', NODE_V8_COVERAGE: rawDir, NODE_TEST_CONTEXT: undefined },
     stdio: 'ignore',
   });
   return readFileSync(out, 'utf8');
 }
 
 const summary = (tests, fail = 0) => ({ tests, pass: tests - fail, fail, skipped: 0, todo: 0 });
-const lcovBody = 'SF:a.js\nDA:1,1\nend_of_record\n';
-const shard = (n, files, over = {}) => ({ shard: n, total: 2, sha: 'abc', files, summary: summary(files.length), failures: [], code: 0, lcov: lcovBody, ...over });
-const rowsByFile = (rows) => Object.fromEntries(rows.filter((r) => !r.file.endsWith('.test.mjs')).map((r) => [r.file, r]));
+const shard = (n, files, over = {}) => ({ shard: n, total: 2, sha: 'abc', files, summary: summary(files.length), failures: [], code: 0, rawFiles: 3, foundRawFiles: 3, ...over });
+const rowsByFile = (rows) => Object.fromEntries(rows.filter((r) => !r.file.endsWith('.test.mjs') && !r.file.endsWith('replay-entry.mjs')).map((r) => [r.file, r]));
 
-test('every way of splitting the fixture across shards gives the unsharded coverage', () => {
+test('every way of splitting the fixture across shards gives exactly the unsharded coverage', async () => {
   const dir = fixture();
   try {
-    const whole = rowsByFile(parseLcov(lcovOf(dir, Object.keys(TESTS)), dir));
+    const whole = rowsByFile(parseLcov(runCovered(dir, Object.keys(TESTS), undefined), dir));
     assert.ok(whole['module.mjs'].line > 0 && whole['module.mjs'].line < 100, 'the fixture has both covered and uncovered lines');
     assert.equal(whole['only-in-b.mjs'].line, 100);
-    for (const split of [
+    for (const [n, split] of [
       [['a.test.mjs'], ['b.test.mjs'], ['c.test.mjs']],
       [['a.test.mjs', 'b.test.mjs'], ['c.test.mjs']],
       [['a.test.mjs', 'c.test.mjs'], ['b.test.mjs']],
-    ]) {
-      const manifests = split.map((files, i) => ({ shard: i + 1, total: split.length, summary: summary(1), failures: [], code: 0, lcov: lcovOf(dir, files) }));
-      const merged = rowsByFile(parseLcov(mergeShards(manifests).lcov, dir));
+    ].entries()) {
+      const rawDirs = split.map((files, i) => {
+        const raw = join(dir, `raw-${n}-${i}`);
+        mkdirSync(raw);
+        runCovered(dir, files, raw);
+        return raw;
+      });
+      let expected = 0;
+      for (const raw of rawDirs) expected += await keepRepoCoverage(raw, dir);
+      const merged = rowsByFile(parseLcov(await replayRawCoverage(rawDirs, expected, dir, join(dir, `work-${n}`)), dir));
       assert.deepEqual(Object.keys(merged).sort(), Object.keys(whole).sort(), JSON.stringify(split));
       for (const file of Object.keys(whole)) {
-        assert.equal(merged[file].line, whole[file].line, `${file} line %, split ${JSON.stringify(split)}`);
+        assert.deepEqual(merged[file], whole[file], `${file}, split ${JSON.stringify(split)}`);
       }
     }
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('a raw file that goes missing fails the replay', async () => {
+  const dir = fixture();
+  try {
+    const raw = join(dir, 'raw');
+    mkdirSync(raw);
+    runCovered(dir, ['a.test.mjs'], raw);
+    const found = readdirSync(raw).filter((n) => n.startsWith('coverage-')).length;
+    await assert.rejects(replayRawCoverage([raw], found + 1, dir, join(dir, 'work')), /replaying the raw coverage failed/);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -111,7 +132,6 @@ test('counts add up, failures are kept, and any shard failing fails the merge', 
   assert.deepEqual(m.summary, { tests: 8, pass: 7, fail: 1, skipped: 0, todo: 0 });
   assert.deepEqual(m.failures, [failure]);
   assert.equal(m.code, 1);
-  assert.equal(m.lcov, `${lcovBody}\n${lcovBody}`);
   assert.equal(mergeShards([shard(1, ['a']), shard(2, ['b'])]).code, 0);
 });
 
@@ -125,7 +145,8 @@ for (const [name, manifests, expected] of [
   ['a test file in no shard', [shard(1, ['a']), shard(2, [])], /b: ran in no shard/],
   ['a test file in two shards', [shard(1, ['a', 'b']), shard(2, ['b'])], /b: ran in shards 1 and 2/],
   ['a file outside the estate', [shard(1, ['a', 'b']), shard(2, ['z'])], /ran z, which is not in the test estate/],
-  ['an empty LCOV report', [shard(1, ['a']), shard(2, ['b'], { lcov: '' })], /shard 2: its LCOV report is missing or empty/],
+  ['a shard with no raw coverage', [shard(1, ['a']), shard(2, ['b'], { rawFiles: 0, foundRawFiles: 0 })], /shard 2: its raw coverage is missing or incomplete/],
+  ['raw coverage that did not all arrive', [shard(1, ['a']), shard(2, ['b'], { foundRawFiles: 2 })], /shard 2: its raw coverage is missing or incomplete \(2 of 3 files\)/],
   ['a truncated summary', [shard(1, ['a']), shard(2, ['b'], { summary: { tests: 1 } })], /shard 2: its test summary has no pass count/],
   ['a different commit', [shard(1, ['a']), shard(2, ['b'], { sha: 'def' })], /different commits/],
   ['no commit named', [shard(1, ['a'], { sha: '' }), shard(2, ['b'], { sha: '' })], /names no commit/],

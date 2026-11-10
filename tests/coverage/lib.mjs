@@ -4,7 +4,10 @@
 // run.mjs so node:test can feed it canned output
 // (tests/static/coverage-floors.test.mjs) without running the whole unit
 // estate under coverage.
+import { spawn } from 'node:child_process';
+import { mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 // Area -> path prefix used to bucket per-file rows.
 export const AREAS = [
@@ -239,7 +242,9 @@ export function shardProblems(manifests, expectedFiles, total) {
     if (seen.has(m.shard)) problems.push(`shard ${m.shard}: reported twice`);
     seen.add(m.shard);
     if (!m.sha) problems.push(`shard ${m.shard}: its manifest names no commit`);
-    if (!m.lcov || !m.lcov.includes('end_of_record')) problems.push(`shard ${m.shard}: its LCOV report is missing or empty`);
+    if (!Number.isInteger(m.rawFiles) || m.rawFiles < 1 || m.foundRawFiles !== m.rawFiles) {
+      problems.push(`shard ${m.shard}: its raw coverage is missing or incomplete (${m.foundRawFiles ?? 0} of ${m.rawFiles ?? '?'} files)`);
+    }
     for (const k of SUMMARY_FIELDS) {
       if (!Number.isInteger(m.summary && m.summary[k])) problems.push(`shard ${m.shard}: its test summary has no ${k} count`);
     }
@@ -261,18 +266,49 @@ export function shardProblems(manifests, expectedFiles, total) {
 }
 
 /**
- * One result from complete shards. LCOV reports are concatenated because
- * parseLcov already unions separate records of the same file; a file measured
- * by two shards is the same case as a file loaded as two module instances.
+ * One result from complete shards, without the coverage: counts add up,
+ * failures are kept, and any shard that failed fails the merge. The coverage
+ * comes from replayRawCoverage.
  */
 export function mergeShards(manifests) {
   const ordered = [...manifests].sort((a, b) => a.shard - b.shard);
   const summary = Object.fromEntries(SUMMARY_FIELDS.map((k) => [k, ordered.reduce((n, m) => n + m.summary[k], 0)]));
   return {
     summary,
-    lcov: ordered.map((m) => m.lcov).join('\n'),
     failures: ordered.flatMap((m) => m.failures || []),
     code: ordered.some((m) => m.code !== 0) ? 1 : 0,
     fileTimes: ordered.map((m) => `#### Shard ${m.shard} of ${m.total}\n\n${String(m.fileTimes || '').trim()}`).join('\n\n'),
   };
+}
+
+/** Raw V8 files keep only this repo's modules: the rest is Node's own code and temp copies. */
+export async function keepRepoCoverage(dir, root) {
+  const prefix = `file://${root}/`;
+  const names = (await readdir(dir)).filter((n) => n.startsWith('coverage-') && n.endsWith('.json'));
+  for (const name of names) {
+    const file = path.join(dir, name);
+    const raw = JSON.parse(await readFile(file, 'utf8'));
+    raw.result = raw.result.filter((r) => r.url.startsWith(prefix));
+    await writeFile(file, JSON.stringify(raw));
+  }
+  return names.length;
+}
+
+const REPLAY_ENTRY = fileURLToPath(new URL('./replay-entry.mjs', import.meta.url));
+
+/** The LCOV Node writes for the raw coverage of every shard, merged by Node itself. */
+export async function replayRawCoverage(rawDirs, expectedFiles, cwd, workDir) {
+  await mkdir(workDir, { recursive: true });
+  const out = path.join(workDir, 'merged.lcov');
+  await rm(out, { force: true });
+  const code = await new Promise((resolve) => {
+    const child = spawn(process.execPath, ['--test', '--experimental-test-coverage', '--test-reporter=lcov', `--test-reporter-destination=${out}`, REPLAY_ENTRY], {
+      cwd,
+      stdio: 'inherit',
+      env: { ...process.env, NODE_OPTIONS: '', NODE_V8_COVERAGE: undefined, NODE_TEST_CONTEXT: undefined, COVERAGE_REPLAY_SOURCES: JSON.stringify(rawDirs), COVERAGE_REPLAY_EXPECT: String(expectedFiles) },
+    });
+    child.on('close', resolve);
+  });
+  if (code !== 0) throw new Error(`replaying the raw coverage failed (exit ${code})`);
+  return readFile(out, 'utf8');
 }
