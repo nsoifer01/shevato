@@ -251,7 +251,7 @@ DOM behavior is covered because a copy of its logic passes in Node.
 | PWA / offline | CDP | `tests/browser/suites/pwa-gym.mjs`, `apps/trip-planner/e2e/pwa.mjs` | Service-worker registration, cache contents, offline reload |
 | Cross-browser | Playwright (dev-dep) + `node --test` | `tests/cross-browser/` | Firefox + WebKit smoke of every page/app. Chromium depth stays in the CDP harness |
 | Firebase rules | Firestore emulator (npx firebase-tools, Java 21) | `apps/arena/tests-rules/` | Security-rules suite (deny-all negative control) against the local emulator; never production Firebase. The two-client multiplayer e2e was removed on 2026-10-17 |
-| Coverage | wrapper over `node --test` | `tests/coverage/` | Runs the unit estate under V8 coverage, reports per area, enforces line floors |
+| Coverage | wrapper over `node --test` | `tests/coverage/` | Runs the unit estate under V8 coverage (weekly CI: three shards, whose raw coverage Node itself merges before the floors are judged), reports per area, enforces line floors |
 
 ### Commands
 

@@ -177,3 +177,18 @@ test('the weekly job runs and merges the same number of shards', () => {
   assert.match(job, /needs: coverage-shard\n\s+if: always\(\)/, 'the verdict must run when a shard fails');
   assert.doesNotMatch(job, /continue-on-error/);
 });
+
+test('the heaviest coverage shard leaves at least half the job limit unused', () => {
+  // Measured on GitHub on 2026-11-10: shards of about 1,907 cost-seconds took
+  // up to 20 m 32 s (12 runs), 0.65 of their cost. This fails the pull request
+  // that makes a shard too heavy, before a weekly run is cancelled.
+  const yml = readFileSync(join(REPO_ROOT, '.github/workflows/scheduled.yml'), 'utf8');
+  const job = yml.slice(yml.indexOf('\n  coverage-shard:'), yml.indexOf('\n  coverage:'));
+  const limit = Number(/timeout-minutes: (\d+)/.exec(job)[1]) * 60;
+  const shards = /shard: \[([\d, ]+)\]/.exec(job)[1].split(',').length;
+  const run = readFileSync(join(REPO_ROOT, 'tests/coverage/run.mjs'), 'utf8');
+  const dirs = [...run.slice(run.indexOf('const SUITE_DIRS'), run.indexOf('const SUITE_GLOBS')).matchAll(/'([^']+\/)'/g)].map((m) => m[1]);
+  const costs = JSON.parse(readFileSync(join(REPO_ROOT, 'tests/coverage/file-seconds.json'), 'utf8'));
+  const heaviest = Math.max(...partition(testFiles(dirs.map((d) => `${d}**/*.test.*`)), shards, costs).map((b) => b.load));
+  assert.ok(heaviest * 0.65 * 2 <= limit, `heaviest shard ${heaviest} cost-seconds against a ${limit} s limit: add a shard`);
+});
