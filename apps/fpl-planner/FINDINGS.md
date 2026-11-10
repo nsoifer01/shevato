@@ -2202,6 +2202,16 @@ so ask what a candidate does to order before running it.
   (2.60), so any threshold catching every 1.5 times slowdown would also fail
   healthy runs. The first of three runs is about 1.3 times the later ones (JIT warm
   up) and is not judged, so a cost that only hits a cold start is not seen.
+  **A deterministic guard covers the other half** (2026-11-10):
+  `tests/search-work.test.mjs` counts the transfer search's engine function
+  calls with V8 precise coverage. The count was identical on 8 GitHub runners
+  (three CPU models) and locally: 5,734,158. It fails outside 0.8 to 1.2
+  times that, so it catches the search doing 20% more work on any runner,
+  which is how this search has regressed before; removing the
+  `elevenAutosubBound` prune raised it 11 times (mutant
+  `lineup-autosub-bound-off`). It cannot see each call getting slower, which
+  the CPU budgets still cover, and it is skipped under V8 coverage, whose
+  counts taking precise coverage would reset.
   Every budget prints what it measured on green runs too, in that job's summary.
 - **A search limit must never be written into game state.** The manual
   pre-season squad hardcoded `freeTransfers: 2` "because the search only
