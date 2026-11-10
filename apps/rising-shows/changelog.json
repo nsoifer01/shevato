@@ -1,6 +1,218 @@
 {
   "updates": [
     {
+      "builtAt": "2026-11-10T14:56:23.040Z",
+      "totals": {
+        "seasons": 67815,
+        "delta": 10
+      },
+      "shapeCounts": {
+        "rebound": 9816,
+        "big-finale": 11875,
+        "u-shaped": 2654,
+        "rollercoaster": 13505,
+        "mid-peak": 4392,
+        "consistent": 2541,
+        "bad-finale": 4372,
+        "front-loaded": 3094,
+        "slow-burn": 4002,
+        "declining": 1648,
+        "saved-best-for-last": 1378,
+        "shape-drift": 1392,
+        "rising": 2389
+      },
+      "shapeDeltas": {
+        "rebound": 4,
+        "big-finale": -2,
+        "u-shaped": 2,
+        "rollercoaster": -7,
+        "mid-peak": 2,
+        "consistent": 2,
+        "bad-finale": -1,
+        "front-loaded": 5,
+        "slow-burn": 5,
+        "declining": 6,
+        "shape-drift": -3
+      },
+      "added": [
+        {
+          "seriesId": "tt32575983",
+          "title": "Animatic Battle",
+          "season": 2,
+          "seasonYear": 2024
+        },
+        {
+          "seriesId": "tt19848992",
+          "title": "Generation Drag",
+          "season": 1,
+          "seasonYear": 2022
+        },
+        {
+          "seriesId": "tt0083410",
+          "title": "The Edison Twins",
+          "season": 2,
+          "seasonYear": 1984
+        },
+        {
+          "seriesId": "tt33246591",
+          "title": "The Assassin",
+          "season": 2,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt0372062",
+          "title": "Gary the Rat",
+          "season": 1,
+          "seasonYear": 2003
+        },
+        {
+          "seriesId": "tt26593263",
+          "title": "Face to Face",
+          "season": 1,
+          "seasonYear": 1976
+        },
+        {
+          "seriesId": "tt45086418",
+          "title": "Class Clowns",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt43698625",
+          "title": "Rise of the Rockstar Chef",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt0117769",
+          "title": "Style & Substance",
+          "season": 1,
+          "seasonYear": 1998
+        },
+        {
+          "seriesId": "tt8836798",
+          "title": "Local 58",
+          "season": 3,
+          "seasonYear": 2024
+        },
+        {
+          "seriesId": "tt35659504",
+          "title": "The Traitors: Italy",
+          "season": 2,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt47657141",
+          "title": "The Perfect Lie",
+          "season": 1,
+          "seasonYear": 2026
+        }
+      ],
+      "removed": [
+        {
+          "seriesId": "tt41908821",
+          "title": "Chernobyl: Inside the Meltdown",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt32575983",
+          "title": "Animatic Battle",
+          "season": 1,
+          "seasonYear": 2024
+        }
+      ],
+      "ratingSwings": [
+        {
+          "seriesId": "tt37762350",
+          "title": "Under Siege",
+          "season": 1,
+          "from": 8.37,
+          "to": 7.04,
+          "delta": -1.33
+        },
+        {
+          "seriesId": "tt39333720",
+          "title": "Ömür Usta",
+          "season": 1,
+          "from": 6.02,
+          "to": 5.32,
+          "delta": -0.7
+        },
+        {
+          "seriesId": "tt49791829",
+          "title": "Kauriburir Mandir",
+          "season": 1,
+          "from": 5,
+          "to": 5.68,
+          "delta": 0.68
+        },
+        {
+          "seriesId": "tt47616772",
+          "title": "Yal",
+          "season": 1,
+          "from": 7.42,
+          "to": 6.76,
+          "delta": -0.66
+        },
+        {
+          "seriesId": "tt14014086",
+          "title": "Chrysalis",
+          "season": 3,
+          "from": 6.46,
+          "to": 5.8,
+          "delta": -0.66
+        },
+        {
+          "seriesId": "tt36303747",
+          "title": "King of Drag",
+          "season": 2,
+          "from": 8.6,
+          "to": 7.94,
+          "delta": -0.66
+        },
+        {
+          "seriesId": "tt3358452",
+          "title": "Oneechan ga Kita",
+          "season": 1,
+          "from": 5.53,
+          "to": 6.15,
+          "delta": 0.62
+        },
+        {
+          "seriesId": "tt6462806",
+          "title": "Bride of Istanbul",
+          "season": 3,
+          "from": 8.2,
+          "to": 7.62,
+          "delta": -0.58
+        },
+        {
+          "seriesId": "tt15663868",
+          "title": "Your Life Is a Joke",
+          "season": 1,
+          "from": 7.4,
+          "to": 6.87,
+          "delta": -0.53
+        },
+        {
+          "seriesId": "tt39372772",
+          "title": "Rehab",
+          "season": 1,
+          "from": 7.5,
+          "to": 6.97,
+          "delta": -0.53
+        }
+      ],
+      "modifiedCounts": {
+        "seriesVotes": 21161,
+        "avgRating": 1308,
+        "shapes": 214,
+        "episodeCount": 113,
+        "seriesRating": 238
+      }
+    },
+    {
       "builtAt": "2026-11-09T15:52:25.069Z",
       "totals": {
         "seasons": 67805,
@@ -7964,293 +8176,6 @@
         "poster": 1,
         "providers": 1,
         "overview": 1
-      }
-    },
-    {
-      "builtAt": "2026-10-12T15:16:34.194Z",
-      "totals": {
-        "seasons": 67180,
-        "delta": 22
-      },
-      "shapeCounts": {
-        "rebound": 10222,
-        "rising": 2659,
-        "slow-burn": 4453,
-        "big-finale": 12258,
-        "u-shaped": 3088,
-        "rollercoaster": 14237,
-        "saved-best-for-last": 1476,
-        "shape-drift": 1582,
-        "mid-peak": 4644,
-        "front-loaded": 3508,
-        "declining": 1914,
-        "bad-finale": 4683,
-        "consistent": 2657
-      },
-      "shapeDeltas": {
-        "rebound": 6,
-        "rising": 8,
-        "slow-burn": 5,
-        "big-finale": 2,
-        "rollercoaster": -1,
-        "saved-best-for-last": 3,
-        "shape-drift": -2,
-        "mid-peak": -3,
-        "declining": 3,
-        "bad-finale": -1,
-        "consistent": 3
-      },
-      "added": [
-        {
-          "seriesId": "tt32445572",
-          "title": "Sean Combs: The Reckoning",
-          "season": 1,
-          "seasonYear": 2025
-        },
-        {
-          "seriesId": "tt0072562",
-          "title": "Saturday Night Live",
-          "season": 52,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt33258199",
-          "title": "A Wild Last Boss Appeared!",
-          "season": 2,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt41296506",
-          "title": "Magical Explorer",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt38939893",
-          "title": "A Tale of the Secret Saint",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt33406999",
-          "title": "Get Jiro!",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt0096636",
-          "title": "Live with Kelly and Mark",
-          "season": 26,
-          "seasonYear": 2014
-        },
-        {
-          "seriesId": "tt3040130",
-          "title": "Sendokai Champions",
-          "season": 3,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt1173677",
-          "title": "The Rachel Zoe Project",
-          "season": 1,
-          "seasonYear": 2008
-        },
-        {
-          "seriesId": "tt39216741",
-          "title": "El castillo",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt3962914",
-          "title": "Itch",
-          "season": 2,
-          "seasonYear": 2021
-        },
-        {
-          "seriesId": "tt1118529",
-          "title": "Iryû: Team Medical Dragon",
-          "season": 1,
-          "seasonYear": 2006
-        },
-        {
-          "seriesId": "tt34870889",
-          "title": "Game of Throws: Inside Darts",
-          "season": 1,
-          "seasonYear": 2024
-        },
-        {
-          "seriesId": "tt0163461",
-          "title": "Kommissar Freytag",
-          "season": 1,
-          "seasonYear": 1963
-        },
-        {
-          "seriesId": "tt0297639",
-          "title": "Swiat wedlug Kiepskich",
-          "season": 2,
-          "seasonYear": 2003
-        },
-        {
-          "seriesId": "tt22167756",
-          "title": "Take 5 with Zan Rowe",
-          "season": 1,
-          "seasonYear": 2022
-        },
-        {
-          "seriesId": "tt2312563",
-          "title": "Secret War",
-          "season": 1,
-          "seasonYear": 2011
-        },
-        {
-          "seriesId": "tt15303242",
-          "title": "Republic City Hustle",
-          "season": 1,
-          "seasonYear": 2013
-        },
-        {
-          "seriesId": "tt37599841",
-          "title": "Skibidi Toilet Multiverse",
-          "season": 10,
-          "seasonYear": 2024
-        },
-        {
-          "seriesId": "tt40699747",
-          "title": "LIS",
-          "season": 2,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt10571968",
-          "title": "The Cold War Story",
-          "season": 1,
-          "seasonYear": 2019
-        },
-        {
-          "seriesId": "tt40260395",
-          "title": "The Tale of Narges",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt36743307",
-          "title": "Inside the Circle",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt44913797",
-          "title": "Hunger",
-          "season": 1,
-          "seasonYear": 2026
-        }
-      ],
-      "removed": [
-        {
-          "seriesId": "tt33473000",
-          "title": "Sean Combs: The Reckoning",
-          "season": 1,
-          "seasonYear": 2025
-        },
-        {
-          "seriesId": "tt38268282",
-          "title": "Steel Ball Run: JoJo's Bizarre Adventure",
-          "season": 2,
-          "seasonYear": 2026
-        }
-      ],
-      "ratingSwings": [
-        {
-          "seriesId": "tt4504724",
-          "title": "Markiplier",
-          "season": 1,
-          "from": 7.77,
-          "to": 8.92,
-          "delta": 1.15
-        },
-        {
-          "seriesId": "tt34385400",
-          "title": "Vampirina: Teenage Vampire",
-          "season": 2,
-          "from": 9.35,
-          "to": 8.47,
-          "delta": -0.88
-        },
-        {
-          "seriesId": "tt11717526",
-          "title": "Belzebubs",
-          "season": 1,
-          "from": 8.23,
-          "to": 8.9,
-          "delta": 0.67
-        },
-        {
-          "seriesId": "tt31323246",
-          "title": "Hot Ones Versus",
-          "season": 1,
-          "from": 7.15,
-          "to": 6.56,
-          "delta": -0.59
-        },
-        {
-          "seriesId": "tt16409202",
-          "title": "Spare Me, Great Lord!",
-          "season": 2,
-          "from": 9.38,
-          "to": 8.82,
-          "delta": -0.56
-        },
-        {
-          "seriesId": "tt37196425",
-          "title": "Pierre",
-          "season": 1,
-          "from": 6.33,
-          "to": 6.83,
-          "delta": 0.5
-        },
-        {
-          "seriesId": "tt43736405",
-          "title": "A Love Other Than Yours",
-          "season": 1,
-          "from": 7.02,
-          "to": 7.47,
-          "delta": 0.45
-        },
-        {
-          "seriesId": "tt35836959",
-          "title": "Medusa",
-          "season": 2,
-          "from": 5.65,
-          "to": 6.1,
-          "delta": 0.45
-        },
-        {
-          "seriesId": "tt0211802",
-          "title": "Esmeralda",
-          "season": 1,
-          "from": 8.87,
-          "to": 8.42,
-          "delta": -0.45
-        },
-        {
-          "seriesId": "tt37599841",
-          "title": "Skibidi Toilet Multiverse",
-          "season": 11,
-          "from": 6.57,
-          "to": 7,
-          "delta": 0.43
-        }
-      ],
-      "modifiedCounts": {
-        "seriesVotes": 22019,
-        "avgRating": 1218,
-        "shapes": 207,
-        "seriesRating": 389,
-        "overview": 5,
-        "episodeCount": 80,
-        "poster": 13,
-        "providers": 1
       }
     }
   ]
