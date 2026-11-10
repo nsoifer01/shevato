@@ -2192,9 +2192,15 @@ so ask what a candidate does to order before running it.
   ms. `npm test` keeps the older, looser ceilings because it runs in parallel.
   **What this can and cannot catch**, with slowdowns injected on the isolated
   job: 1.0 times passed 2 of 2, 1.5 times failed 1 of 3, 2.5 times failed 2 of 2.
-  The CPU model decides how close a run sits to the line (the slowest is about
-  1.45 times the fastest), so a 1.5 times slowdown is only caught on slower
-  hardware. The first of three runs is about 1.3 times the later ones (JIT warm
+  The CPU model decides how close a run sits to the line: healthy cheapest runs
+  measured 575 to 1211 ms, so the 1600 ms ceiling fires at about 1.3 times on the
+  slowest runner seen and only at about 2.8 times on the fastest. **Do not
+  describe this as reliably catching a 1.5 times slowdown: it does not.** A CPU
+  speed calibration was tried and rejected (2026-11-09, 24 GitHub jobs, a 300 to
+  600 ms workload): dividing by it cut the spread across CPU models from 1.85 to
+  1.44 times, but one healthy Xeon run (ratio 2.66) sat above slowed AMD runs
+  (2.60), so any threshold catching every 1.5 times slowdown would also fail
+  healthy runs. The first of three runs is about 1.3 times the later ones (JIT warm
   up) and is not judged, so a cost that only hits a cold start is not seen.
   Every budget prints what it measured on green runs too, in that job's summary.
 - **A search limit must never be written into game state.** The manual
