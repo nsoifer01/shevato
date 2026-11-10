@@ -19,6 +19,7 @@ import { register } from 'node:module';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import handler, { edgeCachePolicy } from '../fpl.mjs';
+import { refusedWhileFplAnswered } from '../../../apps/fpl-planner/scripts/lib/probe.mjs';
 import {
   ttlSeconds, cacheKey, TTL, DEADLINE_KEY, DEADLINE_WINDOW_MS, DEADLINE_TTL_SECONDS,
 } from '../lib/fpl-cache.mjs';
@@ -214,4 +215,19 @@ test('handler: a degraded answer says why in x-fpl-upstream, and a fresh one car
   const fresh = await withFetch(async () => ok([{ id: 2 }]), () => handler(req('fixtures')));
   assert.equal(fresh.headers.get('x-fpl-stale'), 'false');
   assert.equal(fresh.headers.get('x-fpl-upstream'), null);
+});
+
+test('handler: the headers it really sends are the ones the health probe excuses a partial refusal on', opts, async () => {
+  const now = Date.now();
+  const path = 'entry/4231987/history';
+  seedBlobs({ [cacheKey(path)]: { fetchedAt: iso(now - 6 * 3600 * SEC), body: { current: [] } } });
+  const refused = await withFetch(async () => new Response('denied', { status: 403 }), () => handler(req(path)));
+  assert.equal(refused.status, 200);
+  assert.equal(refused.headers.get('x-fpl-stale'), 'true');
+  assert.equal(refused.headers.get('x-fpl-upstream'), 'refused');
+  const answered = await withFetch(async () => ok([{ id: 1 }]), () => handler(req('fixtures')));
+  assert.equal(answered.headers.get('x-fpl-cache'), 'miss');
+  const responses = { [path]: refused.headers, fixtures: answered.headers };
+  assert.equal(refusedWhileFplAnswered(refused.headers, responses), true, 'FPL answered this run, so the refusal is partial');
+  assert.equal(refusedWhileFplAnswered(refused.headers, { [path]: refused.headers }), false, 'nothing fetched fresh is a block');
 });
