@@ -82,6 +82,14 @@ export const COPY_PATHS = [
 // costs its full runtime every time it is mapped), and the rule it guards.
 export const MUTANTS = [
   {
+    id: 'lineup-autosub-bound-off',
+    file: `${ENGINE}/lineup.js`,
+    find: 'if (best !== null && score + elevenAutosubBound(xiRows, benchRows, rules) <= best.total) return;',
+    replace: 'if (best !== null && score + Infinity <= best.total) return;',
+    tests: [T('search-work')],
+    guards: 'The search counts its work, so losing the bound that prunes elevens from simulation fails without a timer (2026-11-10).',
+  },
+  {
     id: 'probe-refusal-waiver-without-proof',
     file: `${APP}/scripts/lib/probe.mjs`,
     find: "return Object.values(responses).some((r) => r.get('x-fpl-cache') === 'miss' && r.get('x-fpl-stale') !== 'true' && !(Number(r.get('age')) > 0));",
@@ -621,7 +629,7 @@ export const FILE_COST_SECONDS = {
   'optimizer-reference': 75, 'probe-sample': 65, 'search-corrections': 40,
   'real-deadline-gw7': 25, 'real-deadline-gw10': 25, 'season-lifecycle': 25, probe: 25,
   transfers: 20, 'manager-state-properties': 15, 'inherited-club-limit': 14,
-  'probe-refusal-waiver': 1, 'manager-state-lag': 7, 'ui-club-limit-notice': 4, 'plan-history-scope': 3,
+  'probe-refusal-waiver': 1, 'search-work': 30, 'manager-state-lag': 7, 'ui-club-limit-notice': 4, 'plan-history-scope': 3,
   squad: 2, validate: 1, rules: 1, fpl: 1, 'transfer-state': 1, 'transfer-state-real': 1,
 };
 
