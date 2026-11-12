@@ -20,7 +20,7 @@ import { readFileSync } from 'node:fs';
 import {
   createApi, isParked, isOurCheck, failedChecks, releaseParkedRuns, armAutoMerge,
   drivePullRequest, reconcileOpenBotPullRequests, listOpenBotPullRequests, main, deleteHeadBranch,
-  MERGE_METHOD, BOT_BRANCH_PREFIX,
+  MERGE_METHOD, BOT_BRANCH_PREFIX, SERVER_ERROR_RETRY_DELAYS_MS,
 } from '../../scripts/bot-pr-autopilot.mjs';
 
 const REPO = 'nsoifer01/shevato';
@@ -684,4 +684,79 @@ test('the CLI entrypoint fires from a path a file: URL has to encode', async () 
   }
   assert.equal(code, 1, 'the entrypoint must run and fail, not silently do nothing');
   assert.match(stderr, /unknown command/);
+});
+
+// ---------------------------------------------------------------------------
+// 5xx retries. On 2026-11-12 a single `GET /pulls/663 -> 503` failed the
+// refresh run mid-watch and skipped the head-branch delete.
+
+// A fetch that answers from a queue of statuses, then 200 for ever after.
+function flakyFetch(statuses) {
+  const queue = [...statuses];
+  const calls = [];
+  const fetchImpl = async (url, init = {}) => {
+    calls.push(`${init.method || 'GET'} ${String(url).replace('https://api.github.com', '')}`);
+    const status = queue.length ? queue.shift() : 200;
+    return { ok: status >= 200 && status < 300, status, text: async () => JSON.stringify({ status }) };
+  };
+  return { fetchImpl, calls };
+}
+
+test('a 5xx answer is retried after each configured delay until one succeeds', async () => {
+  const { fetchImpl, calls } = flakyFetch([503, 502]);
+  const waited = [];
+  const api = createApi({ token: 't', repo: REPO, fetchImpl, retryDelaysMs: [10, 20, 30], sleep: async (ms) => { waited.push(ms); } });
+  assert.deepEqual(await api.request('GET', `/repos/${REPO}/pulls/663`), { status: 200 });
+  assert.equal(calls.length, 3);
+  assert.deepEqual(waited, [10, 20]);
+});
+
+test('a 5xx that outlasts every retry still throws with its status', async () => {
+  const { fetchImpl, calls } = flakyFetch([503, 503, 503, 503, 503]);
+  const api = createApi({ token: 't', repo: REPO, fetchImpl, retryDelaysMs: [1, 1, 1], sleep: async () => {} });
+  await assert.rejects(() => api.request('GET', `/repos/${REPO}/pulls/663`), (err) => err.status === 503);
+  assert.equal(calls.length, 4, 'one attempt plus one per delay');
+});
+
+test('a 4xx answer is never retried', async () => {
+  for (const status of [403, 404, 422]) {
+    const { fetchImpl, calls } = flakyFetch([status]);
+    const api = createApi({ token: 't', repo: REPO, fetchImpl, retryDelaysMs: [1, 1, 1], sleep: async () => {} });
+    await assert.rejects(() => api.request('GET', '/x'), (err) => err.status === status);
+    assert.equal(calls.length, 1, String(status));
+  }
+});
+
+test('createApi does not retry unless asked to', async () => {
+  const { fetchImpl, calls } = flakyFetch([503]);
+  const api = createApi({ token: 't', repo: REPO, fetchImpl });
+  await assert.rejects(() => api.request('GET', '/x'), (err) => err.status === 503);
+  assert.equal(calls.length, 1);
+});
+
+test('the CLI rides out a transient 503 on the pull request it is watching', async () => {
+  const env = { GITHUB_TOKEN: 't', GITHUB_REPOSITORY: REPO };
+  const original = globalThis.fetch;
+  let pullReads = 0;
+  globalThis.fetch = async (url) => {
+    const path = String(url).replace('https://api.github.com', '');
+    if (path === `/repos/${REPO}/pulls/505`) {
+      pullReads += 1;
+      if (pullReads === 1) return { ok: false, status: 503, text: async () => '' };
+      return { ok: true, status: 200, text: async () => JSON.stringify(pull({ number: 505, head: { sha: 's', ref: 'x' } })) };
+    }
+    const answer = path.includes('/actions/runs') ? { workflow_runs: [] }
+      : path.includes('/check-runs') ? { check_runs: [check({ name: 'rules', conclusion: 'failure' })] } : {};
+    return { ok: true, status: 200, text: async () => JSON.stringify(answer) };
+  };
+  const waited = [];
+  const lines = [];
+  try {
+    const code = await main(['run', '--pr', '505'], env, (l) => lines.push(l), { sleep: async (ms) => { waited.push(ms); } });
+    assert.equal(code, 1);
+    assert.match(lines.join('\n'), /did not merge \(failed\)/, 'reached the normal outcome instead of throwing on the 503');
+    assert.deepEqual(waited, [SERVER_ERROR_RETRY_DELAYS_MS[0]]);
+  } finally {
+    globalThis.fetch = original;
+  }
 });

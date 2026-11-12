@@ -1584,6 +1584,15 @@ Relying on the setting would have stranded one timestamped
 `bot/refresh-rising-shows-*` branch every day, which is precisely the
 accumulation the timestamped names make expensive.
 
+**It retries a GitHub 5xx three times (after 5 s, 15 s, 30 s) before giving
+up.** On 2026-11-12 one `GET /pulls/663 -> 503` killed the watch eight minutes
+in. Auto-merge was already armed, so GitHub merged #663 a minute later anyway,
+but the run went red and the delete above never ran, leaving the branch on the
+remote. 4xx answers are never retried. Only the autopilot's own CLI turns the
+retries on; `createApi` defaults to none, so `ci-already-tested.mjs` is
+unchanged. A retried write that GitHub actually applied before answering 5xx
+can come back as a 4xx on the retry, which throws just as the 5xx did before.
+
 **One open refresh pull request at a time, enforced.** Two of them cannot both
 merge: both rewrite `changelog.json` and the exports, so the second is
 guaranteed a conflict, and the loser's changelog entry is lost because the next
