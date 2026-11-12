@@ -1,6 +1,311 @@
 {
   "updates": [
     {
+      "builtAt": "2026-11-12T15:10:57.262Z",
+      "totals": {
+        "seasons": 67841,
+        "delta": 9
+      },
+      "shapeCounts": {
+        "rebound": 9805,
+        "big-finale": 11879,
+        "u-shaped": 2654,
+        "rollercoaster": 13507,
+        "mid-peak": 4391,
+        "consistent": 2545,
+        "bad-finale": 4377,
+        "front-loaded": 3095,
+        "slow-burn": 4005,
+        "declining": 1653,
+        "saved-best-for-last": 1379,
+        "shape-drift": 1393,
+        "rising": 2391
+      },
+      "shapeDeltas": {
+        "rebound": -8,
+        "big-finale": 4,
+        "u-shaped": 1,
+        "rollercoaster": -6,
+        "mid-peak": 1,
+        "bad-finale": 3,
+        "front-loaded": 2,
+        "slow-burn": 2,
+        "declining": 2,
+        "saved-best-for-last": -1,
+        "rising": 1
+      },
+      "added": [
+        {
+          "seriesId": "tt6289132",
+          "title": "The Boulet Brothers' Dragula",
+          "season": 7,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt0063861",
+          "title": "Adventures in Rainbow Country",
+          "season": 1,
+          "seasonYear": 1969
+        },
+        {
+          "seriesId": "tt0106100",
+          "title": "Phenom",
+          "season": 1,
+          "seasonYear": 1993
+        },
+        {
+          "seriesId": "tt0466345",
+          "title": "In Therapy",
+          "season": 1,
+          "seasonYear": 2005
+        },
+        {
+          "seriesId": "tt1159864",
+          "title": "Magical Girl Lyrical Nanoha A's",
+          "season": 2,
+          "seasonYear": 2005
+        },
+        {
+          "seriesId": "tt1368428",
+          "title": "Na terapiji",
+          "season": 1,
+          "seasonYear": 2009
+        },
+        {
+          "seriesId": "tt14906022",
+          "title": "Richard Hammond's Workshop",
+          "season": 6,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt21158428",
+          "title": "Mormon No More",
+          "season": 1,
+          "seasonYear": 2022
+        },
+        {
+          "seriesId": "tt41153966",
+          "title": "The Vermillion Mask",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt5247586",
+          "title": "Flikken Rotterdam",
+          "season": 9,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt0154966",
+          "title": "Object Z",
+          "season": 1,
+          "seasonYear": 1965
+        },
+        {
+          "seriesId": "tt10476258",
+          "title": "Sokagin Çocuklari",
+          "season": 5,
+          "seasonYear": 2022
+        },
+        {
+          "seriesId": "tt21054814",
+          "title": "Alles Finster",
+          "season": 1,
+          "seasonYear": 2022
+        },
+        {
+          "seriesId": "tt21155694",
+          "title": "Nelichnaya zhizn",
+          "season": 1,
+          "seasonYear": 2022
+        },
+        {
+          "seriesId": "tt35122956",
+          "title": "Woeste grond",
+          "season": 3,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt37899471",
+          "title": "Krypto Saves the Day!",
+          "season": 2,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt45115657",
+          "title": "Seeing Double",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt49766574",
+          "title": "Nine to Five",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt8091356",
+          "title": "Fantasy Patrol",
+          "season": 1,
+          "seasonYear": 2016
+        }
+      ],
+      "removed": [
+        {
+          "seriesId": "tt14976292",
+          "title": "Link Click",
+          "season": 4,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt30470947",
+          "title": "Miraculous Anime",
+          "season": 1,
+          "seasonYear": 2012
+        },
+        {
+          "seriesId": "tt30470947",
+          "title": "Miraculous Anime",
+          "season": 2,
+          "seasonYear": 2012
+        },
+        {
+          "seriesId": "tt30470947",
+          "title": "Miraculous Anime",
+          "season": 4,
+          "seasonYear": 2017
+        },
+        {
+          "seriesId": "tt30470947",
+          "title": "Miraculous Anime",
+          "season": 5,
+          "seasonYear": 2019
+        },
+        {
+          "seriesId": "tt30470947",
+          "title": "Miraculous Anime",
+          "season": 6,
+          "seasonYear": 2020
+        },
+        {
+          "seriesId": "tt30470947",
+          "title": "Miraculous Anime",
+          "season": 3,
+          "seasonYear": 2015
+        },
+        {
+          "seriesId": "tt30470947",
+          "title": "Miraculous Anime",
+          "season": 7,
+          "seasonYear": 2021
+        },
+        {
+          "seriesId": "tt30470947",
+          "title": "Miraculous Anime",
+          "season": 8,
+          "seasonYear": 2022
+        },
+        {
+          "seriesId": "tt49605615",
+          "title": "The Vermilion Mask",
+          "season": 1,
+          "seasonYear": 2026
+        }
+      ],
+      "ratingSwings": [
+        {
+          "seriesId": "tt2321022",
+          "title": "En terapia",
+          "season": 1,
+          "from": 7.96,
+          "to": 6.9,
+          "delta": -1.06
+        },
+        {
+          "seriesId": "tt6550350",
+          "title": "The Name Is Legend",
+          "season": 1,
+          "from": 8.28,
+          "to": 7.32,
+          "delta": -0.96
+        },
+        {
+          "seriesId": "tt15023948",
+          "title": "All About Marriage",
+          "season": 1,
+          "from": 8.7,
+          "to": 7.94,
+          "delta": -0.76
+        },
+        {
+          "seriesId": "tt4371812",
+          "title": "Racon",
+          "season": 1,
+          "from": 9.07,
+          "to": 8.42,
+          "delta": -0.65
+        },
+        {
+          "seriesId": "tt49211076",
+          "title": "Taxi",
+          "season": 1,
+          "from": 6.88,
+          "to": 6.26,
+          "delta": -0.62
+        },
+        {
+          "seriesId": "tt44733941",
+          "title": "Haysiyet",
+          "season": 1,
+          "from": 5.54,
+          "to": 6.16,
+          "delta": 0.62
+        },
+        {
+          "seriesId": "tt37522954",
+          "title": "Jones",
+          "season": 1,
+          "from": 5.47,
+          "to": 6.08,
+          "delta": 0.61
+        },
+        {
+          "seriesId": "tt39325975",
+          "title": "The Remarried Empress",
+          "season": 1,
+          "from": 8.23,
+          "to": 7.68,
+          "delta": -0.55
+        },
+        {
+          "seriesId": "tt30645178",
+          "title": "Piglets",
+          "season": 2,
+          "from": 5.77,
+          "to": 5.22,
+          "delta": -0.55
+        },
+        {
+          "seriesId": "tt3467416",
+          "title": "Pis Yedili",
+          "season": 1,
+          "from": 5.03,
+          "to": 4.48,
+          "delta": -0.55
+        }
+      ],
+      "modifiedCounts": {
+        "seriesVotes": 20351,
+        "avgRating": 1209,
+        "shapes": 197,
+        "episodeCount": 71,
+        "seriesRating": 279,
+        "poster": 4,
+        "overview": 6,
+        "providers": 2
+      }
+    },
+    {
       "builtAt": "2026-11-11T14:10:02.416Z",
       "totals": {
         "seasons": 67832,
@@ -7761,330 +8066,6 @@
       "removed": [],
       "ratingSwings": [],
       "modifiedCounts": {}
-    },
-    {
-      "builtAt": "2026-10-14T05:53:15.706Z",
-      "totals": {
-        "seasons": 67238,
-        "delta": 32
-      },
-      "shapeCounts": {
-        "rebound": 9757,
-        "big-finale": 11793,
-        "u-shaped": 2635,
-        "rollercoaster": 13493,
-        "mid-peak": 4362,
-        "consistent": 2511,
-        "bad-finale": 4335,
-        "front-loaded": 3066,
-        "slow-burn": 3961,
-        "declining": 1637,
-        "saved-best-for-last": 1376,
-        "shape-drift": 1396,
-        "rising": 2335
-      },
-      "shapeDeltas": {
-        "rebound": -466,
-        "rising": -326,
-        "slow-burn": -491,
-        "big-finale": -457,
-        "u-shaped": -459,
-        "rollercoaster": -747,
-        "saved-best-for-last": -99,
-        "shape-drift": -186,
-        "mid-peak": -286,
-        "front-loaded": -441,
-        "declining": -278,
-        "bad-finale": -351,
-        "consistent": -142
-      },
-      "added": [
-        {
-          "seriesId": "tt13138834",
-          "title": "Time",
-          "season": 3,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt16409202",
-          "title": "Spare Me, Great Lord!",
-          "season": 3,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt4267324",
-          "title": "Variety Studio: Actors on Actors",
-          "season": 3,
-          "seasonYear": 2015
-        },
-        {
-          "seriesId": "tt1427163",
-          "title": "Empty Can!",
-          "season": 1,
-          "seasonYear": 2009
-        },
-        {
-          "seriesId": "tt43691383",
-          "title": "So What's Wrong with Getting Reborn as a Goblin",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt4267324",
-          "title": "Variety Studio: Actors on Actors",
-          "season": 9,
-          "seasonYear": 2019
-        },
-        {
-          "seriesId": "tt1409064",
-          "title": "Saki",
-          "season": 1,
-          "seasonYear": 2009
-        },
-        {
-          "seriesId": "tt39087958",
-          "title": "Doctor of Love",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt47722400",
-          "title": "SXB Island",
-          "season": 2,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt4267324",
-          "title": "Variety Studio: Actors on Actors",
-          "season": 13,
-          "seasonYear": 2021
-        },
-        {
-          "seriesId": "tt0171992",
-          "title": "Dom",
-          "season": 3,
-          "seasonYear": 1999
-        },
-        {
-          "seriesId": "tt0081857",
-          "title": "Entertainment Tonight",
-          "season": 43,
-          "seasonYear": 2023
-        },
-        {
-          "seriesId": "tt0482076",
-          "title": "Niania",
-          "season": 1,
-          "seasonYear": 2005
-        },
-        {
-          "seriesId": "tt0124932",
-          "title": "20/20",
-          "season": 50,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt4267324",
-          "title": "Variety Studio: Actors on Actors",
-          "season": 15,
-          "seasonYear": 2022
-        },
-        {
-          "seriesId": "tt4267324",
-          "title": "Variety Studio: Actors on Actors",
-          "season": 16,
-          "seasonYear": 2022
-        },
-        {
-          "seriesId": "tt4267324",
-          "title": "Variety Studio: Actors on Actors",
-          "season": 18,
-          "seasonYear": 2023
-        },
-        {
-          "seriesId": "tt4267324",
-          "title": "Variety Studio: Actors on Actors",
-          "season": 20,
-          "seasonYear": 2024
-        },
-        {
-          "seriesId": "tt4267324",
-          "title": "Variety Studio: Actors on Actors",
-          "season": 22,
-          "seasonYear": 2025
-        },
-        {
-          "seriesId": "tt12916790",
-          "title": "Singer",
-          "season": 2,
-          "seasonYear": 2023
-        },
-        {
-          "seriesId": "tt1692560",
-          "title": "Deadly 60",
-          "season": 5,
-          "seasonYear": 2024
-        },
-        {
-          "seriesId": "tt29064303",
-          "title": "Simon Coleman",
-          "season": 3,
-          "seasonYear": 2025
-        },
-        {
-          "seriesId": "tt27237297",
-          "title": "Naked Dining ~ Love, Life and Liberation ~",
-          "season": 1,
-          "seasonYear": 2023
-        },
-        {
-          "seriesId": "tt37960071",
-          "title": "Crossroad Springs",
-          "season": 2,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt35674433",
-          "title": "Rise and Fall",
-          "season": 2,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt39375564",
-          "title": "Recipe for Love",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt8629424",
-          "title": "Gnomes",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt3963878",
-          "title": "Testimony of N",
-          "season": 1,
-          "seasonYear": 2014
-        },
-        {
-          "seriesId": "tt43756457",
-          "title": "Yemek Savaslari",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt45027787",
-          "title": "Dwars door de Pyreneeën",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt47722400",
-          "title": "SXB Island",
-          "season": 1,
-          "seasonYear": 2025
-        },
-        {
-          "seriesId": "tt48648494",
-          "title": "Carrier Murder",
-          "season": 1,
-          "seasonYear": 2024
-        }
-      ],
-      "removed": [],
-      "ratingSwings": [
-        {
-          "seriesId": "tt37540577",
-          "title": "Aquel",
-          "season": 1,
-          "from": 7.6,
-          "to": 6.25,
-          "delta": -1.35
-        },
-        {
-          "seriesId": "tt7122766",
-          "title": "In the Vault",
-          "season": 2,
-          "from": 8.2,
-          "to": 6.85,
-          "delta": -1.35
-        },
-        {
-          "seriesId": "tt38946694",
-          "title": "Tomei na Yoru ni Kakeru Kimi to, Me ni Mienai Koi wo Shita",
-          "season": 1,
-          "from": 7.63,
-          "to": 6.37,
-          "delta": -1.26
-        },
-        {
-          "seriesId": "tt0096636",
-          "title": "Live with Kelly and Mark",
-          "season": 27,
-          "from": 8.93,
-          "to": 7.9,
-          "delta": -1.03
-        },
-        {
-          "seriesId": "tt10763852",
-          "title": "Noobees",
-          "season": 1,
-          "from": 9.2,
-          "to": 8.3,
-          "delta": -0.9
-        },
-        {
-          "seriesId": "tt21073922",
-          "title": "Shadow",
-          "season": 1,
-          "from": 7.48,
-          "to": 6.58,
-          "delta": -0.9
-        },
-        {
-          "seriesId": "tt4267324",
-          "title": "Variety Studio: Actors on Actors",
-          "season": 17,
-          "from": 7.63,
-          "to": 6.75,
-          "delta": -0.88
-        },
-        {
-          "seriesId": "tt20428144",
-          "title": "Sam and Colby Present: Hell Week",
-          "season": 6,
-          "from": 7.47,
-          "to": 8.17,
-          "delta": 0.7
-        },
-        {
-          "seriesId": "tt4267324",
-          "title": "Variety Studio: Actors on Actors",
-          "season": 19,
-          "from": 6.67,
-          "to": 5.98,
-          "delta": -0.69
-        },
-        {
-          "seriesId": "tt9022950",
-          "title": "The Kelly Clarkson Show",
-          "season": 2,
-          "from": 6.58,
-          "to": 5.98,
-          "delta": -0.6
-        }
-      ],
-      "modifiedCounts": {
-        "seriesVotes": 19654,
-        "avgRating": 1346,
-        "shapes": 3156,
-        "seriesRating": 260,
-        "episodeCount": 84,
-        "poster": 1,
-        "providers": 1,
-        "overview": 1
-      }
     }
   ]
 }
