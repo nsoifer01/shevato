@@ -80,13 +80,23 @@ export function failedChecks(checkRuns) {
   return checkRuns.filter((c) => isOurCheck(c) && bad.has(c.conclusion));
 }
 
-export function createApi({ token, repo, fetchImpl, base = DEFAULT_API }) {
+// The waits before each retry of a 5xx answer, used by `main`. On 2026-11-12
+// one `GET /pulls/663 -> 503` killed the refresh run mid-watch: auto-merge
+// still merged #663 a minute later, but the run went red and its head branch
+// was never deleted. createApi defaults to no retries, so every other caller
+// and test keeps its old behaviour.
+export const SERVER_ERROR_RETRY_DELAYS_MS = [5000, 15000, 30000];
+
+export function createApi({
+  token, repo, fetchImpl, base = DEFAULT_API,
+  retryDelaysMs = [], sleep = (ms) => new Promise((r) => setTimeout(r, ms)),
+}) {
   const doFetch = fetchImpl || globalThis.fetch;
   if (!token) throw new Error('a token is required (GITHUB_TOKEN or GH_TOKEN)');
   if (!repo) throw new Error('a repository is required (GITHUB_REPOSITORY, owner/name)');
 
   async function request(method, path, body) {
-    const res = await doFetch(`${base}${path}`, {
+    const init = {
       method,
       headers: {
         accept: 'application/vnd.github+json',
@@ -95,7 +105,13 @@ export function createApi({ token, repo, fetchImpl, base = DEFAULT_API }) {
         ...(body ? { 'content-type': 'application/json' } : {}),
       },
       ...(body ? { body: JSON.stringify(body) } : {}),
-    });
+    };
+    let res = await doFetch(`${base}${path}`, init);
+    for (const delay of retryDelaysMs) {
+      if (res.status < 500) break;
+      await sleep(delay);
+      res = await doFetch(`${base}${path}`, init);
+    }
     const text = await res.text();
     let parsed = null;
     if (text) { try { parsed = JSON.parse(text); } catch { parsed = { raw: text }; } }
@@ -434,12 +450,14 @@ function parseArgs(argv) {
   return { command, opts };
 }
 
-export async function main(argv, env = process.env, log = console.log) {
+export async function main(argv, env = process.env, log = console.log, { sleep } = {}) {
   const { command, opts } = parseArgs(argv);
   const api = createApi({
     token: env.GITHUB_TOKEN || env.GH_TOKEN,
     repo: env.GITHUB_REPOSITORY,
     base: env.GITHUB_API_URL || DEFAULT_API,
+    retryDelaysMs: SERVER_ERROR_RETRY_DELAYS_MS,
+    ...(sleep ? { sleep } : {}),
   });
   const timeoutMs = Number(opts.timeoutMin ?? 60) * 60 * 1000;
   const pollMs = Number(opts.pollSec ?? 30) * 1000;
