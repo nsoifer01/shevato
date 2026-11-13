@@ -1372,7 +1372,10 @@ URL, the capture time and FPL's `Date` header, named
 never overwritten; an unchanged payload is recorded in the manifest as a
 pointer to the earlier file. Files live as assets of a prerelease per season
 (`fpl-archive-2026-27`), uploaded without `--clobber`; the manifest is the one
-asset replaced, after checking the new one keeps every old entry. About 1.1 MB
+thing replaced, after checking the new one keeps every old entry. It lives in
+three assets, `manifest.json` (what consumers read) and `manifest.copy-1.json`
+/ `manifest.copy-2.json`, replaced one at a time, copy first, so gh's
+delete-then-upload never leaves the release without the newest index. About 1.1 MB
 a gameweek, 40 MB a season. "The game is being updated" is refused with exit 75
 and retried by the next hourly run.
 
@@ -1387,9 +1390,10 @@ gameweeks running). It refuses a snapshot captured after its deadline.
 
 Release limits and recovery: GitHub caps a release at 1000 assets, so the
 script stops at 900 with instructions to start a second release for the
-season; an asset the manifest does not list (a run that died between the
-snapshot upload and the manifest upload) is reported on every run and never
-deleted. Release creation is plain `--prerelease` (a prerelease is never the
+season; a snapshot asset the manifest does not list (a run that died between
+the snapshot upload and the manifest upload) is indexed from its own record by
+the next run, a copy ahead of `manifest.json` becomes the base, and an asset
+that is not a whole record is reported on every run and never deleted. Release creation is plain `--prerelease` (a prerelease is never the
 repository's latest), which works on old `gh` versions too.
 
 The proxy's own cache is pruned separately: `netlify/functions/fpl-cache-prune.mjs`,

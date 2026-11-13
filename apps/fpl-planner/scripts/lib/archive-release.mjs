@@ -15,26 +15,41 @@
 //     again without --clobber, which gh refuses ("asset under the same name
 //     already exists"), so every later run failed until someone stepped in;
 //   - gh's --clobber DELETES the old asset before uploading the new one
-//     (cli/cli pkg/cmd/release/shared/upload.go, uploadWithDelete), so a
-//     manifest upload that failed half way left the release with no index, and
-//     the next run would have rebuilt one from the staged copy alone;
+//     (cli/cli pkg/cmd/release/shared/upload.go, uploadWithDelete, still so in
+//     v2.104.0), so a manifest upload that failed half way left the release
+//     with no index, and the next run would have rebuilt one from the staged
+//     copy alone;
 //   - any failure of `gh release view` (a 5xx, a rate limit) was read as "the
 //     release does not exist yet".
 //
-// The rules: a snapshot counts as archived only when the release's manifest
-// lists it AND the release holds an uploaded asset of the listed size. Nothing
-// on the release is ever replaced except manifest.json, and that only after
-// re-reading it unchanged since this run began, then reading the new one back.
+// The rules: a snapshot counts as archived only when the release's index lists
+// it AND the release holds an uploaded asset of the listed size. Nothing on the
+// release is ever replaced except the index, which lives in three assets
+// (manifest.json and two copies), replaced one at a time so that the other two
+// always hold at least what the replaced one did. A snapshot an interrupted run
+// uploaded but never indexed is indexed from its own record.
 
 import { readFileSync, writeFileSync, renameSync, existsSync, mkdtempSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import {
   addToManifest, emptyManifest, decodeRecord, writeSnapshotFile, fetchWithRetry, backoffMs, sleepMs,
+  assertAppendOnly, parseSnapshotFileName,
 } from './archive.mjs';
 
 /** GitHub caps a release at 1000 assets; a season stores about 420. */
 export const ASSET_SOFT_CAP = 900;
+
+/**
+ * The index and its two copies. Consumers read manifest.json; the copies exist
+ * so that replacing it (delete, then upload) never leaves the release without
+ * the newest index: a copy is written first, then manifest.json.
+ */
+export const MANIFEST = 'manifest.json';
+export const MANIFEST_COPIES = ['manifest.copy-1.json', 'manifest.copy-2.json'];
+const INDEXES = [MANIFEST, ...MANIFEST_COPIES];
+const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+const indexText = (m) => `${JSON.stringify(m, null, 2)}\n`;
 
 /** One capture, the same in the release's manifest, the staged one and a local one. */
 export const entryKey = (e) => `${e.endpoint}|${e.capturedAt}|${e.sha256}`;
@@ -90,17 +105,57 @@ async function listAssets(gh, tag, retry) {
   return new Map((JSON.parse(out).assets || []).map((a) => [a.name, a]));
 }
 
+/** Every index asset that is uploaded, parsed: { name: manifest | null }. */
+async function readIndexes({ tag, gh, assets, retry }) {
+  const stored = {};
+  for (const name of INDEXES) {
+    const a = assets.get(name);
+    // One left mid-upload holds nothing; the next write replaces it.
+    if (!a || (a.state && a.state !== 'uploaded')) { stored[name] = null; continue; }
+    const buf = await downloadAsset(gh, tag, name, retry);
+    // An index we cannot read must stop the run: going on would replace it
+    // with a shorter one and forget the season.
+    let m;
+    try { m = JSON.parse(buf.toString('utf8')); } catch { throw new Error(`release ${tag} has a ${name} that is not JSON`); }
+    if (!m || !Array.isArray(m.entries)) throw new Error(`release ${tag} has a ${name} with no entries list`);
+    stored[name] = m;
+  }
+  return stored;
+}
+
 /**
- * The release as it stands: { exists, assets, manifest, orphans }. Throws when
- * the release cannot be read, or when it does not hold what its manifest
- * lists, rather than build on a state it does not understand.
+ * The manifest entry of a snapshot asset nobody indexed (a run that uploaded
+ * it and died before the index), rebuilt from the record itself exactly as
+ * captureRecords builds it, or null when the asset is not a whole record.
+ */
+async function entryOfOrphan({ tag, gh, name, asset, retry }) {
+  const parsed = parseSnapshotFileName(name);
+  if (!parsed || (asset.state && asset.state !== 'uploaded')) return null;
+  const buf = await downloadAsset(gh, tag, name, retry);
+  let meta;
+  try { ({ meta } = decodeRecord(buf)); } catch { return null; }
+  if (meta.endpoint !== parsed.endpoint || meta.phase !== parsed.phase || meta.gw !== parsed.gw) return null;
+  return {
+    file: name, captureId: name.slice(0, -`-${parsed.endpoint}.json.gz`.length), endpoint: meta.endpoint, phase: meta.phase,
+    gw: meta.gw, deadline: meta.deadline, capturedAt: meta.capturedAt, serverDate: meta.serverDate, url: meta.url,
+    sha256: meta.sha256, bytes: meta.bytes, sameAs: null, gzBytes: buf.length,
+  };
+}
+
+/**
+ * The release as it stands: { exists, assets, manifest, stored, restoredFrom,
+ * recovered, orphans }. `manifest` is the newest index the release holds, plus
+ * any snapshot it holds unindexed (`recovered`); `stored` is each index asset
+ * as read, which syncRelease compares against before replacing any. Throws
+ * when the release cannot be read, or does not hold what its index lists,
+ * rather than build on a state it does not understand.
  */
 export async function readRelease({ tag, gh, retry = {} }) {
   let assets;
   try {
     assets = await listAssets(gh, tag, retry);
   } catch (err) {
-    if (/release not found/i.test(err.message)) return { exists: false, assets: new Map(), manifest: null, orphans: [] };
+    if (/release not found/i.test(err.message)) return { exists: false, assets: new Map(), manifest: null, stored: {}, restoredFrom: null, recovered: [], orphans: [] };
     throw err;
   }
   // A tripwire, not a plan: stop well short of GitHub's cap with a message
@@ -109,19 +164,24 @@ export async function readRelease({ tag, gh, retry = {} }) {
     const season = tag.replace(/^fpl-archive-/, '');
     throw new Error(`release ${tag} holds ${assets.size} assets, at the ${ASSET_SOFT_CAP} safety line under GitHub's 1000 per release: start a second release for the season (--season-label ${season}-b) before capturing more`);
   }
-  const snapshots = [...assets.keys()].filter((n) => n !== 'manifest.json');
-  let manifest = null;
-  if (assets.has('manifest.json')) {
-    // A release that HAS a manifest we cannot read must stop the run: going
-    // on would replace the index with a shorter one and forget the season.
-    const buf = await downloadAsset(gh, tag, 'manifest.json', retry);
-    try { manifest = JSON.parse(buf.toString('utf8')); } catch { throw new Error(`release ${tag} has a manifest.json that is not JSON`); }
-    if (!manifest || !Array.isArray(manifest.entries)) throw new Error(`release ${tag} has a manifest.json with no entries list`);
-  } else if (snapshots.length) {
-    // Snapshots without an index: a manifest upload died between gh's delete
-    // and its upload. Rebuilding the index from the staged copy would drop
-    // every capture Netlify never staged, so this is for a human.
-    throw new Error(`release ${tag} holds ${snapshots.length} snapshot(s) but no manifest.json, so its index was lost (an interrupted --clobber upload); restore manifest.json from the last good run's copy before syncing again`);
+  const snapshots = [...assets.keys()].filter((n) => !INDEXES.includes(n));
+  const stored = await readIndexes({ tag, gh, assets, retry });
+  // The newest index is the longest, and every other one must be a prefix of
+  // it (the index is append-only); a copy ahead of manifest.json is a run that
+  // died between writing the two.
+  const held = INDEXES.filter((n) => stored[n]);
+  const best = held.reduce((x, y) => (stored[y].entries.length > stored[x].entries.length ? y : x), held[0]);
+  for (const n of held) {
+    try { assertAppendOnly(stored[n], stored[best]); } catch (err) {
+      throw new Error(`release ${tag}'s ${n} and ${best} disagree (${err.message}); compare them by hand before syncing again`);
+    }
+  }
+  let manifest = best ? stored[best] : null;
+  if (!manifest && snapshots.length) {
+    // All three gone at once is not something a run does; rebuilding the
+    // index from the staged copy would drop every capture Netlify never
+    // staged, so this is for a human.
+    throw new Error(`release ${tag} holds ${snapshots.length} snapshot(s) but no manifest.json or copy of it, so its index was lost; restore manifest.json from the last good run's copy before syncing again`);
   }
   const listed = new Set();
   const problems = [];
@@ -134,7 +194,21 @@ export async function readRelease({ tag, gh, retry = {} }) {
     else if (Number.isFinite(e.gzBytes) && e.gzBytes > 0 && a.size !== e.gzBytes) problems.push(`${e.file} is ${a.size} bytes, the manifest says ${e.gzBytes}`);
   }
   if (problems.length) throw new Error(`release ${tag} does not hold what its manifest lists: ${problems.slice(0, 5).join('; ')}${problems.length > 5 ? '; ...' : ''}`);
-  return { exists: true, assets, manifest, orphans: snapshots.filter((n) => !listed.has(n)) };
+
+  const found = [];
+  const orphans = [];
+  for (const name of snapshots.filter((n) => !listed.has(n))) {
+    const entry = await entryOfOrphan({ tag, gh, name, asset: assets.get(name), retry });
+    (entry ? found : orphans).push(entry || name);
+  }
+  const recovered = [];
+  for (const entry of found.sort((x, y) => x.capturedAt.localeCompare(y.capturedAt))) {
+    const added = addToManifest(manifest || emptyManifest(tag.replace(/^fpl-archive-/, '')), entry);
+    manifest = added.manifest;
+    if (added.store) recovered.push(entry.file); else orphans.push(entry.file);
+  }
+  const restoredFrom = best && best !== MANIFEST && !same(stored[MANIFEST], stored[best]) ? best : null;
+  return { exists: true, assets, manifest, stored, restoredFrom, recovered, orphans };
 }
 
 /**
@@ -236,9 +310,9 @@ function verifyLocal(dir, entry) {
 
 /**
  * Upload one snapshot without --clobber. An asset of that name already on the
- * release (an earlier run that died before its manifest, or this run's own
- * attempt that failed after landing) is accepted only when its bytes are the
- * local ones; anything else is a conflict nobody may overwrite.
+ * release (this run's own attempt that failed after landing) is accepted only
+ * when its bytes are the local ones; anything else is a conflict nobody may
+ * overwrite.
  */
 async function uploadSnapshot({ tag, dir, file, state, gh, retry }) {
   const { attempts = 4, baseDelayMs = 5000, maxDelayMs = 60000, sleep = sleepMs, random = Math.random, log = () => {} } = retry;
@@ -268,54 +342,80 @@ async function uploadSnapshot({ tag, dir, file, state, gh, retry }) {
 }
 
 /**
- * Replace manifest.json and read it back. gh's --clobber deletes the old asset
- * before uploading, so a failed attempt can leave no index at all: it is
- * retried until the release serves exactly these bytes.
+ * The index assets to write, in order: the copy holding the least (so the
+ * other two still hold at least what it did while gh deletes and re-uploads
+ * it), then manifest.json, each only when it does not already hold `manifest`.
  */
-async function uploadManifest({ tag, dir, gh, retry }) {
+export function indexWrites(stored, manifest) {
+  const out = [];
+  if (!MANIFEST_COPIES.some((n) => same(stored[n], manifest))) {
+    const size = (n) => (stored[n] ? stored[n].entries.length : -1);
+    out.push(MANIFEST_COPIES.reduce((x, y) => (size(y) < size(x) ? y : x)));
+  }
+  if (!same(stored[MANIFEST], manifest)) out.push(MANIFEST);
+  return out;
+}
+
+/**
+ * Replace one index asset with `text` and read it back, retrying until the
+ * release serves exactly these bytes. gh uploads under the file's own name,
+ * so it is written to a scratch directory under that name first.
+ */
+async function uploadIndex({ tag, name, text, gh, retry }) {
   const { attempts = 4, baseDelayMs = 5000, maxDelayMs = 60000, sleep = sleepMs, random = Math.random, log = () => {} } = retry;
-  const path = join(dir, 'manifest.json');
-  const want = readFileSync(path);
-  let why = null;
-  for (let n = 1; ; n++) {
-    try { await gh(['release', 'upload', tag, path, '--clobber']); why = null; } catch (err) { why = firstLine(err.message); }
-    let back = null;
-    try { back = await downloadAsset(gh, tag, 'manifest.json', retry); } catch (err) { why = why || `reading it back: ${firstLine(err.message)}`; }
-    if (back && back.equals(want)) return;
-    why = why || 'the release serves different bytes';
-    if (n >= attempts) throw new Error(`manifest.json did not reach release ${tag} after ${attempts} attempts (${why}); the snapshots are uploaded, and the next run uploads the index again`);
-    const delay = backoffMs(n, { baseDelayMs, maxDelayMs, random });
-    log(`manifest.json upload not confirmed (${why}); attempt ${n + 1} of ${attempts} in ${(delay / 1000).toFixed(1)}s`);
-    await sleep(delay);
+  const tmp = mkdtempSync(join(tmpdir(), 'fpl-archive-index-'));
+  const path = join(tmp, name);
+  const want = Buffer.from(text);
+  writeFileSync(path, want);
+  try {
+    let why = null;
+    for (let n = 1; ; n++) {
+      try { await gh(['release', 'upload', tag, path, '--clobber']); why = null; } catch (err) { why = firstLine(err.message); }
+      let back = null;
+      try { back = await downloadAsset(gh, tag, name, retry); } catch (err) { why = why || `reading it back: ${firstLine(err.message)}`; }
+      if (back && back.equals(want)) return;
+      why = why || 'the release serves different bytes';
+      if (n >= attempts) {
+        throw new Error(name === MANIFEST
+          ? `manifest.json did not reach release ${tag} after ${attempts} attempts (${why}); a copy already holds the new index, and the next run restores manifest.json from it`
+          : `${name} did not reach release ${tag} after ${attempts} attempts (${why}); manifest.json was not touched, and the next run tries again`);
+      }
+      const delay = backoffMs(n, { baseDelayMs, maxDelayMs, random });
+      log(`${name} upload not confirmed (${why}); attempt ${n + 1} of ${attempts} in ${(delay / 1000).toFixed(1)}s`);
+      await sleep(delay);
+    }
+  } finally {
+    rmSync(tmp, { recursive: true, force: true });
   }
 }
 
 /**
  * Bring the release up to `manifest`: create it if needed, upload every stored
- * file the release's manifest does not list, then the manifest. Returns
- * { uploaded, alreadyThere }.
+ * file the release's index does not list, then the index (a copy, then
+ * manifest.json). Returns { uploaded, alreadyThere }.
  */
 export async function syncRelease({ tag, season, dir, manifest, release, gh, dryRun = false, retry = {}, log = () => {} }) {
-  const before = release.manifest;
-  const remoteFiles = new Set((before ? before.entries : []).map((e) => e.file).filter(Boolean));
+  const stored = release.stored || {};
+  const remoteFiles = new Set((release.manifest ? release.manifest.entries : []).map((e) => e.file).filter(Boolean));
   const pending = manifest.entries.filter((e) => e.file && !remoteFiles.has(e.file));
   const missing = pending.filter((e) => !existsSync(join(dir, e.file)));
   if (missing.length) throw new Error(`the manifest lists files this machine does not have: ${missing.map((e) => e.file).join(', ')}`);
   for (const e of pending) verifyLocal(dir, e);
-  if (!pending.length && JSON.stringify(before) === JSON.stringify(manifest)) {
+  const writes = indexWrites(stored, manifest);
+  if (!pending.length && !writes.length) {
     log('release is already up to date');
     return { uploaded: [], alreadyThere: [] };
   }
-  // The index uploaded is exactly `manifest`, whatever the file on disk held.
-  writeAtomic(join(dir, 'manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`);
+  const text = indexText(manifest);
+  writeAtomic(join(dir, MANIFEST), text);
 
   const createArgs = ['release', 'create', tag, '--prerelease',
     '--title', `FPL deadline archive ${season}`,
-    '--notes', `Public FPL payloads captured around each ${season} deadline by .github/workflows/fpl-archive.yml (apps/fpl-planner/scripts/archive-snapshot.mjs). Assets are never replaced except manifest.json, the append-only index.`];
+    '--notes', `Public FPL payloads captured around each ${season} deadline by .github/workflows/fpl-archive.yml (apps/fpl-planner/scripts/archive-snapshot.mjs). Assets are never replaced except manifest.json, the append-only index, and its two copies.`];
   if (dryRun) {
     if (!release.exists) await gh(createArgs);
     if (pending.length) await gh(['release', 'upload', tag, ...pending.map((e) => join(dir, e.file))]);
-    await gh(['release', 'upload', tag, join(dir, 'manifest.json'), '--clobber']);
+    for (const name of writes) await gh(['release', 'upload', tag, name, '--clobber']);
     return { uploaded: pending.map((e) => e.file), alreadyThere: [] };
   }
 
@@ -338,12 +438,10 @@ export async function syncRelease({ tag, season, dir, manifest, release, gh, dry
 
   // Only this run may replace the index it read: the workflow's concurrency
   // group keeps two jobs apart, and this keeps a hand run apart from a job.
-  const now = (await listAssets(gh, tag, retry)).has('manifest.json')
-    ? JSON.parse((await downloadAsset(gh, tag, 'manifest.json', retry)).toString('utf8'))
-    : null;
-  if (JSON.stringify(now) !== JSON.stringify(before)) {
+  const now = await readIndexes({ tag, gh, assets: await listAssets(gh, tag, retry), retry });
+  if (INDEXES.some((n) => !same(now[n] || null, stored[n] || null))) {
     throw new Error(`release ${tag}'s manifest.json changed while this run was working; nothing was replaced, and the next run starts from the new one`);
   }
-  await uploadManifest({ tag, dir, gh, retry });
+  for (const name of writes) await uploadIndex({ tag, name, text, gh, retry });
   return { uploaded, alreadyThere };
 }

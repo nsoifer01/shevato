@@ -27,14 +27,14 @@
 // prerelease, which GitHub never makes the repository's latest release (no
 // --latest flag: gh 2.4.0 rejects it). The manifest is downloaded first so deduplication and gating work
 // across runs; new snapshot files are uploaded WITHOUT --clobber, so an asset
-// that already exists makes the upload fail rather than replace it. The one
-// asset that is replaced is manifest.json, the index, and only after the new
-// one has been checked to contain every entry of the old one unchanged.
+// that already exists makes the upload fail rather than replace it. The only
+// assets that are replaced are manifest.json, the index, and its two copies,
+// one at a time and only with an index that keeps every entry of the old one.
 // scripts/lib/archive-release.mjs does the reading, the staged pull and the
 // upload: with --staged it downloads only the staged files the release does
-// not already hold, every network and gh call is retried with backoff, a
-// snapshot an interrupted run already uploaded is adopted when its bytes are
-// identical, and the new manifest is read back before the run counts as done.
+// not already hold, every network and gh call is retried with backoff, a run
+// that died half way is finished by the next, and every index written is read
+// back before the run counts as done.
 //
 // Exit codes: 0 captured or nothing to do, 75 FPL is mid-update (the next run
 // retries), 1 anything else.
@@ -111,11 +111,12 @@ async function main() {
   const tag = releaseTagFor(season);
   const release = RELEASE ? await readRelease({ tag, gh, retry: RETRY }) : null;
   if (release && !release.exists) log(`release ${tag} does not exist yet`);
-  // An asset the manifest does not list is a run that uploaded its snapshots
-  // and died before the manifest. If this run has the same bytes (staged, or
-  // local) the upload below adopts it; otherwise it is only on the release
-  // and has to be indexed by hand (download, then re-run with it in --out).
-  if (release && release.orphans.length) console.warn(`::warning::release ${tag} has ${release.orphans.length} asset(s) the manifest does not list (an interrupted run): ${release.orphans.slice(0, 5).join(', ')}${release.orphans.length > 5 ? ', ...' : ''}`);
+  // A run that died half way: its snapshots are indexed from their own
+  // records, and an index copy ahead of manifest.json becomes the base. Both
+  // are finished by this run's sync; anything left over needs a person.
+  if (release && release.restoredFrom) console.warn(`::warning::release ${tag}'s manifest.json is behind ${release.restoredFrom} (an interrupted run); continuing from the copy`);
+  if (release && release.recovered.length) console.warn(`::warning::release ${tag} held ${release.recovered.length} snapshot(s) its index did not list (an interrupted run); indexed from their records: ${release.recovered.join(', ')}`);
+  if (release && release.orphans.length) console.warn(`::warning::release ${tag} has ${release.orphans.length} asset(s) that are not indexed and are not a whole archive record: ${release.orphans.slice(0, 5).join(', ')}${release.orphans.length > 5 ? ', ...' : ''}`);
 
   // --staged [url]: start from what Netlify captured on time
   // (netlify/functions/fpl-archive-capture.mjs) instead of an empty directory,

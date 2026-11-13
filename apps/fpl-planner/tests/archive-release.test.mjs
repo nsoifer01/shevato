@@ -20,10 +20,10 @@ import { join, basename } from 'node:path';
 import { tmpdir } from 'node:os';
 
 import {
-  buildRecord, encodeRecord, snapshotFileName, emptyManifest, addToManifest, fetchWithRetry, retryAfterMs, fetchEndpoint,
+  buildRecord, encodeRecord, snapshotFileName, emptyManifest, addToManifest, fetchWithRetry, retryAfterMs, fetchEndpoint, assertAppendOnly,
 } from '../scripts/lib/archive.mjs';
 import {
-  readRelease, pullStaged, loadManifest, syncRelease, planStagedPull, entryKey,
+  readRelease, pullStaged, loadManifest, syncRelease, planStagedPull, entryKey, indexWrites, MANIFEST, MANIFEST_COPIES,
 } from '../scripts/lib/archive-release.mjs';
 import { handleExport } from '../../../netlify/functions/fpl-archive-export.mjs';
 
@@ -56,23 +56,31 @@ const bytesOf = (m) => Buffer.from(`${JSON.stringify(m, null, 2)}\n`);
 /* --------------------------------------------------------- the fake release */
 
 /**
- * A GitHub release behind a `gh` with the CLI's real semantics: no-clobber
- * uploads refuse an existing name, --clobber deletes before it uploads, a
- * missing release is "release not found". `faults` fail calls on cue:
- * { when(args) -> bool, times, error, effect: 'none' | 'land' | 'delete' }.
+ * A GitHub release behind a `gh` with the CLI's real semantics (each one
+ * measured against gh 2.4.0 and 2.104.0 on a real release, 2026-11-13):
+ * no-clobber uploads refuse an existing name, --clobber deletes before it
+ * uploads, a missing release is "release not found", an asset is stored under
+ * its file's own name. `faults` fail calls on cue:
+ * { when(args) -> bool, times, error, effect: 'none' | 'land' | 'delete', kill }.
+ * A fault with `kill` ends the run there: the call's effect happens (or not),
+ * and every later call of that run fails, as when a runner is cancelled.
+ * Seeded as production is after its first run under this code: the index and
+ * both copies hold the same manifest (`copies: false` is production before).
  */
-function fakeRelease({ exists = true, snaps = [], manifest = undefined, extra = {} } = {}) {
+function fakeRelease({ exists = true, snaps = [], manifest = undefined, extra = {}, copies = true } = {}) {
   const assets = new Map();
   for (const s of snaps) assets.set(s.file, { buf: s.gz, state: 'uploaded' });
   for (const [name, a] of Object.entries(extra)) assets.set(name, { state: 'uploaded', ...a });
   const m = manifest === undefined ? (snaps.length ? manifestOf(snaps) : null) : manifest;
-  if (m) assets.set('manifest.json', { buf: bytesOf(m), state: 'uploaded' });
-  const rel = { exists, assets, calls: [], faults: [] };
+  if (m) for (const name of copies ? [MANIFEST, ...MANIFEST_COPIES] : [MANIFEST]) assets.set(name, { buf: bytesOf(m), state: 'uploaded' });
+  const rel = { exists, assets, calls: [], faults: [], dead: false };
   const fault = (args, run) => {
+    if (rel.dead) throw new Error(`gh ${args.join(' ')} failed: the runner was cancelled`);
     const f = rel.faults.find((x) => x.times > 0 && x.when(args));
     if (!f) return run();
     f.times--;
     if (f.effect === 'land' || f.effect === 'delete') run(f.effect);
+    if (f.kill) rel.dead = true;
     throw new Error(`gh ${args.join(' ')} failed: ${f.error}`);
   };
   rel.gh = (args) => {
@@ -107,7 +115,8 @@ function fakeRelease({ exists = true, snaps = [], manifest = undefined, extra = 
     });
   };
   rel.writes = () => rel.calls.filter((a) => a[1] === 'upload' || a[1] === 'create');
-  rel.manifest = () => (assets.has('manifest.json') ? JSON.parse(assets.get('manifest.json').buf.toString('utf8')) : null);
+  rel.index = (name) => (assets.has(name) ? JSON.parse(assets.get(name).buf.toString('utf8')) : null);
+  rel.manifest = () => rel.index(MANIFEST);
   return rel;
 }
 
@@ -213,7 +222,9 @@ test('2. one new staged snapshot: exactly one download, one snapshot upload, one
   assert.deepEqual(site.fileCalls(), [`${BASE}?season=${SEASON}&file=${C.file}`]);
   assert.deepEqual(r.synced.uploaded, [C.file]);
   const uploads = rel.writes().map((a) => a.slice(3).map((p) => basename(p)));
-  assert.deepEqual(uploads, [[C.file], ['manifest.json', '--clobber']]);
+  // The new index goes to a copy first, then to manifest.json.
+  assert.deepEqual(uploads, [[C.file], ['manifest.copy-1.json', '--clobber'], ['manifest.json', '--clobber']]);
+  assert.deepEqual(rel.index('manifest.copy-1.json'), rel.manifest());
   assertArchived(rel, [A, B, C]);
 });
 
@@ -377,8 +388,10 @@ test('10. a release that does not hold what its manifest lists stops the run bef
     ['missing', (rel) => rel.assets.delete(B.file), /is not on the release/],
     ['wrong size', (rel) => { rel.assets.get(B.file).buf = Buffer.concat([B.gz, Buffer.from('x')]); }, /bytes, the manifest says/],
     ['not uploaded', (rel) => { rel.assets.get(B.file).state = 'starter'; }, /in state starter/],
-    ['no index', (rel) => rel.assets.delete('manifest.json'), /no manifest\.json, so its index was lost/],
+    ['no index anywhere', (rel) => { for (const n of [MANIFEST, ...MANIFEST_COPIES]) rel.assets.delete(n); }, /no manifest\.json or copy of it, so its index was lost/],
     ['unreadable index', (rel) => { rel.assets.get('manifest.json').buf = Buffer.from('{"entr'); }, /manifest\.json that is not JSON/],
+    ['unreadable copy', (rel) => { rel.assets.get('manifest.copy-2.json').buf = Buffer.from('<html>'); }, /manifest\.copy-2\.json that is not JSON/],
+    ['copies that disagree', (rel) => { rel.assets.set('manifest.copy-1.json', { buf: bytesOf(manifestOf([A, C])), state: 'uploaded' }); }, /disagree .* compare them by hand/],
   ];
   for (const [name, damage, why] of cases) {
     const rel = fakeRelease({ snaps: [A, B] });
@@ -407,16 +420,33 @@ test('10. a failing `gh release view` is retried and never read as "the release 
 
 /* ------------------------------------- 11, 14: interrupted and failed runs */
 
-test('11. snapshots an interrupted run uploaded before it died are adopted when identical, then indexed', async () => {
-  // The previous run uploaded B and C and died before the manifest.
+test('11. snapshots an interrupted run uploaded but never indexed are indexed from their own records', async () => {
+  // The previous run uploaded B and C and died before the index. Neither is
+  // staged (a capture the GitHub job made itself), so the release is the only
+  // place their bytes exist.
   const rel = fakeRelease({ snaps: [A], extra: { [B.file]: { buf: B.gz }, [C.file]: { buf: C.gz } } });
-  const site = stagedSite([A, B, C, D]);
+  const site = stagedSite([A, D]);
   const r = await round(rel, site);
-  assert.deepEqual(r.release.orphans.sort(), [B.file, C.file].sort());
+  assert.deepEqual(r.release.recovered, [B.file, C.file]);
+  assert.deepEqual(r.release.orphans, []);
+  assert.deepEqual(site.fileCalls(), [`${BASE}?season=${SEASON}&file=${D.file}`]);
   assert.deepEqual(r.synced.uploaded, [D.file]);
-  assert.deepEqual(r.synced.alreadyThere.sort(), [B.file, C.file].sort());
   assertArchived(rel, [A, B, C, D]);
+  // Rebuilt from the record, every field but captureId (which the record does
+  // not carry, and these test entries number differently) is what the
+  // capture wrote.
+  for (const s of [B, C]) {
+    const e = rel.manifest().entries.find((x) => x.file === s.file);
+    assert.deepEqual({ ...e, captureId: null, sameAs: undefined }, { ...s.entry, captureId: null, sameAs: undefined });
+  }
   assert.deepEqual((await readRelease({ tag: TAG, gh: rel.gh })).orphans, []);
+
+  // Staged as well: still indexed from the release, nothing downloaded.
+  const rel2 = fakeRelease({ snaps: [A], extra: { [B.file]: { buf: B.gz } } });
+  const site2 = stagedSite([A, B]);
+  await round(rel2, site2);
+  assert.deepEqual(site2.fileCalls(), []);
+  assertArchived(rel2, [A, B]);
 });
 
 test('11. an asset of the same name with different bytes is a conflict: refused, nothing replaced, nothing indexed', async () => {
@@ -460,14 +490,39 @@ test('14. uploads that keep failing end the run loudly; the next run, once GitHu
   assertArchived(rel, [A, B, C]);
 });
 
-test('14. a manifest upload that never succeeds is loud; if it left no index, the next run refuses rather than rebuild one', async () => {
+test('14. a manifest.json replace that deletes it and never uploads is loud, and the next run restores it from the copy', async () => {
   const rel = fakeRelease({ snaps: [A] });
-  rel.faults.push({ when: (a) => a.includes('--clobber'), times: 99, error: 'HTTP 500', effect: 'delete' });
-  await assert.rejects(round(rel, stagedSite([A, B])), /manifest\.json did not reach release .* after 4 attempts/);
-  assert.equal(rel.manifest(), null);
+  rel.faults.push({ when: (a) => a.includes('--clobber') && a[3].endsWith('/manifest.json'), times: 99, error: 'HTTP 500', effect: 'delete' });
+  await assert.rejects(round(rel, stagedSite([A, B])), /manifest\.json did not reach release .* after 4 attempts .* the next run restores manifest\.json from it/);
+  assert.equal(rel.manifest(), null, 'gh deleted it');
+  assert.deepEqual(rel.index('manifest.copy-1.json'), manifestOf([A, B]), 'the copy holds the new index');
   rel.faults.length = 0;
-  await assert.rejects(round(rel, stagedSite([A, B])), /no manifest\.json, so its index was lost/);
-  assert.ok(rel.assets.get(A.file).buf.equals(A.gz), 'A is still there');
+  const r = await round(rel, stagedSite([A, B]));
+  assert.equal(r.release.restoredFrom, 'manifest.copy-1.json');
+  assertArchived(rel, [A, B]);
+  assert.deepEqual(rel.manifest(), manifestOf([A, B]));
+});
+
+test('14. a copy replace that deletes it and never uploads is loud, leaves manifest.json alone, and the next run finishes', async () => {
+  const rel = fakeRelease({ snaps: [A] });
+  const before = rel.manifest();
+  rel.faults.push({ when: (a) => a.includes('--clobber') && a[3].endsWith('/manifest.copy-1.json'), times: 99, error: 'HTTP 500', effect: 'delete' });
+  await assert.rejects(round(rel, stagedSite([A, B])), /manifest\.copy-1\.json did not reach release .* manifest\.json was not touched/);
+  assert.deepEqual(rel.manifest(), before);
+  assert.deepEqual(rel.index('manifest.copy-2.json'), before);
+  rel.faults.length = 0;
+  await round(rel, stagedSite([A, B]));
+  assertArchived(rel, [A, B]);
+});
+
+test('14. a release create that keeps failing is loud, and the next run creates it', async () => {
+  const rel = fakeRelease({ exists: false });
+  rel.faults.push({ when: (a) => a[1] === 'create', times: 99, error: 'HTTP 502' });
+  await assert.rejects(round(rel, stagedSite([A])), /HTTP 502/);
+  assert.equal(rel.exists, false);
+  rel.faults.length = 0;
+  await round(rel, stagedSite([A]));
+  assertArchived(rel, [A]);
 });
 
 /* -------------------------------------------------------- 13: concurrency */
@@ -515,8 +570,145 @@ test('the dry run reads but writes nothing', async () => {
   const dry = (args) => { if (args[1] === 'view' || args[1] === 'download') return rel.gh(args); printed.push(args); return ''; };
   const out = await syncRelease({ tag: TAG, season: SEASON, dir, manifest: loadManifest({ season: SEASON, dir, release }), release, gh: dry, dryRun: true, retry: noSleep });
   assert.deepEqual(out.uploaded, [B.file]);
-  assert.equal(printed.length, 2);
+  assert.deepEqual(printed.map((a) => basename(a[3])), [B.file, 'manifest.copy-1.json', 'manifest.json']);
   assert.deepEqual(rel.writes(), []);
   assert.ok(!rel.assets.has(B.file));
   assert.ok(existsSync(join(dir, B.file)) && readdirSync(dir).includes('manifest.json'));
+});
+
+/* ------------------------------------- the index copies, and every kill point */
+
+test('the first run on a release with no copies (production before this change) writes one copy and nothing else', async () => {
+  const rel = fakeRelease({ snaps: [A, B], copies: false });
+  const before = Buffer.from(rel.assets.get(MANIFEST).buf);
+  await round(rel, stagedSite([A, B]));
+  assert.deepEqual(rel.writes().map((a) => basename(a[3])), ['manifest.copy-1.json']);
+  assert.ok(rel.assets.get(MANIFEST).buf.equals(before), 'manifest.json is untouched');
+  assert.deepEqual(rel.index('manifest.copy-1.json'), rel.manifest());
+  await round(rel, stagedSite([A, B]));
+  assert.equal(rel.writes().length, 1, 'and the next run writes nothing');
+});
+
+test('the copy replaced is always one the other two index assets cover', () => {
+  // Oracle: whichever asset is about to be deleted, some asset left holds
+  // every entry it held. Enumerated over each of the three being missing,
+  // one entry behind, or current.
+  const m0 = manifestOf([A]); const m1 = manifestOf([A, B]); const next = manifestOf([A, B, C]);
+  const states = [null, m0, m1];
+  for (const a of states) for (const b of states) for (const c of states) {
+    const held = [a, b, c].filter(Boolean);
+    if (!held.length) continue;
+    const stored = { [MANIFEST]: a, [MANIFEST_COPIES[0]]: b, [MANIFEST_COPIES[1]]: c };
+    const writes = indexWrites(stored, next);
+    assert.equal(writes[writes.length - 1], MANIFEST, 'manifest.json is written, and written last');
+    const after = { ...stored };
+    for (const name of writes) {
+      const victim = after[name];
+      const others = Object.keys(after).filter((n) => n !== name).map((n) => after[n]).filter(Boolean);
+      if (victim) assert.ok(others.some((o) => o.entries.length >= victim.entries.length), `replacing ${name} leaves its entries elsewhere`);
+      if (name === MANIFEST) assert.ok(MANIFEST_COPIES.some((n) => JSON.stringify(after[n]) === JSON.stringify(next)), 'a copy holds the new index first');
+      after[name] = next;
+    }
+  }
+});
+
+test('3, 11, 14. a run killed at any write, before, during or after it, is finished by the next run with nothing lost', async () => {
+  // History on the release: A, B, and a pointer P (A's bytes, later). This
+  // run has two staged captures (D, E, plus a staged pointer Q to B) and one
+  // capture of its own, G, that exists only on this runner.
+  const P = snap(6, { payload: { n: 1 } });
+  const Q = snap(7, { endpoint: 'fixtures', payload: { n: 2 } });
+  const G = snap(8, { endpoint: 'event-status' });
+  const history = manifestOf([A, B, P]);
+  const staged = [A, B, P, D, E, Q];
+  const fresh = () => fakeRelease({ snaps: [A, B], manifest: history });
+  const localG = () => {
+    const dir = workDir();
+    writeFileSync(join(dir, G.file), G.gz);
+    writeFileSync(join(dir, MANIFEST), bytesOf(manifestOf([G])));
+    return dir;
+  };
+  // The clean run's writes, in order: what a kill can interrupt.
+  const clean = fresh();
+  await round(clean, stagedSite(staged), { dir: localG() });
+  const writes = clean.writes().map((a) => basename(a[3]));
+  assert.deepEqual(writes, [G.file, D.file, E.file, 'manifest.copy-1.json', 'manifest.json']);
+  assertArchived(clean, [A, B, P, D, E, Q, G]);
+
+  let cases = 0;
+  for (let k = 0; k < writes.length; k++) {
+    const clobber = writes[k].startsWith('manifest');
+    for (const effect of clobber ? ['none', 'delete', 'land'] : ['none', 'land']) {
+      cases++;
+      const rel = fresh();
+      const snapshotsBefore = new Map([...rel.assets].filter(([n]) => !n.startsWith('manifest')).map(([n, a]) => [n, Buffer.from(a.buf)]));
+      let seen = 0;
+      rel.faults.push({ when: (a) => (a[1] === 'upload' || a[1] === 'create') && seen++ === k, times: 1, error: 'killed', effect, kill: true });
+      await assert.rejects(round(rel, stagedSite(staged), { dir: localG() }));
+      // G reached the release only if its upload landed before the kill.
+      const gLanded = k > writes.indexOf(G.file) || (k === writes.indexOf(G.file) && effect === 'land');
+      assert.equal(rel.assets.has(G.file), gLanded, `kill at ${writes[k]} (${effect}): G on the release`);
+
+      // The next run: a fresh runner, so G's local file is gone.
+      rel.dead = false;
+      rel.faults.length = 0;
+      await round(rel, stagedSite(staged));
+      const label = `kill at ${writes[k]} (${effect})`;
+      assertAppendOnly(history, rel.manifest());
+      assertArchived(rel, gLanded ? [A, B, P, D, E, Q, G] : [A, B, P, D, E, Q]);
+      for (const [n, buf] of snapshotsBefore) assert.ok(rel.assets.get(n).buf.equals(buf), `${label}: ${n} untouched`);
+      const after = await readRelease({ tag: TAG, gh: rel.gh });
+      assert.deepEqual(after.orphans, [], `${label}: nothing left unindexed`);
+      assert.deepEqual(after.recovered, [], `${label}: nothing left to recover`);
+      assert.equal(after.restoredFrom, null, `${label}: manifest.json is current`);
+      assert.ok(MANIFEST_COPIES.some((n) => JSON.stringify(rel.index(n)) === JSON.stringify(rel.manifest())), `${label}: a copy matches`);
+      // And it stays done.
+      const writesBefore = rel.writes().length;
+      await round(rel, stagedSite(staged));
+      assert.equal(rel.writes().length, writesBefore, `${label}: a third run writes nothing`);
+    }
+  }
+  assert.equal(cases, 3 * 2 + 2 * 3);
+});
+
+test('3. a run killed right after it created the release is finished by the next', async () => {
+  for (const effect of ['none', 'land']) {
+    const rel = fakeRelease({ exists: false });
+    rel.faults.push({ when: (a) => a[1] === 'create', times: 1, error: 'killed', effect, kill: true });
+    await assert.rejects(round(rel, stagedSite([A, B])));
+    rel.dead = false;
+    rel.faults.length = 0;
+    await round(rel, stagedSite([A, B]));
+    assertArchived(rel, [A, B]);
+  }
+});
+
+test('a release of 99, 100, 101 or 420 assets is read whole; at 900 the run stops before writing', async () => {
+  // gh lists every asset of a real release up to 900 (2.4.0 and 2.104.0,
+  // measured 2026-11-13 on a temporary release): nothing here may assume a
+  // page of 100.
+  const many = Array.from({ length: 900 }, (_, i) => snap(100 + i, { payload: { i } }));
+  for (const total of [99, 100, 101, 420, 900]) {
+    // The index and its two copies are three of the assets.
+    const snaps = many.slice(0, total - 3);
+    const rel = fakeRelease({ snaps });
+    assert.equal(rel.assets.size, total);
+    if (total >= 900) {
+      await assert.rejects(readRelease({ tag: TAG, gh: rel.gh }), /holds 900 assets, at the 900 safety line/);
+      continue;
+    }
+    const got = await readRelease({ tag: TAG, gh: rel.gh });
+    assert.equal(got.assets.size, total, `${total}: every asset listed`);
+    assert.equal(got.manifest.entries.length, snaps.length, `${total}: every entry read`);
+    assert.deepEqual(got.orphans, []);
+    // Were a listing ever to come back as one page of 100, the files the
+    // index names but the list lacks stop the run before anything is written.
+    if (total > 100) {
+      const short = fakeRelease({ snaps });
+      const view = short.gh;
+      short.gh = (args) => (args[1] === 'view' ? JSON.stringify({ assets: JSON.parse(view(args)).assets.slice(-100) }) : view(args));
+      await assert.rejects(round(short, stagedSite(snaps)), /is not on the release/, `${total}: a truncated list is not accepted`);
+      assert.deepEqual(short.writes(), []);
+    }
+  }
 });
