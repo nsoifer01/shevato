@@ -266,7 +266,7 @@ apps/fpl-planner/
                          (outputs in .data/calibration/, gitignored)
     lib/calibration-guard.mjs  the calibration bands, shared by the report
                          and tests/xp-calibration-guard.test.mjs
-    lib/archive*.mjs     archive naming, gating, manifest and scorecard metrics
+    lib/archive*.mjs     archive naming, gating, manifest and scorecard metrics, release sync
     lib/odds-football-data.mjs  football-data.co.uk team-name map and loader
     lib/probe.mjs        the health-probe invariants (evidence-probe.mjs and fpl-health)
   e2e/                   browser suites (raw CDP): the interactive scenario
@@ -1351,9 +1351,12 @@ gate, the records and the dedupe; two schedulers run it:
 - **The release copy runs on GitHub** (`.github/workflows/fpl-archive.yml`,
   `scripts/archive-snapshot.mjs --release --staged`): whenever it runs it pulls
   what Netlify staged (`netlify/functions/fpl-archive-export.mjs`, read-only,
-  public data only, a snapshot name or nothing), checks each file against its
-  manifest hash, uploads what the release lacks, and then runs the same gate
-  itself to fill any gap Netlify left.
+  public data only, a snapshot name or nothing), downloads only what the
+  release does not already hold, checks each file against its manifest hash,
+  uploads what the release lacks, and then runs the same gate itself to fill
+  any gap Netlify left. Network and gh calls are retried with backoff, a run
+  that died half way is finished by the next one, and the new manifest is read
+  back before the run counts as done (`scripts/lib/archive-release.mjs`).
 
 The gate:
 

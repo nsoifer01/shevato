@@ -42,7 +42,9 @@ name: FPL deadline archive
 # time into the `fpl-archive` blob store, and this job pulls what is staged
 # there (`--staged`, via netlify/functions/fpl-archive-export.mjs) and uploads
 # it to the release whenever it does run. Its own gate still runs after the
-# pull, so it fills any gap the Netlify side left.
+# pull, so it fills any gap the Netlify side left. Only what the release lacks
+# is downloaded, every network and gh call is retried, and a run that dies half
+# way is finished by the next (scripts/lib/archive-release.mjs).
 
 on:
   schedule:

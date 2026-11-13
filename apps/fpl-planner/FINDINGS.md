@@ -69,6 +69,7 @@ column names the guard added so the whole category is covered, not the case.
 | 35 | The search's own club-limit check was unguarded; illegal plans could crowd the shortlist and a legal +15 upgrade be dropped for a roll | mutation-check (new) | R5 dead test | crowded-shortlist case in transfers.test |
 | 36 | One 403 backed the whole proxy off for 120 s (503s for every uncached path, the app's own retry defeated); the probe read once where the app retries; a red result then stood six hours (#616) | monitor (#616, 2026-10-17) | R6 ops path | corroborated backoff, `x-fpl-upstream`, probe re-read, hourly recheck while red; fpl.test, fpl-health.test; 5 mutants |
 | 37 | Both health probes judged FPL's routine update after a deadline as a failure: GitHub started the probe 5 s after GW8's deadline and every manager read 503'd (red, exit 2), and the Netlify 18:41 run would have opened an incident 11 min after GW10's 18:30 deadline | monitor (GitHub probe run 39995547754, 2026-10-23) | R6 ops path | `UPDATE_WINDOW_MS` / `updateWindowAt`: the CLI waits the window out, the Netlify run defers to the next hour, deferral counts as the scheduler running; probe-sample, fpl-health, probe-freshness; 6 mutants |
+| 51 | The release copy (`fpl-archive.yml`) failed on one dropped connection: it downloaded all 42 staged snapshots every hour into an empty runner directory, none of it retried, and an FPL body cut off mid-read was not retried either. Reading the code behind it found three more: a run that died after uploading snapshots but before the manifest wedged every later run (gh refuses a no-clobber upload of an existing name), gh's `--clobber` deletes the manifest before uploading the new one so a failed upload left no index that the next run would have rebuilt from the staged copy alone, and any `gh release view` failure read as "no release yet" | CI (run 43330644438 failed and GitHub emailed the owner, 2026-11-12); the other three by Claude reading the code while fixing it | R6 ops path | `scripts/lib/archive-release.mjs`: pull only what the release lacks, `fetchWithRetry` (timeout, body inside the attempt, 408/429/5xx, Retry-After, jitter), gh retried, identical orphans adopted, a lost index refused, the manifest re-read before and read back after replacing it; archive-release (25 tests); 8 mutants `archive-*` |
 | 50 | A health-run test asserted that a real planning run finished inside 24 s of wall clock, so a busy machine failed it (seen under local `npm test`, 2026-11-09). Three more unit tests compared real elapsed time with a fixed window | owner-requested CI audit (2026-11-09) | R5 test that cannot be trusted | the health run's clock is injected and the test states the duration (24.0 s passes, 24.001 s fails); the other three are bounded by when the code really ran |
 | 49 | The mutation baseline ran beside the mutants, and on a 4-core runner that starved it past the 10-minute limit: 2 of 3 GitHub runs of one shard read as a red baseline on healthy code | GitHub run of the sharded job (2026-11-09) | R5 test that cannot be trusted | the baseline runs first and alone, and a red baseline names its failing tests and whether it timed out |
 | 48 | The health run failed when FPL's edge refused two or three of its parallel reads (11-05, 11-06, 11-09: 403s from one Fastly node, the rest of the run fetched fresh, FPL answering directly in about 30 ms, the next hourly probe passing). The re-read could not recover it, because two refusals are honoured for 120 s | monitor (issues #644, #648, #655) | R6 ops path | `refusedWhileFplAnswered` excuses it once and only with proof FPL answered that run (a miss that is not an edge replay); the hourly recheck follows, and a second excused run in a row fails. Mutants `probe-refusal-waiver-*`, `health-recheck-ignores-waiver`, `health-waiver-every-run` |
@@ -806,6 +807,47 @@ existed to measure it); the deadline archive will make it measurable.
   lists `startCalibratorJSON`. The tag check closes that for good.
 - **`gh release create --latest=false` fails on gh 2.4.0** (this workstation);
   caught by a real self-test release before the workflow relied on it.
+
+### The release copy must survive a failed run (2026-11-13)
+
+Run 43330644438 (2026-11-12 23:39 UTC) failed with `TypeError: fetch failed`
+on one staged-file download. Nothing was lost: every staged capture was already
+on the release, and the release's 52 snapshot files all matched their manifest
+sizes and hashes when read back on 2026-11-13. The failure was avoidable, and
+the code around it had worse states in it (ledger row 51):
+
+- **Every run downloaded every staged file.** The runner directory is empty
+  each time, so the `existsSync` skip never fired: 42 downloads an hour in
+  November, about 420 by the end of the season, each one a chance to fail. The
+  pull now reads the release FIRST and downloads only staged entries the
+  release's manifest does not list and whose bytes it does not already store
+  (two real staged files, live GW5 and post GW7 event-status, are pointers on
+  the release because GitHub stored the same payload first; keying on file
+  names would have downloaded them forever).
+- **"Archived" means listed AND present.** `readRelease` checks every listed
+  file is an `uploaded` asset of the listed `gzBytes`, and stops otherwise.
+- **gh's `--clobber` deletes before it uploads** (`uploadWithDelete` in
+  cli/cli `pkg/cmd/release/shared/upload.go`, read at v2.4.0), so the manifest
+  replace has a window with no index. It is retried until a read-back serves
+  the new bytes; if it never does, the run fails and the NEXT run refuses a
+  release with snapshots and no `manifest.json` rather than rebuild an index
+  from the staged copy, which lacks the captures GitHub made before staging.
+- **Partial uploads are adopted, not re-tried into a wall.** An asset an
+  earlier run uploaded is accepted when its bytes equal the local ones, refused
+  as a conflict when they differ, and reported with what to do when it is in
+  state `starter`. Nothing but `manifest.json` is ever replaced.
+- **gh 2.4.0's own upload retry never retries**: its condition returns on the
+  first 5xx (`retries < maxRetries`). The script retries gh itself.
+- **A failed staged pull no longer stops the run.** If Netlify is down its
+  capture may be down too, and the gate's own capture is then the only one; the
+  run carries on and still exits 1 at the end.
+
+Recovery needs no schedule change: the staging store is never pruned
+(`fpl-cache-prune` touches only the `fpl-planner` store), so a copy that is
+hours or days late loses nothing. Unverified: whether `gh release view --json
+assets` lists every asset beyond 100 (it reads the REST release object; a
+release with that many was not available to test). A truncated list would
+make `readRelease` fail loudly, not silently.
 
 ### GitHub's scheduler cannot carry a deadline archive (2026-10-10)
 
