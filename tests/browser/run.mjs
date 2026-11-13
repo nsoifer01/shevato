@@ -176,8 +176,11 @@ const EXPECTED_CHECKS = {
   // vs my rivals" band (placement and day count, the per-round averages, the
   // ahead/behind marking, the insight line, computed colours, and chip
   // containment at 390 and 1280). 149 since 2026-10-12: +1 that a synced day
-  // whose rounds arrive out of order is stored by round number.
-  'apps/maptap-rivals/e2e/quality.mjs': 149,
+  // whose rounds arrive out of order is stored by round number. 155 since
+  // 2026-11-13: +6 checks for the predictions card's per-round leaderboard
+  // position (the worked progression, token colours, date switching, pill
+  // containment at 390 and 1280, JS errors).
+  'apps/maptap-rivals/e2e/quality.mjs': 155,
   // Deliberately NOT pinned: apps/rising-shows/e2e/audit-2026-08.mjs emits 51
   // checks when the dataset is on disk and 11 skip entries when it is not, so
   // a single number cannot describe both environments. The zero-run guard

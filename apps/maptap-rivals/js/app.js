@@ -196,6 +196,7 @@
     isoWeekId, monthId, periodRecords, runningRivalPeriodRecords, periodTallyText,
     accumulatePositionHits,
     accumulateFinishPositions, avgPositionColor, avgPositionColors,
+    roundRanksForDay, podiumTier,
     coordNum, myAvgByContinent, myAvgByRound,
     compareNamesCI, compareWinPctDesc,
     // Local calendar dates (see stats.js "local calendar dates"): every day
@@ -2195,7 +2196,10 @@
   // predictor lacked enough history but we have a synced actual — in that
   // case we render an actual-only chip so the rival's round score is still
   // visible on the dashboard.
-  function makeRoundChip(slot, predicted, actual) {
+  // `rank` is this player's leaderboard standing after the round
+  // ({ rank, field, move } from roundRanksForDay), or null when the round
+  // cannot be ranked; it renders as a small pill under the prediction Δ.
+  function makeRoundChip(slot, predicted, actual, rank) {
     const hasPred = predicted != null && Number.isFinite(predicted);
     const hasActual = actual != null && Number.isFinite(actual);
     const predRound = hasPred ? Math.round(predicted) : null;
@@ -2205,11 +2209,24 @@
     if (delta != null) cls.push(delta > 0 ? 'prc-pos' : delta < 0 ? 'prc-neg' : 'prc-zero');
     if (!hasPred && hasActual) cls.push('prc-actual-only');
     const w = WEIGHTS[slot];
-    const title =
+    let title =
       hasPred && hasActual ? `Round ${slot + 1} (×${w}): predicted ${predRound}, actual ${actualRound}` :
       hasPred              ? `Round ${slot + 1} (×${w}): predicted ${predRound}` :
       hasActual            ? `Round ${slot + 1} (×${w}): actual ${actualRound}` :
                              `Round ${slot + 1} (×${w})`;
+    let rankPill = null;
+    if (rank) {
+      const m = rank.move;
+      const moveText = m == null ? '' : m > 0 ? `, up ${m}` : m < 0 ? `, down ${-m}` : ', no change';
+      title += `. ${rank.tied ? 'Tied ' : ''}${ordinalName(rank.rank)} of ${rank.field} after round ${slot + 1}${moveText}`;
+      const tier = podiumTier(rank.rank);
+      rankPill = el('div', { class: 'prc-rank' + (tier ? ' is-' + tier : '') }, [
+        el('span', { class: 'prc-rank-pos' }, `${rank.tied ? 'T' : ''}#${rank.rank}`),
+        m == null ? null : el('span', {
+          class: 'prc-rank-move ' + (m > 0 ? 'is-up' : m < 0 ? 'is-down' : 'is-same'),
+        }, m > 0 ? `↑${m}` : m < 0 ? `↓${-m}` : '='),
+      ]);
+    }
     return el('div', { class: cls.join(' '), title }, [
       el('div', { class: 'prc-head' }, [
         el('span', { class: 'prc-slot' }, `R${slot + 1}`),
@@ -2227,6 +2244,7 @@
             el('span', {}, (delta > 0 ? '+' : '') + delta),
           ])
         : null,
+      rankPill,
     ]);
   }
 
@@ -2314,7 +2332,7 @@
     ]);
   }
 
-  function makePredictionRow({ key, label, predictedScores, actualScores, predictedTotal, actualTotal, isYou, accentColor, hitRecord, avgPosition, avgColor }) {
+  function makePredictionRow({ key, label, predictedScores, actualScores, predictedTotal, actualTotal, isYou, accentColor, hitRecord, avgPosition, avgColor, roundRanks }) {
     const cls = ['pred-row'];
     if (isYou) cls.push('pred-row-you');
     // The name doubles as the distribution toggle whenever there is a finish
@@ -2373,6 +2391,7 @@
           i,
           hasPredArr ? predictedScores[i] : null,
           hasActualArr ? actualScores[i] : null,
+          roundRanks ? roundRanks[i] : null,
         ))));
     }
     if (expanded) children.push(makeFinishDistribution(avgPosition, label));
@@ -2579,6 +2598,20 @@
     const avgColors = avgPositionColors(
       rows.map(r => (r.avgPosition ? -r.avgPosition.share : null)));
     rows.forEach((r, i) => { r.avgColor = avgColors[i]; });
+
+    // Leaderboard position after each round, from the same actual arrays the
+    // chips and the Actual column show, so round 5 is the final standing.
+    const roundRanks = roundRanksForDay(
+      rows.map(r => ({ key: r.key, scores: r.actualScores })));
+    rows.forEach(r => {
+      r.roundRanks = Object.prototype.hasOwnProperty.call(roundRanks, r.key) ? roundRanks[r.key] : null;
+    });
+    // One line of explanation for the pills, under the column headers and
+    // only when at least one pill is on screen.
+    if (rows.some(r => r.roundRanks && r.roundRanks[0])) {
+      body.appendChild(el('p', { class: 'pred-rank-note' },
+        'Rank after each round · Based on cumulative actual scores'));
+    }
 
     rows.sort((a, b) => {
       const aPlayed = a.actualTotal != null, bPlayed = b.actualTotal != null;

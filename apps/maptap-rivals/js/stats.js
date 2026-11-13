@@ -1035,6 +1035,53 @@
     return Object.fromEntries(out);
   }
 
+  // Leaderboard position after each round of one day, for the predictions
+  // card's round chips. Entries are { key, scores }, where `scores` is the
+  // player's actual 5-round array, or null when they have not played the day.
+  // The field is everyone who played; a player's standing after round k is
+  // their cumulative weighted score through k, competition-ranked (ties share
+  // the best rank: 1, 1, 3), so after round 5 it is exactly the day's final
+  // standing. A round is ranked only when EVERY player in the field has a
+  // usable score for it and all earlier rounds: a missing round is never read
+  // as 0, and a partial field would rank people on different amounts of play.
+  // Fewer than two players gives nothing, matching competitionRanksForDay.
+  // Returns { [key]: [r1..r5] }, each slot { rank, field, move, tied } or
+  // null; `move` is the places gained since the previous round (positive =
+  // up), null on round 1, and `tied` is true when another player shares the
+  // rank.
+  function roundRanksForDay(entries) {
+    const field = (Array.isArray(entries) ? entries : [])
+      .filter(e => e && Array.isArray(e.scores));
+    if (field.length < 2) return {};
+    const out = new Map(field.map(e => [e.key, new Array(N_LOCS).fill(null)]));
+    const cum = new Map(field.map(e => [e.key, 0]));
+    for (let i = 0; i < N_LOCS; i++) {
+      const raw = field.map(e => (e.scores.length === N_LOCS ? e.scores[i] : null));
+      if (!raw.every(v => typeof v === 'number' && Number.isFinite(v))) break;
+      field.forEach((e, j) => cum.set(e.key, cum.get(e.key) + raw[j] * WEIGHTS[i]));
+      const ranks = competitionRanksForDay(field.map(e => ({ key: e.key, total: cum.get(e.key) })));
+      const perRank = new Map();
+      for (const e of field) perRank.set(ranks[e.key], (perRank.get(ranks[e.key]) || 0) + 1);
+      for (const e of field) {
+        const prev = i > 0 ? out.get(e.key)[i - 1] : null;
+        out.get(e.key)[i] = {
+          rank: ranks[e.key],
+          field: field.length,
+          move: prev ? prev.rank - ranks[e.key] : null,
+          tied: perRank.get(ranks[e.key]) > 1,
+        };
+      }
+    }
+    return Object.fromEntries(out);
+  }
+
+  // Podium tier of a leaderboard position: 'gold', 'silver', 'bronze' for
+  // 1, 2, 3 and null for everything below, whatever the field size. It reads
+  // the rank alone, so tied players (who share a rank) share a tier.
+  function podiumTier(rank) {
+    return rank === 1 ? 'gold' : rank === 2 ? 'silver' : rank === 3 ? 'bronze' : null;
+  }
+
   // Accumulate per-player { days, sum, avg, shareSum, share, counts, dates,
   // maxField } over a list of days, each day being its own entries array.
   // `share` is the headline figure (mean daily share of the field beaten,
@@ -1582,7 +1629,7 @@
     rankByScore, positionHitsForDay, accumulatePositionHits,
     // finishing positions
     finishPositionsForDay, fieldSharesForDay, competitionRanksForDay,
-    accumulateFinishPositions,
+    roundRanksForDay, podiumTier, accumulateFinishPositions,
     avgPositionColor, avgPositionColors,
     // continents
     coordNum, myAvgByContinent,

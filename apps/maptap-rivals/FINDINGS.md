@@ -669,6 +669,51 @@ chip containment at 390 and 1280). The e2e reseeds before those checks: by
 that point earlier steps have added a game, which is how a first run reported
 15 days instead of the fixture's 14.
 
+## Position after each round (2026-11-13)
+
+The predictions card's round chips show each player's leaderboard position
+after that round. Decisions a future change should keep:
+
+- **One field for the whole day: everyone with an actual 5-round array for
+  the selected day.** That is the same test the card uses for "played" (a
+  totals-only or paste-without-rounds row has `actualTotal` null on the card,
+  see `actualScoresForDay` / `actualScoresForRivalDay`), so the field is
+  exactly the rows sorted by Actual and round 5 is always the final standing.
+  The unit property test checks that against `weightedTotal`.
+- **A round is ranked for everyone or for no one.** If any player in the
+  field lacks a finite score for round k (null, NaN, a numeric string, a short
+  array), round k and every later round are unranked for the whole field.
+  Ranking only the players who have the round would compare people on
+  different amounts of play, and reading the gap as 0 would invent a score.
+  Stored arrays are validated to five numbers by `sanitizeGame`, so in
+  practice this only guards malformed in-memory data.
+- **Competition ranks (1, 1, 3), via `competitionRanksForDay`,** the same
+  convention as the "Daily finishes" distribution, so a tie never reads as
+  one player ahead of another by name. A shared place is shown as `T#2`
+  (the slot's `tied` flag), because two rows both reading `#2` looked like a
+  bug rather than a tie.
+- **Movement is against the previous round of the same day;** round 1 has
+  none. Because a round is ranked only if all earlier rounds are, the
+  previous round is always ranked when the current one is.
+- **A field of one shows nothing,** matching the solo-day rule of the finish
+  positions: first of one is not a position.
+- **Podium colours are by rank, not by field or row.** `podiumTier(rank)`
+  maps 1/2/3 to gold/silver/bronze (`--rank-gold`, `--rank-silver`,
+  `--rank-bronze` on `:root`) and everything else to neutral, so a tie shares
+  a tier, a field of 15 colours exactly three places, and no gradient is
+  derived from the field size. The tier tints the position text and the
+  pill's outline and fill only; the movement span keeps its own colour, so a
+  gold `#1` beside a green `↑3` reads as two facts.
+- **Visuals.** The pill is neutral (dark fill, `--border-strong` outline,
+  `--muted` position at weight 800 below the podium) on its own line under the prediction Δ,
+  so the chip's green/red tint and Δ keep meaning "prediction accuracy"; only
+  the movement (weight 600) is coloured, and its arrow or `=` carries the
+  meaning without colour. Unchanged is `=` rather than a dash. Pill text is
+  0.76rem (0.74rem under the 480px typography floor): at 0.68rem it computed
+  to 9.97px at 1280 and failed the 10px floor. The explanation is one line
+  under the column headers (`.pred-rank-note`, `text-wrap: balance` so it
+  does not leave a one-word orphan at 390), rendered only when a pill is.
+
 ## Dashboard width budget (why the continent band is a three-tier grid)
 
 Two numbers govern every "make it fill the row" request on this dashboard:

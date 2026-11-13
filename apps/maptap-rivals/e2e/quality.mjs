@@ -606,6 +606,79 @@ export async function run({ base, cdpPort }) {
         fit.over === 0 && fit.rows === (w === 390 ? 2 : 1) && fit.minFont >= 10, JSON.stringify(fit));
     }
 
+    // ---- leaderboard position after each round (predictions card) ----
+    // Today's games replaced by a four-player day, worked by hand at weights
+    // 1,1,2,3,3. Cumulative: me 70/135/295/520/709, Bex 70/140/280/490/700,
+    // Ari 60/120/240/420/600, Cy 90/140/220/400/550; the long-named rival has
+    // not played. R1: Cy 1, me+Bex tie 2, Ari 4. R2: Bex+Cy tie 1, me 3, Ari 4.
+    // R3 onward: me 1, Bex 2, Ari 3, Cy 4. A shared place reads T#2.
+    mark('round ranks @1280');
+    {
+      const base = fixture();
+      const T = todayISO();
+      const mine = [70, 65, 80, 75, 63];
+      const rankGames = base.games.filter(g => g.date !== T);
+      for (const [rivalId, theirs] of [['r-ari', [60, 60, 60, 60, 60]], ['r-bex', [70, 70, 70, 70, 70]], ['r-cy', [90, 50, 40, 60, 50]]]) {
+        rankGames.push({ id: 'rk-' + rivalId, rivalId, date: T, note: '', createdAt: 999, myScores: mine, theirScores: theirs,
+          myScore: mine.reduce((a, v, i) => a + v * [1, 1, 2, 3, 3][i], 0), theirScore: theirs.reduce((a, v, i) => a + v * [1, 1, 2, 3, 3][i], 0) });
+      }
+      await seed(s, '#dashboard', { maptapRivalsGames: JSON.stringify(rankGames) });
+      await waitForExpr(s, "document.querySelectorAll('#todays-card .prc-rank').length>0");
+      const READ = `JSON.stringify([...document.querySelectorAll('#todays-card-body .pred-row-wrap, #todays-card-body > .pred-row:not(.pred-row-head)')].map(w => {
+        const name = ((w.querySelector('.pred-label-name')||{}).textContent||'').trim();
+        return [name.split(' ').slice(1).join(' ').slice(0, 11), [...w.querySelectorAll('.prc')].map(c => { const p = c.querySelector('.prc-rank'); return p ? p.textContent : ''; }).join(' ')];
+      }))`;
+      const ranks = JSON.parse(await evaluate(s, READ));
+      t('round ranks: every played player shows their position and movement after each round, in final-standing order',
+        JSON.stringify(ranks) === JSON.stringify([
+          ['Nikita', 'T#2 #3↓1 #1↑2 #1= #1='],
+          ['Bex', 'T#2 T#1↑1 #2↓1 #2= #2='],
+          ['Ari', '#4 #4= #3↑1 #3= #3='],
+          ['Cy', '#1 T#1= #4↓3 #4= #4='],
+          ['Bartholomew', '    '],
+        ]), JSON.stringify(ranks));
+      const rkColor = await evaluate(s, `(()=>{const css=getComputedStyle(document.documentElement);
+        const probe=(v)=>{const e=document.createElement('span'); e.style.color=v; document.body.appendChild(e); const c=getComputedStyle(e).color; e.remove(); return c};
+        const tok=(n)=>probe(css.getPropertyValue(n).trim());
+        const pills=[...document.querySelectorAll('#todays-card .prc-rank')];
+        const tierOk=pills.every(p=>{const r=Number(p.querySelector('.prc-rank-pos').textContent.replace(/^T?#/,''));
+          const want=r===1?'is-gold':r===2?'is-silver':r===3?'is-bronze':null;
+          const has=['is-gold','is-silver','is-bronze'].filter(c=>p.classList.contains(c));
+          return want ? has.length===1&&has[0]===want : has.length===0;});
+        const posColor=(cls)=>{const p=document.querySelector('#todays-card .prc-rank'+cls+' .prc-rank-pos'); return p&&getComputedStyle(p).color;};
+        const goldUp=pills.find(p=>p.classList.contains('is-gold')&&p.querySelector('.prc-rank-move.is-up'));
+        return {n:pills.length, tierOk,
+          gold:posColor('.is-gold')===tok('--rank-gold'), silver:posColor('.is-silver')===tok('--rank-silver'),
+          bronze:posColor('.is-bronze')===tok('--rank-bronze'), neutral:posColor(':not(.is-gold):not(.is-silver):not(.is-bronze)')===tok('--muted'),
+          goldUpMove:!!goldUp&&getComputedStyle(goldUp.querySelector('.prc-rank-move')).color===tok('--good'),
+          down:getComputedStyle(document.querySelector('#todays-card .prc-rank-move.is-down')).color===tok('--bad'),
+          same:getComputedStyle(document.querySelector('#todays-card .prc-rank-move.is-same')).color===tok('--muted')}})()`);
+      t('round ranks: #1/#2/#3 (ties included) take gold/silver/bronze and #4 stays neutral, while movement keeps --good / --bad / --muted independently',
+        rkColor.n === 20 && Object.entries(rkColor).every(([k, v]) => k === 'n' || v === true), JSON.stringify(rkColor));
+      const NOTE = "((document.querySelector('#todays-card .pred-rank-note')||{}).textContent||'')";
+      const noteToday = await evaluate(s, NOTE);
+      await evaluate(s, "(()=>{ document.querySelectorAll('#todays-card .pred-day-tab')[1].click(); return 1 })()");
+      await sleep(400);
+      const tomorrow = await evaluate(s, "document.querySelectorAll('#todays-card .prc-rank').length + document.querySelectorAll('#todays-card .pred-rank-note').length");
+      await evaluate(s, "(()=>{ document.querySelectorAll('#todays-card .pred-day-tab')[0].click(); return 1 })()");
+      await sleep(400);
+      const back = JSON.parse(await evaluate(s, READ));
+      const noteBack = await evaluate(s, NOTE);
+      t('round ranks: the explanation line shows on a played day, an unplayed day shows neither it nor pills, and switching back restores both',
+        noteToday === 'Rank after each round · Based on cumulative actual scores' && noteBack === noteToday &&
+        tomorrow === 0 && JSON.stringify(back) === JSON.stringify(ranks), `note=${noteToday} tomorrow=${tomorrow} back=${JSON.stringify(back).slice(0, 120)}`);
+      for (const [w, h, mobile] of [[390, 844, true], [1280, 900, false]]) {
+        await setViewport(s, w, h, mobile);
+        await hashTo(s, '#dashboard', 1000);
+        const fit = await evaluate(s, `(()=>{const chips=[...document.querySelectorAll('#todays-card .prc')].filter(c=>c.querySelector('.prc-rank'));
+          const out=chips.filter(c=>{const r=c.getBoundingClientRect(), p=c.querySelector('.prc-rank').getBoundingClientRect(); return p.left<r.left-0.5||p.right>r.right+0.5||p.bottom>r.bottom+0.5||c.scrollWidth>c.clientWidth+1}).length;
+          const minFont=Math.min(...[...document.querySelectorAll('#todays-card .prc-rank *')].map(e=>parseFloat(getComputedStyle(e).fontSize)));
+          return {chips:chips.length, out, minFont}})()`);
+        t(`${w}px round ranks: every pill sits inside its chip, text >= 10px`, fit.chips === 20 && fit.out === 0 && fit.minFont >= 10, JSON.stringify(fit));
+      }
+      t('round ranks: no first-party JS errors', cleanErrors(s).length === 0, cleanErrors(s).join(' | '));
+    }
+
     // ---- a stale rival id in the persisted matrix selection is harmless ----
     // Deleting a rival prunes it from state.matrixSelection, but only on the
     // device that did the delete: the rival list and the selection sync under
