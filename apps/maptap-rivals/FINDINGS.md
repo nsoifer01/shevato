@@ -697,8 +697,15 @@ after that round. Decisions a future change should keep:
   previous round is always ranked when the current one is.
 - **A field of one shows nothing,** matching the solo-day rule of the finish
   positions: first of one is not a position.
+- **Podium colours are by rank, not by field or row.** `podiumTier(rank)`
+  maps 1/2/3 to gold/silver/bronze (`--rank-gold`, `--rank-silver`,
+  `--rank-bronze` on `:root`) and everything else to neutral, so a tie shares
+  a tier, a field of 15 colours exactly three places, and no gradient is
+  derived from the field size. The tier tints the position text and the
+  pill's outline and fill only; the movement span keeps its own colour, so a
+  gold `#1` beside a green `↑3` reads as two facts.
 - **Visuals.** The pill is neutral (dark fill, `--border-strong` outline,
-  `--text` position at weight 800) on its own line under the prediction Δ,
+  `--muted` position at weight 800 below the podium) on its own line under the prediction Δ,
   so the chip's green/red tint and Δ keep meaning "prediction accuracy"; only
   the movement (weight 600) is coloured, and its arrow or `=` carries the
   meaning without colour. Unchanged is `=` rather than a dash. Pill text is

@@ -639,10 +639,22 @@ export async function run({ base, cdpPort }) {
         ]), JSON.stringify(ranks));
       const rkColor = await evaluate(s, `(()=>{const css=getComputedStyle(document.documentElement);
         const probe=(v)=>{const e=document.createElement('span'); e.style.color=v; document.body.appendChild(e); const c=getComputedStyle(e).color; e.remove(); return c};
-        const c=(sel)=>getComputedStyle(document.querySelector('#todays-card '+sel)).color;
-        return {up:c('.prc-rank-move.is-up')===probe(css.getPropertyValue('--good').trim()), down:c('.prc-rank-move.is-down')===probe(css.getPropertyValue('--bad').trim()),
-          pos:c('.prc-rank-pos')===probe(css.getPropertyValue('--text').trim())}})()`);
-      t('round ranks: movement computes to --good / --bad, the position to --text', rkColor.up && rkColor.down && rkColor.pos, JSON.stringify(rkColor));
+        const tok=(n)=>probe(css.getPropertyValue(n).trim());
+        const pills=[...document.querySelectorAll('#todays-card .prc-rank')];
+        const tierOk=pills.every(p=>{const r=Number(p.querySelector('.prc-rank-pos').textContent.replace(/^T?#/,''));
+          const want=r===1?'is-gold':r===2?'is-silver':r===3?'is-bronze':null;
+          const has=['is-gold','is-silver','is-bronze'].filter(c=>p.classList.contains(c));
+          return want ? has.length===1&&has[0]===want : has.length===0;});
+        const posColor=(cls)=>{const p=document.querySelector('#todays-card .prc-rank'+cls+' .prc-rank-pos'); return p&&getComputedStyle(p).color;};
+        const goldUp=pills.find(p=>p.classList.contains('is-gold')&&p.querySelector('.prc-rank-move.is-up'));
+        return {n:pills.length, tierOk,
+          gold:posColor('.is-gold')===tok('--rank-gold'), silver:posColor('.is-silver')===tok('--rank-silver'),
+          bronze:posColor('.is-bronze')===tok('--rank-bronze'), neutral:posColor(':not(.is-gold):not(.is-silver):not(.is-bronze)')===tok('--muted'),
+          goldUpMove:!!goldUp&&getComputedStyle(goldUp.querySelector('.prc-rank-move')).color===tok('--good'),
+          down:getComputedStyle(document.querySelector('#todays-card .prc-rank-move.is-down')).color===tok('--bad'),
+          same:getComputedStyle(document.querySelector('#todays-card .prc-rank-move.is-same')).color===tok('--muted')}})()`);
+      t('round ranks: #1/#2/#3 (ties included) take gold/silver/bronze and #4 stays neutral, while movement keeps --good / --bad / --muted independently',
+        rkColor.n === 20 && Object.entries(rkColor).every(([k, v]) => k === 'n' || v === true), JSON.stringify(rkColor));
       const NOTE = "((document.querySelector('#todays-card .pred-rank-note')||{}).textContent||'')";
       const noteToday = await evaluate(s, NOTE);
       await evaluate(s, "(()=>{ document.querySelectorAll('#todays-card .pred-day-tab')[1].click(); return 1 })()");

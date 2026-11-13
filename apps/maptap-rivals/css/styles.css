@@ -46,6 +46,11 @@
   --tie: #9aa3b2;
   --tie-soft: rgba(154, 163, 178, 0.16);
   --warn: #fb923c;
+  /* Podium tiers for the round rank pills: muted metals that sit with the
+     indigo/green palette without competing with the --good / --bad movement. */
+  --rank-gold: #e2c46e;
+  --rank-silver: #c3cbd8;
+  --rank-bronze: #d49a6c;
   --border: #252938;
   --border-strong: #353a4b;
   --radius: 14px;
@@ -2122,7 +2127,15 @@ body.maptap-rivals-app textarea:focus {
   line-height: 1.15;
   white-space: nowrap;
 }
-.prc-rank-pos { color: var(--text); font-weight: 800; letter-spacing: -0.01em; }
+.prc-rank-pos { color: var(--muted); font-weight: 800; letter-spacing: -0.01em; }
+/* #1 / #2 / #3 tint the position and the pill's outline and fill; #4 and
+   below stay neutral. The movement span keeps its own colour either way. */
+.prc-rank.is-gold   { border-color: rgba(226, 196, 110, 0.45); background: linear-gradient(rgba(226, 196, 110, 0.12), rgba(226, 196, 110, 0.12)), rgba(11, 13, 18, 0.55); }
+.prc-rank.is-silver { border-color: rgba(195, 203, 216, 0.4);  background: linear-gradient(rgba(195, 203, 216, 0.09), rgba(195, 203, 216, 0.09)), rgba(11, 13, 18, 0.55); }
+.prc-rank.is-bronze { border-color: rgba(212, 154, 108, 0.42); background: linear-gradient(rgba(212, 154, 108, 0.1), rgba(212, 154, 108, 0.1)), rgba(11, 13, 18, 0.55); }
+.prc-rank.is-gold   .prc-rank-pos { color: var(--rank-gold); }
+.prc-rank.is-silver .prc-rank-pos { color: var(--rank-silver); }
+.prc-rank.is-bronze .prc-rank-pos { color: var(--rank-bronze); }
 .prc-rank-move { font-weight: 600; }
 .prc-rank-move.is-up   { color: var(--good); }
 .prc-rank-move.is-down { color: var(--bad); }

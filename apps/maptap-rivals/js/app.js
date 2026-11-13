@@ -196,7 +196,7 @@
     isoWeekId, monthId, periodRecords, runningRivalPeriodRecords, periodTallyText,
     accumulatePositionHits,
     accumulateFinishPositions, avgPositionColor, avgPositionColors,
-    roundRanksForDay,
+    roundRanksForDay, podiumTier,
     coordNum, myAvgByContinent, myAvgByRound,
     compareNamesCI, compareWinPctDesc,
     // Local calendar dates (see stats.js "local calendar dates"): every day
@@ -2219,7 +2219,8 @@
       const m = rank.move;
       const moveText = m == null ? '' : m > 0 ? `, up ${m}` : m < 0 ? `, down ${-m}` : ', no change';
       title += `. ${rank.tied ? 'Tied ' : ''}${ordinalName(rank.rank)} of ${rank.field} after round ${slot + 1}${moveText}`;
-      rankPill = el('div', { class: 'prc-rank' }, [
+      const tier = podiumTier(rank.rank);
+      rankPill = el('div', { class: 'prc-rank' + (tier ? ' is-' + tier : '') }, [
         el('span', { class: 'prc-rank-pos' }, `${rank.tied ? 'T' : ''}#${rank.rank}`),
         m == null ? null : el('span', {
           class: 'prc-rank-move ' + (m > 0 ? 'is-up' : m < 0 ? 'is-down' : 'is-same'),

@@ -19,7 +19,7 @@ const {
   periodOutcomeVsRival, runningRivalPeriodRecords, periodTallyText,
   rankByScore, positionHitsForDay, accumulatePositionHits,
   finishPositionsForDay, fieldSharesForDay, competitionRanksForDay,
-  roundRanksForDay, accumulateFinishPositions,
+  roundRanksForDay, podiumTier, accumulateFinishPositions,
   avgPositionColor, avgPositionColors,
   myAvgByContinent, myAvgByRound,
   compareNamesCI, compareWinPctDesc,
@@ -2614,4 +2614,37 @@ test('roundRanksForDay: a __proto__ player id stays an own key', () => {
   ]);
   assert.ok(Object.prototype.hasOwnProperty.call(res, '__proto__'));
   assert.deepEqual(ranksOf(res, '__proto__'), [1, 1, 1, 1, 1]);
+});
+
+// --- podiumTier ------------------------------------------------------------
+
+test('podiumTier: gold, silver, bronze for 1-3, none below, whatever the field size', () => {
+  assert.equal(podiumTier(1), 'gold');
+  assert.equal(podiumTier(2), 'silver');
+  assert.equal(podiumTier(3), 'bronze');
+  for (const r of [4, 5, 8, 15, 40, 0, null, undefined, NaN, '1']) assert.equal(podiumTier(r), null, String(r));
+  // Fields of 2, 3, 8 and 15 with every round tied in pairs: tiers follow the
+  // shared rank, so both players on a shared place get the same tier, and a
+  // place below 3 gets none however many players there are.
+  for (const n of [2, 3, 8, 15]) {
+    const field = Array.from({ length: n }, (_, p) => ({ key: 'p' + p, scores: Array(5).fill(100 - Math.floor(p / 2) * 5) }));
+    const res = roundRanksForDay(field);
+    for (const e of field) {
+      const p = Number(e.key.slice(1));
+      const expectedRank = 1 + 2 * Math.floor(p / 2);   // 1, 1, 3, 3, 5, 5, ...
+      for (const slot of res[e.key]) {
+        assert.equal(slot.rank, expectedRank);
+        assert.equal(podiumTier(slot.rank), expectedRank === 1 ? 'gold' : expectedRank === 3 ? 'bronze' : null);
+      }
+    }
+  }
+  // T#2 shares silver.
+  const t2 = roundRanksForDay([
+    { key: 'a', scores: [90, 90, 90, 90, 90] },
+    { key: 'b', scores: [50, 50, 50, 50, 50] },
+    { key: 'c', scores: [50, 50, 50, 50, 50] },
+  ]);
+  assert.equal(t2.b[4].tied, true);
+  assert.equal(podiumTier(t2.b[4].rank), 'silver');
+  assert.equal(podiumTier(t2.c[4].rank), 'silver');
 });

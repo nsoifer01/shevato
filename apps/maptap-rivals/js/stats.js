@@ -1075,6 +1075,13 @@
     return Object.fromEntries(out);
   }
 
+  // Podium tier of a leaderboard position: 'gold', 'silver', 'bronze' for
+  // 1, 2, 3 and null for everything below, whatever the field size. It reads
+  // the rank alone, so tied players (who share a rank) share a tier.
+  function podiumTier(rank) {
+    return rank === 1 ? 'gold' : rank === 2 ? 'silver' : rank === 3 ? 'bronze' : null;
+  }
+
   // Accumulate per-player { days, sum, avg, shareSum, share, counts, dates,
   // maxField } over a list of days, each day being its own entries array.
   // `share` is the headline figure (mean daily share of the field beaten,
@@ -1622,7 +1629,7 @@
     rankByScore, positionHitsForDay, accumulatePositionHits,
     // finishing positions
     finishPositionsForDay, fieldSharesForDay, competitionRanksForDay,
-    roundRanksForDay, accumulateFinishPositions,
+    roundRanksForDay, podiumTier, accumulateFinishPositions,
     avgPositionColor, avgPositionColors,
     // continents
     coordNum, myAvgByContinent,
