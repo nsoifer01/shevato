@@ -2218,9 +2218,9 @@
     if (rank) {
       const m = rank.move;
       const moveText = m == null ? '' : m > 0 ? `, up ${m}` : m < 0 ? `, down ${-m}` : ', no change';
-      title += `. ${ordinalName(rank.rank)} of ${rank.field} after round ${slot + 1}${moveText}`;
+      title += `. ${rank.tied ? 'Tied ' : ''}${ordinalName(rank.rank)} of ${rank.field} after round ${slot + 1}${moveText}`;
       rankPill = el('div', { class: 'prc-rank' }, [
-        el('span', { class: 'prc-rank-pos' }, `#${rank.rank}`),
+        el('span', { class: 'prc-rank-pos' }, `${rank.tied ? 'T' : ''}#${rank.rank}`),
         m == null ? null : el('span', {
           class: 'prc-rank-move ' + (m > 0 ? 'is-up' : m < 0 ? 'is-down' : 'is-same'),
         }, m > 0 ? `↑${m}` : m < 0 ? `↓${-m}` : '='),
@@ -2605,6 +2605,12 @@
     rows.forEach(r => {
       r.roundRanks = Object.prototype.hasOwnProperty.call(roundRanks, r.key) ? roundRanks[r.key] : null;
     });
+    // One line of explanation for the pills, under the column headers and
+    // only when at least one pill is on screen.
+    if (rows.some(r => r.roundRanks && r.roundRanks[0])) {
+      body.appendChild(el('p', { class: 'pred-rank-note' },
+        'Rank after each round · Based on cumulative actual scores'));
+    }
 
     rows.sort((a, b) => {
       const aPlayed = a.actualTotal != null, bPlayed = b.actualTotal != null;

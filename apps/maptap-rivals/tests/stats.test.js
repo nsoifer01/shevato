@@ -2525,6 +2525,9 @@ test('roundRanksForDay: ties share the best position (1, 1, 3) and move together
   assert.deepEqual(ranksOf(res, 'c'), [1, 3, 3, 3, 3]);
   assert.deepEqual(movesOf(res, 'a'), [null, 1, 0, 0, 0]);
   assert.deepEqual(movesOf(res, 'c'), [null, -2, 0, 0, 0]);
+  // `tied` marks a shared rank: a and b share every round, c is alone.
+  assert.deepEqual(res.a.map(x => x.tied), [true, true, true, true, true]);
+  assert.deepEqual(res.c.map(x => x.tied), [false, false, false, false, false]);
 });
 
 test('roundRanksForDay: players who have not played are outside the field', () => {
@@ -2591,6 +2594,8 @@ test('roundRanksForDay: property, every slot matches the oracle and round 5 is t
         assert.equal(slot.rank, oracleRank(field, e.key, k));
         assert.equal(slot.field, n);
         assert.equal(slot.move, k === 0 ? null : oracleRank(field, e.key, k - 1) - slot.rank);
+        const mine = cumThrough(e.scores, k);
+        assert.equal(slot.tied, field.filter(o => o !== e && cumThrough(o.scores, k) === mine).length > 0);
       }
       // Round 5 agrees with the day's final leaderboard, which ranks the
       // weighted total the Actual column shows.

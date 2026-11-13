@@ -611,7 +611,7 @@ export async function run({ base, cdpPort }) {
     // 1,1,2,3,3. Cumulative: me 70/135/295/520/709, Bex 70/140/280/490/700,
     // Ari 60/120/240/420/600, Cy 90/140/220/400/550; the long-named rival has
     // not played. R1: Cy 1, me+Bex tie 2, Ari 4. R2: Bex+Cy tie 1, me 3, Ari 4.
-    // R3 onward: me 1, Bex 2, Ari 3, Cy 4.
+    // R3 onward: me 1, Bex 2, Ari 3, Cy 4. A shared place reads T#2.
     mark('round ranks @1280');
     {
       const base = fixture();
@@ -631,10 +631,10 @@ export async function run({ base, cdpPort }) {
       const ranks = JSON.parse(await evaluate(s, READ));
       t('round ranks: every played player shows their position and movement after each round, in final-standing order',
         JSON.stringify(ranks) === JSON.stringify([
-          ['Nikita', '#2 #3↓1 #1↑2 #1= #1='],
-          ['Bex', '#2 #1↑1 #2↓1 #2= #2='],
+          ['Nikita', 'T#2 #3↓1 #1↑2 #1= #1='],
+          ['Bex', 'T#2 T#1↑1 #2↓1 #2= #2='],
           ['Ari', '#4 #4= #3↑1 #3= #3='],
-          ['Cy', '#1 #1= #4↓3 #4= #4='],
+          ['Cy', '#1 T#1= #4↓3 #4= #4='],
           ['Bartholomew', '    '],
         ]), JSON.stringify(ranks));
       const rkColor = await evaluate(s, `(()=>{const css=getComputedStyle(document.documentElement);
@@ -643,14 +643,18 @@ export async function run({ base, cdpPort }) {
         return {up:c('.prc-rank-move.is-up')===probe(css.getPropertyValue('--good').trim()), down:c('.prc-rank-move.is-down')===probe(css.getPropertyValue('--bad').trim()),
           pos:c('.prc-rank-pos')===probe(css.getPropertyValue('--text').trim())}})()`);
       t('round ranks: movement computes to --good / --bad, the position to --text', rkColor.up && rkColor.down && rkColor.pos, JSON.stringify(rkColor));
+      const NOTE = "((document.querySelector('#todays-card .pred-rank-note')||{}).textContent||'')";
+      const noteToday = await evaluate(s, NOTE);
       await evaluate(s, "(()=>{ document.querySelectorAll('#todays-card .pred-day-tab')[1].click(); return 1 })()");
       await sleep(400);
-      const tomorrow = await evaluate(s, "document.querySelectorAll('#todays-card .prc-rank').length");
+      const tomorrow = await evaluate(s, "document.querySelectorAll('#todays-card .prc-rank').length + document.querySelectorAll('#todays-card .pred-rank-note').length");
       await evaluate(s, "(()=>{ document.querySelectorAll('#todays-card .pred-day-tab')[0].click(); return 1 })()");
       await sleep(400);
       const back = JSON.parse(await evaluate(s, READ));
-      t('round ranks: an unplayed day shows none, and switching back restores the same progression',
-        tomorrow === 0 && JSON.stringify(back) === JSON.stringify(ranks), `tomorrow=${tomorrow} back=${JSON.stringify(back).slice(0, 120)}`);
+      const noteBack = await evaluate(s, NOTE);
+      t('round ranks: the explanation line shows on a played day, an unplayed day shows neither it nor pills, and switching back restores both',
+        noteToday === 'Rank after each round · Based on cumulative actual scores' && noteBack === noteToday &&
+        tomorrow === 0 && JSON.stringify(back) === JSON.stringify(ranks), `note=${noteToday} tomorrow=${tomorrow} back=${JSON.stringify(back).slice(0, 120)}`);
       for (const [w, h, mobile] of [[390, 844, true], [1280, 900, false]]) {
         await setViewport(s, w, h, mobile);
         await hashTo(s, '#dashboard', 1000);

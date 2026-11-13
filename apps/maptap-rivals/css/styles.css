@@ -2102,29 +2102,39 @@ body.maptap-rivals-app textarea:focus {
 }
 .prc-delta-ic { width: 0.78em; height: 0.78em; }
 
-/* Leaderboard position after the round (#2 ↑1). A neutral outlined pill on
-   its own line, so it never reads as the prediction Δ above it: the chip's
-   tint and Δ grade the prediction, the pill tracks the standings. */
+/* Leaderboard position after the round (#2 ↑1, T#2 for a shared place). A
+   neutral outlined pill on its own line, so it never reads as the prediction
+   Δ above it: the chip's tint and Δ grade the prediction, the pill tracks the
+   standings. The position is the heavy part; movement is lighter and is the
+   only coloured bit, and its arrow or "=" carries the meaning without colour. */
 .prc-rank {
   display: inline-flex;
   align-items: baseline;
-  gap: 0.22rem;
-  margin-top: 0.08rem;
-  padding: 0.08rem 0.38rem;
+  gap: 0.24rem;
+  margin-top: 0.1rem;
+  padding: 0.12rem 0.45rem;
   border: 1px solid var(--border-strong);
   border-radius: 999px;
   background: rgba(11, 13, 18, 0.55);
   font-family: var(--mono);
-  font-size: 0.7rem;
-  font-weight: 700;
+  font-size: 0.76rem;
   font-variant-numeric: tabular-nums;
-  line-height: 1.2;
+  line-height: 1.15;
   white-space: nowrap;
 }
-.prc-rank-pos { color: var(--text); }
+.prc-rank-pos { color: var(--text); font-weight: 800; letter-spacing: -0.01em; }
+.prc-rank-move { font-weight: 600; }
 .prc-rank-move.is-up   { color: var(--good); }
 .prc-rank-move.is-down { color: var(--bad); }
-.prc-rank-move.is-same { color: var(--muted-2); }
+.prc-rank-move.is-same { color: var(--muted); }
+/* One line under the column headers explaining the pills. */
+.pred-rank-note {
+  margin: -0.35rem 0 0;
+  padding: 0 0.85rem;
+  font-size: 0.7rem;
+  color: var(--muted-2);
+  text-wrap: balance;
+}
 
 .prc-pos {
   background: var(--good-soft);
@@ -2187,7 +2197,7 @@ body.maptap-rivals-app textarea:focus {
   .prc-head { justify-content: flex-start; width: 100%; padding-left: 0.05rem; }
   .prc-weight { font-size: 0.48rem; top: 0.28rem; right: 0.2rem; padding: 0.04rem 0.16rem; }
   .prc-delta { font-size: 0.64rem; }
-  .prc-rank { padding: 0.06rem 0.26rem; gap: 0.14rem; }
+  .prc-rank { padding: 0.1rem 0.3rem; gap: 0.16rem; }
 }
 
 /* ---------- Location reveal strip ----------
@@ -6052,6 +6062,7 @@ body.maptap-rivals-app select option {
 @media (max-width: 480px) {
   .prc-slot { font-size: 0.72rem; }
   .prc-weight { font-size: 0.7rem; top: 0.2rem; right: 0.2rem; }
+  .pred-rank-note,
   .pred-loc-slot,
   .pred-loc-head,
   .pred-pos-dist-head,

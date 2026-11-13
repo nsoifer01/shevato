@@ -1045,9 +1045,10 @@
   // usable score for it and all earlier rounds: a missing round is never read
   // as 0, and a partial field would rank people on different amounts of play.
   // Fewer than two players gives nothing, matching competitionRanksForDay.
-  // Returns { [key]: [r1..r5] }, each slot { rank, field, move } or null;
-  // `move` is the places gained since the previous round (positive = up),
-  // null on round 1.
+  // Returns { [key]: [r1..r5] }, each slot { rank, field, move, tied } or
+  // null; `move` is the places gained since the previous round (positive =
+  // up), null on round 1, and `tied` is true when another player shares the
+  // rank.
   function roundRanksForDay(entries) {
     const field = (Array.isArray(entries) ? entries : [])
       .filter(e => e && Array.isArray(e.scores));
@@ -1059,12 +1060,15 @@
       if (!raw.every(v => typeof v === 'number' && Number.isFinite(v))) break;
       field.forEach((e, j) => cum.set(e.key, cum.get(e.key) + raw[j] * WEIGHTS[i]));
       const ranks = competitionRanksForDay(field.map(e => ({ key: e.key, total: cum.get(e.key) })));
+      const perRank = new Map();
+      for (const e of field) perRank.set(ranks[e.key], (perRank.get(ranks[e.key]) || 0) + 1);
       for (const e of field) {
         const prev = i > 0 ? out.get(e.key)[i - 1] : null;
         out.get(e.key)[i] = {
           rank: ranks[e.key],
           field: field.length,
           move: prev ? prev.rank - ranks[e.key] : null,
+          tied: perRank.get(ranks[e.key]) > 1,
         };
       }
     }

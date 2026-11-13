@@ -689,17 +689,23 @@ after that round. Decisions a future change should keep:
   practice this only guards malformed in-memory data.
 - **Competition ranks (1, 1, 3), via `competitionRanksForDay`,** the same
   convention as the "Daily finishes" distribution, so a tie never reads as
-  one player ahead of another by name.
+  one player ahead of another by name. A shared place is shown as `T#2`
+  (the slot's `tied` flag), because two rows both reading `#2` looked like a
+  bug rather than a tie.
 - **Movement is against the previous round of the same day;** round 1 has
   none. Because a round is ranked only if all earlier rounds are, the
   previous round is always ranked when the current one is.
 - **A field of one shows nothing,** matching the solo-day rule of the finish
   positions: first of one is not a position.
 - **Visuals.** The pill is neutral (dark fill, `--border-strong` outline,
-  `--text` position) on its own line under the prediction Δ, so the chip's
-  green/red tint and Δ keep meaning "prediction accuracy"; only the movement
-  glyph is coloured. Unchanged is `=` rather than a dash. Font is 0.7rem: at
-  0.68rem the pill computed to 9.97px at 1280 and failed the 10px floor.
+  `--text` position at weight 800) on its own line under the prediction Δ,
+  so the chip's green/red tint and Δ keep meaning "prediction accuracy"; only
+  the movement (weight 600) is coloured, and its arrow or `=` carries the
+  meaning without colour. Unchanged is `=` rather than a dash. Pill text is
+  0.76rem (0.74rem under the 480px typography floor): at 0.68rem it computed
+  to 9.97px at 1280 and failed the 10px floor. The explanation is one line
+  under the column headers (`.pred-rank-note`, `text-wrap: balance` so it
+  does not leave a one-word orphan at 390), rendered only when a pill is.
 
 ## Dashboard width budget (why the continent band is a three-tier grid)
 
