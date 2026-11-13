@@ -1,6 +1,310 @@
 {
   "updates": [
     {
+      "builtAt": "2026-11-13T14:39:43.499Z",
+      "totals": {
+        "seasons": 67864,
+        "delta": 23
+      },
+      "shapeCounts": {
+        "rebound": 9807,
+        "big-finale": 11874,
+        "u-shaped": 2654,
+        "rollercoaster": 13515,
+        "mid-peak": 4394,
+        "consistent": 2536,
+        "bad-finale": 4380,
+        "front-loaded": 3093,
+        "slow-burn": 4011,
+        "declining": 1652,
+        "saved-best-for-last": 1377,
+        "shape-drift": 1394,
+        "rising": 2400
+      },
+      "shapeDeltas": {
+        "rebound": 2,
+        "big-finale": -5,
+        "rollercoaster": 8,
+        "mid-peak": 3,
+        "consistent": -9,
+        "bad-finale": 3,
+        "front-loaded": -2,
+        "slow-burn": 6,
+        "declining": -1,
+        "saved-best-for-last": -2,
+        "shape-drift": 1,
+        "rising": 9
+      },
+      "added": [
+        {
+          "seriesId": "tt7631058",
+          "title": "The Lord of the Rings: The Rings of Power",
+          "season": 3,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt8014982",
+          "title": "The Body",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt31710249",
+          "title": "Stick",
+          "season": 2,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt39602642",
+          "title": "The Golden Life",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt39751377",
+          "title": "Balaraw: Blood Island",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt29465351",
+          "title": "Wäldern",
+          "season": 1,
+          "seasonYear": 2024
+        },
+        {
+          "seriesId": "tt0815063",
+          "title": "Million Dollar Listing Los Angeles",
+          "season": 2,
+          "seasonYear": 2008
+        },
+        {
+          "seriesId": "tt13236336",
+          "title": "Sacrifice",
+          "season": 2,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt1267060",
+          "title": "Sound & Fury",
+          "season": 1,
+          "seasonYear": 2009
+        },
+        {
+          "seriesId": "tt29872879",
+          "title": "From That Small Island",
+          "season": 1,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt0456788",
+          "title": "Karanlikta Kosanlar",
+          "season": 1,
+          "seasonYear": 2001
+        },
+        {
+          "seriesId": "tt15019916",
+          "title": "The Office PL",
+          "season": 6,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt1831897",
+          "title": "Como dice el dicho",
+          "season": 1,
+          "seasonYear": 2011
+        },
+        {
+          "seriesId": "tt26891766",
+          "title": "The Future with Hannah Fry",
+          "season": 2,
+          "seasonYear": 2024
+        },
+        {
+          "seriesId": "tt23785188",
+          "title": "O orkos II (The Oath II)",
+          "season": 1,
+          "seasonYear": 2023
+        },
+        {
+          "seriesId": "tt21084810",
+          "title": "Secrets of the Aquarium",
+          "season": 1,
+          "seasonYear": 2023
+        },
+        {
+          "seriesId": "tt38775500",
+          "title": "The Will Stancil Show",
+          "season": 2,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt38788688",
+          "title": "Tomorrow",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt43192858",
+          "title": "La más grande",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt39518375",
+          "title": "2026-2027 UEFA Champions League",
+          "season": 8,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt45602692",
+          "title": "Secret Life of a Vegas Casino",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt45257943",
+          "title": "The Prince of Tennis II U-17 WORLD CUP: Final Member Selection Match",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt39050356",
+          "title": "One Day We'll Make Love",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt6058390",
+          "title": "Go Ho's Starry Night",
+          "season": 1,
+          "seasonYear": 2016
+        },
+        {
+          "seriesId": "tt9207648",
+          "title": "Vampire: The Masquerade: L.A. By Night",
+          "season": 1,
+          "seasonYear": 2018
+        },
+        {
+          "seriesId": "tt3084300",
+          "title": "Ostriv lyubovi",
+          "season": 1,
+          "seasonYear": 1995
+        }
+      ],
+      "removed": [
+        {
+          "seriesId": "tt0081857",
+          "title": "Entertainment Tonight",
+          "season": 45,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt0167515",
+          "title": "Access Hollywood",
+          "season": 28,
+          "seasonYear": 2023
+        },
+        {
+          "seriesId": "tt0167515",
+          "title": "Access Hollywood",
+          "season": 30,
+          "seasonYear": 2025
+        }
+      ],
+      "ratingSwings": [
+        {
+          "seriesId": "tt8439812",
+          "title": "Asouf",
+          "season": 2,
+          "from": 6.08,
+          "to": 9.01,
+          "delta": 2.93
+        },
+        {
+          "seriesId": "tt8439812",
+          "title": "Asouf",
+          "season": 1,
+          "from": 6.52,
+          "to": 8.71,
+          "delta": 2.19
+        },
+        {
+          "seriesId": "tt0085108",
+          "title": "We Got It Made",
+          "season": 1,
+          "from": 6.8,
+          "to": 5.25,
+          "delta": -1.55
+        },
+        {
+          "seriesId": "tt8439812",
+          "title": "Asouf",
+          "season": 3,
+          "from": 3.86,
+          "to": 5.37,
+          "delta": 1.51
+        },
+        {
+          "seriesId": "tt5851616",
+          "title": "Tash Ma Tash",
+          "season": 16,
+          "from": 6.96,
+          "to": 8.42,
+          "delta": 1.46
+        },
+        {
+          "seriesId": "tt5851616",
+          "title": "Tash Ma Tash",
+          "season": 17,
+          "from": 6.65,
+          "to": 7.95,
+          "delta": 1.3
+        },
+        {
+          "seriesId": "tt5851616",
+          "title": "Tash Ma Tash",
+          "season": 18,
+          "from": 6.48,
+          "to": 7.7,
+          "delta": 1.22
+        },
+        {
+          "seriesId": "tt9646546",
+          "title": "Dimension 20",
+          "season": 14,
+          "from": 9.05,
+          "to": 7.85,
+          "delta": -1.2
+        },
+        {
+          "seriesId": "tt9646546",
+          "title": "Dimension 20",
+          "season": 12,
+          "from": 8.38,
+          "to": 7.2,
+          "delta": -1.18
+        },
+        {
+          "seriesId": "tt5851616",
+          "title": "Tash Ma Tash",
+          "season": 15,
+          "from": 7.16,
+          "to": 8.28,
+          "delta": 1.12
+        }
+      ],
+      "modifiedCounts": {
+        "seriesVotes": 21095,
+        "avgRating": 1412,
+        "shapes": 268,
+        "episodeCount": 111,
+        "seriesRating": 362,
+        "poster": 4
+      }
+    },
+    {
       "builtAt": "2026-11-12T15:10:57.262Z",
       "totals": {
         "seasons": 67841,
@@ -8039,33 +8343,6 @@
         "episodeCount": 85,
         "poster": 5
       }
-    },
-    {
-      "builtAt": "2026-10-14T11:49:18.916Z",
-      "totals": {
-        "seasons": 67238,
-        "delta": 0
-      },
-      "shapeCounts": {
-        "rebound": 9757,
-        "big-finale": 11793,
-        "u-shaped": 2635,
-        "rollercoaster": 13493,
-        "mid-peak": 4362,
-        "consistent": 2511,
-        "bad-finale": 4335,
-        "front-loaded": 3066,
-        "slow-burn": 3961,
-        "declining": 1637,
-        "saved-best-for-last": 1376,
-        "shape-drift": 1396,
-        "rising": 2335
-      },
-      "shapeDeltas": {},
-      "added": [],
-      "removed": [],
-      "ratingSwings": [],
-      "modifiedCounts": {}
     }
   ]
 }
