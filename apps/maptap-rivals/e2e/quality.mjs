@@ -606,6 +606,63 @@ export async function run({ base, cdpPort }) {
         fit.over === 0 && fit.rows === (w === 390 ? 2 : 1) && fit.minFont >= 10, JSON.stringify(fit));
     }
 
+    // ---- leaderboard position after each round (predictions card) ----
+    // Today's games replaced by a four-player day, worked by hand at weights
+    // 1,1,2,3,3. Cumulative: me 70/135/295/520/709, Bex 70/140/280/490/700,
+    // Ari 60/120/240/420/600, Cy 90/140/220/400/550; the long-named rival has
+    // not played. R1: Cy 1, me+Bex tie 2, Ari 4. R2: Bex+Cy tie 1, me 3, Ari 4.
+    // R3 onward: me 1, Bex 2, Ari 3, Cy 4.
+    mark('round ranks @1280');
+    {
+      const base = fixture();
+      const T = todayISO();
+      const mine = [70, 65, 80, 75, 63];
+      const rankGames = base.games.filter(g => g.date !== T);
+      for (const [rivalId, theirs] of [['r-ari', [60, 60, 60, 60, 60]], ['r-bex', [70, 70, 70, 70, 70]], ['r-cy', [90, 50, 40, 60, 50]]]) {
+        rankGames.push({ id: 'rk-' + rivalId, rivalId, date: T, note: '', createdAt: 999, myScores: mine, theirScores: theirs,
+          myScore: mine.reduce((a, v, i) => a + v * [1, 1, 2, 3, 3][i], 0), theirScore: theirs.reduce((a, v, i) => a + v * [1, 1, 2, 3, 3][i], 0) });
+      }
+      await seed(s, '#dashboard', { maptapRivalsGames: JSON.stringify(rankGames) });
+      await waitForExpr(s, "document.querySelectorAll('#todays-card .prc-rank').length>0");
+      const READ = `JSON.stringify([...document.querySelectorAll('#todays-card-body .pred-row-wrap, #todays-card-body > .pred-row:not(.pred-row-head)')].map(w => {
+        const name = ((w.querySelector('.pred-label-name')||{}).textContent||'').trim();
+        return [name.split(' ').slice(1).join(' ').slice(0, 11), [...w.querySelectorAll('.prc')].map(c => { const p = c.querySelector('.prc-rank'); return p ? p.textContent : ''; }).join(' ')];
+      }))`;
+      const ranks = JSON.parse(await evaluate(s, READ));
+      t('round ranks: every played player shows their position and movement after each round, in final-standing order',
+        JSON.stringify(ranks) === JSON.stringify([
+          ['Nikita', '#2 #3↓1 #1↑2 #1= #1='],
+          ['Bex', '#2 #1↑1 #2↓1 #2= #2='],
+          ['Ari', '#4 #4= #3↑1 #3= #3='],
+          ['Cy', '#1 #1= #4↓3 #4= #4='],
+          ['Bartholomew', '    '],
+        ]), JSON.stringify(ranks));
+      const rkColor = await evaluate(s, `(()=>{const css=getComputedStyle(document.documentElement);
+        const probe=(v)=>{const e=document.createElement('span'); e.style.color=v; document.body.appendChild(e); const c=getComputedStyle(e).color; e.remove(); return c};
+        const c=(sel)=>getComputedStyle(document.querySelector('#todays-card '+sel)).color;
+        return {up:c('.prc-rank-move.is-up')===probe(css.getPropertyValue('--good').trim()), down:c('.prc-rank-move.is-down')===probe(css.getPropertyValue('--bad').trim()),
+          pos:c('.prc-rank-pos')===probe(css.getPropertyValue('--text').trim())}})()`);
+      t('round ranks: movement computes to --good / --bad, the position to --text', rkColor.up && rkColor.down && rkColor.pos, JSON.stringify(rkColor));
+      await evaluate(s, "(()=>{ document.querySelectorAll('#todays-card .pred-day-tab')[1].click(); return 1 })()");
+      await sleep(400);
+      const tomorrow = await evaluate(s, "document.querySelectorAll('#todays-card .prc-rank').length");
+      await evaluate(s, "(()=>{ document.querySelectorAll('#todays-card .pred-day-tab')[0].click(); return 1 })()");
+      await sleep(400);
+      const back = JSON.parse(await evaluate(s, READ));
+      t('round ranks: an unplayed day shows none, and switching back restores the same progression',
+        tomorrow === 0 && JSON.stringify(back) === JSON.stringify(ranks), `tomorrow=${tomorrow} back=${JSON.stringify(back).slice(0, 120)}`);
+      for (const [w, h, mobile] of [[390, 844, true], [1280, 900, false]]) {
+        await setViewport(s, w, h, mobile);
+        await hashTo(s, '#dashboard', 1000);
+        const fit = await evaluate(s, `(()=>{const chips=[...document.querySelectorAll('#todays-card .prc')].filter(c=>c.querySelector('.prc-rank'));
+          const out=chips.filter(c=>{const r=c.getBoundingClientRect(), p=c.querySelector('.prc-rank').getBoundingClientRect(); return p.left<r.left-0.5||p.right>r.right+0.5||p.bottom>r.bottom+0.5||c.scrollWidth>c.clientWidth+1}).length;
+          const minFont=Math.min(...[...document.querySelectorAll('#todays-card .prc-rank *')].map(e=>parseFloat(getComputedStyle(e).fontSize)));
+          return {chips:chips.length, out, minFont}})()`);
+        t(`${w}px round ranks: every pill sits inside its chip, text >= 10px`, fit.chips === 20 && fit.out === 0 && fit.minFont >= 10, JSON.stringify(fit));
+      }
+      t('round ranks: no first-party JS errors', cleanErrors(s).length === 0, cleanErrors(s).join(' | '));
+    }
+
     // ---- a stale rival id in the persisted matrix selection is harmless ----
     // Deleting a rival prunes it from state.matrixSelection, but only on the
     // device that did the delete: the rival list and the selection sync under

@@ -19,7 +19,7 @@ const {
   periodOutcomeVsRival, runningRivalPeriodRecords, periodTallyText,
   rankByScore, positionHitsForDay, accumulatePositionHits,
   finishPositionsForDay, fieldSharesForDay, competitionRanksForDay,
-  accumulateFinishPositions,
+  roundRanksForDay, accumulateFinishPositions,
   avgPositionColor, avgPositionColors,
   myAvgByContinent, myAvgByRound,
   compareNamesCI, compareWinPctDesc,
@@ -2465,4 +2465,148 @@ test('mapTapHistoryToRounds: an unreadable score does not claim its round', () =
   const bad = { ...roundDataDay.roundData[0], score: 'x' };
   const dayx = { ...roundDataDay, roundData: [bad, ...roundDataDay.roundData] };
   assert.deepEqual(mapTapHistoryToRounds({ d: dayx }).d.scores, [95, 80, 70, 90, 60]);
+});
+
+// --- roundRanksForDay -------------------------------------------------------
+// Oracles written from the rules, not from the engine: MapTap's round weights
+// typed out here, and competition rank as 1 + the number of players whose
+// cumulative score is strictly higher.
+
+const RULE_WEIGHTS = [1, 1, 2, 3, 3];
+const cumThrough = (scores, k) =>
+  scores.slice(0, k + 1).reduce((t, v, i) => t + v * RULE_WEIGHTS[i], 0);
+const oracleRank = (field, key, k) => {
+  const mine = cumThrough(field.find(e => e.key === key).scores, k);
+  return 1 + field.filter(e => cumThrough(e.scores, k) > mine).length;
+};
+const ranksOf = (res, key) => res[key].map(s => (s ? s.rank : null));
+const movesOf = (res, key) => res[key].map(s => (s ? s.move : null));
+
+test('roundRanksForDay: cumulative weighted ranks and movement, worked by hand', () => {
+  // Cumulative (weights 1,1,2,3,3):
+  //   a: 90, 180, 220, 250, 280
+  //   b: 80, 170, 350, 590, 830
+  //   c: 95, 190, 290, 590, 800
+  const res = roundRanksForDay([
+    { key: 'a', scores: [90, 90, 20, 10, 10] },
+    { key: 'b', scores: [80, 90, 90, 80, 80] },
+    { key: 'c', scores: [95, 95, 50, 100, 70] },
+  ]);
+  assert.deepEqual(ranksOf(res, 'a'), [2, 2, 3, 3, 3]);
+  assert.deepEqual(ranksOf(res, 'b'), [3, 3, 1, 1, 1]);
+  assert.deepEqual(ranksOf(res, 'c'), [1, 1, 2, 1, 2]);
+  // Movement is places gained against the previous round; none on round 1.
+  assert.deepEqual(movesOf(res, 'a'), [null, 0, -1, 0, 0]);
+  assert.deepEqual(movesOf(res, 'b'), [null, 0, 2, 0, 0]);
+  assert.deepEqual(movesOf(res, 'c'), [null, 0, -1, 1, -1]);
+  assert.equal(res.a[0].field, 3);
+});
+
+test('roundRanksForDay: the multiplier, not the raw score, decides a round', () => {
+  // Raw round 3 is equal-ish, but round 3 counts double: b's 60-point raw
+  // edge there is worth 120 and overtakes a's 100-point lead.
+  const res = roundRanksForDay([
+    { key: 'a', scores: [100, 100, 0, 0, 0] },
+    { key: 'b', scores: [50, 50, 60, 0, 0] },
+  ]);
+  assert.deepEqual(ranksOf(res, 'a'), [1, 1, 2, 2, 2]);
+  assert.deepEqual(ranksOf(res, 'b'), [2, 2, 1, 1, 1]);
+  assert.deepEqual(movesOf(res, 'b'), [null, 0, 1, 0, 0]);
+});
+
+test('roundRanksForDay: ties share the best position (1, 1, 3) and move together', () => {
+  const res = roundRanksForDay([
+    { key: 'a', scores: [80, 80, 80, 80, 80] },
+    { key: 'b', scores: [80, 80, 80, 80, 80] },
+    { key: 'c', scores: [90, 10, 10, 10, 10] },
+  ]);
+  assert.deepEqual(ranksOf(res, 'a'), [2, 1, 1, 1, 1]);
+  assert.deepEqual(ranksOf(res, 'b'), [2, 1, 1, 1, 1]);
+  assert.deepEqual(ranksOf(res, 'c'), [1, 3, 3, 3, 3]);
+  assert.deepEqual(movesOf(res, 'a'), [null, 1, 0, 0, 0]);
+  assert.deepEqual(movesOf(res, 'c'), [null, -2, 0, 0, 0]);
+});
+
+test('roundRanksForDay: players who have not played are outside the field', () => {
+  const res = roundRanksForDay([
+    { key: 'a', scores: [50, 50, 50, 50, 50] },
+    { key: 'b', scores: null },
+    { key: 'c', scores: [60, 60, 60, 60, 60] },
+  ]);
+  assert.equal(Object.prototype.hasOwnProperty.call(res, 'b'), false);
+  assert.deepEqual(ranksOf(res, 'a'), [2, 2, 2, 2, 2]);
+  assert.equal(res.a[4].field, 2);
+});
+
+test('roundRanksForDay: fewer than two players yields no ranks', () => {
+  assert.deepEqual(roundRanksForDay([]), {});
+  assert.deepEqual(roundRanksForDay(null), {});
+  assert.deepEqual(roundRanksForDay([
+    { key: 'a', scores: [50, 50, 50, 50, 50] },
+    { key: 'b', scores: null },
+  ]), {});
+});
+
+test('roundRanksForDay: a missing round is never zero; that round and later go unranked for everyone', () => {
+  for (const missing of [null, undefined, NaN, '50']) {
+    for (let k = 0; k < 5; k++) {
+      const gap = [50, 50, 50, 50, 50];
+      gap[k] = missing;
+      const res = roundRanksForDay([
+        { key: 'a', scores: gap },
+        { key: 'b', scores: [10, 10, 10, 10, 10] },
+        { key: 'c', scores: [90, 90, 90, 90, 90] },
+      ]);
+      for (const key of ['a', 'b', 'c']) {
+        for (let i = 0; i < 5; i++) {
+          if (i < k) assert.ok(res[key][i], `${key} R${i + 1} ranked before the gap at R${k + 1}`);
+          else assert.equal(res[key][i], null, `${key} R${i + 1} must be unranked (gap at R${k + 1}, ${missing})`);
+        }
+      }
+    }
+  }
+  // A short array is incomplete play, not a 5-round day.
+  const short = roundRanksForDay([
+    { key: 'a', scores: [50, 50, 50] },
+    { key: 'b', scores: [10, 10, 10, 10, 10] },
+  ]);
+  assert.deepEqual(ranksOf(short, 'a'), [null, null, null, null, null]);
+});
+
+test('roundRanksForDay: property, every slot matches the oracle and round 5 is the final standing', () => {
+  // Deterministic LCG so a failure reproduces.
+  let seed = 12345;
+  const rnd = n => { seed = (seed * 1103515245 + 12345) % 2147483648; return seed % n; };
+  for (let trial = 0; trial < 500; trial++) {
+    const n = 2 + rnd(6);
+    // Coarse scores (multiples of 10) so ties happen often.
+    const field = Array.from({ length: n }, (_, p) => ({
+      key: 'p' + p,
+      scores: Array.from({ length: 5 }, () => rnd(11) * 10),
+    }));
+    const res = roundRanksForDay(field);
+    for (const e of field) {
+      for (let k = 0; k < 5; k++) {
+        const slot = res[e.key][k];
+        assert.equal(slot.rank, oracleRank(field, e.key, k));
+        assert.equal(slot.field, n);
+        assert.equal(slot.move, k === 0 ? null : oracleRank(field, e.key, k - 1) - slot.rank);
+      }
+      // Round 5 agrees with the day's final leaderboard, which ranks the
+      // weighted total the Actual column shows.
+      const finalRank = 1 + field.filter(o => weightedTotal(o.scores) > weightedTotal(e.scores)).length;
+      assert.equal(res[e.key][4].rank, finalRank);
+      assert.equal(res[e.key][4].rank, competitionRanksForDay(
+        field.map(o => ({ key: o.key, total: weightedTotal(o.scores) })))[e.key]);
+    }
+  }
+});
+
+test('roundRanksForDay: a __proto__ player id stays an own key', () => {
+  const res = roundRanksForDay([
+    { key: '__proto__', scores: [90, 90, 90, 90, 90] },
+    { key: 'b', scores: [10, 10, 10, 10, 10] },
+  ]);
+  assert.ok(Object.prototype.hasOwnProperty.call(res, '__proto__'));
+  assert.deepEqual(ranksOf(res, '__proto__'), [1, 1, 1, 1, 1]);
 });

@@ -2102,6 +2102,30 @@ body.maptap-rivals-app textarea:focus {
 }
 .prc-delta-ic { width: 0.78em; height: 0.78em; }
 
+/* Leaderboard position after the round (#2 ↑1). A neutral outlined pill on
+   its own line, so it never reads as the prediction Δ above it: the chip's
+   tint and Δ grade the prediction, the pill tracks the standings. */
+.prc-rank {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.22rem;
+  margin-top: 0.08rem;
+  padding: 0.08rem 0.38rem;
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  background: rgba(11, 13, 18, 0.55);
+  font-family: var(--mono);
+  font-size: 0.7rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+.prc-rank-pos { color: var(--text); }
+.prc-rank-move.is-up   { color: var(--good); }
+.prc-rank-move.is-down { color: var(--bad); }
+.prc-rank-move.is-same { color: var(--muted-2); }
+
 .prc-pos {
   background: var(--good-soft);
   border-color: rgba(74, 222, 128, 0.30);
@@ -2163,6 +2187,7 @@ body.maptap-rivals-app textarea:focus {
   .prc-head { justify-content: flex-start; width: 100%; padding-left: 0.05rem; }
   .prc-weight { font-size: 0.48rem; top: 0.28rem; right: 0.2rem; padding: 0.04rem 0.16rem; }
   .prc-delta { font-size: 0.64rem; }
+  .prc-rank { padding: 0.06rem 0.26rem; gap: 0.14rem; }
 }
 
 /* ---------- Location reveal strip ----------
@@ -6039,6 +6064,7 @@ body.maptap-rivals-app select option {
   .pred-loc-name,
   .pred-loc-btn,
   .prc-delta,
+  .prc-rank,
   .prc-nums { font-size: 0.74rem; }
   .pred-row,
   .pred-row-head .pred-cell,
