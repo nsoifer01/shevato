@@ -345,37 +345,86 @@ export function archiveCoverageFailures({
 
 /* --------------------------------------------------------------- fetching */
 
-const sleepMs = (ms) => new Promise((r) => setTimeout(r, ms));
+export const sleepMs = (ms) => new Promise((r) => setTimeout(r, ms));
+
+/** Statuses worth asking again: a timeout, a rate limit, and the transient 5xx. 501 and 505 are permanent. */
+export const RETRY_STATUSES = Object.freeze([408, 429, 500, 502, 503, 504]);
+
+/** Retry-After as milliseconds, from delta-seconds or an HTTP date; null when absent or unreadable. */
+export function retryAfterMs(value, nowMs = Date.now()) {
+  if (value == null || value === '') return null;
+  const text = String(value).trim();
+  if (/^\d+$/.test(text)) return Number(text) * 1000;
+  const at = Date.parse(text);
+  return Number.isFinite(at) ? Math.max(0, at - nowMs) : null;
+}
+
+/** The wait before retry `n` (1-based): exponential, plus up to half again of jitter, capped. */
+export const backoffMs = (n, { baseDelayMs, maxDelayMs, random }) => Math.min(maxDelayMs, baseDelayMs * 2 ** (n - 1) * (1 + random() / 2));
 
 /**
- * GET one FPL endpoint, retrying 5xx and network errors with backoff (bounded),
- * refusing "the game is being updated" at once (it lasts tens of minutes; the
- * next hourly run is the retry). Returns { url, raw, body, serverDate }.
+ * GET with a bounded number of attempts. Each attempt has its own timeout and
+ * reads the WHOLE body inside it, so a connection dropped half way through a
+ * transfer is retried like one refused outright (it was not, before
+ * 2026-11-13: only fetch() itself was inside the try). Network errors,
+ * timeouts and RETRY_STATUSES are retried, waiting the larger of the backoff
+ * and Retry-After, never more than `maxDelayMs`; any other status is final at
+ * once. `inspect(res, body)` may throw to refuse a response without a retry.
+ * Returns { res, body } for a 2xx or a status listed in `accept`.
+ */
+export async function fetchWithRetry(url, {
+  label = url, init = {}, read = (r) => r.text(), accept = [], inspect = null, fetchImpl = fetch,
+  attempts = 4, baseDelayMs = 2000, maxDelayMs = 20000, timeoutMs = 30000, sleep = sleepMs, random = Math.random, onRetry = null,
+} = {}) {
+  for (let n = 1; ; n++) {
+    let res = null;
+    let body;
+    let err = null;
+    let wait = null;
+    try {
+      res = await fetchImpl(url, { ...init, signal: AbortSignal.timeout(timeoutMs) });
+      body = await read(res);
+    } catch (e) {
+      const cause = e && e.cause ? ` (${e.cause.code || e.cause.message || e.cause})` : '';
+      err = new Error(`${label}: network error: ${e && e.message}${cause}`);
+    }
+    if (!err) {
+      if (inspect) inspect(res, body);
+      if (res.ok || accept.includes(res.status)) return { res, body };
+      err = new Error(`${label}: HTTP ${res.status}`);
+      err.status = res.status;
+      if (!RETRY_STATUSES.includes(res.status)) throw err;
+      wait = retryAfterMs(res.headers && typeof res.headers.get === 'function' ? res.headers.get('retry-after') : null);
+    }
+    if (n >= attempts) {
+      err.message += ` (gave up after ${attempts} attempts)`;
+      throw err;
+    }
+    const delay = Math.min(maxDelayMs, Math.max(wait || 0, backoffMs(n, { baseDelayMs, maxDelayMs, random })));
+    if (onRetry) onRetry(`${err.message}; attempt ${n + 1} of ${attempts} in ${(delay / 1000).toFixed(1)}s`);
+    await sleep(delay);
+  }
+}
+
+/**
+ * GET one FPL endpoint through fetchWithRetry, refusing "the game is being
+ * updated" at once (it lasts tens of minutes; the next hourly run is the
+ * retry). Returns { url, raw, body, serverDate }.
  */
 export async function fetchEndpoint(name, path, {
-  fetchImpl = fetch, attempts = 4, baseDelayMs = 2000, sleep = sleepMs, base = FPL_API,
+  fetchImpl = fetch, attempts = 4, baseDelayMs = 2000, sleep = sleepMs, base = FPL_API, random, timeoutMs, onRetry,
 } = {}) {
   const url = base + path;
-  let lastErr = null;
-  for (let i = 0; i < attempts; i++) {
-    if (i > 0) await sleep(baseDelayMs * 2 ** (i - 1));
-    let res;
-    try {
-      res = await fetchImpl(url, { headers: { 'User-Agent': USER_AGENT, Accept: 'application/json' } });
-    } catch (err) {
-      lastErr = new Error(`${name}: network error: ${err.message}`);
-      continue;
-    }
-    const raw = await res.text();
-    if (isGameUpdating(raw)) parsePayload(name, raw); // throws, flagged gameUpdating
-    if (res.status >= 500) { lastErr = new Error(`${name}: HTTP ${res.status}`); continue; }
-    if (!res.ok) throw new Error(`${name}: HTTP ${res.status}`);
-    const body = parsePayload(name, raw);
-    const date = res.headers && typeof res.headers.get === 'function' ? res.headers.get('date') : null;
-    const serverDate = date && Number.isFinite(Date.parse(date)) ? new Date(Date.parse(date)).toISOString() : null;
-    return { url, raw, body, serverDate };
-  }
-  throw lastErr;
+  const { res, body: raw } = await fetchWithRetry(url, {
+    label: name,
+    init: { headers: { 'User-Agent': USER_AGENT, Accept: 'application/json' } },
+    inspect: (_res, text) => { if (isGameUpdating(text)) parsePayload(name, text); }, // throws, flagged gameUpdating
+    fetchImpl, attempts, baseDelayMs, sleep, random, timeoutMs, onRetry,
+  });
+  const body = parsePayload(name, raw);
+  const date = res.headers && typeof res.headers.get === 'function' ? res.headers.get('date') : null;
+  const serverDate = date && Number.isFinite(Date.parse(date)) ? new Date(Date.parse(date)).toISOString() : null;
+  return { url, raw, body, serverDate };
 }
 
 /* ----------------------------------------------------------- one capture */

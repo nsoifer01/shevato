@@ -266,7 +266,7 @@ apps/fpl-planner/
                          (outputs in .data/calibration/, gitignored)
     lib/calibration-guard.mjs  the calibration bands, shared by the report
                          and tests/xp-calibration-guard.test.mjs
-    lib/archive*.mjs     archive naming, gating, manifest and scorecard metrics
+    lib/archive*.mjs     archive naming, gating, manifest and scorecard metrics, release sync
     lib/odds-football-data.mjs  football-data.co.uk team-name map and loader
     lib/probe.mjs        the health-probe invariants (evidence-probe.mjs and fpl-health)
   e2e/                   browser suites (raw CDP): the interactive scenario
@@ -1351,9 +1351,12 @@ gate, the records and the dedupe; two schedulers run it:
 - **The release copy runs on GitHub** (`.github/workflows/fpl-archive.yml`,
   `scripts/archive-snapshot.mjs --release --staged`): whenever it runs it pulls
   what Netlify staged (`netlify/functions/fpl-archive-export.mjs`, read-only,
-  public data only, a snapshot name or nothing), checks each file against its
-  manifest hash, uploads what the release lacks, and then runs the same gate
-  itself to fill any gap Netlify left.
+  public data only, a snapshot name or nothing), downloads only what the
+  release does not already hold, checks each file against its manifest hash,
+  uploads what the release lacks, and then runs the same gate itself to fill
+  any gap Netlify left. Network and gh calls are retried with backoff, a run
+  that died half way is finished by the next one, and the new manifest is read
+  back before the run counts as done (`scripts/lib/archive-release.mjs`).
 
 The gate:
 
@@ -1369,7 +1372,10 @@ URL, the capture time and FPL's `Date` header, named
 never overwritten; an unchanged payload is recorded in the manifest as a
 pointer to the earlier file. Files live as assets of a prerelease per season
 (`fpl-archive-2026-27`), uploaded without `--clobber`; the manifest is the one
-asset replaced, after checking the new one keeps every old entry. About 1.1 MB
+thing replaced, after checking the new one keeps every old entry. It lives in
+three assets, `manifest.json` (what consumers read) and `manifest.copy-1.json`
+/ `manifest.copy-2.json`, replaced one at a time, copy first, so gh's
+delete-then-upload never leaves the release without the newest index. About 1.1 MB
 a gameweek, 40 MB a season. "The game is being updated" is refused with exit 75
 and retried by the next hourly run.
 
@@ -1384,9 +1390,10 @@ gameweeks running). It refuses a snapshot captured after its deadline.
 
 Release limits and recovery: GitHub caps a release at 1000 assets, so the
 script stops at 900 with instructions to start a second release for the
-season; an asset the manifest does not list (a run that died between the
-snapshot upload and the manifest upload) is reported on every run and never
-deleted. Release creation is plain `--prerelease` (a prerelease is never the
+season; a snapshot asset the manifest does not list (a run that died between
+the snapshot upload and the manifest upload) is indexed from its own record by
+the next run, a copy ahead of `manifest.json` becomes the base, and an asset
+that is not a whole record is reported on every run and never deleted. Release creation is plain `--prerelease` (a prerelease is never the
 repository's latest), which works on old `gh` versions too.
 
 The proxy's own cache is pruned separately: `netlify/functions/fpl-cache-prune.mjs`,

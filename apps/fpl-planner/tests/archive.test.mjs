@@ -163,15 +163,31 @@ const fixturesBody = JSON.stringify([{ id: 1, team_h: 1, team_a: 2 }]);
 test('fetching retries 5xx and network errors with backoff, a bounded number of times', async () => {
   const sleeps = [];
   const f = fakeFetch([{ status: 502, body: 'bad gateway' }, new Error('ECONNRESET'), { status: 200, body: fixturesBody }]);
-  const got = await fetchEndpoint('fixtures', 'fixtures/', { fetchImpl: f.impl, sleep: async (ms) => { sleeps.push(ms); } });
+  const got = await fetchEndpoint('fixtures', 'fixtures/', { fetchImpl: f.impl, sleep: async (ms) => { sleeps.push(ms); }, random: () => 0 });
   assert.equal(f.calls.length, 3);
   assert.deepEqual(sleeps, [2000, 4000], 'exponential backoff');
+  // Jitter adds up to half again, never less than the backoff.
+  const jittered = [];
+  await fetchEndpoint('fixtures', 'fixtures/', { fetchImpl: fakeFetch([{ status: 502, body: '' }, { status: 200, body: fixturesBody }]).impl, sleep: async (ms) => { jittered.push(ms); }, random: () => 0.999 });
+  assert.ok(jittered[0] > 2000 && jittered[0] < 3000, `jittered ${jittered[0]}`);
   assert.equal(got.raw, fixturesBody);
   assert.equal(got.serverDate, '2026-10-09T22:00:00.000Z');
 
   const down = fakeFetch([{ status: 503, body: 'down' }]);
   await assert.rejects(fetchEndpoint('fixtures', 'fixtures/', { fetchImpl: down.impl, sleep: async () => {} }), /HTTP 503/);
   assert.equal(down.calls.length, 4, 'gives up after four attempts');
+});
+
+test('a rate limit and a request timeout are retried; 501 is not', async () => {
+  for (const status of [429, 408]) {
+    const f = fakeFetch([{ status, body: 'slow down' }, { status: 200, body: fixturesBody }]);
+    const got = await fetchEndpoint('fixtures', 'fixtures/', { fetchImpl: f.impl, sleep: async () => {} });
+    assert.equal(f.calls.length, 2, `HTTP ${status}`);
+    assert.equal(got.raw, fixturesBody);
+  }
+  const ni = fakeFetch([{ status: 501, body: 'no' }]);
+  await assert.rejects(fetchEndpoint('fixtures', 'fixtures/', { fetchImpl: ni.impl, sleep: async () => {} }), /HTTP 501/);
+  assert.equal(ni.calls.length, 1);
 });
 
 test('the update notice and a 4xx are not retried', async () => {
