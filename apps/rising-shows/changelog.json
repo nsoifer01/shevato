@@ -1,6 +1,281 @@
 {
   "updates": [
     {
+      "builtAt": "2026-11-14T13:34:17.981Z",
+      "totals": {
+        "seasons": 67886,
+        "delta": 22
+      },
+      "shapeCounts": {
+        "rebound": 9804,
+        "big-finale": 11879,
+        "u-shaped": 2657,
+        "rollercoaster": 13531,
+        "mid-peak": 4394,
+        "consistent": 2541,
+        "bad-finale": 4380,
+        "front-loaded": 3096,
+        "slow-burn": 4010,
+        "declining": 1657,
+        "saved-best-for-last": 1376,
+        "shape-drift": 1398,
+        "rising": 2409
+      },
+      "shapeDeltas": {
+        "rebound": -3,
+        "big-finale": 5,
+        "u-shaped": 3,
+        "rollercoaster": 16,
+        "consistent": 5,
+        "front-loaded": 3,
+        "slow-burn": -1,
+        "declining": 5,
+        "saved-best-for-last": -1,
+        "shape-drift": 4,
+        "rising": 9
+      },
+      "added": [
+        {
+          "seriesId": "tt11301642",
+          "title": "Ethos",
+          "season": 2,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt47021035",
+          "title": "Cunk on Cinema",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt31842126",
+          "title": "The Good Daughter",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt0363391",
+          "title": "World Poker Tour",
+          "season": 2,
+          "seasonYear": 2004
+        },
+        {
+          "seriesId": "tt13720112",
+          "title": "The Empress",
+          "season": 3,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt0105949",
+          "title": "Ein Bayer auf Rügen",
+          "season": 1,
+          "seasonYear": 1993
+        },
+        {
+          "seriesId": "tt2317751",
+          "title": "Indian Premier League",
+          "season": 12,
+          "seasonYear": 2019
+        },
+        {
+          "seriesId": "tt36982492",
+          "title": "Solar Rain Today",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt50135019",
+          "title": "Get Huge: Looksmaxxing to Death",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt2968852",
+          "title": "A Town & Country Murder",
+          "season": 3,
+          "seasonYear": 2015
+        },
+        {
+          "seriesId": "tt6666966",
+          "title": "Home Town",
+          "season": 10,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt15193160",
+          "title": "Signora Volpe",
+          "season": 3,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt16969236",
+          "title": "Shadow of the Rougarou",
+          "season": 1,
+          "seasonYear": 2022
+        },
+        {
+          "seriesId": "tt17544192",
+          "title": "SOKO Linz",
+          "season": 5,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt20978970",
+          "title": "The Wingfeather Saga",
+          "season": 4,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt39240299",
+          "title": "Magical Girl Raising Project Restart",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt37677064",
+          "title": "Manhunt",
+          "season": 4,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt39848811",
+          "title": "Kafeel",
+          "season": 1,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt40123387",
+          "title": "Separated at Birth",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt42006761",
+          "title": "The Secret Lives of Mormon Wives: Orange County",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt47596905",
+          "title": "Doozie's Doghouse",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt39390491",
+          "title": "Alicia's Law",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt43707668",
+          "title": "Los Hilos del Miedo",
+          "season": 1,
+          "seasonYear": 2026
+        }
+      ],
+      "removed": [
+        {
+          "seriesId": "tt11756580",
+          "title": "Mont-Rouge",
+          "season": 1,
+          "seasonYear": 2024
+        }
+      ],
+      "ratingSwings": [
+        {
+          "seriesId": "tt39372772",
+          "title": "Rehab",
+          "season": 1,
+          "from": 6.85,
+          "to": 7.7,
+          "delta": 0.85
+        },
+        {
+          "seriesId": "tt39518375",
+          "title": "2026-2027 UEFA Champions League",
+          "season": 8,
+          "from": 7.72,
+          "to": 7.09,
+          "delta": -0.63
+        },
+        {
+          "seriesId": "tt39943756",
+          "title": "Campus Drivers",
+          "season": 1,
+          "from": 8.2,
+          "to": 7.63,
+          "delta": -0.57
+        },
+        {
+          "seriesId": "tt0497294",
+          "title": "High Stakes Poker",
+          "season": 9,
+          "from": 6.05,
+          "to": 6.62,
+          "delta": 0.57
+        },
+        {
+          "seriesId": "tt2172496",
+          "title": "The Tales of Majid",
+          "season": 1,
+          "from": 6.26,
+          "to": 6.8,
+          "delta": 0.54
+        },
+        {
+          "seriesId": "tt29943321",
+          "title": "A Wolf's Prey",
+          "season": 1,
+          "from": 7.18,
+          "to": 7.72,
+          "delta": 0.54
+        },
+        {
+          "seriesId": "tt9663964",
+          "title": "Rob & Romesh Vs",
+          "season": 9,
+          "from": 6.17,
+          "to": 6.63,
+          "delta": 0.46
+        },
+        {
+          "seriesId": "tt2317751",
+          "title": "Indian Premier League",
+          "season": 16,
+          "from": 7.94,
+          "to": 7.5,
+          "delta": -0.44
+        },
+        {
+          "seriesId": "tt39518375",
+          "title": "2026-2027 UEFA Champions League",
+          "season": 7,
+          "from": 7.1,
+          "to": 7.54,
+          "delta": 0.44
+        },
+        {
+          "seriesId": "tt39222526",
+          "title": "Underground",
+          "season": 2,
+          "from": 6.94,
+          "to": 7.37,
+          "delta": 0.43
+        }
+      ],
+      "modifiedCounts": {
+        "seriesVotes": 19540,
+        "avgRating": 1207,
+        "shapes": 175,
+        "seriesRating": 253,
+        "episodeCount": 93,
+        "poster": 1,
+        "providers": 1,
+        "overview": 1
+      }
+    },
+    {
       "builtAt": "2026-11-13T14:39:43.499Z",
       "totals": {
         "seasons": 67864,
@@ -8049,299 +8324,6 @@
         "shapes": 238,
         "episodeCount": 103,
         "poster": 4
-      }
-    },
-    {
-      "builtAt": "2026-10-15T11:34:50.753Z",
-      "totals": {
-        "seasons": 67263,
-        "delta": 25
-      },
-      "shapeCounts": {
-        "rebound": 9750,
-        "big-finale": 11794,
-        "u-shaped": 2637,
-        "rollercoaster": 13500,
-        "mid-peak": 4363,
-        "consistent": 2515,
-        "bad-finale": 4330,
-        "front-loaded": 3062,
-        "slow-burn": 3965,
-        "declining": 1638,
-        "saved-best-for-last": 1374,
-        "shape-drift": 1399,
-        "rising": 2340
-      },
-      "shapeDeltas": {
-        "rebound": -7,
-        "big-finale": 1,
-        "u-shaped": 2,
-        "rollercoaster": 7,
-        "mid-peak": 1,
-        "consistent": 4,
-        "bad-finale": -5,
-        "front-loaded": -4,
-        "slow-burn": 4,
-        "declining": 1,
-        "saved-best-for-last": -2,
-        "shape-drift": 3,
-        "rising": 5
-      },
-      "added": [
-        {
-          "seriesId": "tt35051210",
-          "title": "Tyson",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt35264123",
-          "title": "Manhood",
-          "season": 1,
-          "seasonYear": 2025
-        },
-        {
-          "seriesId": "tt8694866",
-          "title": "Live PD Presents PD Cam",
-          "season": 4,
-          "seasonYear": 2020
-        },
-        {
-          "seriesId": "tt0098927",
-          "title": "They Came from Outer Space",
-          "season": 1,
-          "seasonYear": 1990
-        },
-        {
-          "seriesId": "tt1197649",
-          "title": "Ax Men",
-          "season": 5,
-          "seasonYear": 2012
-        },
-        {
-          "seriesId": "tt36470958",
-          "title": "The Trap",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt0209673",
-          "title": "Globe Trekker",
-          "season": 1,
-          "seasonYear": 1994
-        },
-        {
-          "seriesId": "tt8861764",
-          "title": "The Boy Next Door",
-          "season": 1,
-          "seasonYear": 2017
-        },
-        {
-          "seriesId": "tt12739058",
-          "title": "Because of You",
-          "season": 1,
-          "seasonYear": 2020
-        },
-        {
-          "seriesId": "tt0217212",
-          "title": "Love Generation",
-          "season": 1,
-          "seasonYear": 1997
-        },
-        {
-          "seriesId": "tt1483930",
-          "title": "Destiny Love",
-          "season": 1,
-          "seasonYear": 2008
-        },
-        {
-          "seriesId": "tt3107588",
-          "title": "The Ghost Inside My Child",
-          "season": 1,
-          "seasonYear": 2013
-        },
-        {
-          "seriesId": "tt39379365",
-          "title": "4 Blocks Zero",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt6906066",
-          "title": "Red Balloon",
-          "season": 1,
-          "seasonYear": 2017
-        },
-        {
-          "seriesId": "tt5420548",
-          "title": "A Timewatch Guide",
-          "season": 3,
-          "seasonYear": 2016
-        },
-        {
-          "seriesId": "tt11617414",
-          "title": "1000-lb Sisters",
-          "season": 9,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt15438100",
-          "title": "PAPA & DADDY",
-          "season": 2,
-          "seasonYear": 2022
-        },
-        {
-          "seriesId": "tt31323988",
-          "title": "Mehmed: Sultan of Conquests",
-          "season": 4,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt11779612",
-          "title": "Well, Just You Wait!",
-          "season": 1,
-          "seasonYear": 1980
-        },
-        {
-          "seriesId": "tt3076512",
-          "title": "Just You",
-          "season": 1,
-          "seasonYear": 2013
-        },
-        {
-          "seriesId": "tt41228966",
-          "title": "Les aventurières",
-          "season": 1,
-          "seasonYear": 2025
-        },
-        {
-          "seriesId": "tt43719799",
-          "title": "Aces: The ATP No. 1 Club",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt48663422",
-          "title": "Michael Palin in the Philippines",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt0978053",
-          "title": "Fantasy Couple",
-          "season": 1,
-          "seasonYear": 2006
-        },
-        {
-          "seriesId": "tt5842808",
-          "title": "Refresh Man",
-          "season": 1,
-          "seasonYear": 2016
-        },
-        {
-          "seriesId": "tt7521734",
-          "title": "Meloholic",
-          "season": 1,
-          "seasonYear": 2017
-        }
-      ],
-      "removed": [
-        {
-          "seriesId": "tt0280277",
-          "title": "Mr. Bean: The Animated Series",
-          "season": 4,
-          "seasonYear": 2015
-        }
-      ],
-      "ratingSwings": [
-        {
-          "seriesId": "tt16409202",
-          "title": "Spare Me, Great Lord!",
-          "season": 3,
-          "from": 6,
-          "to": 7.53,
-          "delta": 1.53
-        },
-        {
-          "seriesId": "tt43088191",
-          "title": "Dive Into You",
-          "season": 1,
-          "from": 7.85,
-          "to": 7.05,
-          "delta": -0.8
-        },
-        {
-          "seriesId": "tt13470984",
-          "title": "10K Steps",
-          "season": 3,
-          "from": 7.63,
-          "to": 8.33,
-          "delta": 0.7
-        },
-        {
-          "seriesId": "tt34063491",
-          "title": "Uzak Şehir",
-          "season": 3,
-          "from": 8.45,
-          "to": 7.78,
-          "delta": -0.67
-        },
-        {
-          "seriesId": "tt1245565",
-          "title": "Don't Mess with an Angel",
-          "season": 1,
-          "from": 8.69,
-          "to": 8.23,
-          "delta": -0.46
-        },
-        {
-          "seriesId": "tt34748043",
-          "title": "Heartbeats: Pyaar aur Armaan",
-          "season": 2,
-          "from": 9.2,
-          "to": 8.74,
-          "delta": -0.46
-        },
-        {
-          "seriesId": "tt1197649",
-          "title": "Ax Men",
-          "season": 1,
-          "from": 7.83,
-          "to": 8.27,
-          "delta": 0.44
-        },
-        {
-          "seriesId": "tt0063951",
-          "title": "Sesame Street",
-          "season": 26,
-          "from": 7.6,
-          "to": 8,
-          "delta": 0.4
-        },
-        {
-          "seriesId": "tt34127005",
-          "title": "Minimum Wage",
-          "season": 1,
-          "from": 9.39,
-          "to": 8.99,
-          "delta": -0.4
-        },
-        {
-          "seriesId": "tt37960071",
-          "title": "Crossroad Springs",
-          "season": 2,
-          "from": 6.23,
-          "to": 6.63,
-          "delta": 0.4
-        }
-      ],
-      "modifiedCounts": {
-        "seriesVotes": 18846,
-        "avgRating": 1052,
-        "shapes": 180,
-        "seriesRating": 326,
-        "episodeCount": 85,
-        "poster": 5
       }
     }
   ]
