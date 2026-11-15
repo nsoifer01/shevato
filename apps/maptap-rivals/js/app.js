@@ -2198,7 +2198,7 @@
   // visible on the dashboard.
   // `rank` is this player's leaderboard standing after the round
   // ({ rank, field, move } from roundRanksForDay), or null when the round
-  // cannot be ranked; it renders as a small pill under the prediction Δ.
+  // cannot be ranked; it renders as a small pill under the scores.
   function makeRoundChip(slot, predicted, actual, rank) {
     const hasPred = predicted != null && Number.isFinite(predicted);
     const hasActual = actual != null && Number.isFinite(actual);
@@ -2237,13 +2237,6 @@
         (hasPred && hasActual) ? svgIcon(ICON_CHEV, { cls: 'prc-arrow', sw: 1.8 }) : null,
         hasActual ? el('span', { class: 'prc-actual' }, String(actualRound)) : null,
       ]),
-      delta != null
-        ? el('div', { class: 'prc-delta' }, [
-            svgIcon(delta > 0 ? ICON_UP : delta < 0 ? ICON_DOWN : ICON_DASH,
-                    { cls: 'prc-delta-ic', sw: 2 }),
-            el('span', {}, (delta > 0 ? '+' : '') + delta),
-          ])
-        : null,
       rankPill,
     ]);
   }

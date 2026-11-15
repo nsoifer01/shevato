@@ -705,8 +705,8 @@ after that round. Decisions a future change should keep:
   pill's outline and fill only; the movement span keeps its own colour, so a
   gold `#1` beside a green `↑3` reads as two facts.
 - **Visuals.** The pill is neutral (dark fill, `--border-strong` outline,
-  `--muted` position at weight 800 below the podium) on its own line under the prediction Δ,
-  so the chip's green/red tint and Δ keep meaning "prediction accuracy"; only
+  `--muted` position at weight 800 below the podium) on its own line under the
+  scores, so the chip's green/red tint keeps meaning "prediction accuracy"; only
   the movement (weight 600) is coloured, and its arrow or `=` carries the
   meaning without colour. Unchanged is `=` rather than a dash. Pill text is
   0.76rem (0.74rem under the 480px typography floor): at 0.68rem it computed
