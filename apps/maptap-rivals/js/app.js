@@ -614,6 +614,8 @@
   }
 
   const PREDICT_WINDOW_DAYS = 7;
+  // Days before today in the window: 3 back, today 4th, 3 ahead.
+  const PREDICT_PAST_DAYS = 3;
 
   // Pull only the first N_LOCS lat/lng pairs from a daily puzzle file.
   // The MapTap client plays the first 5 cities in file order regardless
@@ -1907,15 +1909,15 @@
   }
 
   // ---------- predictions card (rolling 7-day window) ----------
-  // Anchor the window at today and keep the existing entries' selected
-  // state intact across re-renders. The fetcher is idempotent — each
-  // entry only flips out of 'fetching' once.
+  // Three days back, today, three days ahead. Anchor the window at today
+  // and keep the existing entries' selected state intact across re-renders.
+  // The fetcher is idempotent: each entry only flips out of 'fetching' once.
   function ensureSevenDayWindowLoaded() {
     const today = todayISO();
     if (state.predictWindowAnchorISO !== today) {
       state.predictWindowAnchorISO = today;
       state.predictWindow = Array.from({ length: PREDICT_WINDOW_DAYS }, (_, i) => ({
-        iso: addDaysISO(today, i),
+        iso: addDaysISO(today, i - PREDICT_PAST_DAYS),
         cities: null,
         status: 'idle',
       }));
@@ -1939,6 +1941,15 @@
         if (state.view === 'dashboard') renderTodaysPredictions();
       });
     }
+  }
+
+  // A past day's puzzle as recorded on the synced games for that day: the
+  // same source, first, that the Spot-on accuracy uses (citiesForPastDay), so
+  // a past tab and the accuracy badge predict that day from the same cities.
+  function storedPuzzleCities(iso) {
+    const g = liveGames(state.games, state.rivals).find(x =>
+      x && x.date === iso && Array.isArray(x.cities) && x.cities.length === N_LOCS);
+    return g ? g.cities : null;
   }
 
   // Look up actuals for a given day. For "you" the source is any of that
@@ -2198,7 +2209,7 @@
   // visible on the dashboard.
   // `rank` is this player's leaderboard standing after the round
   // ({ rank, field, move } from roundRanksForDay), or null when the round
-  // cannot be ranked; it renders as a small pill under the prediction Δ.
+  // cannot be ranked; it renders as a small pill under the scores.
   function makeRoundChip(slot, predicted, actual, rank) {
     const hasPred = predicted != null && Number.isFinite(predicted);
     const hasActual = actual != null && Number.isFinite(actual);
@@ -2237,13 +2248,6 @@
         (hasPred && hasActual) ? svgIcon(ICON_CHEV, { cls: 'prc-arrow', sw: 1.8 }) : null,
         hasActual ? el('span', { class: 'prc-actual' }, String(actualRound)) : null,
       ]),
-      delta != null
-        ? el('div', { class: 'prc-delta' }, [
-            svgIcon(delta > 0 ? ICON_UP : delta < 0 ? ICON_DOWN : ICON_DASH,
-                    { cls: 'prc-delta-ic', sw: 2 }),
-            el('span', {}, (delta > 0 ? '+' : '') + delta),
-          ])
-        : null,
       rankPill,
     ]);
   }
@@ -2457,8 +2461,7 @@
     return wrap;
   }
 
-  // Day-tab pill. Shows weekday + day-of-month. Today is labelled "Today";
-  // tomorrow gets a thinner accent so the upcoming run reads at a glance.
+  // Day-tab pill. Shows weekday + day-of-month. Today is labelled "Today".
   function makeDayTab(entry, todayIso) {
     const dt = localDateFromISO(entry.iso) || new Date();
     const isToday = entry.iso === todayIso;
@@ -2466,8 +2469,10 @@
     const cls = ['pred-day-tab'];
     if (entry.iso === state.predictSelectedISO) cls.push('is-active');
     if (isToday) cls.push('is-today');
-    if (entry.status === 'fetching') cls.push('is-loading');
-    if (entry.status === 'error')    cls.push('is-error');
+    // A past day whose puzzle is stored on its games does not wait on the fetch.
+    const hasStored = entry.iso < todayIso && !!storedPuzzleCities(entry.iso);
+    if (!hasStored && entry.status === 'fetching') cls.push('is-loading');
+    if (!hasStored && entry.status === 'error')    cls.push('is-error');
     return el('button', {
       type: 'button',
       class: cls.join(' '),
@@ -2507,23 +2512,28 @@
     // A row of toggle buttons (aria-pressed), not ARIA tabs: the buttons do
     // not control separate panels, so role=tablist was an axe critical.
     const tabs = el('div', { class: 'pred-day-tabs', role: 'group',
-                             'aria-label': 'Next 7 days' },
+                             'aria-label': 'Prediction days' },
       state.predictWindow.map(entry => makeDayTab(entry, today)));
     body.appendChild(tabs);
 
-    // Selected-day state branches
-    if (!selected || selected.status === 'fetching') {
+    // Selected-day state branches. A past day uses the puzzle stored on its
+    // synced games when there is one, and the fetched puzzle otherwise.
+    const isPast = selectedISO < today;
+    const stored = isPast ? storedPuzzleCities(selectedISO) : null;
+    const dayCities = stored || (selected && selected.cities) || null;
+    if (!stored && (!selected || selected.status === 'fetching')) {
       status.textContent = 'Loading…';
       status.className = 'todays-card-status is-loading';
       body.appendChild(el('p', { class: 'pred-empty' },
         'Fetching this day’s puzzle from maptap.gg…'));
       return;
     }
-    if (selected.status === 'error' || !selected.cities) {
+    if (!dayCities) {
       status.textContent = 'Puzzle unavailable';
       status.className = 'todays-card-status is-warn';
-      body.appendChild(el('p', { class: 'pred-empty' },
-        'Couldn’t load this day’s puzzle from maptap.gg. Predictions will appear once it’s available.'));
+      body.appendChild(el('p', { class: 'pred-empty' }, isPast
+        ? 'No puzzle data for this day, so there are no predictions or results to show.'
+        : 'Couldn’t load this day’s puzzle from maptap.gg. Predictions will appear once it’s available.'));
       return;
     }
 
@@ -2546,7 +2556,7 @@
 
     const isPastOrToday = selectedISO <= today;
     const myRounds = myProfileRounds();
-    const myPred = predictRoundsForPlayer(myRounds, selected.cities, selectedISO);
+    const myPred = predictRoundsForPlayer(myRounds, dayCities, selectedISO);
     const myActuals = isPastOrToday ? actualScoresForDay(selectedISO) : { mineScores: null, mineTotal: null };
 
     // Collect every player's row first, then order the leaderboard:
@@ -2573,7 +2583,7 @@
     let predictedCount = myPred ? 1 : 0;
     state.rivals.forEach(r => {
       const rounds = rivalRounds(r.id);
-      const pred = predictRoundsForPlayer(rounds, selected.cities, selectedISO);
+      const pred = predictRoundsForPlayer(rounds, dayCities, selectedISO);
       if (pred) predictedCount++;
       const act = isPastOrToday ? actualScoresForRivalDay(r.id, selectedISO) : { scores: null, total: null };
       rows.push({

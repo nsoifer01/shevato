@@ -120,10 +120,14 @@ export async function run({ base, cdpPort }) {
     await sleep(settle);
   }
 
+  // When set, the daily-puzzle file whose URL ends in this token fails, so a
+  // day can be made to have no puzzle data.
+  let failDailyToken = null;
   async function open() {
     const s = await newPage(cdpPort);
     await interceptNetwork(s, (url) => {
       if (BLOCK.test(url)) return 'fail';
+      if (failDailyToken && url.endsWith('/' + failDailyToken)) return 'fail';
       if (/this_day_in_history/.test(url)) return { status: 200, contentType: 'application/javascript', body: DAILY };
       if (/maptap\.gg/.test(url)) return 'fail';
       return null;
@@ -657,10 +661,11 @@ export async function run({ base, cdpPort }) {
         rkColor.n === 20 && Object.entries(rkColor).every(([k, v]) => k === 'n' || v === true), JSON.stringify(rkColor));
       const NOTE = "((document.querySelector('#todays-card .pred-rank-note')||{}).textContent||'')";
       const noteToday = await evaluate(s, NOTE);
-      await evaluate(s, "(()=>{ document.querySelectorAll('#todays-card .pred-day-tab')[1].click(); return 1 })()");
+      // Today is the 4th of 7 tabs (3 back, today, 3 ahead), so tomorrow is index 4.
+      await evaluate(s, "(()=>{ document.querySelectorAll('#todays-card .pred-day-tab')[4].click(); return 1 })()");
       await sleep(400);
       const tomorrow = await evaluate(s, "document.querySelectorAll('#todays-card .prc-rank').length + document.querySelectorAll('#todays-card .pred-rank-note').length");
-      await evaluate(s, "(()=>{ document.querySelectorAll('#todays-card .pred-day-tab')[0].click(); return 1 })()");
+      await evaluate(s, "(()=>{ document.querySelectorAll('#todays-card .pred-day-tab')[3].click(); return 1 })()");
       await sleep(400);
       const back = JSON.parse(await evaluate(s, READ));
       const noteBack = await evaluate(s, NOTE);
@@ -677,6 +682,107 @@ export async function run({ base, cdpPort }) {
         t(`${w}px round ranks: every pill sits inside its chip, text >= 10px`, fit.chips === 20 && fit.out === 0 && fit.minFont >= 10, JSON.stringify(fit));
       }
       t('round ranks: no first-party JS errors', cleanErrors(s).length === 0, cleanErrors(s).join(' | '));
+    }
+
+    // ---- prediction day window: 3 days back, Today 4th, 3 days ahead ----
+    // Expected labels come from Date.UTC arithmetic here, not from the app's
+    // addDaysISO. Past-day actuals come from the fixture's own rows, and the
+    // no-leak check proves a past day's prediction ignores rounds played after
+    // it while the same new rounds DO move today's (so the check is not vacuous).
+    mark('prediction day window');
+    {
+      const DOW = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+      const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+      const expectTabs = (iso) => {
+        const [y, m, d] = iso.split('-').map(Number);
+        return [-3, -2, -1, 0, 1, 2, 3].map(k => {
+          const t2 = new Date(Date.UTC(y, m - 1, d + k));
+          return k === 0 ? `Today${t2.getUTCDate()}` : `${DOW[t2.getUTCDay()]}${t2.getUTCDate()}`;
+        });
+      };
+      const TABS = "JSON.stringify([...document.querySelectorAll('#todays-card .pred-day-tab')].map(e => ({ text: e.textContent.replace(/\\s+/g, ''), active: e.classList.contains('is-active'), pressed: e.getAttribute('aria-pressed') })))";
+      const ROWS = `JSON.stringify([...document.querySelectorAll('#todays-card-body .pred-row-wrap, #todays-card-body > .pred-row:not(.pred-row-head)')].map(w => {
+        const r = w.matches('.pred-row') ? w : w.querySelector('.pred-row');
+        const name = ((w.querySelector('.pred-label-name')||{}).textContent||'').trim().split(' ').slice(1).join(' ').slice(0, 11);
+        return [name, r.querySelector('.pred-predicted').textContent.trim(), r.querySelector('.pred-actual').textContent.trim(), w.querySelectorAll('.prc-rank').length];
+      }))`;
+      const STATUS = "(document.getElementById('todays-card-status')||{}).textContent";
+      const clickTab = (i) => evaluate(s, `(()=>{ document.querySelectorAll('#todays-card .pred-day-tab')[${i}].click(); return 1 })()`);
+
+      const T = todayISO();
+      await seed(s, '#dashboard');
+      await waitForExpr(s, "document.querySelectorAll('#todays-card .pred-row-wrap').length>0");
+      const tabs = JSON.parse(await evaluate(s, TABS));
+      t('day window: 7 tabs run 3 days back to 3 days ahead with Today 4th and selected by default',
+        JSON.stringify(tabs.map(x => x.text)) === JSON.stringify(expectTabs(T)) &&
+        tabs.every((x, i) => x.active === (i === 3) && x.pressed === String(i === 3)), JSON.stringify(tabs));
+
+      // T-3 is a synced day in the fixture: Ari [60]x5 = 600, Bex [70]x5 = 700,
+      // mine [70,65,80,75,63] = 70+65+160+225+189 = 709. Cy and the long name
+      // did not play it.
+      await clickTab(0);
+      await sleep(400);
+      const past = JSON.parse(await evaluate(s, ROWS));
+      const pastActual = Object.fromEntries(past.map(r => [r[0], r[2]]));
+      t('day window: a past day shows that day\'s logged actual totals and per-round ranks, and reads Game played',
+        pastActual.Nikita === '709' && pastActual.Bex === '700' && pastActual.Ari === '600' &&
+        past.filter(r => ['Nikita', 'Bex', 'Ari'].includes(r[0])).every(r => r[3] === 5) &&
+        /Game played/.test(await evaluate(s, STATUS)),
+        JSON.stringify(past));
+      await clickTab(3);
+      await sleep(400);
+      const todayBefore = JSON.parse(await evaluate(s, ROWS));
+
+      // Add a synced day AFTER T-3 (on T-1) with extreme scores on the same
+      // cities, then compare: T-3's predictions must not move, today's must.
+      const f = fixture();
+      const geoT3 = f.games.find(g => g.date === addDays(T, -3) && g.rivalId === 'r-ari').cities;
+      f.games.push({ id: 'leak', rivalId: 'r-ari', date: addDays(T, -1), note: 'synced from MapTap', createdAt: 9e12,
+        cities: geoT3, myScores: [0, 0, 0, 0, 0], theirScores: [100, 100, 100, 100, 100], myScore: 0, theirScore: 1000 });
+      f.games = f.games.filter(g => !(g.rivalId === 'r-ari' && g.date === addDays(T, -1) && g.id !== 'leak'));
+      await seed(s, '#dashboard', { maptapRivalsGames: JSON.stringify(f.games) });
+      await waitForExpr(s, "document.querySelectorAll('#todays-card .pred-row-wrap').length>0");
+      const todayAfter = JSON.parse(await evaluate(s, ROWS));
+      await clickTab(0);
+      await sleep(400);
+      const pastAfter = JSON.parse(await evaluate(s, ROWS));
+      const pred = (rows) => JSON.stringify(rows.map(r => [r[0], r[1]]).sort());
+      t('day window: rounds played after a past day never change that day\'s predictions, while they do change today\'s',
+        pred(pastAfter) === pred(past) && pred(todayAfter) !== pred(todayBefore),
+        `past ${pred(past)} -> ${pred(pastAfter)} | today ${pred(todayBefore)} -> ${pred(todayAfter)}`);
+
+      // T-2 carries no stored puzzle (only Cy's hand-entered tie), so with the
+      // puzzle fetch failing for that day there is nothing to show.
+      const t2 = addDays(T, -2);
+      failDailyToken = `${MONTHS[Number(t2.slice(5, 7)) - 1]}${Number(t2.slice(8))}.js`;
+      await seed(s, '#dashboard');
+      await waitForExpr(s, "document.querySelectorAll('#todays-card .pred-day-tab').length===7 && !document.querySelector('#todays-card .pred-day-tab.is-loading')");
+      await clickTab(1);
+      await sleep(400);
+      const empty = await evaluate(s, "JSON.stringify({ status: document.getElementById('todays-card-status').textContent, text: ((document.querySelector('#todays-card-body .pred-empty')||{}).textContent||''), rows: document.querySelectorAll('#todays-card-body .pred-row-wrap').length, tabs: document.querySelectorAll('#todays-card .pred-day-tab').length })");
+      failDailyToken = null;
+      const em = JSON.parse(empty);
+      t('day window: a past day with no puzzle data shows an empty state and no rows, and the tab strip stays',
+        em.status === 'Puzzle unavailable' && /No puzzle data for this day/.test(em.text) && em.rows === 0 && em.tabs === 7, empty);
+
+      // Month, year and leap-day boundaries, on a page whose clock is moved.
+      for (const [y, mo, d] of [[2027, 1, 2], [2028, 3, 1]]) {
+        const iso = `${y}-${String(mo).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+        const cp = await open();
+        try {
+          await cp.send('Page.addScriptToEvaluateOnNewDocument', { source: `(()=>{const R=Date;const off=new R(${y},${mo - 1},${d},12).getTime()-R.now();
+            class D extends R{constructor(...a){if(a.length)super(...a);else super(R.now()+off);} static now(){return R.now()+off;}} window.Date=D;})()` });
+          await setViewport(cp, 1280, 900);
+          await seed(cp, '#dashboard');
+          await waitForExpr(cp, "document.querySelectorAll('#todays-card .pred-day-tab').length===7");
+          const got = JSON.parse(await evaluate(cp, TABS)).map(x => x.text);
+          t(`day window: on ${iso} the tabs cross the boundary correctly`, JSON.stringify(got) === JSON.stringify(expectTabs(iso)),
+            `${JSON.stringify(got)} vs ${JSON.stringify(expectTabs(iso))}`);
+        } finally {
+          await closePage(cdpPort, cp);
+        }
+      }
+      t('day window: no first-party JS errors', cleanErrors(s).length === 0, cleanErrors(s).join(' | '));
     }
 
     // ---- a stale rival id in the persisted matrix selection is harmless ----
@@ -768,7 +874,9 @@ export async function run({ base, cdpPort }) {
       await goto(tzPage, `${base}${APP}#dashboard`, { settle: 1800 });
       await waitForExpr(tzPage, "document.querySelectorAll('.rival-card').length===4");
       const dayTabs = await evaluate(tzPage, "[...document.querySelectorAll('.pred-day-tab')].map(e=>(e.textContent||'').replace(/\\s+/g,' ').trim())");
-      t('UTC+12: the prediction day tabs start at Today, not yesterday', /Today/.test(String(dayTabs[0] || '')), JSON.stringify(dayTabs.slice(0, 3)));
+      t('UTC+12: the 4th prediction day tab is the local Today and the 1st is three local days earlier',
+        /Today/.test(String(dayTabs[3] || '')) && String(dayTabs[0] || '').endsWith(String(Number(addDays(bToday, -3).slice(8)))),
+        JSON.stringify(dayTabs));
       const tzSummary = await evaluate(tzPage, "((document.querySelector('#dash-summary')||{}).textContent||'').replace(/\\s+/g,'')");
       // The expected count is DERIVED from the seed, not hardcoded. The fixture
       // dates some games relative to the host clock, so whenever the host's day

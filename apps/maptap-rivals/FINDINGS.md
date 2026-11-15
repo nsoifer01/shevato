@@ -705,14 +705,43 @@ after that round. Decisions a future change should keep:
   pill's outline and fill only; the movement span keeps its own colour, so a
   gold `#1` beside a green `↑3` reads as two facts.
 - **Visuals.** The pill is neutral (dark fill, `--border-strong` outline,
-  `--muted` position at weight 800 below the podium) on its own line under the prediction Δ,
-  so the chip's green/red tint and Δ keep meaning "prediction accuracy"; only
+  `--muted` position at weight 800 below the podium) on its own line under the
+  scores, so the chip's green/red tint keeps meaning "prediction accuracy"; only
   the movement (weight 600) is coloured, and its arrow or `=` carries the
   meaning without colour. Unchanged is `=` rather than a dash. Pill text is
   0.76rem (0.74rem under the 480px typography floor): at 0.68rem it computed
   to 9.97px at 1280 and failed the 10px floor. The explanation is one line
   under the column headers (`.pred-rank-note`, `text-wrap: balance` so it
   does not leave a one-word orphan at 390), rendered only when a pill is.
+
+## Past days in the predictions window (2026-11-15)
+
+The day tabs run 3 days back, Today (4th, selected by default), 3 days ahead
+(`PREDICT_PAST_DAYS` in `js/app.js`). Before this they ran Today plus six days
+ahead. What a past tab shows, and where each number comes from:
+
+- **Predictions are not stored anywhere.** No snapshot of what the card showed
+  on a given day exists, so a past tab computes the prediction the same way the
+  Spot-on badge already does: `predictRoundsForPlayer` with `asOfISO` set to
+  that day, which drops every round dated that day or later
+  (`flattenRoundsForPrediction`). Games played after the day cannot move it
+  (pinned in `e2e/quality.mjs`). What can move it is a round dated BEFORE the
+  day that was synced or edited afterwards, because the predictor reads the
+  game log as it is now. That is the same limitation the Spot-on rate has.
+- **The puzzle comes from the synced games first.** `storedPuzzleCities`
+  takes the cities stored on that day's synced games, the same order
+  `citiesForPastDay` uses for Spot-on, and only falls back to the fetched
+  maptap.gg file. The fetched file is keyed by month and day
+  (`this_day_in_history/November12.js`) with no year; on 2026-11-15 the past
+  files still carried this year's puzzle (ids like `2026-11-12-...`), but that
+  is not guaranteed to hold a year later, so the stored copy wins.
+- **Actuals and ranks** are the logged games for that day, through the same
+  `actualScoresForDay` / `actualScoresForRivalDay` / `roundRanksForDay` path
+  as today.
+- **No puzzle at all** (no stored cities and the fetch fails) shows "Puzzle
+  unavailable" with a past-day message and no rows. A day with a puzzle that
+  nobody logged shows predictions with empty Actual cells and reads "Not
+  logged", as before.
 
 ## Dashboard width budget (why the continent band is a three-tier grid)
 
@@ -1226,7 +1255,7 @@ Two gaps the 2026-08-23 pass closed, both in `e2e/quality.mjs`:
   the continent band's grid switch is checked from both sides.
 - **A positive-UTC RENDERED page.** A second page runs under CDP's
   `Emulation.setTimezoneOverride` at `Pacific/Auckland` (UTC+12) and asserts
-  the day tabs start at Today, the summary counts today's game, and the
+  the day tabs put the local Today 4th, the summary counts today's game, and the
   heatmap ends on the browser's own local day. Use the CDP override, NOT the
   `TZ` env var: snap-confined Chromium ignores `TZ`, so the audit's Berlin
   probe silently ran in the host zone and only its own precondition check
