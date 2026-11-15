@@ -651,9 +651,15 @@
   // The file is named by month and day only and MapTap rewrites it each year,
   // so the same URL serves different years' puzzles (on 2026-11-15, December
   // 14-31 still held 2025's). It is `iso`'s puzzle only when that is provable:
-  // it was fetched ON `iso` (it is then exactly what MapTap serves players
-  // that day), or every city id in the played array names `iso` itself
+  // it was fetched ON `iso` (MapTap's own client, js/jjbasics.js and
+  // js/data-loader.js, plays `<Month><Day>.js` for the player's local day with
+  // no year check and records the game under that day's full ISO date, so the
+  // file served on `iso` IS that day's puzzle even when its content is an old
+  // year's), or every city id in the played array names `iso` itself
   // (`id: "2026-11-12-..."`, carried by the files from August 2026 on).
+  // Both fetches use `cache: 'no-cache'`: the file is served `max-age=300`, so
+  // a default fetch just after midnight could return bytes cached the evening
+  // before and label them as fetched on the new day.
   const DAILY_ID_DATE_RE = /(?<![A-Za-z])id\s*:\s*["'](\d{4}-\d{2}-\d{2})-/g;
   function dailyFileIsFor(src, iso, fetchedOnISO) {
     if (fetchedOnISO === iso) return true;
@@ -706,7 +712,7 @@
     } catch (_) { /* cache corrupted — fall through to fetch */ }
     try {
       const fetchedOn = todayISO();
-      const res = await fetch(url, { credentials: 'omit' });
+      const res = await fetch(url, { credentials: 'omit', cache: 'no-cache' });
       if (!res.ok) return null;
       const text = await res.text();
       const cities = parseDailyCitiesText(text);
@@ -757,7 +763,7 @@
     dailyNamesStatus.set(iso, 'fetching');
     try {
       const fetchedOn = todayISO();
-      const res = await fetch(url, { credentials: 'omit' });
+      const res = await fetch(url, { credentials: 'omit', cache: 'no-cache' });
       if (!res.ok) { dailyNamesStatus.set(iso, 'error'); return false; }
       const text = await res.text();
       const names = parseDailyNamesText(text);

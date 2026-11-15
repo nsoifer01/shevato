@@ -774,6 +774,34 @@ and written only after acceptance; a legacy v2 entry is trusted only when its
 Consequence: a future day whose file has no ids (today: November 18) reads
 "Puzzle unavailable" until it carries ids or becomes today.
 
+**Why "fetched on the day" is evidence of the year** (checked 2026-11-15
+against maptap.gg's own client). `js/jjbasics.js` builds `playDay` from the
+player's local month and day and keys the game by that local day's full ISO
+date; `js/data-loader.js` (`loadDailyGameScript`) runs
+`data/this_day_in_history/<playDay>.js` and never reads the ids. So the puzzle
+of a date IS the file served on that date: if MapTap has not rewritten a file
+by its day, every player plays the old content that day and MapTap records it
+under the new year. Accepting it is correct, and rejecting it would only hide
+the real puzzle. Translated `<lang>/<playDay>.js` files exist for current days
+and match the English coordinates and ids, and they 404 on undated days, where
+MapTap falls back to English. On 2026-11-15, November 18's live array was its
+2026 rewrite, not the archived 2025 puzzle below it.
+
+What makes the provenance hold: the fetch uses `cache: 'no-cache'`. The file
+is served `cache-control: max-age=300`, so a default fetch just after
+midnight could return the previous evening's bytes (from that day's
+future-tab fetch) labelled as fetched on the new day. That case follows from
+the header and the HTTP cache rules; it was not reproduced in a browser.
+
+Not verifiable: a file MapTap edits DURING its own day. Seven files around
+2026-11-15 were byte-identical across an hour, and files are written days
+ahead (November 16-17 already carried ids), but nothing proves a day is never
+edited mid-day. A same-day download is refreshed every 6 hours while the day
+is today and kept once the day passes. Synced games outrank it everywhere
+(past tab via `storedPuzzleCities`, Spot-on via `citiesForPastDay`), because
+MapTap's `gameHistory` records the cities each player actually played under
+the full date.
+
 ## Dashboard width budget (why the continent band is a three-tier grid)
 
 Two numbers govern every "make it fill the row" request on this dashboard:
