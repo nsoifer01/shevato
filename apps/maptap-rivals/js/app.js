@@ -648,12 +648,32 @@
     const end = src.indexOf('];', m.index);
     return end === -1 ? src.slice(m.index) : src.slice(m.index, end + 2);
   }
-  // Bumped when the parser changed what it reads: entries cached by the
-  // unanchored parser are not trusted (a past day is otherwise cached for good).
-  const DAILY_CITIES_CACHE_V = 2;
-  function cachedDailyCities(cached) {
-    return cached && cached.v === DAILY_CITIES_CACHE_V &&
-      Array.isArray(cached.cities) && cached.cities.length === N_LOCS ? cached.cities : null;
+  // The file is named by month and day only and MapTap rewrites it each year,
+  // so the same URL serves different years' puzzles (on 2026-11-15, December
+  // 14-31 still held 2025's). It is `iso`'s puzzle only when that is provable:
+  // it was fetched ON `iso` (MapTap's own client, js/jjbasics.js and
+  // js/data-loader.js, plays `<Month><Day>.js` for the player's local day with
+  // no year check and records the game under that day's full ISO date, so the
+  // file served on `iso` IS that day's puzzle even when its content is an old
+  // year's), or every city id in the played array names `iso` itself
+  // (`id: "2026-11-12-..."`, carried by the files from August 2026 on).
+  // Both fetches use `cache: 'no-cache'`: the file is served `max-age=300`, so
+  // a default fetch just after midnight could return bytes cached the evening
+  // before and label them as fetched on the new day.
+  const DAILY_ID_DATE_RE = /(?<![A-Za-z])id\s*:\s*["'](\d{4}-\d{2}-\d{2})-/g;
+  function dailyFileIsFor(src, iso, fetchedOnISO) {
+    if (fetchedOnISO === iso) return true;
+    const dates = Array.from(dailyCitiesSection(src).matchAll(DAILY_ID_DATE_RE), m => m[1]);
+    return dates.length > 0 && dates.every(d => d === iso);
+  }
+  // v3 entries are written only after dailyFileIsFor accepted the file. v2
+  // was written for any parsed file, so one is trusted only when it was
+  // cached on its own day; anything older is not (it may be another year's).
+  const DAILY_CITIES_CACHE_V = 3;
+  function cachedDailyCities(cached, iso) {
+    if (!cached || !Array.isArray(cached.cities) || cached.cities.length !== N_LOCS) return null;
+    if (cached.v === DAILY_CITIES_CACHE_V) return cached.cities;
+    return cached.v === 2 && localDateISO(cached.cachedAt) === iso ? cached.cities : null;
   }
   function parseDailyCitiesText(src) {
     if (typeof src !== 'string' || !src.length) return null;
@@ -674,27 +694,29 @@
   }
 
   // Fetch + cache the day's 5 puzzle coordinates. Cache is keyed by ISO
-  // date; once a puzzle's day has passed, the file is immutable so the
-  // cache is valid forever. For today / future dates we still cache but
-  // re-fetch after 6h in case MapTap revises the file before play.
+  // date and holds only a file accepted as that date's puzzle
+  // (dailyFileIsFor), so a past day's entry is valid forever. For today /
+  // future dates we still re-fetch after 6h in case MapTap revises the file
+  // before play. A file not provably for `iso` is neither cached nor used.
   async function fetchDailyCities(iso) {
     const url = mapTapDailyDataUrl(iso);
     if (!url) return null;
     const cacheKey = KEY.DAILY_CITIES_PREFIX + iso;
     try {
       const cached = JSON.parse(localStorage.getItem(cacheKey) || 'null');
-      if (cachedDailyCities(cached)) {
+      if (cachedDailyCities(cached, iso)) {
         const isPast = iso < todayISO();
         const fresh = isPast || (Date.now() - (cached.cachedAt || 0)) < 6 * 3600 * 1000;
         if (fresh) return cached.cities;
       }
     } catch (_) { /* cache corrupted — fall through to fetch */ }
     try {
-      const res = await fetch(url, { credentials: 'omit' });
+      const fetchedOn = todayISO();
+      const res = await fetch(url, { credentials: 'omit', cache: 'no-cache' });
       if (!res.ok) return null;
       const text = await res.text();
       const cities = parseDailyCitiesText(text);
-      if (!cities) return null;
+      if (!cities || !dailyFileIsFor(text, iso, fetchedOn)) return null;
       try {
         localStorage.setItem(cacheKey, JSON.stringify({ v: DAILY_CITIES_CACHE_V, cities, cachedAt: Date.now() }));
       } catch (_) { /* quota — ignore, prediction still works for this session */ }
@@ -740,10 +762,12 @@
     if (!url) { dailyNamesStatus.set(iso, 'error'); return false; }
     dailyNamesStatus.set(iso, 'fetching');
     try {
-      const res = await fetch(url, { credentials: 'omit' });
+      const fetchedOn = todayISO();
+      const res = await fetch(url, { credentials: 'omit', cache: 'no-cache' });
       if (!res.ok) { dailyNamesStatus.set(iso, 'error'); return false; }
-      const names = parseDailyNamesText(await res.text());
-      if (!names) { dailyNamesStatus.set(iso, 'error'); return false; }
+      const text = await res.text();
+      const names = parseDailyNamesText(text);
+      if (!names || !dailyFileIsFor(text, iso, fetchedOn)) { dailyNamesStatus.set(iso, 'error'); return false; }
       dailyNames.set(iso, names);
       dailyNamesStatus.set(iso, 'ok');
       return true;
@@ -2016,7 +2040,7 @@
     if (inline) return inline;
     try {
       const cached = JSON.parse(localStorage.getItem(KEY.DAILY_CITIES_PREFIX + iso) || 'null');
-      const cities = cachedDailyCities(cached);
+      const cities = cachedDailyCities(cached, iso);
       if (cities) return cities;
     } catch (_) { /* corrupted cache entry: treat the day as unknown */ }
     return null;
@@ -8796,6 +8820,12 @@
     window._testExports = {
       parseDailyCitiesText,
       parseDailyNamesText,
+      dailyFileIsFor,
+      fetchDailyCities,
+      fetchDailyNames,
+      dailyNames,
+      citiesForPastDay,
+      storedPuzzleCities,
       swingLines,
       consistencyLabel,
       continentSubText,

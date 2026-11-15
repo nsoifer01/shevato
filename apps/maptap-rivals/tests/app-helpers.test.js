@@ -1724,3 +1724,200 @@ test('daily file parsers skip a secretMessages block ahead of cities', () => {
   const bare = src.slice(src.indexOf('cities = [') + 'cities = ['.length);
   assert.deepEqual(plain(helpers.parseDailyCitiesText(bare))[0], { lat: 47.3769, lng: 8.5417 });
 });
+
+// ---------- daily puzzle files belong to one YEAR, not just a month/day ----------
+// maptap.gg serves `this_day_in_history/<Month><Day>.js` and rewrites it every
+// year, so one URL carries different years' puzzles (on 2026-11-15, December
+// 14-31 still held 2025's and January-July carried no year at all). The
+// expected answers below come from the dates themselves, never from the app:
+// a file is a day's puzzle only when it was fetched that day, or when every
+// city id in its played array names that exact date.
+const PUZZLE_A = [[59.9115, 10.7579], [22.3193, 114.1694], [-33.87, 151.21], [40.71, -74.0], [-1.29, 36.82]];
+const PUZZLE_B = [[48.85, 2.35], [35.68, 139.65], [-23.55, -46.63], [51.51, -0.13], [30.04, 31.24]];
+function dailyFile(coords, idDate, extra = '') {
+  return 'cities = [\n' + coords.map(([lat, lng], i) =>
+    `  {\n    ${idDate ? `id: "${idDate}-story${i}",\n    ` : ''}name: "Place ${i}",\n    lat: ${lat}, lng: ${lng}, labelLat: 1, labelLng: 2,\n  }`).join(',\n') + '\n];\n' + extra;
+}
+const asCities = (coords) => coords.map(([lat, lng]) => ({ lat, lng }));
+const okResponse = (body) => Promise.resolve({ ok: true, text: () => Promise.resolve(body) });
+const DAY_MS_T = 86400000;
+
+test('dailyFileIsFor: a dated file is accepted for its own date and refused for the same month/day in any other year', () => {
+  const isFor = H('dailyFileIsFor');
+  const nov12 = dailyFile(PUZZLE_A, '2026-11-12');
+  assert.equal(isFor(nov12, '2026-11-12', '2026-11-15'), true, 'current-year dated file, fetched three days later');
+  assert.equal(isFor(nov12, '2027-11-12', '2027-11-10'), false, 'a 2026 file is not 2027\'s puzzle');
+  assert.equal(isFor(nov12, '2025-11-12', '2025-11-13'), false, 'nor 2025\'s');
+  // Year boundary: Dec 31 and Jan 1 each stay in their own year.
+  assert.equal(isFor(dailyFile(PUZZLE_A, '2026-12-31'), '2026-12-31', '2027-01-01'), true);
+  assert.equal(isFor(dailyFile(PUZZLE_A, '2026-12-31'), '2027-12-31', '2027-12-30'), false);
+  assert.equal(isFor(dailyFile(PUZZLE_A, '2027-01-01'), '2027-01-01', '2026-12-31'), true);
+  assert.equal(isFor(dailyFile(PUZZLE_A, '2026-01-01'), '2027-01-01', '2026-12-31'), false);
+  // Leap day: February29.js exists every year but is played only in leap years.
+  assert.equal(isFor(dailyFile(PUZZLE_A, '2028-02-29'), '2028-02-29', '2028-03-01'), true);
+  assert.equal(isFor(dailyFile(PUZZLE_A, '2024-02-29'), '2028-02-29', '2028-02-27'), false);
+});
+
+test('dailyFileIsFor: an undated file proves nothing unless it was fetched on the day itself', () => {
+  const isFor = H('dailyFileIsFor');
+  const undated = dailyFile(PUZZLE_A, null);
+  assert.equal(isFor(undated, '2026-11-18', '2026-11-15'), false, 'three days ahead: could be last year\'s file');
+  assert.equal(isFor(undated, '2026-11-12', '2026-11-15'), false, 'three days back, never fetched that day');
+  assert.equal(isFor(undated, '2026-11-15', '2026-11-15'), true, 'fetched on the day: it is what MapTap serves that day');
+  assert.equal(isFor(undated, '2027-01-01', '2027-01-01'), true);
+  assert.equal(isFor(undated, '2028-02-29', '2028-02-29'), true);
+  // Ids that disagree with each other, or ids outside the played array (a
+  // secretMessages block before it, last year's archive after it), vouch for nothing.
+  const mixed = dailyFile(PUZZLE_A, '2026-11-12').replace('2026-11-12-story4', '2025-11-12-story4');
+  assert.equal(isFor(mixed, '2026-11-12', '2026-11-15'), false);
+  const archived = dailyFile(PUZZLE_A, null, '// ===== 2025 =====\n/* cities = [ { id: "2025-11-18-old", lat: 1, lng: 2 } ]; */\n');
+  assert.equal(isFor(archived, '2025-11-18', '2026-11-15'), false);
+  const secret = 'secretMessages = [ { id: "2026-11-18-pin", lat: 1, lng: 2, message: "hi" } ];\n' + undated;
+  assert.equal(isFor(secret, '2026-11-18', '2026-11-15'), false);
+});
+
+test('fetchDailyCities: a future day whose file is undated or from another year is unavailable and never cached', async () => {
+  const today = H('localISO')(new Date());
+  const ahead = H('addDaysISO')(today, 3);
+  const lastYear = `${Number(ahead.slice(0, 4)) - 1}${ahead.slice(4)}`;
+  for (const [label, body] of [['undated', dailyFile(PUZZLE_B, null)], ['last year', dailyFile(PUZZLE_B, lastYear)]]) {
+    const c = loadApp({}, { fetchImpl: () => okResponse(body) });
+    assert.equal(await c._testExports.fetchDailyCities(ahead), null, label);
+    assert.equal(c.localStorage.getItem('maptapRivalsDailyCities/' + ahead), null, `${label}: nothing cached`);
+  }
+  const c = loadApp({}, { fetchImpl: () => okResponse(dailyFile(PUZZLE_B, ahead)) });
+  assert.deepEqual(plain(await c._testExports.fetchDailyCities(ahead)), asCities(PUZZLE_B), 'dated for that exact day');
+  assert.equal(JSON.parse(c.localStorage.getItem('maptapRivalsDailyCities/' + ahead)).v, 3);
+});
+
+test('fetchDailyCities: today\'s puzzle still loads from an undated file, and a past day loads from a file dated for it', async () => {
+  const today = H('localISO')(new Date());
+  const c = loadApp({}, { fetchImpl: () => okResponse(dailyFile(PUZZLE_A, null)) });
+  assert.deepEqual(plain(await c._testExports.fetchDailyCities(today)), asCities(PUZZLE_A));
+  const back = H('addDaysISO')(today, -3);
+  const c2 = loadApp({}, { fetchImpl: () => okResponse(dailyFile(PUZZLE_A, back)) });
+  assert.deepEqual(plain(await c2._testExports.fetchDailyCities(back)), asCities(PUZZLE_A));
+  const c3 = loadApp({}, { fetchImpl: () => okResponse(dailyFile(PUZZLE_A, null)) });
+  assert.equal(await c3._testExports.fetchDailyCities(back), null, 'undated and not fetched that day');
+});
+
+test('daily cache: a v2 entry cached before its day (when the URL may still have held last year\'s file) is not served; one cached on the day is', async () => {
+  const today = H('localISO')(new Date());
+  const back = H('addDaysISO')(today, -2);
+  const [y, m, d] = back.split('-').map(Number);
+  const onDay = new Date(y, m - 1, d, 12).getTime();
+  const early = onDay - 3 * DAY_MS_T;
+  const key = 'maptapRivalsDailyCities/' + back;
+  const notFound = () => Promise.resolve({ ok: false, text: () => Promise.resolve('') });
+  const stale = loadApp({ [key]: { v: 2, cities: asCities(PUZZLE_B), cachedAt: early } }, { fetchImpl: notFound });
+  assert.equal(await stale._testExports.fetchDailyCities(back), null);
+  assert.equal(stale._testExports.citiesForPastDay(back, new Map()), null, 'Spot-on back-test reads the same rule');
+  const good = loadApp({ [key]: { v: 2, cities: asCities(PUZZLE_B), cachedAt: onDay } }, { fetchImpl: notFound });
+  assert.deepEqual(plain(await good._testExports.fetchDailyCities(back)), asCities(PUZZLE_B));
+  assert.deepEqual(plain(good._testExports.citiesForPastDay(back, new Map())), asCities(PUZZLE_B));
+});
+
+test('fetchDailyNames: location names from another year\'s file are never revealed', async () => {
+  const today = H('localISO')(new Date());
+  const back = H('addDaysISO')(today, -1);
+  const lastYear = `${Number(back.slice(0, 4)) - 1}${back.slice(4)}`;
+  const c = loadApp({}, { fetchImpl: () => okResponse(dailyFile(PUZZLE_A, lastYear)) });
+  assert.equal(await c._testExports.fetchDailyNames(back), false);
+  assert.equal(c._testExports.dailyNames.has(back), false);
+  const c2 = loadApp({}, { fetchImpl: () => okResponse(dailyFile(PUZZLE_A, back)) });
+  assert.equal(await c2._testExports.fetchDailyNames(back), true);
+  assert.equal(c2._testExports.dailyNames.get(back)[0], 'Place 0');
+});
+
+test('storedPuzzleCities: a synced game\'s puzzle belongs to its full date, so the same month/day in another year has none', () => {
+  const geo = PUZZLE_A.map(([lat, lng], i) => ({ lat, lng, name: `Synced ${i}` }));
+  const c = loadApp({
+    maptapRivalsRivals: [goodRival()],
+    maptapRivalsGames: [{ id: 'g1', rivalId: 'r1', date: '2025-11-12', note: 'synced from MapTap', createdAt: 1,
+      myScores: [50, 50, 50, 50, 50], theirScores: [60, 60, 60, 60, 60], myScore: 500, theirScore: 600, cities: geo }],
+  });
+  assert.deepEqual(plain(c._testExports.storedPuzzleCities('2025-11-12')), geo);
+  assert.equal(c._testExports.storedPuzzleCities('2026-11-12'), null);
+});
+
+// ---------- same-day downloads (PR #671 follow-up) ----------
+// MapTap's own client (maptap.gg js/jjbasics.js, js/data-loader.js) builds
+// `playDay` from the player's LOCAL month and day, runs
+// `this_day_in_history/<playDay>.js` with no year check, and records the game
+// under that day's full ISO date. So the file served on a day is that day's
+// puzzle even when its content was written for an earlier year: that is what
+// every player is given. The expectations below follow from that rule, not
+// from the app.
+test('same-day rule: a stale undated file served ON Nov 18 2026 is that day\'s puzzle, but the same bytes prove nothing on any other day', () => {
+  const isFor = H('dailyFileIsFor');
+  const stale2025 = dailyFile(PUZZLE_B, null, '// ===== 2025 =====\n');
+  assert.equal(isFor(stale2025, '2026-11-18', '2026-11-18'), true, 'served on its own day: what MapTap plays');
+  assert.equal(isFor(stale2025, '2026-11-18', '2026-11-15'), false, 'three days early: could still be rewritten');
+  assert.equal(isFor(stale2025, '2026-11-18', '2026-11-19'), false, 'a day late: could already be another version');
+  assert.equal(isFor(stale2025, '2025-11-18', '2026-11-18'), false, 'fetched in 2026, so not evidence for 2025');
+  // A file still carrying LAST year's ids, served on the day, is what is played.
+  assert.equal(isFor(dailyFile(PUZZLE_B, '2025-11-18'), '2026-11-18', '2026-11-18'), true);
+  assert.equal(isFor(dailyFile(PUZZLE_B, '2025-11-18'), '2026-11-18', '2026-11-17'), false);
+});
+
+test('same-day rule: dated files fetched on or before their day, and the Dec 31 / Jan 1 boundary', () => {
+  const isFor = H('dailyFileIsFor');
+  assert.equal(isFor(dailyFile(PUZZLE_A, '2026-11-18'), '2026-11-18', '2026-11-18'), true, 'dated, same day');
+  assert.equal(isFor(dailyFile(PUZZLE_A, '2026-11-18'), '2026-11-18', '2026-11-15'), true, 'dated, three days early');
+  const undated = dailyFile(PUZZLE_A, null);
+  assert.equal(isFor(undated, '2026-12-31', '2026-12-31'), true);
+  assert.equal(isFor(undated, '2026-12-31', '2027-01-01'), false, 'Dec 31 fetched after midnight');
+  assert.equal(isFor(undated, '2027-01-01', '2027-01-01'), true);
+  assert.equal(isFor(undated, '2027-01-01', '2026-12-31'), false, 'Jan 1 fetched before midnight');
+  assert.equal(isFor(dailyFile(PUZZLE_A, '2026-01-01'), '2027-01-01', '2026-12-31'), false, 'last January\'s file, a day early');
+});
+
+test('daily file fetches revalidate with the server, so "fetched on the day" never means bytes cached the day before', async () => {
+  const today = H('localISO')(new Date());
+  const seen = [];
+  const c = loadApp({}, { fetchImpl: (url, opts) => { seen.push(opts && opts.cache); return okResponse(dailyFile(PUZZLE_A, null)); } });
+  await c._testExports.fetchDailyCities(today);
+  await c._testExports.fetchDailyNames(today);
+  assert.deepEqual(seen, ['no-cache', 'no-cache']);
+});
+
+test('a same-day download is saved and read back as that date\'s puzzle (prediction cache and Spot-on), never for another date', async () => {
+  const today = H('localISO')(new Date());
+  const c = loadApp({}, { fetchImpl: () => okResponse(dailyFile(PUZZLE_B, null)) });
+  assert.deepEqual(plain(await c._testExports.fetchDailyCities(today)), asCities(PUZZLE_B));
+  const stored = JSON.parse(c.localStorage.getItem('maptapRivalsDailyCities/' + today));
+  assert.equal(stored.v, 3);
+  assert.equal(H('localISO')(new Date(stored.cachedAt)), today, 'saved on the day it is keyed by');
+  // A later boot with maptap.gg unreachable still has it, through both readers.
+  const later = loadApp({ ['maptapRivalsDailyCities/' + today]: stored },
+    { fetchImpl: () => Promise.resolve({ ok: false, text: () => Promise.resolve('') }) });
+  assert.deepEqual(plain(await later._testExports.fetchDailyCities(today)), asCities(PUZZLE_B));
+  assert.deepEqual(plain(later._testExports.citiesForPastDay(today, new Map())), asCities(PUZZLE_B));
+  // The key carries the year: the same month/day a year on has nothing.
+  const nextYear = `${Number(today.slice(0, 4)) + 1}${today.slice(4)}`;
+  assert.equal(later.localStorage.getItem('maptapRivalsDailyCities/' + nextYear), null);
+  assert.equal(later._testExports.citiesForPastDay(nextYear, new Map()), null);
+});
+
+test('Spot-on and past tabs: puzzle cities synced from MapTap for a full date beat a fetched file for it', () => {
+  const back = H('addDaysISO')(H('localISO')(new Date()), -2);
+  const synced = PUZZLE_A.map(([lat, lng]) => ({ lat, lng, name: 'synced' }));
+  const c = loadApp({
+    ['maptapRivalsDailyCities/' + back]: { v: 3, cities: asCities(PUZZLE_B), cachedAt: Date.now() },
+    maptapRivalsRivals: [goodRival()],
+    maptapRivalsGames: [{ id: 'g1', rivalId: 'r1', date: back, note: 'synced from MapTap', createdAt: 1,
+      myScores: [50, 50, 50, 50, 50], theirScores: [60, 60, 60, 60, 60], myScore: 500, theirScore: 600, cities: synced }],
+  });
+  assert.deepEqual(plain(c._testExports.citiesForPastDay(back, new Map([[back, synced]]))), synced, 'Spot-on reader');
+  assert.deepEqual(plain(c._testExports.storedPuzzleCities(back)), synced, 'past-tab reader');
+});
+
+test('location names: today\'s undated file reveals names; the same file for a past day it was not fetched on does not', async () => {
+  const today = H('localISO')(new Date());
+  const c = loadApp({}, { fetchImpl: () => okResponse(dailyFile(PUZZLE_A, null)) });
+  assert.equal(await c._testExports.fetchDailyNames(today), true);
+  assert.equal(c._testExports.dailyNames.get(today)[0], 'Place 0');
+  const back = H('addDaysISO')(today, -1);
+  assert.equal(await c._testExports.fetchDailyNames(back), false);
+  assert.equal(c._testExports.dailyNames.has(back), false);
+});
