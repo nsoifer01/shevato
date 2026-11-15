@@ -782,6 +782,42 @@ export async function run({ base, cdpPort }) {
           await closePage(cdpPort, cp);
         }
       }
+
+      // The puzzle file is named by month and day only and maptap.gg rewrites
+      // it each year. On 2027-01-01 the December files carry 2026-12-xx ids
+      // (that year's puzzles: shown), January 2-4 still carry LAST January's
+      // ids (shown before the fix as if they were 2027's: now unavailable),
+      // and January 1 is undated but fetched on the day (shown).
+      {
+        const dated = (idDate) => DAILY.replace(/\{ name: "([^"]+)"/g, (_, n) => `{ id: "${idDate}-${n.toLowerCase()}", name: "${n}"`);
+        const files = { December29: dated('2026-12-29'), December30: dated('2026-12-30'), December31: dated('2026-12-31'),
+          January1: DAILY, January2: dated('2026-01-02'), January3: dated('2026-01-03'), January4: dated('2026-01-04') };
+        const yp = await newPage(cdpPort);
+        try {
+          await interceptNetwork(yp, (url) => {
+            const m = /this_day_in_history\/([A-Za-z]+\d+)\.js$/.exec(url);
+            if (m) return files[m[1]] ? { status: 200, contentType: 'application/javascript', body: files[m[1]] } : 'fail';
+            if (BLOCK.test(url) || /maptap\.gg/.test(url)) return 'fail';
+            return null;
+          });
+          await yp.send('Page.addScriptToEvaluateOnNewDocument', { source: `(()=>{const R=Date;const off=new R(2027,0,1,12).getTime()-R.now();
+            class D extends R{constructor(...a){if(a.length)super(...a);else super(R.now()+off);} static now(){return R.now()+off;}} window.Date=D;})()` });
+          await setViewport(yp, 1280, 900);
+          await seed(yp, '#dashboard');
+          await waitForExpr(yp, "document.querySelectorAll('#todays-card .pred-day-tab').length===7 && !document.querySelector('#todays-card .pred-day-tab.is-loading')");
+          const perTab = [];
+          for (let i = 0; i < 7; i++) {
+            await evaluate(yp, `(()=>{ document.querySelectorAll('#todays-card .pred-day-tab')[${i}].click(); return 1 })()`);
+            await sleep(250);
+            perTab.push(await evaluate(yp, "document.querySelectorAll('#todays-card-body .pred-row-wrap').length > 0 ? 'rows' : document.getElementById('todays-card-status').textContent"));
+          }
+          t('day window: across New Year only puzzles provably from the selected year show; last year\'s same-date files read Puzzle unavailable',
+            JSON.stringify(perTab) === JSON.stringify(['rows', 'rows', 'rows', 'rows', 'Puzzle unavailable', 'Puzzle unavailable', 'Puzzle unavailable']),
+            JSON.stringify(perTab));
+        } finally {
+          await closePage(cdpPort, yp);
+        }
+      }
       t('day window: no first-party JS errors', cleanErrors(s).length === 0, cleanErrors(s).join(' | '));
     }
 

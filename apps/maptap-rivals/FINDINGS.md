@@ -731,10 +731,8 @@ ahead. What a past tab shows, and where each number comes from:
 - **The puzzle comes from the synced games first.** `storedPuzzleCities`
   takes the cities stored on that day's synced games, the same order
   `citiesForPastDay` uses for Spot-on, and only falls back to the fetched
-  maptap.gg file. The fetched file is keyed by month and day
-  (`this_day_in_history/November12.js`) with no year; on 2026-11-15 the past
-  files still carried this year's puzzle (ids like `2026-11-12-...`), but that
-  is not guaranteed to hold a year later, so the stored copy wins.
+  maptap.gg file. Synced cities are year-safe: they come from MapTap's own
+  `gameHistory`, keyed by the full `YYYY-MM-DD` and recorded at play time.
 - **Actuals and ranks** are the logged games for that day, through the same
   `actualScoresForDay` / `actualScoresForRivalDay` / `roundRanksForDay` path
   as today.
@@ -742,6 +740,39 @@ ahead. What a past tab shows, and where each number comes from:
   unavailable" with a past-day message and no rows. A day with a puzzle that
   nobody logged shows predictions with empty Actual cells and reads "Not
   logged", as before.
+
+## The daily puzzle file has no year (2026-11-15)
+
+`this_day_in_history/<Month><Day>.js` is named by month and day and MapTap
+rewrites it each year, so one URL serves different years' puzzles. Census of
+all 366 files on 2026-11-15:
+
+- **109** (August 1 to November 17) carry city ids `2026-MM-DD-<slug>`, each
+  matching its filename.
+- **26** (November 18 to December 13) carry no ids, only a comment
+  `// ===== 2025 =====` AFTER the live array, above last year's archived
+  version. That is an authoring comment, not data, so it is not trusted.
+- **231** (January 1 to July 31, December 14 to 31) carry no year at all.
+  December 14 to 31 still held 2025's puzzles; January to July hold 2026's.
+
+Before the fix the app took any file that parsed. A future tab could show
+last year's puzzle as this year's (December 29 to 31 2026 from 2025's files;
+January 1 to 3 2027 from January 2026's, reproduced in the browser), and
+because a past day's cache entry was trusted forever, a file fetched while
+its day was still ahead stayed that day's puzzle permanently, including in
+the Spot-on back-test (`citiesForPastDay`). The location names had the same
+gap.
+
+`dailyFileIsFor(src, iso, fetchedOnISO)` accepts a file only when it was
+fetched ON `iso` (by provenance it is then exactly what MapTap serves players
+that day; that MapTap plays this file's first five cities was verified in May
+2026, per the comment above `parseDailyCitiesText` in `js/app.js`) or when every `id` inside the played `cities = [...]` array
+starts with `iso` (ids in `secretMessages` or the archive below do not count).
+Everything else is "Puzzle unavailable", never cached. Cache entries are v3
+and written only after acceptance; a legacy v2 entry is trusted only when its
+`cachedAt` falls on its own day (the cache is device-local, never synced).
+Consequence: a future day whose file has no ids (today: November 18) reads
+"Puzzle unavailable" until it carries ids or becomes today.
 
 ## Dashboard width budget (why the continent band is a three-tier grid)
 
