@@ -768,11 +768,35 @@ fetched ON `iso` (by provenance it is then exactly what MapTap serves players
 that day; that MapTap plays this file's first five cities was verified in May
 2026, per the comment above `parseDailyCitiesText` in `js/app.js`) or when every `id` inside the played `cities = [...]` array
 starts with `iso` (ids in `secretMessages` or the archive below do not count).
-Everything else is "Puzzle unavailable", never cached. Cache entries are v3
+Everything else is never cached and never used. Cache entries are v3
 and written only after acceptance; a legacy v2 entry is trusted only when its
 `cachedAt` falls on its own day (the cache is device-local, never synced).
-Consequence: a future day whose file has no ids (today: November 18) reads
-"Puzzle unavailable" until it carries ids or becomes today.
+Consequence: a future day whose file has no ids (on 2026-11-16: November 18
+and 19) cannot be shown until it carries ids or becomes today.
+
+**Pending is not an error (2026-11-16).** Until then every refusal set the
+tab's `is-error` class, so November 18 and 19 were orange and read "Couldn't
+load this day's puzzle" although both files downloaded and parsed (HTTP 200).
+`fetchDailyCities` now resolves `{ status, cities }`: `ok` (accepted),
+`pending` (200 and parsed, but `dailyFileIsFor` refused it, so it may be last
+year's or this year's without ids; the wording never claims it is
+unpublished), `error` (no URL, non-200, network failure, or fewer than five
+parsed cities). Pending tabs are neutral (`is-pending`: dashed
+`--border-strong`, `--muted-2` text, which is AA on every surface) and read
+"Not yet verified"; orange is left to `error`. An entry used to be fetched
+once per local day, so a pending or failed day stayed so until midnight or a
+reload. Now `ensureSevenDayWindowLoaded` rechecks a `pending`/`error` entry on
+any render at least `PREDICT_RECHECK_MS` (5 minutes, the file's own
+`max-age=300`) after its last check, keeping its status while in flight (no
+loading flicker, one request per due check), and `schedulePredictRecheck`
+re-renders a selected pending/error day once the interval passes. The
+acceptance rule itself is unchanged.
+
+Harness trap when probing this in a browser: `tests/browser/cdp.mjs`'s
+`newPage()` answers every `this_day_in_history/*.js` from
+`tests/browser/third-party.mjs`'s fixed, UNDATED "Lima" puzzle, so every day
+but today renders pending there. To see live behaviour, serve the real files
+through an `interceptNetwork` rule (consulted first).
 
 **Why "fetched on the day" is evidence of the year** (checked 2026-11-15
 against maptap.gg's own client). `js/jjbasics.js` builds `playDay` from the

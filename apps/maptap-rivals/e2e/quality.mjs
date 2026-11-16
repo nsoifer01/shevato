@@ -760,10 +760,34 @@ export async function run({ base, cdpPort }) {
       await clickTab(1);
       await sleep(400);
       const empty = await evaluate(s, "JSON.stringify({ status: document.getElementById('todays-card-status').textContent, text: ((document.querySelector('#todays-card-body .pred-empty')||{}).textContent||''), rows: document.querySelectorAll('#todays-card-body .pred-row-wrap').length, tabs: document.querySelectorAll('#todays-card .pred-day-tab').length })");
+      // Same page: T-2's download failed (a genuine error) while T+1..T+3 got the
+      // undated fixture before their day (downloaded, parsed, not provably this
+      // year's: pending). Orange belongs to the error alone; Today keeps its accent.
+      const tabLook = JSON.parse(await evaluate(s, `(()=>{
+        const probe = (v) => { const e = document.createElement('span'); e.style.color = 'var(' + v + ')'; document.body.appendChild(e); const c = getComputedStyle(e).color; e.remove(); return c; };
+        const tabs = [...document.querySelectorAll('#todays-card .pred-day-tab')];
+        const look = (e) => ({ cls: e.className, num: getComputedStyle(e.querySelector('.pred-day-tab-num')).color, border: getComputedStyle(e).borderTopStyle, title: e.getAttribute('title') });
+        return JSON.stringify({ warn: probe('--warn'), muted2: probe('--muted-2'), accent2: probe('--accent-2'), tabs: tabs.map(look) });
+      })()`));
       failDailyToken = null;
       const em = JSON.parse(empty);
       t('day window: a past day with no puzzle data shows an empty state and no rows, and the tab strip stays',
         em.status === 'Puzzle unavailable' && /No puzzle data for this day/.test(em.text) && em.rows === 0 && em.tabs === 7, empty);
+      {
+        const [, err, , today, ...ahead] = tabLook.tabs;
+        t('day tabs: a genuine download error is orange, an unverified future day is neutral (dashed, muted, never orange), and Today keeps its accent',
+          /\bis-error\b/.test(err.cls) && err.num === tabLook.warn &&
+          ahead.every(a => /\bis-pending\b/.test(a.cls) && !/\bis-error\b/.test(a.cls) && a.num === tabLook.muted2 && a.num !== tabLook.warn &&
+            a.border === 'dashed' && a.title === 'Puzzle not yet verified for this year') &&
+          /\bis-today\b/.test(today.cls) && !/\bis-(pending|error)\b/.test(today.cls) && today.num === tabLook.accent2,
+          JSON.stringify(tabLook));
+      }
+      await clickTab(5);
+      await sleep(300);
+      const pend = JSON.parse(await evaluate(s, "JSON.stringify({ status: document.getElementById('todays-card-status').textContent, cls: document.getElementById('todays-card-status').className, text: ((document.querySelector('#todays-card-body .pred-empty')||{}).textContent||''), rows: document.querySelectorAll('#todays-card-body .pred-row-wrap').length })"));
+      t('day window: an unverified future day says so, never "unpublished" or a load failure, and shows no rows',
+        pend.status === 'Not yet verified' && /\bis-muted\b/.test(pend.cls) && /^Puzzle not yet verified for this year/.test(pend.text) &&
+          !/published|couldn.t load/i.test(pend.text) && pend.rows === 0, JSON.stringify(pend));
 
       // Month, year and leap-day boundaries, on a page whose clock is moved.
       for (const [y, mo, d] of [[2027, 1, 2], [2028, 3, 1]]) {
@@ -811,11 +835,59 @@ export async function run({ base, cdpPort }) {
             await sleep(250);
             perTab.push(await evaluate(yp, "document.querySelectorAll('#todays-card-body .pred-row-wrap').length > 0 ? 'rows' : document.getElementById('todays-card-status').textContent"));
           }
-          t('day window: across New Year only puzzles provably from the selected year show; last year\'s same-date files read Puzzle unavailable',
-            JSON.stringify(perTab) === JSON.stringify(['rows', 'rows', 'rows', 'rows', 'Puzzle unavailable', 'Puzzle unavailable', 'Puzzle unavailable']),
+          t('day window: across New Year only puzzles provably from the selected year show; last year\'s same-date files read Not yet verified',
+            JSON.stringify(perTab) === JSON.stringify(['rows', 'rows', 'rows', 'rows', 'Not yet verified', 'Not yet verified', 'Not yet verified']),
             JSON.stringify(perTab));
         } finally {
           await closePage(cdpPort, yp);
+        }
+      }
+
+      // Recovery: a future day pending on an undated file becomes available once
+      // maptap.gg serves it with that day's ids, on the next selection after the
+      // recheck interval (5 minutes, moved forward on the page clock), without a reload.
+      {
+        const T1 = addDays(T, 1);
+        const token1 = `${MONTHS[Number(T1.slice(5, 7)) - 1]}${Number(T1.slice(8))}.js`;
+        const datedT1 = DAILY.replace(/\{ name: "([^"]+)"/g, (_, n) => `{ id: "${T1}-${n.toLowerCase()}", name: "${n}"`);
+        let publishedT1 = false;
+        const rp = await newPage(cdpPort);
+        try {
+          await interceptNetwork(rp, (url) => {
+            if (BLOCK.test(url)) return 'fail';
+            if (url.endsWith('/' + token1)) return { status: 200, contentType: 'application/javascript', body: publishedT1 ? datedT1 : DAILY };
+            if (/this_day_in_history/.test(url)) return { status: 200, contentType: 'application/javascript', body: DAILY };
+            if (/maptap\.gg/.test(url)) return 'fail';
+            return null;
+          });
+          await rp.send('Page.addScriptToEvaluateOnNewDocument', { source: `(()=>{const R=Date;
+            class D extends R{constructor(...a){if(a.length)super(...a);else super(R.now()+(window.__off||0));} static now(){return R.now()+(window.__off||0);}} window.Date=D;})()` });
+          await setViewport(rp, 1280, 900);
+          await seed(rp, '#dashboard');
+          await waitForExpr(rp, "document.querySelectorAll('#todays-card .pred-day-tab').length===7 && !document.querySelector('#todays-card .pred-day-tab.is-loading')");
+          const tabAt = (i) => evaluate(rp, `(()=>{ document.querySelectorAll('#todays-card .pred-day-tab')[${i}].click(); return 1 })()`);
+          await tabAt(4);
+          await sleep(300);
+          const before = await evaluate(rp, STATUS);
+          publishedT1 = true;
+          await tabAt(5);
+          await tabAt(4);
+          await sleep(500);
+          const early = await evaluate(rp, STATUS);
+          await evaluate(rp, '(()=>{ window.__off = 6 * 60 * 1000; return 1 })()');
+          await tabAt(5);
+          await tabAt(4);
+          let after = '';
+          try {
+            await waitForExpr(rp, "document.querySelectorAll('#todays-card-body .pred-row-wrap').length>0", { timeout: 5000 });
+          } catch { /* reported below */ }
+          after = await evaluate(rp, `JSON.stringify({ status: ${STATUS}, rows: document.querySelectorAll('#todays-card-body .pred-row-wrap').length, tab: document.querySelectorAll('#todays-card .pred-day-tab')[4].className })`);
+          const a = JSON.parse(after);
+          t('day window: a pending future day is not refetched inside the recheck interval, and shows its predictions once maptap.gg serves it dated',
+            before === 'Not yet verified' && early === 'Not yet verified' && a.rows > 0 && !/\bis-(pending|error)\b/.test(a.tab),
+            `${before} | ${early} | ${after}`);
+        } finally {
+          await closePage(cdpPort, rp);
         }
       }
       t('day window: no first-party JS errors', cleanErrors(s).length === 0, cleanErrors(s).join(' | '));
