@@ -670,8 +670,14 @@
   // was written for any parsed file, so one is trusted only when it was
   // cached on its own day; anything older is not (it may be another year's).
   const DAILY_CITIES_CACHE_V = 3;
+  // Every city must be what parseDailyCitiesText stores: finite lat/lng in range.
+  // A damaged entry is no puzzle at all, fresh or expired (it rendered nonsense
+  // predictions, or threw on a null city), so it is ignored and re-downloaded.
+  const isPuzzleCity = (c) => !!c && Number.isFinite(c.lat) && Number.isFinite(c.lng) &&
+    c.lat >= -90 && c.lat <= 90 && c.lng >= -180 && c.lng <= 180;
   function cachedDailyCities(cached, iso) {
-    if (!cached || !Array.isArray(cached.cities) || cached.cities.length !== N_LOCS) return null;
+    if (!cached || !Array.isArray(cached.cities) || cached.cities.length !== N_LOCS ||
+        !cached.cities.every(isPuzzleCity)) return null;
     if (cached.v === DAILY_CITIES_CACHE_V) return cached.cities;
     return cached.v === 2 && localDateISO(cached.cachedAt) === iso ? cached.cities : null;
   }
@@ -702,32 +708,41 @@
   // file downloaded and parsed but is not provably `iso`'s (it may be last
   // year's, or this year's without dated ids), so a later check can still
   // accept it; 'error' when the download, the HTTP status or the parse failed.
+  // A refresh of an expired entry replaces it only with a newly verified file:
+  // when the refresh fails or is not verifiable, the entry (already proof for
+  // this exact date) is returned as 'ok' with `stale: true`, so the caller
+  // can try the refresh again later.
   async function fetchDailyCities(iso) {
     const url = mapTapDailyDataUrl(iso);
     if (!url) return { status: 'error', cities: null };
     const cacheKey = KEY.DAILY_CITIES_PREFIX + iso;
+    let verified = null;
     try {
       const cached = JSON.parse(localStorage.getItem(cacheKey) || 'null');
-      if (cachedDailyCities(cached, iso)) {
+      verified = cachedDailyCities(cached, iso);
+      if (verified) {
         const isPast = iso < todayISO();
         const fresh = isPast || (Date.now() - (cached.cachedAt || 0)) < 6 * 3600 * 1000;
-        if (fresh) return { status: 'ok', cities: cached.cities };
+        if (fresh) return { status: 'ok', cities: verified };
       }
     } catch (_) { /* cache corrupted — fall through to fetch */ }
+    const unrefreshed = (status) => verified
+      ? { status: 'ok', cities: verified, stale: true }
+      : { status, cities: null };
     try {
       const fetchedOn = todayISO();
       const res = await fetch(url, { credentials: 'omit', cache: 'no-cache' });
-      if (!res.ok) return { status: 'error', cities: null };
+      if (!res.ok) return unrefreshed('error');
       const text = await res.text();
       const cities = parseDailyCitiesText(text);
-      if (!cities) return { status: 'error', cities: null };
-      if (!dailyFileIsFor(text, iso, fetchedOn)) return { status: 'pending', cities: null };
+      if (!cities) return unrefreshed('error');
+      if (!dailyFileIsFor(text, iso, fetchedOn)) return unrefreshed('pending');
       try {
         localStorage.setItem(cacheKey, JSON.stringify({ v: DAILY_CITIES_CACHE_V, cities, cachedAt: Date.now() }));
       } catch (_) { /* quota — ignore, prediction still works for this session */ }
       return { status: 'ok', cities };
     } catch (_) {
-      return { status: 'error', cities: null };
+      return unrefreshed('error');
     }
   }
   // ---------- daily location names (in-memory only, behind played gate) ----------
@@ -1945,7 +1960,9 @@
   // least PREDICT_RECHECK_MS after its last check (selecting a tab renders),
   // keeping its status while the recheck is in flight, so a file MapTap
   // rewrites with dated ids during the day is picked up without waiting for
-  // midnight. 5 minutes is the file's own `max-age=300`.
+  // midnight. 5 minutes is the file's own `max-age=300`. An 'ok' day served
+  // from an expired cache because its refresh failed (`stale`) is refreshed
+  // on the same schedule until a refresh verifies a file.
   const PREDICT_RECHECK_MS = 5 * 60 * 1000;
   function ensureSevenDayWindowLoaded() {
     const today = todayISO();
@@ -1965,7 +1982,8 @@
     const now = Date.now();
     for (const entry of state.predictWindow) {
       // A past day showing the puzzle stored on its synced games never reads the file.
-      const recheck = (entry.status === 'pending' || entry.status === 'error') &&
+      // A `stale` day shows its verified cached puzzle while its refresh keeps failing.
+      const recheck = (entry.status === 'pending' || entry.status === 'error' || entry.stale) &&
         !entry.inFlight && now - (entry.checkedAt || 0) >= PREDICT_RECHECK_MS &&
         !(entry.iso < today && storedPuzzleCities(entry.iso));
       if (entry.status !== 'idle' && !recheck) continue;
@@ -1977,6 +1995,7 @@
         entry.checkedAt = Date.now();
         entry.status = result.status;
         entry.cities = result.status === 'ok' ? result.cities : null;
+        entry.stale = !!result.stale;
         if (state.view === 'dashboard') renderTodaysPredictions();
       };
       fetchDailyCities(entry.iso).then(settle, () => settle({ status: 'error', cities: null }));

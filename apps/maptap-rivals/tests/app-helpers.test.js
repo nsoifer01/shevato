@@ -2168,3 +2168,198 @@ test('location names: today\'s undated file reveals names; the same file for a p
   assert.equal(await c._testExports.fetchDailyNames(back), false);
   assert.equal(c._testExports.dailyNames.has(back), false);
 });
+
+// ---------- verified cache survives a failed refresh (issue #674) ----------
+// A v3 entry under `maptapRivalsDailyCities/<YYYY-MM-DD>` is written only after
+// dailyFileIsFor accepted the file for that exact date (a legacy v2 entry only
+// when it was cached on its own day), so it is proof for that date and year.
+// Today's and future entries are refreshed after 6 hours; a refresh that does
+// not produce a newer verified file must leave that proof in place. Expected
+// cities below are the ones the test itself stored, never the app's output.
+const HOUR_MS_T = 3600000;
+const cacheKeyFor = (iso) => 'maptapRivalsDailyCities/' + iso;
+const v3Entry = (coords, ageMs) => ({ v: 3, cities: asCities(coords), cachedAt: Date.now() - ageMs });
+const serverError = () => Promise.resolve({ ok: false, status: 500, text: () => Promise.resolve('upstream error') });
+const offline = () => Promise.reject(new TypeError('Failed to fetch'));
+const lastYearOf = (iso) => `${Number(iso.slice(0, 4)) - 1}${iso.slice(4)}`;
+
+test('issue #674: today\'s verified puzzle cached 7 hours ago survives every kind of failed refresh, and the cache is left untouched', async () => {
+  const today = H('localISO')(new Date());
+  for (const [label, fetchImpl] of [
+    ['network failure', offline], ['HTTP 404', notFoundResponse], ['HTTP 500', serverError],
+    ['200 that does not parse', () => okResponse('<html>maintenance</html>')],
+  ]) {
+    const seeded = v3Entry(PUZZLE_B, 7 * HOUR_MS_T);
+    const c = loadApp({ [cacheKeyFor(today)]: seeded }, { fetchImpl });
+    const before = c.localStorage.getItem(cacheKeyFor(today));
+    const got = plain(await c._testExports.fetchDailyCities(today));
+    assert.equal(got.status, 'ok', label);
+    assert.deepEqual(got.cities, asCities(PUZZLE_B), `${label}: the verified cities, not an error`);
+    assert.equal(c.localStorage.getItem(cacheKeyFor(today)), before, `${label}: proof kept as it was`);
+  }
+});
+
+test('issue #674: a future day\'s verified (dated) puzzle is kept when its refresh returns a file that is no longer provably that date\'s', async () => {
+  const today = H('localISO')(new Date());
+  const ahead = H('addDaysISO')(today, 2);
+  for (const [label, body] of [['undated', dailyFile(PUZZLE_A, null)], ['last year\'s ids', dailyFile(PUZZLE_A, lastYearOf(ahead))]]) {
+    const c = loadApp({ [cacheKeyFor(ahead)]: v3Entry(PUZZLE_B, 7 * HOUR_MS_T) }, { fetchImpl: () => okResponse(body) });
+    const before = c.localStorage.getItem(cacheKeyFor(ahead));
+    const got = plain(await c._testExports.fetchDailyCities(ahead));
+    assert.equal(got.status, 'ok', label);
+    assert.deepEqual(got.cities, asCities(PUZZLE_B), `${label}: never the unverified file's cities`);
+    assert.equal(c.localStorage.getItem(cacheKeyFor(ahead)), before, `${label}: not overwritten`);
+  }
+});
+
+test('issue #674: a refresh that verifies a newer file replaces the cache; a fresh cache is not refetched at all', async () => {
+  const today = H('localISO')(new Date());
+  const ahead = H('addDaysISO')(today, 1);
+  // Today: an undated file fetched on the day is verified (same-day rule).
+  const c = loadApp({ [cacheKeyFor(today)]: v3Entry(PUZZLE_B, 7 * HOUR_MS_T) }, { fetchImpl: () => okResponse(dailyFile(PUZZLE_A, null)) });
+  assert.deepEqual(plain(await c._testExports.fetchDailyCities(today)), { status: 'ok', cities: asCities(PUZZLE_A) });
+  const saved = JSON.parse(c.localStorage.getItem(cacheKeyFor(today)));
+  assert.deepEqual(saved.cities, asCities(PUZZLE_A));
+  assert.ok(Date.now() - saved.cachedAt < HOUR_MS_T, 'restamped');
+  // Ahead: a file dated for that day is verified.
+  const c2 = loadApp({ [cacheKeyFor(ahead)]: v3Entry(PUZZLE_B, 7 * HOUR_MS_T) }, { fetchImpl: () => okResponse(dailyFile(PUZZLE_A, ahead)) });
+  assert.deepEqual(plain(await c2._testExports.fetchDailyCities(ahead)), { status: 'ok', cities: asCities(PUZZLE_A) });
+  // Under 6 hours old: served from the cache with no request.
+  let calls = 0;
+  const c3 = loadApp({ [cacheKeyFor(today)]: v3Entry(PUZZLE_B, 5 * HOUR_MS_T) }, { fetchImpl: () => { calls++; return offline(); } });
+  assert.deepEqual(plain(await c3._testExports.fetchDailyCities(today)), { status: 'ok', cities: asCities(PUZZLE_B) });
+  assert.equal(calls, 0);
+});
+
+test('issue #674: a past day\'s verified puzzle never expires and is never refetched, however old', async () => {
+  const today = H('localISO')(new Date());
+  const back = H('addDaysISO')(today, -3);
+  let calls = 0;
+  const c = loadApp({ [cacheKeyFor(back)]: v3Entry(PUZZLE_B, 400 * 24 * HOUR_MS_T) }, { fetchImpl: () => { calls++; return offline(); } });
+  assert.deepEqual(plain(await c._testExports.fetchDailyCities(back)), { status: 'ok', cities: asCities(PUZZLE_B) });
+  assert.equal(calls, 0);
+});
+
+test('issue #674: no fallback without proof for that exact date: missing, malformed, unversioned, early-v2 or other-year entries never stand in', async () => {
+  const today = H('localISO')(new Date());
+  const ahead = H('addDaysISO')(today, 1);
+  const [y, m, d] = ahead.split('-').map(Number);
+  const dayBefore = new Date(y, m - 1, d - 1, 12).getTime(); // cached the day BEFORE its date
+  const cases = [
+    ['no entry', {}],
+    ['corrupted JSON', { [cacheKeyFor(ahead)]: '{not json' }],
+    ['four cities', { [cacheKeyFor(ahead)]: { v: 3, cities: asCities(PUZZLE_B).slice(0, 4), cachedAt: Date.now() - 7 * HOUR_MS_T } }],
+    ['unknown version', { [cacheKeyFor(ahead)]: { v: 1, cities: asCities(PUZZLE_B), cachedAt: Date.now() - 7 * HOUR_MS_T } }],
+    ['v2 cached before its day', { [cacheKeyFor(ahead)]: { v: 2, cities: asCities(PUZZLE_B), cachedAt: dayBefore } }],
+    ['last year\'s same month/day', { [cacheKeyFor(lastYearOf(ahead))]: v3Entry(PUZZLE_B, 7 * HOUR_MS_T) }],
+  ];
+  for (const [label, seed] of cases) {
+    const failing = loadApp(seed, { fetchImpl: offline });
+    assert.deepEqual(plain(await failing._testExports.fetchDailyCities(ahead)), { status: 'error', cities: null }, `${label}, offline`);
+    const unverified = loadApp(seed, { fetchImpl: () => okResponse(dailyFile(PUZZLE_A, null)) });
+    assert.deepEqual(plain(await unverified._testExports.fetchDailyCities(ahead)), { status: 'pending', cities: null }, `${label}, undated file`);
+  }
+});
+
+test('issue #674: across New Year, Jan 1\'s verified cache serves only Jan 1 of its own year', async () => {
+  // Pure date logic, independent of today: the key carries the full date, and
+  // citiesForPastDay (Spot-on) reads the same rule as the card.
+  const c = loadApp({
+    [cacheKeyFor('2026-01-01')]: v3Entry(PUZZLE_B, 7 * HOUR_MS_T),
+    [cacheKeyFor('2025-12-31')]: v3Entry(PUZZLE_A, 7 * HOUR_MS_T),
+  }, { fetchImpl: offline });
+  assert.deepEqual(plain(await c._testExports.fetchDailyCities('2026-01-01')), { status: 'ok', cities: asCities(PUZZLE_B) });
+  assert.deepEqual(plain(await c._testExports.fetchDailyCities('2025-12-31')), { status: 'ok', cities: asCities(PUZZLE_A) });
+  assert.deepEqual(plain(await c._testExports.fetchDailyCities('2027-01-01')), { status: 'error', cities: null }, 'a year on: no proof');
+  assert.equal(c._testExports.citiesForPastDay('2027-01-01', new Map()), null);
+});
+
+test('issue #674: in the day window a stale verified day shows its puzzle, refreshes no more than once per interval, and picks up a newer verified file', async () => {
+  const today = H('localISO')(new Date());
+  const token = H('maptapMonthDay')(today) + '.js';
+  let up = false;
+  let todayFetches = 0;
+  const c = loadApp({ [cacheKeyFor(today)]: v3Entry(PUZZLE_B, 7 * HOUR_MS_T) }, { fetchImpl: (url) => {
+    if (!url.endsWith(token)) return offline();
+    todayFetches++;
+    return up ? okResponse(dailyFile(PUZZLE_A, null)) : offline();
+  } });
+  const { ensureSevenDayWindowLoaded, PREDICT_RECHECK_MS } = c._testExports;
+  ensureSevenDayWindowLoaded();
+  await settle(); await settle();
+  const entry = windowEntry(c, today);
+  assert.equal(entry.status, 'ok', 'shown, not an error');
+  assert.deepEqual(plain(entry.cities), asCities(PUZZLE_B));
+  assert.equal(todayFetches, 1);
+  ensureSevenDayWindowLoaded();
+  await settle(); await settle();
+  assert.equal(todayFetches, 1, 'no refetch inside the interval');
+  entry.checkedAt -= PREDICT_RECHECK_MS;
+  ensureSevenDayWindowLoaded();
+  ensureSevenDayWindowLoaded();
+  await settle(); await settle();
+  assert.equal(todayFetches, 2, 'one request per due refresh');
+  assert.equal(entry.status, 'ok');
+  assert.deepEqual(plain(entry.cities), asCities(PUZZLE_B), 'still the verified copy while offline');
+  up = true;
+  entry.checkedAt -= PREDICT_RECHECK_MS;
+  ensureSevenDayWindowLoaded();
+  await settle(); await settle();
+  assert.equal(todayFetches, 3);
+  assert.deepEqual(plain(entry.cities), asCities(PUZZLE_A), 'connectivity back: the newer verified file');
+  assert.deepEqual(JSON.parse(c.localStorage.getItem(cacheKeyFor(today))).cities, asCities(PUZZLE_A));
+  entry.checkedAt -= PREDICT_RECHECK_MS;
+  ensureSevenDayWindowLoaded();
+  await settle(); await settle();
+  assert.equal(todayFetches, 3, 'a successfully refreshed day is not refreshed again this session');
+});
+
+test('issue #674: a saved entry whose cities are not real coordinates is never served, fresh or expired, and a verified download repairs it', async () => {
+  // Shapes a 5-long array can take without being a puzzle. The parser only
+  // ever stores finite lat/lng in range, so none of these is the app's own write.
+  const today = H('localISO')(new Date());
+  const back = H('addDaysISO')(today, -2);
+  const bad = {
+    'string coordinates': PUZZLE_B.map(() => ({ lat: 'x', lng: 'y' })),
+    'null cities': [null, null, null, null, null],
+    'empty objects': [{}, {}, {}, {}, {}],
+    'latitude out of range': asCities(PUZZLE_B).map((c, i) => (i === 2 ? { lat: 123, lng: c.lng } : c)),
+    'longitude out of range': asCities(PUZZLE_B).map((c, i) => (i === 4 ? { lat: c.lat, lng: -200 } : c)),
+    'numeric strings': asCities(PUZZLE_B).map((c) => ({ lat: String(c.lat), lng: String(c.lng) })),
+  };
+  for (const [label, cities] of Object.entries(bad)) {
+    for (const ageH of [1, 7]) {
+      const seed = { [cacheKeyFor(today)]: { v: 3, cities, cachedAt: Date.now() - ageH * HOUR_MS_T } };
+      const off = loadApp(seed, { fetchImpl: offline });
+      assert.deepEqual(plain(await off._testExports.fetchDailyCities(today)), { status: 'error', cities: null }, `${label}, ${ageH}h, offline`);
+      const on = loadApp(seed, { fetchImpl: () => okResponse(dailyFile(PUZZLE_A, null)) });
+      assert.deepEqual(plain(await on._testExports.fetchDailyCities(today)), { status: 'ok', cities: asCities(PUZZLE_A) }, `${label}, ${ageH}h, verified download`);
+      assert.deepEqual(JSON.parse(on.localStorage.getItem(cacheKeyFor(today))).cities, asCities(PUZZLE_A), `${label}: repaired`);
+    }
+    // Spot-on reads the same rule for past days.
+    const past = loadApp({ [cacheKeyFor(back)]: { v: 3, cities, cachedAt: Date.now() - 50 * HOUR_MS_T } }, { fetchImpl: offline });
+    assert.equal(past._testExports.citiesForPastDay(back, new Map()), null, `${label}: not a past day's puzzle`);
+  }
+});
+
+test('issue #674: a selected day served from its expired cache shows predictions-ready state, arms no recheck timer, and is not marked pending or error', async () => {
+  const today = H('localISO')(new Date());
+  const c = loadApp({ maptapRivalsRivals: [goodRival()], [cacheKeyFor(today)]: v3Entry(PUZZLE_B, 7 * HOUR_MS_T) }, { fetchImpl: offline });
+  const nodes = {};
+  for (const id of ['todays-card', 'todays-card-body', 'todays-card-sub', 'todays-card-status']) nodes[id] = c.document.createElement('div');
+  c.document.querySelector = (sel) => nodes[sel.replace(/^#/, '')] || null;
+  const timers = [];
+  c.setTimeout = (fn, ms) => { timers.push(ms); return timers.length; };
+  c.clearTimeout = () => {};
+  c._testExports.renderTodaysPredictions();
+  await settle(); await settle();
+  const entry = windowEntry(c, today);
+  assert.equal(entry.status, 'ok');
+  assert.equal(entry.stale, true);
+  assert.notEqual(nodes['todays-card-status'].textContent, 'Puzzle unavailable');
+  assert.notEqual(nodes['todays-card-status'].textContent, 'Not yet verified');
+  const tabs = nodes['todays-card-body'].children.filter((n) => n.className === 'pred-day-tabs').pop().children;
+  const todayTab = tabs[c._testExports.state.predictWindow.indexOf(entry)];
+  assert.doesNotMatch(todayTab.className, /\bis-(pending|error|loading)\b/);
+  assert.equal(timers.filter((ms) => ms >= c._testExports.PREDICT_RECHECK_MS - 1000).length, 0, 'no 5-minute timer for a day that already shows its puzzle');
+});
