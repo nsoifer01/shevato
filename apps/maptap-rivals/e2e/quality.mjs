@@ -890,6 +890,22 @@ export async function run({ base, cdpPort }) {
           await closePage(cdpPort, rp);
         }
       }
+      // Issue #674: today's puzzle, verified and cached 7 hours ago, must still
+      // show when its refresh fails, and the saved proof must be left as it was.
+      {
+        const tokT = `${MONTHS[Number(T.slice(5, 7)) - 1]}${Number(T.slice(8))}.js`;
+        const key = 'maptapRivalsDailyCities/' + T;
+        const saved = JSON.stringify({ v: 3, cachedAt: Date.now() - 7 * 3600 * 1000,
+          cities: [[51.5074, -0.1278], [35.6762, 139.6503], [-33.8688, 151.2093], [40.7128, -74.006], [-1.2921, 36.8219]].map(([lat, lng]) => ({ lat, lng })) });
+        failDailyToken = tokT;
+        await seed(s, '#dashboard', { [key]: saved });
+        await waitForExpr(s, "document.querySelectorAll('#todays-card .pred-day-tab').length===7 && !document.querySelector('#todays-card .pred-day-tab.is-loading')");
+        const got = JSON.parse(await evaluate(s, `JSON.stringify({ status: ${STATUS}, rows: document.querySelectorAll('#todays-card-body .pred-row-wrap').length,
+          today: document.querySelector('#todays-card .pred-day-tab.is-today').className, kept: localStorage.getItem(${JSON.stringify(key)}) === ${JSON.stringify(saved)} })`));
+        failDailyToken = null;
+        t('day window: a verified puzzle cached 7 hours ago still shows when its refresh fails, and the saved copy is kept (#674)',
+          got.rows > 0 && got.status !== 'Puzzle unavailable' && !/\bis-(error|pending)\b/.test(got.today) && got.kept, JSON.stringify(got));
+      }
       t('day window: no first-party JS errors', cleanErrors(s).length === 0, cleanErrors(s).join(' | '));
     }
 

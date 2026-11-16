@@ -794,11 +794,24 @@ what it shows), and `schedulePredictRecheck`
 re-renders a selected pending/error day once the interval passes. The
 acceptance rule itself is unchanged.
 
-Open, predates this: an `ok` cache entry for today or a future day older than
-6 hours is refetched on load, and if that refetch fails the day reads as an
-error even though the cached, already-verified puzzle is still in storage
-(master returned `null` for the same case). The recheck now retries it every
-5 minutes; falling back to the cached entry is not done.
+**An expired cache entry is still proof (issue #674, 2026-11-16).** An `ok`
+entry for today or a future day is refreshed once it is 6 hours old. Until
+then a failed refresh (network, non-200, unparseable) returned `error` and a
+non-verifiable one `pending`, discarding the cached cities, so a morning visit
+followed by an evening reload while maptap.gg was unreachable showed "Puzzle
+unavailable" for a day whose verified puzzle was still in storage. The cached
+cities were never the problem: the key carries the full `YYYY-MM-DD`, the
+cache is device-local (not in the synced key list, and `fetchDailyCities` is
+its only writer), and an entry passes `cachedDailyCities` only as v3 (written
+after `dailyFileIsFor` accepted the file for that date) or as a v2 cached on
+its own day. Expiry is a refresh schedule, not a loss of that proof. Now a
+refresh replaces the entry only with a newly verified file; otherwise
+`fetchDailyCities` returns the cached cities as `ok` with `stale: true`, the
+entry is left byte-for-byte as it was, and the day window refreshes a stale
+day on the `PREDICT_RECHECK_MS` schedule until a refresh verifies a file.
+Past days are never refreshed (their entries never expire), so this only
+affects today and the days ahead. A malformed, unversioned, early-v2 or
+other-year entry is not proof and never stands in.
 
 Harness trap when probing this in a browser: `tests/browser/cdp.mjs`'s
 `newPage()` answers every `this_day_in_history/*.js` from
