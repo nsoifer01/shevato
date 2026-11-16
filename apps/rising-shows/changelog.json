@@ -1,6 +1,268 @@
 {
   "updates": [
     {
+      "builtAt": "2026-11-16T15:41:02.094Z",
+      "totals": {
+        "seasons": 67923,
+        "delta": 18
+      },
+      "shapeCounts": {
+        "rebound": 9810,
+        "big-finale": 11885,
+        "u-shaped": 2657,
+        "rollercoaster": 13541,
+        "mid-peak": 4392,
+        "consistent": 2540,
+        "bad-finale": 4390,
+        "front-loaded": 3091,
+        "slow-burn": 4011,
+        "declining": 1654,
+        "saved-best-for-last": 1379,
+        "shape-drift": 1393,
+        "rising": 2404
+      },
+      "shapeDeltas": {
+        "big-finale": 1,
+        "u-shaped": -2,
+        "rollercoaster": 4,
+        "mid-peak": -4,
+        "consistent": -5,
+        "bad-finale": 7,
+        "front-loaded": -1,
+        "slow-burn": -9,
+        "declining": -1,
+        "shape-drift": 1,
+        "rising": -1
+      },
+      "added": [
+        {
+          "seriesId": "tt23901812",
+          "title": "Hello Neighbor: Welcome to Raven Brooks",
+          "season": 3,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt38589310",
+          "title": "Deconstructing the Beatles",
+          "season": 1,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt0235132",
+          "title": "Rescue Heroes",
+          "season": 3,
+          "seasonYear": 2002
+        },
+        {
+          "seriesId": "tt32141734",
+          "title": "Secret Nazi Science",
+          "season": 1,
+          "seasonYear": 2024
+        },
+        {
+          "seriesId": "tt0219457",
+          "title": "Stingers",
+          "season": 7,
+          "seasonYear": 2003
+        },
+        {
+          "seriesId": "tt11286302",
+          "title": "You Can't Expense This!",
+          "season": 1,
+          "seasonYear": 2019
+        },
+        {
+          "seriesId": "tt3755768",
+          "title": "Ninku",
+          "season": 1,
+          "seasonYear": 1994
+        },
+        {
+          "seriesId": "tt0062566",
+          "title": "Go Go Gophers",
+          "season": 1,
+          "seasonYear": 1966
+        },
+        {
+          "seriesId": "tt26653525",
+          "title": "Docent",
+          "season": 3,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt27042734",
+          "title": "Forgotten Frontlines",
+          "season": 1,
+          "seasonYear": 2022
+        },
+        {
+          "seriesId": "tt27425453",
+          "title": "The Signal - 149 KHZ",
+          "season": 1,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt21309142",
+          "title": "Weeks of War",
+          "season": 1,
+          "seasonYear": 2022
+        },
+        {
+          "seriesId": "tt32059608",
+          "title": "Return to Paradise",
+          "season": 3,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt36046643",
+          "title": "80 Bako",
+          "season": 1,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt38992068",
+          "title": "Awkwafina: The Unlikely Cook",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt6150576",
+          "title": "Midnight Diner: Tokyo Stories",
+          "season": 3,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt1961967",
+          "title": "Behind Mansion Walls",
+          "season": 3,
+          "seasonYear": 2013
+        },
+        {
+          "seriesId": "tt37497762",
+          "title": "The Real Rooneys",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt37962190",
+          "title": "Poluraspad",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt50106678",
+          "title": "Outo historia",
+          "season": 1,
+          "seasonYear": 2026
+        }
+      ],
+      "removed": [
+        {
+          "seriesId": "tt3137940",
+          "title": "Countdown to UFC",
+          "season": 15,
+          "seasonYear": 2021
+        },
+        {
+          "seriesId": "tt0112183",
+          "title": "Die Straßen von Berlin",
+          "season": 4,
+          "seasonYear": 2000
+        }
+      ],
+      "ratingSwings": [
+        {
+          "seriesId": "tt38707741",
+          "title": "Murder in Galicia",
+          "season": 1,
+          "from": 7.6,
+          "to": 6.57,
+          "delta": -1.03
+        },
+        {
+          "seriesId": "tt0056767",
+          "title": "The Judy Garland Show",
+          "season": 1,
+          "from": 8.6,
+          "to": 7.58,
+          "delta": -1.02
+        },
+        {
+          "seriesId": "tt43619474",
+          "title": "Sutorenji Itô Junji no Yoru mo Nemurenu Kimyôna Hanashi",
+          "season": 1,
+          "from": 6.64,
+          "to": 7.25,
+          "delta": 0.61
+        },
+        {
+          "seriesId": "tt0261463",
+          "title": "Ceres: Celestial Legend",
+          "season": 1,
+          "from": 6.65,
+          "to": 7.23,
+          "delta": 0.58
+        },
+        {
+          "seriesId": "tt47657141",
+          "title": "The Perfect Lie",
+          "season": 1,
+          "from": 8.23,
+          "to": 7.68,
+          "delta": -0.55
+        },
+        {
+          "seriesId": "tt35932166",
+          "title": "Mr. Fanboy",
+          "season": 1,
+          "from": 6.53,
+          "to": 7.04,
+          "delta": 0.51
+        },
+        {
+          "seriesId": "tt0346255",
+          "title": "Eisenbahn-Romantik",
+          "season": 1,
+          "from": 5.87,
+          "to": 6.35,
+          "delta": 0.48
+        },
+        {
+          "seriesId": "tt1961967",
+          "title": "Behind Mansion Walls",
+          "season": 2,
+          "from": 6.72,
+          "to": 7.19,
+          "delta": 0.47
+        },
+        {
+          "seriesId": "tt7674544",
+          "title": "Christmas Cookie Challenge",
+          "season": 1,
+          "from": 7.96,
+          "to": 7.54,
+          "delta": -0.42
+        },
+        {
+          "seriesId": "tt42006761",
+          "title": "The Secret Lives of Mormon Wives: Orange County",
+          "season": 1,
+          "from": 5.7,
+          "to": 6.12,
+          "delta": 0.42
+        }
+      ],
+      "modifiedCounts": {
+        "seriesVotes": 20286,
+        "avgRating": 1197,
+        "shapes": 206,
+        "episodeCount": 103,
+        "seriesRating": 373,
+        "poster": 4,
+        "overview": 3
+      }
+    },
+    {
       "builtAt": "2026-11-15T14:10:04.685Z",
       "totals": {
         "seasons": 67905,
@@ -7914,292 +8176,6 @@
         "episodeCount": 91,
         "seriesRating": 314,
         "poster": 6
-      }
-    },
-    {
-      "builtAt": "2026-10-17T10:47:46.294Z",
-      "totals": {
-        "seasons": 67319,
-        "delta": 24
-      },
-      "shapeCounts": {
-        "rebound": 9764,
-        "big-finale": 11809,
-        "u-shaped": 2638,
-        "rollercoaster": 13494,
-        "mid-peak": 4360,
-        "consistent": 2521,
-        "bad-finale": 4333,
-        "front-loaded": 3059,
-        "slow-burn": 3963,
-        "declining": 1637,
-        "saved-best-for-last": 1379,
-        "shape-drift": 1398,
-        "rising": 2352
-      },
-      "shapeDeltas": {
-        "rebound": 12,
-        "big-finale": 9,
-        "u-shaped": -3,
-        "rollercoaster": -1,
-        "mid-peak": -3,
-        "consistent": 4,
-        "slow-burn": 1,
-        "declining": -1,
-        "saved-best-for-last": 2,
-        "shape-drift": -2,
-        "rising": 7
-      },
-      "added": [
-        {
-          "seriesId": "tt39123061",
-          "title": "The Ramparts of Ice",
-          "season": 2,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt23148340",
-          "title": "Crystal Lake",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt17491088",
-          "title": "The Diplomat",
-          "season": 4,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt43119470",
-          "title": "FX Fighter Kurumi-chan",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt37972251",
-          "title": "War",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt10151794",
-          "title": "Denton's Death Date",
-          "season": 1,
-          "seasonYear": 2019
-        },
-        {
-          "seriesId": "tt35136778",
-          "title": "Algorithomus",
-          "season": 1,
-          "seasonYear": 2024
-        },
-        {
-          "seriesId": "tt0109016",
-          "title": "3000 scénarios contre un virus",
-          "season": 1,
-          "seasonYear": 1995
-        },
-        {
-          "seriesId": "tt0081857",
-          "title": "Entertainment Tonight",
-          "season": 45,
-          "seasonYear": 2025
-        },
-        {
-          "seriesId": "tt10827252",
-          "title": "The Drew Barrymore Show",
-          "season": 4,
-          "seasonYear": 2023
-        },
-        {
-          "seriesId": "tt0167515",
-          "title": "Access Hollywood",
-          "season": 30,
-          "seasonYear": 2025
-        },
-        {
-          "seriesId": "tt3962914",
-          "title": "Itch",
-          "season": 2,
-          "seasonYear": 2021
-        },
-        {
-          "seriesId": "tt31502721",
-          "title": "A Remarkable Place to Die",
-          "season": 2,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt35673115",
-          "title": "Hollywood Arts",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt0352110",
-          "title": "TV Burp",
-          "season": 3,
-          "seasonYear": 2004
-        },
-        {
-          "seriesId": "tt3109652",
-          "title": "Saqr Qoraish",
-          "season": 1,
-          "seasonYear": 2002
-        },
-        {
-          "seriesId": "tt0167515",
-          "title": "Access Hollywood",
-          "season": 28,
-          "seasonYear": 2023
-        },
-        {
-          "seriesId": "tt4432684",
-          "title": "Your Family",
-          "season": 7,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt14129576",
-          "title": "Khudozhnik",
-          "season": 2,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt30799082",
-          "title": "Inci Taneleri",
-          "season": 3,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt43344892",
-          "title": "Dimwitz (live Action)",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt44091007",
-          "title": "Engineering from Above",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt47983833",
-          "title": "Fool in Love",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt37109705",
-          "title": "The Lament of Autumn",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt6722972",
-          "title": "Hot Dog",
-          "season": 2,
-          "seasonYear": 2004
-        }
-      ],
-      "removed": [
-        {
-          "seriesId": "tt0281447",
-          "title": "Big Family",
-          "season": 8,
-          "seasonYear": 2008
-        }
-      ],
-      "ratingSwings": [
-        {
-          "seriesId": "tt4932500",
-          "title": "IMDb on the Scene",
-          "season": 11,
-          "from": 8.47,
-          "to": 6.73,
-          "delta": -1.74
-        },
-        {
-          "seriesId": "tt7122766",
-          "title": "In the Vault",
-          "season": 2,
-          "from": 6.85,
-          "to": 5.99,
-          "delta": -0.86
-        },
-        {
-          "seriesId": "tt6425462",
-          "title": "Hanazuki: Full of Treasures",
-          "season": 1,
-          "from": 8.02,
-          "to": 7.26,
-          "delta": -0.76
-        },
-        {
-          "seriesId": "tt0379623",
-          "title": "The Ellen DeGeneres Show",
-          "season": 19,
-          "from": 5.6,
-          "to": 6.23,
-          "delta": 0.63
-        },
-        {
-          "seriesId": "tt48461761",
-          "title": "Eyes",
-          "season": 1,
-          "from": 8.3,
-          "to": 8.87,
-          "delta": 0.57
-        },
-        {
-          "seriesId": "tt0379623",
-          "title": "The Ellen DeGeneres Show",
-          "season": 4,
-          "from": 6.78,
-          "to": 6.31,
-          "delta": -0.47
-        },
-        {
-          "seriesId": "tt0081857",
-          "title": "Entertainment Tonight",
-          "season": 44,
-          "from": 9.17,
-          "to": 9.63,
-          "delta": 0.46
-        },
-        {
-          "seriesId": "tt35052365",
-          "title": "Kudrat 1968: High Council",
-          "season": 1,
-          "from": 9.33,
-          "to": 8.87,
-          "delta": -0.46
-        },
-        {
-          "seriesId": "tt0902735",
-          "title": "On the Track",
-          "season": 33,
-          "from": 7.16,
-          "to": 6.7,
-          "delta": -0.46
-        },
-        {
-          "seriesId": "tt44632465",
-          "title": "Anne Yarisi",
-          "season": 1,
-          "from": 8.8,
-          "to": 9.25,
-          "delta": 0.45
-        }
-      ],
-      "modifiedCounts": {
-        "seriesVotes": 23182,
-        "avgRating": 1261,
-        "shapes": 219,
-        "seriesRating": 361,
-        "episodeCount": 91,
-        "poster": 3,
-        "overview": 2
       }
     }
   ]
