@@ -813,6 +813,17 @@ Past days are never refreshed (their entries never expire), so this only
 affects today and the days ahead. A malformed, unversioned, early-v2 or
 other-year entry is not proof and never stands in.
 
+`cachedDailyCities` used to check only that `cities` was a 5-long array. Once
+the fallback served expired entries, a damaged one (string or empty
+coordinates, a `null` city) would have shown nonsense predictions or thrown in
+the predictor and left the card on "Loading…", where before it failed safe as
+"Puzzle unavailable" (both measured; the same entry under 6 hours old already
+did this on master). It now also requires every city to have finite `lat` in
+[-90, 90] and `lng` in [-180, 180], the rule `parseDailyCitiesText` applies to
+everything it stores, so a damaged entry is ignored, fresh or expired, and the
+next verified download overwrites it. Spot-on (`citiesForPastDay`) reads the
+same rule.
+
 Harness trap when probing this in a browser: `tests/browser/cdp.mjs`'s
 `newPage()` answers every `this_day_in_history/*.js` from
 `tests/browser/third-party.mjs`'s fixed, UNDATED "Lima" puzzle, so every day

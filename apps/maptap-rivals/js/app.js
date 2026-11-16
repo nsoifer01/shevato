@@ -670,8 +670,14 @@
   // was written for any parsed file, so one is trusted only when it was
   // cached on its own day; anything older is not (it may be another year's).
   const DAILY_CITIES_CACHE_V = 3;
+  // Every city must be what parseDailyCitiesText stores: finite lat/lng in range.
+  // A damaged entry is no puzzle at all, fresh or expired (it rendered nonsense
+  // predictions, or threw on a null city), so it is ignored and re-downloaded.
+  const isPuzzleCity = (c) => !!c && Number.isFinite(c.lat) && Number.isFinite(c.lng) &&
+    c.lat >= -90 && c.lat <= 90 && c.lng >= -180 && c.lng <= 180;
   function cachedDailyCities(cached, iso) {
-    if (!cached || !Array.isArray(cached.cities) || cached.cities.length !== N_LOCS) return null;
+    if (!cached || !Array.isArray(cached.cities) || cached.cities.length !== N_LOCS ||
+        !cached.cities.every(isPuzzleCity)) return null;
     if (cached.v === DAILY_CITIES_CACHE_V) return cached.cities;
     return cached.v === 2 && localDateISO(cached.cachedAt) === iso ? cached.cities : null;
   }
