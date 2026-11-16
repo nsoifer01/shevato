@@ -1994,6 +1994,12 @@ body.maptap-rivals-app textarea:focus {
 }
 .pred-day-tab.is-error .pred-day-tab-name,
 .pred-day-tab.is-error .pred-day-tab-num { color: var(--warn); }
+/* Pending: the file downloaded but is not provably this year's puzzle yet.
+   Not a failure, so neutral: dashed border and --muted-2 text (AA on every
+   surface). Selected and Today keep their own treatment. */
+.pred-day-tab.is-pending:not(.is-active) { border-style: dashed; border-color: var(--border-strong); }
+.pred-day-tab.is-pending:not(.is-active):not(.is-today) .pred-day-tab-name,
+.pred-day-tab.is-pending:not(.is-active):not(.is-today) .pred-day-tab-num { color: var(--muted-2); }
 .pred-day-tab:focus-visible { outline: 2px solid var(--accent-2); outline-offset: 3px; }
 
 .pred-day-tab-name {

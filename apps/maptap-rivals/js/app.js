@@ -698,31 +698,36 @@
   // (dailyFileIsFor), so a past day's entry is valid forever. For today /
   // future dates we still re-fetch after 6h in case MapTap revises the file
   // before play. A file not provably for `iso` is neither cached nor used.
+  // Resolves to { status, cities }: 'ok' with the cities; 'pending' when the
+  // file downloaded and parsed but is not provably `iso`'s (it may be last
+  // year's, or this year's without dated ids), so a later check can still
+  // accept it; 'error' when the download, the HTTP status or the parse failed.
   async function fetchDailyCities(iso) {
     const url = mapTapDailyDataUrl(iso);
-    if (!url) return null;
+    if (!url) return { status: 'error', cities: null };
     const cacheKey = KEY.DAILY_CITIES_PREFIX + iso;
     try {
       const cached = JSON.parse(localStorage.getItem(cacheKey) || 'null');
       if (cachedDailyCities(cached, iso)) {
         const isPast = iso < todayISO();
         const fresh = isPast || (Date.now() - (cached.cachedAt || 0)) < 6 * 3600 * 1000;
-        if (fresh) return cached.cities;
+        if (fresh) return { status: 'ok', cities: cached.cities };
       }
     } catch (_) { /* cache corrupted — fall through to fetch */ }
     try {
       const fetchedOn = todayISO();
       const res = await fetch(url, { credentials: 'omit', cache: 'no-cache' });
-      if (!res.ok) return null;
+      if (!res.ok) return { status: 'error', cities: null };
       const text = await res.text();
       const cities = parseDailyCitiesText(text);
-      if (!cities || !dailyFileIsFor(text, iso, fetchedOn)) return null;
+      if (!cities) return { status: 'error', cities: null };
+      if (!dailyFileIsFor(text, iso, fetchedOn)) return { status: 'pending', cities: null };
       try {
         localStorage.setItem(cacheKey, JSON.stringify({ v: DAILY_CITIES_CACHE_V, cities, cachedAt: Date.now() }));
       } catch (_) { /* quota — ignore, prediction still works for this session */ }
-      return cities;
+      return { status: 'ok', cities };
     } catch (_) {
-      return null;
+      return { status: 'error', cities: null };
     }
   }
   // ---------- daily location names (in-memory only, behind played gate) ----------
@@ -1935,7 +1940,13 @@
   // ---------- predictions card (rolling 7-day window) ----------
   // Three days back, today, three days ahead. Anchor the window at today
   // and keep the existing entries' selected state intact across re-renders.
-  // The fetcher is idempotent: each entry only flips out of 'fetching' once.
+  // Each entry is fetched once ('idle' -> 'fetching' -> 'ok' | 'pending' |
+  // 'error'). A 'pending' or 'error' day is checked again on any render at
+  // least PREDICT_RECHECK_MS after its last check (selecting a tab renders),
+  // keeping its status while the recheck is in flight, so a file MapTap
+  // rewrites with dated ids during the day is picked up without waiting for
+  // midnight. 5 minutes is the file's own `max-age=300`.
+  const PREDICT_RECHECK_MS = 5 * 60 * 1000;
   function ensureSevenDayWindowLoaded() {
     const today = todayISO();
     if (state.predictWindowAnchorISO !== today) {
@@ -1951,20 +1962,40 @@
         state.predictSelectedISO = today;
       }
     }
+    const now = Date.now();
     for (const entry of state.predictWindow) {
-      if (entry.status !== 'idle') continue;
-      entry.status = 'fetching';
-      fetchDailyCities(entry.iso).then(cities => {
+      // A past day showing the puzzle stored on its synced games never reads the file.
+      const recheck = (entry.status === 'pending' || entry.status === 'error') &&
+        !entry.inFlight && now - (entry.checkedAt || 0) >= PREDICT_RECHECK_MS &&
+        !(entry.iso < today && storedPuzzleCities(entry.iso));
+      if (entry.status !== 'idle' && !recheck) continue;
+      if (entry.status === 'idle') entry.status = 'fetching';
+      entry.inFlight = true;
+      const settle = (result) => {
         if (state.predictWindowAnchorISO !== today) return; // stale window
-        if (cities) { entry.cities = cities; entry.status = 'ok'; }
-        else        { entry.status = 'error'; }
+        entry.inFlight = false;
+        entry.checkedAt = Date.now();
+        entry.status = result.status;
+        entry.cities = result.status === 'ok' ? result.cities : null;
         if (state.view === 'dashboard') renderTodaysPredictions();
-      }).catch(() => {
-        if (state.predictWindowAnchorISO !== today) return;
-        entry.status = 'error';
-        if (state.view === 'dashboard') renderTodaysPredictions();
-      });
+      };
+      fetchDailyCities(entry.iso).then(settle, () => settle({ status: 'error', cities: null }));
     }
+  }
+
+  // A selected day that is pending or failed is checked again on its own once
+  // PREDICT_RECHECK_MS has passed, so its predictions appear without a click.
+  let predictRecheckTimer = null;
+  function schedulePredictRecheck(entry) {
+    clearTimeout(predictRecheckTimer);
+    predictRecheckTimer = null;
+    // An in-flight recheck re-renders when it settles, which schedules again.
+    if (!entry || entry.inFlight || (entry.status !== 'pending' && entry.status !== 'error')) return;
+    const wait = Math.max(0, (entry.checkedAt || 0) + PREDICT_RECHECK_MS - Date.now());
+    predictRecheckTimer = setTimeout(() => {
+      predictRecheckTimer = null;
+      if (state.view === 'dashboard' && state.predictSelectedISO === entry.iso) renderTodaysPredictions();
+    }, wait + 50);
   }
 
   // A past day's puzzle as recorded on the synced games for that day: the
@@ -2496,10 +2527,16 @@
     // A past day whose puzzle is stored on its games does not wait on the fetch.
     const hasStored = entry.iso < todayIso && !!storedPuzzleCities(entry.iso);
     if (!hasStored && entry.status === 'fetching') cls.push('is-loading');
+    if (!hasStored && entry.status === 'pending')  cls.push('is-pending');
     if (!hasStored && entry.status === 'error')    cls.push('is-error');
+    const title = hasStored ? null
+      : entry.status === 'pending' ? 'Puzzle not yet verified for this year'
+      : entry.status === 'error' ? 'Couldn’t load this day’s puzzle'
+      : null;
     return el('button', {
       type: 'button',
       class: cls.join(' '),
+      title,
       'aria-pressed': entry.iso === state.predictSelectedISO ? 'true' : 'false',
       onclick: () => {
         if (state.predictSelectedISO === entry.iso) return;
@@ -2545,11 +2582,20 @@
     const isPast = selectedISO < today;
     const stored = isPast ? storedPuzzleCities(selectedISO) : null;
     const dayCities = stored || (selected && selected.cities) || null;
+    schedulePredictRecheck(stored ? null : selected);
     if (!stored && (!selected || selected.status === 'fetching')) {
       status.textContent = 'Loading…';
       status.className = 'todays-card-status is-loading';
       body.appendChild(el('p', { class: 'pred-empty' },
         'Fetching this day’s puzzle from maptap.gg…'));
+      return;
+    }
+    if (!dayCities && selected && selected.status === 'pending') {
+      status.textContent = 'Not yet verified';
+      status.className = 'todays-card-status is-muted';
+      body.appendChild(el('p', { class: 'pred-empty' }, isPast
+        ? 'Puzzle not verified for this year: the maptap.gg file for this date doesn’t show it is this year’s puzzle, so there are no predictions or results to show.'
+        : 'Puzzle not yet verified for this year: the maptap.gg file for this date doesn’t show it is this year’s puzzle yet. Predictions will appear once it does.'));
       return;
     }
     if (!dayCities) {
@@ -8822,6 +8868,10 @@
       parseDailyNamesText,
       dailyFileIsFor,
       fetchDailyCities,
+      ensureSevenDayWindowLoaded,
+      renderTodaysPredictions,
+      PREDICT_RECHECK_MS,
+      maptapMonthDay,
       fetchDailyNames,
       dailyNames,
       citiesForPastDay,
