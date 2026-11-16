@@ -1909,6 +1909,62 @@ test('day window: a pending day is rechecked only after the recheck interval, an
   assert.equal(aheadFetches, 3);
 });
 
+test('day window: a past day whose puzzle is stored on its synced games is not re-downloaded by the recheck', async () => {
+  const today = H('localISO')(new Date());
+  const back = H('addDaysISO')(today, -2);
+  const token = H('maptapMonthDay')(back) + '.js';
+  const geo = PUZZLE_A.map(([lat, lng], i) => ({ lat, lng, name: `Synced ${i}` }));
+  let backFetches = 0;
+  const c = loadApp({
+    maptapRivalsRivals: [goodRival()],
+    maptapRivalsGames: [goodGame({ date: back, note: 'synced from MapTap', cities: geo })],
+  }, { fetchImpl: (url) => {
+    if (url.endsWith(token)) backFetches++;
+    return okResponse(dailyFile(PUZZLE_A, null)); // undated: pending for any day but today
+  } });
+  c._testExports.ensureSevenDayWindowLoaded();
+  await settle(); await settle();
+  const entry = windowEntry(c, back);
+  assert.equal(entry.status, 'pending');
+  assert.equal(backFetches, 1);
+  entry.checkedAt -= c._testExports.PREDICT_RECHECK_MS;
+  c._testExports.ensureSevenDayWindowLoaded();
+  await settle(); await settle();
+  assert.equal(backFetches, 1, 'the stored puzzle is what the tab shows, so a recheck can change nothing');
+});
+
+test('predictions card: switching away from a pending day disarms its recheck timer', async () => {
+  const today = H('localISO')(new Date());
+  const ahead = H('addDaysISO')(today, 2);
+  const token = H('maptapMonthDay')(ahead) + '.js';
+  let aheadFetches = 0;
+  const { c, timers } = loadCard((url) => {
+    if (url.endsWith(token)) aheadFetches++;
+    return okResponse(dailyFile(PUZZLE_A, null));
+  });
+  const { state, renderTodaysPredictions, PREDICT_RECHECK_MS } = c._testExports;
+  let cleared = 0;
+  c.clearTimeout = () => { cleared++; };
+  state.predictSelectedISO = ahead;
+  renderTodaysPredictions();
+  await settle(); await settle();
+  const armed = timers[timers.length - 1];
+  assert.ok(armed && armed.ms >= PREDICT_RECHECK_MS - 1000, 'armed while the pending day is selected');
+  const before = timers.length;
+  const clearedBefore = cleared;
+  state.predictSelectedISO = today;
+  renderTodaysPredictions();
+  assert.ok(cleared > clearedBefore, 'the render for the new day clears the old timer');
+  assert.equal(timers.length, before, 'and arms none for a verified day');
+  // Even if the old callback still ran (a timer that fired late), it is a no-op for a day no longer shown.
+  windowEntry(c, ahead).checkedAt -= PREDICT_RECHECK_MS;
+  const fetchesBefore = aheadFetches;
+  state.view = 'history';
+  armed.fn();
+  await settle(); await settle();
+  assert.equal(aheadFetches, fetchesBefore);
+});
+
 test('day window: a genuine error recovers on a due recheck too', async () => {
   const today = H('localISO')(new Date());
   const ahead = H('addDaysISO')(today, 3);

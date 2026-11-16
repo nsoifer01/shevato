@@ -1964,8 +1964,10 @@
     }
     const now = Date.now();
     for (const entry of state.predictWindow) {
+      // A past day showing the puzzle stored on its synced games never reads the file.
       const recheck = (entry.status === 'pending' || entry.status === 'error') &&
-        !entry.inFlight && now - (entry.checkedAt || 0) >= PREDICT_RECHECK_MS;
+        !entry.inFlight && now - (entry.checkedAt || 0) >= PREDICT_RECHECK_MS &&
+        !(entry.iso < today && storedPuzzleCities(entry.iso));
       if (entry.status !== 'idle' && !recheck) continue;
       if (entry.status === 'idle') entry.status = 'fetching';
       entry.inFlight = true;

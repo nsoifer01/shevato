@@ -788,9 +788,17 @@ once per local day, so a pending or failed day stayed so until midnight or a
 reload. Now `ensureSevenDayWindowLoaded` rechecks a `pending`/`error` entry on
 any render at least `PREDICT_RECHECK_MS` (5 minutes, the file's own
 `max-age=300`) after its last check, keeping its status while in flight (no
-loading flicker, one request per due check), and `schedulePredictRecheck`
+loading flicker, one request per due check; a past day showing the puzzle
+stored on its synced games is never rechecked, since the file cannot change
+what it shows), and `schedulePredictRecheck`
 re-renders a selected pending/error day once the interval passes. The
 acceptance rule itself is unchanged.
+
+Open, predates this: an `ok` cache entry for today or a future day older than
+6 hours is refetched on load, and if that refetch fails the day reads as an
+error even though the cached, already-verified puzzle is still in storage
+(master returned `null` for the same case). The recheck now retries it every
+5 minutes; falling back to the cached entry is not done.
 
 Harness trap when probing this in a browser: `tests/browser/cdp.mjs`'s
 `newPage()` answers every `this_day_in_history/*.js` from
