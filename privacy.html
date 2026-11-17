@@ -93,7 +93,7 @@
 
       <article class="about-shell">
 
-        <p><strong>Last reviewed:</strong> 25 October 2026.
+        <p><strong>Last reviewed:</strong> 17 November 2026.
           <!-- THE RULE, for whoever is editing this file (it is not the owner's chore):
                if your change alters what any app sends, stores, syncs or deletes, OR
                alters the wording below, bump this date IN THE SAME PULL REQUEST, to the
@@ -113,7 +113,7 @@
 
         <h2>What stays on your device</h2>
 
-        <p>Each app stores its working data in your browser's <code>localStorage</code>, under keys scoped to that app. This includes your Mario Kart races and player names, your Football H2H games, your FPL Planner team ID, settings and saved gameweek plans, your Gym Tracker programs, sessions, settings and body measurements, your Rising Shows watched list and comparison selection, your MapTap Rivals rivals, games and per-day puzzle cities, and your Trip Planner trips and items.</p>
+        <p>Each app stores its working data in your browser's <code>localStorage</code>, under keys scoped to that app. This includes your Mario Kart races and player names, your Football H2H games, your FPL Planner team ID, settings and saved gameweek plans, your Gym Tracker programs, sessions, settings and body measurements, your Rising Shows watched list and comparison selection, your MapTap Rivals rivals, games, per-day puzzle cities and saved pre-game predictions, and your Trip Planner trips and items.</p>
 
         <p>The Trip Planner also stores files you attach to a trip (booking confirmations, tickets, vouchers) as blobs in an IndexedDB database named <code>trip-planner-docs</code>. Those files never leave your device: they aren't included in exports, share links, or sync.</p>
 
@@ -150,7 +150,7 @@
           </div>
           <div class="skill-row">
             <h3>MapTap Rivals</h3>
-            <p>Your rival list, your games, the puzzle cities for each day you have logged, your display name and icon, your MapTap.gg username, a snapshot of the MapTap profile that username resolves to (looked up on maptap.gg, which confirms the account exists rather than that you own it), which rival you last had open, and UI preferences.</p>
+            <p>Your rival list, your games, the puzzle cities for each day you have logged, the predictions the app saves for an upcoming day before anyone can have started it (each player's predicted round scores, total and place, stored against the rival's id rather than their name), your display name and icon, your MapTap.gg username, a snapshot of the MapTap profile that username resolves to (looked up on maptap.gg, which confirms the account exists rather than that you own it), which rival you last had open, and UI preferences.</p>
           </div>
           <div class="skill-row">
             <h3>Trip Planner</h3>
@@ -325,7 +325,7 @@
           </div>
           <div class="skill-row">
             <h3>MapTap.gg</h3>
-            <p>MapTap Rivals sends the MapTap usernames you enter, yours and your rivals', to a MapTap endpoint to fetch public profiles, and downloads each day's puzzle from MapTap.gg.</p>
+            <p>MapTap Rivals sends the MapTap usernames you enter, yours and your rivals', to a MapTap endpoint to fetch public profiles, and downloads each day's puzzle from MapTap.gg. For an account enabled for scheduled predictions (described under "Logs and server-side records"), a function we host does the same each morning: it sends those usernames to that endpoint and downloads the next day's puzzle.</p>
           </div>
           <div class="skill-row">
             <h3>TMDB</h3>
@@ -365,6 +365,8 @@
 
         <p>A fourth function receives Content Security Policy violation reports. Your browser sends one on its own, without asking you, when a page on this site tries to load something our security policy does not expect. For each report the function logs which policy rule was involved, the origin (scheme and host only) of whatever was blocked, the path of the page it happened on with any query or fragment removed, and whether the policy was blocking or only reporting. It does not log the page's full address, the referrer, any code sample, your IP address or anything else that identifies you, and it stores nothing: that log line is the whole record.</p>
 
+        <p>A fifth function saves MapTap Rivals predictions before each day's puzzle can be played, so they can later be compared with what happened. It works only for accounts we enable by hand, which today is only the site owner's; for every other account it stores nothing. For an enabled account, the app sends that function, with proof of the signed-in account: your MapTap username; each rival's internal id in the app and MapTap username where you entered one (no display names); and the game history the predictions are made from, meaning each player's daily round scores and that day's puzzle coordinates, keyed by those ids. It is sent again only when it changes. The function stores all of that against your account id. Three times each morning (UTC) it adds any newer days from those players' public MapTap profiles, fetches the next day's puzzle, and stores one prediction per day: each player's predicted round scores, total and place, keyed by the rival id, with the time it was made, a short fingerprint of the puzzle, and which players' latest games it could not read. Only your signed-in account can read them back, and the app copies them into your synced data. Its log records only how each run went, never usernames, scores or account ids. You can turn it off on the MapTap Rivals profile card: that deletes everything it holds for you at once and keeps only a marker with your account id, so no device can switch it back on without you. Deleting your account deletes all of it, marker included, and leaves a marker with your former account id for one day, so a browser tab that missed the deletion cannot send anything again; after that day it is removed too.</p>
+
         <p>Those first two functions apply usage limits, and to do that they count requests against two identifiers. There are two because the first one alone could not do the job.</p>
 
         <p>The first is a random identifier that the Trip Planner generates once per browser and stores locally. It isn't derived from you or your account, and isn't linked to either. There's no control in the app to view, reset or clear it; clearing your browser's site data for shevato.com discards it and the app generates a fresh one.</p>
@@ -399,7 +401,7 @@
 
         <p>Signed in, click your name in the header, then "Sign Out", then "Delete account and all data" at the bottom of that window. Deleting is deliberately awkward: you have to enter your current password and type the word DELETE before the button becomes active. The password is checked before anything is removed, so a wrong one leaves everything untouched.</p>
 
-        <p>It removes, in this order: the synced Firestore document belonging to every app listed earlier on this page, together with the overflow documents that hold any part of that app's data too large for one document, plus the shared theme preference document; the <code>users/&lt;your account id&gt;</code> document itself, which is where Arena keeps your trivia profile (XP, wins, games played and any custom pack); your MapTap Rivals network entry, handle claim and the pair links to rivals you connected with, if you ever joined that network; your Arena global XP leaderboard row and every Globe Drop daily-challenge score you set; every synced key in this browser's <code>localStorage</code>; and finally the Firebase Authentication user, so the email address and password credential are gone too.</p>
+        <p>It removes, in this order: the synced Firestore document belonging to every app listed earlier on this page, together with the overflow documents that hold any part of that app's data too large for one document, plus the shared theme preference document; the <code>users/&lt;your account id&gt;</code> document itself, which is where Arena keeps your trivia profile (XP, wins, games played and any custom pack); your MapTap Rivals network entry, handle claim and the pair links to rivals you connected with, if you ever joined that network; everything MapTap Rivals' scheduled-prediction function holds for you on our server, if your account was ever enabled for it; your Arena global XP leaderboard row and every Globe Drop daily-challenge score you set; every synced key in this browser's <code>localStorage</code>; and finally the Firebase Authentication user, so the email address and password credential are gone too.</p>
 
         <p>Your head-to-head records against other players are treated differently, on purpose. Each one is a record of games two people played, so deleting it would take the other player's history with it. Your name on those records is replaced with "Former player" instead, and the win, loss and draw counts stay. The security rules let each side rewrite only its own name, so nobody can do this to you.</p>
 

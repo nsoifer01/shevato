@@ -17,6 +17,7 @@ import {
   eraseArenaIdentity,
   eraseAccountProfile,
   eraseRivalNetworkIdentity,
+  eraseScheduledPredictions,
   registerLocalNamespaces,
   beginAccountDeletion,
   endAccountDeletion,
@@ -157,6 +158,7 @@ const APP_SYNC_CONFIG = {
       'maptapRivalsRivals',         // Rival list (id, name, color, icon, maptapUsername, createdAt)
       'maptapRivalsGames',          // All daily games (id, rivalId, date, myScore, theirScore, note)
       'maptapRivalsDays',           // Day-global puzzle geography: { 'YYYY-MM-DD': City[5] }, normalised out of the game log
+      'maptapRivalsPredictionSnapshots', // Pre-game prediction snapshots: { 'YYYY-MM-DD@takenAt': predicted rounds, total, place per player key }
       'maptapRivalsMe',             // Owner display name
       'maptapRivalsMyIcon',         // Owner avatar icon (emoji from ICONS palette)
       'maptapRivalsMyMapTap',       // Your maptap.gg username (for syncing)
@@ -579,6 +581,10 @@ export async function deleteAccount({ confirmation, password, user } = {}) {
     // head-to-head records are anonymised. Before this, all three survived a
     // full account deletion and privacy.html had to say so.
     targets.push({ target: 'Arena leaderboard and scores', run: eraseArenaIdentity });
+    // MapTap Rivals' scheduled predictions live on the site's own server, not
+    // in Firestore, so they are deleted through that function, while the auth
+    // user still exists to prove who is asking.
+    targets.push({ target: 'MapTap Rivals scheduled predictions', run: () => eraseScheduledPredictions() });
 
     for (const { target, run } of targets) {
       try {

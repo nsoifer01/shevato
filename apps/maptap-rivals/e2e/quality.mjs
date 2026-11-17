@@ -197,6 +197,24 @@ export async function run({ base, cdpPort }) {
     await seed(s);
     t('seeded dashboard renders rival cards and prediction rows', await waitForExpr(s, "document.querySelectorAll('.rival-card').length===4 && document.querySelectorAll('#todays-card .pred-row:not(.pred-row-head)').length>=4"));
 
+    // Accuracy badges (2026-11-16): every row with a Spot-on chip carries an
+    // Order chip beside it, and each chip's number is the one its own tooltip
+    // counts (hits of days, pairs right of pairs), with the random-order
+    // baseline, the tie rule and the 50% coin flip spelled out.
+    const ACC = `JSON.stringify([...document.querySelectorAll('#todays-card .pred-acc-badges')].map(w => [...w.querySelectorAll('.pred-hit-badge')].map(b => ({ label: b.querySelector('.pred-hit-label').textContent, num: b.querySelector('.pred-hit-num').textContent, title: b.title }))))`;
+    const acc = JSON.parse(await evaluate(s, ACC));
+    const accOk = acc.length >= 2 && acc.every(([spot, order]) => {
+      if (!spot || !order || spot.label !== 'Spot-on' || order.label !== 'Order') return false;
+      const sm = /on (\d+(?:\.\d)?) of (\d+) past days? with a prediction \((\d+)%\)\. A random order would get about (\d+)% on the same days\. Tied places count as shared, predicted or actual\./.exec(spot.title);
+      const om = /right in (\d+(?:\.\d)?) of (\d+) head-to-heads? on the same days \((\d+)%\)\. A coin flip gets 50%\. Tied finishes are left out; a pair predicted level counts half\./.exec(order.title);
+      // Counts are shown to one decimal when a predicted tie made them
+      // fractional, so the rate they imply may round one point either way.
+      const near = (m, num) => Math.abs(Math.round(100 * Number(m[1]) / Number(m[2])) - parseInt(num, 10)) <= 1;
+      return sm && om && near(sm, spot.num) && sm[3] + '%' === spot.num &&
+        near(om, order.num) && om[3] + '%' === order.num;
+    });
+    t('predictions card: Spot-on and Order chips agree with their own tooltip counts, baselines named', accOk, JSON.stringify(acc).slice(0, 400));
+
     // ---- #1 / #2 / #3 data honesty ----
     const strip = await txt(s, '#dash-summary');
     t('#1 dashboard strip excludes the orphaned game (banner and strip agree)', /over 22 games/.test(strip) && !/over 23 games/.test(strip), strip);
@@ -550,6 +568,8 @@ export async function run({ base, cdpPort }) {
     t('390px: all 7 prediction day tabs fit without scrolling, text >= 10px', days.tabs === 7 && days.fit && days.minFont >= 10, JSON.stringify(days));
     const smallest = await evaluate(s, "(()=>{let min=99; for (const e of document.querySelectorAll('#todays-card *')) { if (!e.textContent.trim() || e.children.length) continue; min=Math.min(min, parseFloat(getComputedStyle(e).fontSize)); } return min})()");
     t('390px: no prediction-card text under 10px', smallest >= 10, String(smallest));
+    const accFit = await evaluate(s, "(()=>{const out=[]; for (const w of document.querySelectorAll('#todays-card .pred-acc-badges')) { const col=w.closest('.pred-label').getBoundingClientRect(); for (const b of w.children) { const r=b.getBoundingClientRect(); if (r.left < col.left - 1 || r.right > col.right + 1) out.push(b.textContent); } } return {groups: document.querySelectorAll('#todays-card .pred-acc-badges').length, outside: out}})()");
+    t('390px: the Spot-on and Order chips stay inside the player column', accFit.groups >= 2 && accFit.outside.length === 0, JSON.stringify(accFit));
     mark('axe dashboard @390');
     await axe(s, 'dashboard @390');
     await hashTo(s, '#matrix', 1000);

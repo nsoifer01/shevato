@@ -31,6 +31,7 @@ export function eraseCloudData(namespace) { return record('eraseCloudData', name
 export function eraseAccountProfile() { return record('eraseAccountProfile'); }
 export function eraseRivalNetworkIdentity() { return record('eraseRivalNetworkIdentity'); }
 export function eraseArenaIdentity() { return record('eraseArenaIdentity'); }
+export function eraseScheduledPredictions() { return record('eraseScheduledPredictions'); }
 
 // The account boundary (2026-09-12 audit S-5). The latch is modelled as one
 // value on the fakes so a test can see what deletion set and released, and can

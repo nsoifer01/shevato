@@ -714,15 +714,256 @@ after that round. Decisions a future change should keep:
   under the column headers (`.pred-rank-note`, `text-wrap: balance` so it
   does not leave a one-word orphan at 390), rendered only when a pill is.
 
+## Prediction audit and accuracy statistics (2026-11-16)
+
+Two read-only audits back-tested the predictor on the owner's real log (2,305
+rows, 10 players, 2026-03-05 to 2026-11-16), every prediction made only from
+rounds dated before its day. What they established, so it is not re-litigated:
+
+- **The model is kept as it is.** On a held-out window (Sep 1 to Nov 16, 420
+  predictions) it beat every simple baseline on daily-total MAE (57.8 vs 62.5
+  to 69.5; player mean +5.0, 95% CI 2.3 to 7.0) and even a hindsight predictor
+  that knew each player's median for that window (60.7). Its geography term is
+  real signal (per-round correlation 0.46 with the actual deviation).
+- **Nothing ranking-specific beat it.** Month-by-month nested walk-forward over
+  Jun 1 to Nov 16 (settings chosen only from earlier months): Bradley-Terry,
+  Elo, historical-average and field-share ranking, head-to-head records,
+  per-player and per-round bias corrections, blends, volatility-aware Monte
+  Carlo ranking and a max-expected-hits assignment were all equal or worse on
+  exact place, pairwise order and rank error. REJECTED. The shrinkage change
+  eps 25 -> 5, K 5 -> 1 cut score MAE by 1.05 (CI -1.70 to -0.45) but exact
+  place fell 1.9 points (CI -3.6 to +0.1). REJECTED: parameters unchanged.
+- **Why exact places are hard.** 54% of squared error is a shift the whole
+  field shares that day (puzzle difficulty), unpredictable beforehand
+  (day-to-day correlation -0.12). Adjacent predicted places are a median 11
+  points apart against about 70 points of per-player noise, so close pairs
+  are coin flips (51% when the gap is under 10 points). Exact place is
+  easiest at the ends (winner 49%, last 46%) and hardest in the middle (23%,
+  random 16%), and falls with field size.
+- **Daily totals are left-skewed** (rounds under 50 are 3% of rounds and 28%
+  of the weighted error; round 5 averages 75 against 94 for round 1), so the
+  predictor sits near the median rather than the mean: it over-predicts the
+  mean by about 29 points while players beat it on 47% of days. A round-slot
+  correction removed that bias but made MAE worse. REJECTED.
+- **Live updates are unproven.** Shifting not-yet-played players by the error
+  of those already finished looked like 5 to 9 points of MAE in a simulation,
+  but play times were not in the stored data, so the finishing order was
+  assumed random, and the ranking gain for the remaining players was within
+  noise. Not built.
+
+### Missing coordinates were read as (0, 0)
+
+`flattenRoundsForPrediction` and the target cities read `Number(c.lat)`, and
+`Number(null)` is 0. Seven puzzle days (2026-08-11, 08-14, 09-20, 09-23,
+10-03, 11-04, 11-12) stored names and no coordinates and were predicted from
+the Gulf of Guinea, five identical rounds per player, and counted toward
+Spot-on; their 245 history rounds sat at (0, 0) and
+pulled every prediction for a West African city. Four synced rows (2026-06-15,
+2026-08-05, two on 2026-08-23) also kept `{ lat: null, lng: null }` inline
+while their day map had the real cities, and `joinGameCities` let the inline
+copy win.
+
+Now every coordinate goes through `validLatLng` (stats.js): `coordNum`, finite,
+in range, so null, '', [] and text are missing while a real 0 is kept. A
+puzzle with any unlocated city gets no prediction (`predictRoundsForPlayer`
+returns null) and so no accuracy day; the card still shows that day's results
+and says "No map coordinates for this puzzle, so there are no predictions".
+An unlocated inline copy yields to a located day entry, the next persist
+normalises the row, and `mergeMapTapSync` never trades located cities for
+unlocated ones. A past day whose stored cities are unlocated predicts only
+from a verified maptap.gg file, the same fallback as a day with no stored
+cities. Measured effect on the 180-day badges: 25.9% -> 26.0% overall.
+
+**Why those seven days had no coordinates (corrected 2026-11-17).** The first
+write-up blamed MapTap's iOS history shape, which was half the story. The
+owner's own history has that shape on those days, but every rival's copy of
+the same days carries the coordinates (re-fetched 2026-11-17). The sync merge
+took the owner's copy whenever it existed (`syncCities(mine) ||
+syncCities(theirs)`), backfilled only rows with no cities at all, and the day
+map kept the first copy it met. Now `mergeMapTapSync` takes the located copy
+(the owner's when located, else the rival's), upgrades a row whose cities are
+unlocated once a located copy arrives (scores untouched), and
+`splitGameCities` makes the first LOCATED copy the day's entry. On the owner's
+log the next "Sync all rivals" fills those 7 days (63 rows), which gives them
+predictions and Spot-on days again; no score changes.
+
+### 2026-06-03: two hand-entered rows (verified against MapTap)
+
+The only two rows in the log not written by sync (Emmett and Gal, entered on
+the day, note '') stored 6,3,26,21,14 (166) for BOTH sides. MapTap's own game
+history, fetched for this audit, records Nikita 95,96,88,79,57 (775), Emmett
+96,98,99,77,47 (764), Gal 97,100,94,78,96 (907). Every other row for those
+three players matches MapTap exactly (a check that has to read both history
+shapes, web `roundData` and the `rounds`/`roundNumber` one).
+
+The profile aggregate is consistent with that, and its 253 vs 250 is not a
+discrepancy: the history has 253 entries, of which 3 (2026-03-15, 03-18,
+03-20) are abandoned games with `finalScore` 0 and 1, 2 and 4 rounds, which
+sync skips because it needs all five. 253 x 807.336... = 204,256, the exact
+sum of the 250 logged totals with June 3 = 775.
+
+`mergeMapTapSync` never touches a row whose note is not `SYNC_NOTE`, so sync
+cannot repair these.
+
+The procedure was replayed on a copy of the real log (revision 585) with the
+real MapTap histories, through the shipped merge and persist code: deleting the
+two rows by id (`mq0mqtfwncvfr0` Emmett, `mq0mqtfwuib14o` Gal, both
+2026-06-03, 166-166, note '') and syncing Emmett then Gal removes exactly
+those two and adds two synced rows, 775-764 and 775-907. On master's code no
+other row changes at all (scores, notes, dates, cities, day map). On this
+branch's code the same two sync runs also fill the located cities of the seven
+days above for those rivals (no score changes). The correction is made in the app: delete the two rows
+(History) and sync Emmett and Gal, which writes MapTap's values as synced rows
+(pinned in `tests/stats.test.js`). It goes through the normal sync engine, a
+three-way merge that honours deletions on every device. Until the owner does
+that, the card counts 166.
+
+### Spot-on and ties
+
+Spot-on used to compare indexes in two name-tie-broken orders, so a tied
+player's hit or miss was decided by which name sorts first (94 of 256 days
+have an actual tie, 34 a predicted tie among the players who played), and a
+field of one was an automatic hit. The rule now (`rankAccuracyForDay`) uses
+competition ranking on BOTH sides and never a name: k players level on a total
+occupy the slots c..c+k-1. A player's hit is the share of their predicted
+slots that lie inside their actual span: 1 or 0 without a predicted tie, and
+for players predicted level, what an unbiased coin ordering them would score
+on average (two predicted level for 2nd/3rd who finish 2nd and 4th get 0.5
+each). Strict competition-rank equality was considered and not used: two
+players tied for 1st and predicted 1st and 2nd would score one hit and one
+miss although the prediction put exactly those two in exactly those places.
+The random baseline uses the same rule (k / N per day, so it carries the same
+days, field sizes and ties). The Order chip counts each player's head-to-heads
+with players they did not tie with on the day; a pair predicted level counts
+0.5; a coin flip gets 50%. Counts can therefore be fractional, and the
+tooltips show one decimal when they are. The card itself still lists level
+predictions in name order; only the measurement is name-free (renaming any
+player leaves every figure unchanged, pinned by a test).
+
+Owner's log, computed by the shipped code (positionHitRecords, 180-day window):
+
+| | Spot-on | random | Order |
+|---|---:|---:|---:|
+| master | 25.9% (324/1249) | | |
+| this change | 28.1% (338/1204) | 15.6% | 68.1% (5060/7428) |
+| after the June 3 correction and the located-cities sync | 27.9% (349/1249) | 15.6% | 68.5% (5266/7682) |
+
+All history with the same code: 31.2% exact vs 17.3% random, 69.3% pairwise.
+Every change from master is a measurement correction (ties counted without
+names, solo days and coordinate-less days no longer counted, a wrong
+historical score corrected, seven days' coordinates restored), not better
+prediction. The 180-day window is unchanged; "avg %" still covers all days.
+
+### Pre-game prediction snapshots
+
+**When a snapshot is pre-game.** A day is played on each player's local date,
+and the first local date on Earth is UTC+14, so day D cannot have started
+anywhere before 10:00 UTC on D-1 (`preGameCutoffMs`, identical in every
+timezone: pinned by a test that runs it under six). Nothing captured later is
+labelled pre-game, the rule is re-checked on every read (`sanitizeSnapshots`),
+and a snapshot is never edited or removed by the app.
+
+**What one holds.** `source` ('device' or 'scheduled'), `model`
+(`PREDICTION_MODEL_VERSION`), `through` (latest result date in its inputs),
+`puzzle` (fingerprint of the five coordinates), `puzzleDated` (the file's city
+ids named the date when it was taken), coverage (`roster`: players the app
+had, the user and every rival; `unread`: players whose newest games could not
+be read; `historyAt`: when the app's history was last uploaded), and per
+player key `r` (rounded rounds), `t` (their weighted total) and `p` (the
+competition rank of `t`: equal totals share a place, never a name or key
+order; `sanitizeSnapshots` refuses any other `p`). Scoring reads `t`, ranking
+only the players who had a prediction AND played, with the tie rule above.
+
+**Which ones are scored** (`canonicalSnapshots(map, playedCities)`): the
+earliest that is complete (`unread` empty; partial ones only with
+`includePartial`), matches the cities actually played when those are known,
+and, if it was taken from an undated file, has had that match confirmed: an
+undated snapshot is never scored on its own.
+
+**Two capture paths.**
+
+- *Device* (`capturePreGameSnapshots`): whenever the card renders a window day
+  that is verified and still before its cutoff, from the log the card reads.
+  Complete by construction.
+- *Scheduled* (netlify/functions/maptap-snapshot-capture.mjs, 03:17, 06:17 and
+  09:17 UTC, accounts in `MAPTAP_SNAPSHOT_UIDS` only). Each run targets
+  D = tomorrow (UTC). Its inputs are the app's own: on each page load an
+  enabled account uploads every player by rival id (a MapTap username where it
+  has one) and the round history the card reads, exactly as
+  myProfileRounds / rivalRounds return it (`encodeRoundsHistory`, about 80 KB
+  for the owner's log, re-sent only when it changes). The run adds, per player,
+  each newer day from the public MapTap profile that the upload does not hold
+  (`mergeLoggedAndFresh`: the log always wins a day it holds), which is what
+  the app's next sync would add, and predicts with the app's own predictor
+  (moved verbatim into stats.js). Netlify, not GitHub, because GitHub fires
+  this repository's schedules 5 to 8 hours late and the cutoff is 10:00 UTC.
+
+**Parity, measured on the owner's log (2026-11-17).** The decoded upload
+predicts bit-identically to the card on all 2,500 player-days with located
+cities (row order is preserved, so even summation order matches). A scheduled
+capture of 2026-11-18 from the real log and the real profiles equals the card
+for all 10 players, including Dean, whose public profile now returns 43 of the
+125 days the log holds, and stays 10 of 10 when Dean has no username or when a
+profile comes back empty. A rival with no MapTap username is predicted from the
+log alone, exactly as the card does (the card cannot see newer games of theirs
+either). An earlier version that predicted from public profiles only matched
+8 of 10 and is not what shipped.
+
+**Failures.** A run that cannot read a profile waits for the next run; the
+09:17 run captures anyway with that player in `unread` (from the uploaded log)
+and the snapshot is partial, never scored as the card's leaderboard. No
+puzzle file, an unreadable one, or no predictable player stores nothing. A
+second run the same morning finds the snapshot and stores nothing (`onlyIfNew`
+per day and puzzle; a file rewritten before the cutoff gets a second one).
+Failures are visible three ways: the function log (statuses and counts only),
+the per-account `status/<uid>` record that the profile card shows ("last run
+...: puzzle unavailable", "(some players not refreshed)"), and a day with no
+snapshot. A store that cannot be read throws and Netlify marks the run failed.
+
+**Puzzle timing, measured.** maptap.gg dates a file 1 to 2 days ahead
+(2026-11-15: November 16-17 dated; 2026-11-17: November 18 dated, 19-21 not at
+05:31 and 06:09 UTC). A capture that finds D undated still predicts it and
+waits for the played cities to confirm it. The file's first five coordinates
+and MapTap's recorded ones are the same numbers (every located day from
+November 8 to 16, 2026), so the check is exact.
+
+**Opt-out and deletion.** The profile card shows "Scheduled predictions: on /
+off" for an enabled account. Off (`DELETE`) removes the roster, history, run
+status and every stored snapshot and keeps `optout/<uid>`, which refuses any
+device's roster (409) until "Turn on" sends `optIn`. Account deletion runs
+`eraseScheduledPredictions` (sync-system) while the auth user still exists:
+`DELETE ?scope=account` writes `gone/<uid>` first, then removes everything,
+marker included; a roster sent after that is refused (410); a roster write or
+a capture that lands during a delete re-checks the markers and removes what it
+wrote; the next run a day later sweeps `gone/<uid>` and anything left under
+it. Tabs also skip registering while the sync layer's deletion latch is set
+(`window.__shevatoAccountDeletionLatched`). Deleting works for any signed-in
+account, enabled or not, and repeats safely. If the function cannot be
+reached, account deletion fails by name and keeps the credential so the user
+can retry, like every other deletion step.
+
+**Limits.** Daily capture has not been observed in production (the feature is
+off until `MAPTAP_SNAPSHOT_UIDS` is set). A snapshot is only as fresh as the
+upload for rivals without a username, and for anyone whose profile cannot be
+read (recorded as `unread`). Rows the app would correct on its next sync
+(a changed MapTap score on an already-logged day) are not re-read from MapTap.
+
+**Backups.** The JSON export carries `snapshots` (only readable entries, byte
+for byte). Import adds them with `mergeSnapshotMaps` while rivals and games are
+replaced as before: nothing stored is removed, an id already present keeps its
+stored entry, a repeated import adds nothing, an older backup without the
+field changes nothing, and unreadable entries are counted and skipped.
+
 ## Past days in the predictions window (2026-11-15)
 
 The day tabs run 3 days back, Today (4th, selected by default), 3 days ahead
 (`PREDICT_PAST_DAYS` in `js/app.js`). Before this they ran Today plus six days
 ahead. What a past tab shows, and where each number comes from:
 
-- **Predictions are not stored anywhere.** No snapshot of what the card showed
-  on a given day exists, so a past tab computes the prediction the same way the
-  Spot-on badge already does: `predictRoundsForPlayer` with `asOfISO` set to
+- **A past tab reconstructs its prediction.** Pre-game snapshots exist since
+  2026-11-17 (see "Pre-game prediction snapshots") but cover only days captured
+  ahead of time, so a past tab still computes the prediction the same way the
+  Spot-on badge does: `predictRoundsForPlayer` with `asOfISO` set to
   that day, which drops every round dated that day or later
   (`flattenRoundsForPrediction`). Games played after the day cannot move it
   (pinned in `e2e/quality.mjs`). What can move it is a round dated BEFORE the

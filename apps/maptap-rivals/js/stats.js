@@ -58,6 +58,23 @@
     return NaN;
   }
 
+  // A city's coordinates as numbers, or null when either is missing, not a
+  // number, not finite or out of range. Built on coordNum, so null, '' and []
+  // are missing rather than the point (0, 0), while a real 0 (the equator or
+  // the prime meridian) is kept. Every geographic calculation in the predictor
+  // reads coordinates through this.
+  function validLatLng(c) {
+    if (!c || typeof c !== 'object') return null;
+    const lat = coordNum(c.lat);
+    const lng = coordNum(c.lng);
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+    if (lat < -90 || lat > 90 || lng < -180 || lng > 180) return null;
+    return { lat, lng };
+  }
+  function allCitiesLocated(cities) {
+    return Array.isArray(cities) && cities.length === N_LOCS && cities.every(c => validLatLng(c) !== null);
+  }
+
   // Side presence. A rival-only game (saved by sync when the rival played but
   // the user didn't) has theirScores/theirScore but no myScores/myScore.
   // Old totals-only games have both totals defined but no arrays; bothPlayed
@@ -324,16 +341,25 @@
       const theirs = theirsMap.get(date);
       if (!mine && !theirs) continue;
       // The 5 puzzle cities are the same for both players on a given day, so
-      // either side's copy will do. Ours wins when both exist, for parity
-      // with the behaviour before this walk covered my-only days.
-      const cities = syncCities(mine) || syncCities(theirs);
+      // either side's copy will do: ours when it is located, theirs when only
+      // theirs is. Before 2026-11-17 ours always won, and on the seven days
+      // our side was MapTap's name-only iOS shape the log kept names and null
+      // coordinates while every rival's copy had the real ones.
+      const mineCities = syncCities(mine);
+      const theirCities = syncCities(theirs);
+      const cities = (mineCities && allCitiesLocated(mineCities)) ? mineCities
+        : (theirCities && allCitiesLocated(theirCities)) ? theirCities
+        : (mineCities || theirCities);
 
       const game = byDate.get(date);
       if (game) {
         // Backfill: older imports (paste / WhatsApp / pre-cities sync) carry
         // no geo info. Attaching it now lights up the continent breakdown
         // retroactively.
-        if (cities && (!Array.isArray(game.cities) || game.cities.length !== N_LOCS)) {
+        // Also upgrades a row whose cities have no coordinates once a located
+        // copy arrives; scores are never touched here.
+        if (cities && (!Array.isArray(game.cities) || game.cities.length !== N_LOCS ||
+                       (!allCitiesLocated(game.cities) && allCitiesLocated(cities)))) {
           game.cities = cities.slice();
           backfilled++;
         }
@@ -927,45 +953,587 @@
       .map(e => e.key);
   }
 
-  // Which players hit their predicted finishing position on this day.
-  // Both rankings are taken over the same set: players with a computable
-  // prediction who actually played. A predicted player who sat the day out
-  // holds no predicted slot, so he cannot make the players ranked below him
-  // structurally unable to hit.
-  // Players without a prediction, or who sat the day out, are absent from
-  // the result and so count toward nobody's eligible days.
+  // How well one day's predicted order matched the finish, per player.
+  //
+  // The field is the players with a computable prediction who actually
+  // played; anyone else holds no slot in either order and is absent from the
+  // result. A field of one is no ranking at all (first of one is just showing
+  // up, the same rule as the finishing positions), so it yields nothing.
+  //
+  // Both orders follow the app's competition ranking: players on the same
+  // total share a place and together occupy the slots c..c+k-1, on the
+  // predicted side as on the actual one. No name ever decides anything, so
+  // renaming a player cannot move a measured figure. The rule, chosen over
+  // strict competition-rank equality (FINDINGS.md "Spot-on and ties"):
+  //   - `hit` (0 to 1): the share of the player's predicted slots that fall
+  //     inside their actual tied span. With no predicted tie that is 1 or 0:
+  //     the predicted slot is inside the span or not. Strict equality would
+  //     mean two players tied for 1st, predicted 1st and 2nd, score one hit
+  //     and one miss although the prediction put exactly those two in exactly
+  //     those two places. Two players predicted level for 2nd and 3rd who
+  //     finish 2nd and 4th get 0.5 each: what an unbiased coin deciding the
+  //     predicted order would score on average, instead of whichever name
+  //     sorts first.
+  //   - `chance`: the probability a uniformly random order of the same field
+  //     hits under the same rule, k / N, so a player's baseline uses the same
+  //     days, field sizes and ties as their rate.
+  //   - `pairsRight` / `pairs`: of the other players this one did not tie
+  //     with on the day, how many the prediction placed correctly above or
+  //     below them; a pair predicted level counts 0.5. A pair tied on the day
+  //     has no right answer, so it is not counted, and the chance of calling
+  //     a counted pair is exactly 1/2.
   //
   // Every per-player accumulator below builds in a Map and returns through
   // Object.fromEntries: player keys are rival ids straight from storage, and
   // backup import accepts ids verbatim, so a '__proto__' id must become an
   // own data property (which fromEntries guarantees) rather than hitting the
   // Object.prototype setter and vanishing or corrupting the accumulator.
-  function positionHitsForDay(entries) {
+  function rankAccuracyForDay(entries) {
     const played = (Array.isArray(entries) ? entries : [])
       .filter(e => e && Number.isFinite(e.predictedTotal) && Number.isFinite(e.actualTotal));
-    const predictedOrder = rankByScore(played, 'predictedTotal');
-    const actualOrder = rankByScore(played, 'actualTotal');
+    const n = played.length;
+    if (n < 2) return {};
+    const predPlace = competitionRanksForDay(played.map(e => ({ key: e.key, total: e.predictedTotal })));
+    const place = competitionRanksForDay(played.map(e => ({ key: e.key, total: e.actualTotal })));
+    const tiedWith = new Map(), predTiedWith = new Map();
+    for (const e of played) {
+      tiedWith.set(e.actualTotal, (tiedWith.get(e.actualTotal) || 0) + 1);
+      predTiedWith.set(e.predictedTotal, (predTiedWith.get(e.predictedTotal) || 0) + 1);
+    }
     const out = new Map();
-    for (const entry of played) {
-      out.set(entry.key, predictedOrder.indexOf(entry.key) === actualOrder.indexOf(entry.key));
+    for (const e of played) {
+      const k = tiedWith.get(e.actualTotal), pk = predTiedWith.get(e.predictedTotal);
+      const lo = place[e.key], hi = lo + k - 1;
+      const plo = predPlace[e.key], phi = plo + pk - 1;
+      const overlap = Math.max(0, Math.min(hi, phi) - Math.max(lo, plo) + 1);
+      let pairsRight = 0, pairs = 0;
+      for (const o of played) {
+        if (o === e || o.actualTotal === e.actualTotal) continue;
+        pairs++;
+        if (o.predictedTotal === e.predictedTotal) pairsRight += 0.5;
+        else if ((e.predictedTotal > o.predictedTotal) === (e.actualTotal > o.actualTotal)) pairsRight++;
+      }
+      out.set(e.key, { hit: overlap / pk, chance: k / n, pairsRight, pairs });
     }
     return Object.fromEntries(out);
   }
 
-  // Accumulate per-player { hits, eligible } over a list of days, each day
-  // being its own entries array. Players with no eligible day are absent
-  // from the result, which is what lets the UI skip the badge entirely
-  // instead of rendering a meaningless "0/0".
-  function accumulatePositionHits(days) {
+  // Sum rankAccuracyForDay over a list of days (each its own entries array)
+  // into per-player { hits, eligible, chance, pairsRight, pairs }, where
+  // `chance` is the expected number of random-order hits on those same days.
+  // Players with no eligible day are absent, which is what lets the UI skip
+  // the badge entirely instead of rendering a meaningless "0/0".
+  function accumulateRankAccuracy(days) {
     const out = new Map();
     for (const entries of Array.isArray(days) ? days : []) {
-      const hits = positionHitsForDay(entries);
-      for (const key of Object.keys(hits)) {
+      const day = rankAccuracyForDay(entries);
+      for (const key of Object.keys(day)) {
         let rec = out.get(key);
-        if (!rec) { rec = { hits: 0, eligible: 0 }; out.set(key, rec); }
+        if (!rec) { rec = { hits: 0, eligible: 0, chance: 0, pairsRight: 0, pairs: 0 }; out.set(key, rec); }
+        const d = day[key];
         rec.eligible += 1;
-        if (hits[key]) rec.hits += 1;
+        rec.hits += d.hit;
+        rec.chance += d.chance;
+        rec.pairsRight += d.pairsRight;
+        rec.pairs += d.pairs;
       }
+    }
+    return Object.fromEntries(out);
+  }
+
+
+  // ---------- maptap.gg daily puzzle file (moved from app.js 2026-11-17, unchanged) ----------
+  // Shared with the scheduled pre-game snapshot function, which must read the
+  // file exactly as the app does.
+  // Pull only the first N_LOCS lat/lng pairs from a daily puzzle file.
+  // The MapTap client plays the first 5 cities in file order regardless
+  // of how many the file lists (verified across May 10-14 plays). The
+  // coordinates are all that is ever persisted (see fetchDailyCities) and
+  // all the predictor needs. City names are parsed separately and only
+  // lazily, behind the played gate (see parseDailyNamesText / fetchDailyNames)
+  // — they never enter the localStorage cache and never reach the UI before
+  // the user has logged their own game for that day.
+  // Regex: match `lat:` not preceded by a letter (excludes `labelLat:`),
+  // then the nearest `lng:` (same letter-boundary exclusion).
+  const DAILY_LATLNG_RE =
+    /(?<![A-Za-z])lat\s*:\s*(-?\d+(?:\.\d+)?)\s*,[\s\S]{0,80}?(?<![A-Za-z])lng\s*:\s*(-?\d+(?:\.\d+)?)/g;
+  // Some days' files open with a `secretMessages = [ { lat, lng, message } ]`
+  // block ahead of `cities` (August 8 and 28, October 9 2026, among others).
+  // Scanning from the top read that pin as round 1 and shifted rounds 2-5 by
+  // one. Others park a commented-out draft city AFTER the array (November 21
+  // has four real cities and a fifth in a `/* PARKED DRAFT */` block), which a
+  // scan to the end of the file counted as round 5. MapTap's own loader reads
+  // exactly `cities = [ ... ];`, so both parsers read that span too, and fall
+  // back to the whole file only when it has no such assignment.
+  const DAILY_CITIES_START_RE = /(?:^|[^A-Za-z0-9_$])cities\s*=\s*\[/;
+  function dailyCitiesSection(src) {
+    const m = DAILY_CITIES_START_RE.exec(src);
+    if (!m) return src;
+    // The first `];` closes it (a nested array never ends in `;`). January 1
+    // closes on a bare `]` and has nothing after it, hence the fallback.
+    // Checked 2026-10-11 against every daily file evaluated as JavaScript:
+    // 361 of 361 agree (the unanchored parser: 345).
+    const end = src.indexOf('];', m.index);
+    return end === -1 ? src.slice(m.index) : src.slice(m.index, end + 2);
+  }
+  // The file is named by month and day only and MapTap rewrites it each year,
+  // so the same URL serves different years' puzzles (on 2026-11-15, December
+  // 14-31 still held 2025's). It is `iso`'s puzzle only when that is provable:
+  // it was fetched ON `iso` (MapTap's own client, js/jjbasics.js and
+  // js/data-loader.js, plays `<Month><Day>.js` for the player's local day with
+  // no year check and records the game under that day's full ISO date, so the
+  // file served on `iso` IS that day's puzzle even when its content is an old
+  // year's), or every city id in the played array names `iso` itself
+  // (`id: "2026-11-12-..."`, carried by the files from August 2026 on).
+  // Both fetches use `cache: 'no-cache'`: the file is served `max-age=300`, so
+  // a default fetch just after midnight could return bytes cached the evening
+  // before and label them as fetched on the new day.
+  const DAILY_ID_DATE_RE = /(?<![A-Za-z])id\s*:\s*["'](\d{4}-\d{2}-\d{2})-/g;
+  function dailyFileIsFor(src, iso, fetchedOnISO) {
+    if (fetchedOnISO === iso) return true;
+    const dates = Array.from(dailyCitiesSection(src).matchAll(DAILY_ID_DATE_RE), m => m[1]);
+    return dates.length > 0 && dates.every(d => d === iso);
+  }
+  function parseDailyCitiesText(src) {
+    if (typeof src !== 'string' || !src.length) return null;
+    src = dailyCitiesSection(src);
+    DAILY_LATLNG_RE.lastIndex = 0;
+    const out = [];
+    let m;
+    while ((m = DAILY_LATLNG_RE.exec(src)) !== null) {
+      const lat = parseFloat(m[1]);
+      const lng = parseFloat(m[2]);
+      if (Number.isFinite(lat) && Number.isFinite(lng) &&
+          lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180) {
+        out.push({ lat, lng });
+      }
+      if (out.length >= N_LOCS) break;
+    }
+    return out.length === N_LOCS ? out : null;
+  }
+  // ---------- prediction (moved from app.js 2026-11-17, unchanged) ----------
+  // Shared with the scheduled pre-game snapshot function, so a snapshot taken
+  // on the server is the prediction the card would show.
+  // Per-round prediction blends three signals:
+  //   (1) Geographic similarity (haversine distance) — closer past
+  //       rounds get more weight via 1/(km + ε).
+  //   (2) Recency — exponential decay with a 30-day half-life so a
+  //       player's recent skill dominates over stale rounds.
+  //   (3) Bayesian shrinkage toward the player's overall mean —
+  //       sparse-evidence predictions get pulled back to the baseline
+  //       so a single hot/cold local round can't whipsaw the estimate.
+  // Continent buckets are *not* used here; classifyContinent is still
+  // around for the rival detail's continent breakdown view.
+  const PREDICTION_MIN_ROUNDS = 5;
+  const PREDICTION_RECENCY_HALF_LIFE_DAYS = 30;
+  const PREDICTION_SHRINKAGE_K = 5;       // pseudo-rounds at the player's mean
+  const PREDICTION_DISTANCE_EPS_KM = 25;  // floor on inverse-distance to avoid divide-by-zero / over-weighting exact matches
+  const EARTH_RADIUS_KM = 6371;
+  // Recorded on every pre-game snapshot. Change it whenever anything above
+  // changes what the predictor returns, so stored forecasts stay attributable.
+  const PREDICTION_MODEL_VERSION = 'geo-idw-1';
+
+  function haversineKm(aLat, aLng, bLat, bLng) {
+    const toRad = (d) => (d * Math.PI) / 180;
+    const dLat = toRad(bLat - aLat);
+    const dLng = toRad(bLng - aLng);
+    const h = Math.sin(dLat / 2) ** 2 +
+              Math.cos(toRad(aLat)) * Math.cos(toRad(bLat)) * Math.sin(dLng / 2) ** 2;
+    return 2 * EARTH_RADIUS_KM * Math.asin(Math.sqrt(h));
+  }
+
+  // Flatten `rounds` (one entry per day) into individual {lat, lng,
+  // score, daysAgo} samples relative to `asOfISO`. Rounds on or after
+  // asOfISO are excluded so we never "predict" using data from the
+  // same day or later — back-testing stays honest, and same-day
+  // actuals don't bleed into their own prediction.
+  function flattenRoundsForPrediction(rounds, asOfISO) {
+    const out = [];
+    if (!asOfISO || !Array.isArray(rounds)) return out;
+    const asOfP = parseDateISO(asOfISO);
+    if (!asOfP) return out;
+    for (const r of rounds) {
+      if (!r || !Array.isArray(r.cities) || !Array.isArray(r.scores) || !r.date) continue;
+      const tp = parseDateISO(r.date);
+      if (!tp || tp.ms >= asOfP.ms) continue;
+      const daysAgo = (asOfP.ms - tp.ms) / 86400000;
+      const n = Math.min(r.cities.length, r.scores.length, N_LOCS);
+      for (let i = 0; i < n; i++) {
+        // validLatLng, never Number(): Number(null) is 0, which put every
+        // round with a missing coordinate at (0, 0) in the Gulf of Guinea.
+        const at = validLatLng(r.cities[i]);
+        const s = Number(r.scores[i]);
+        if (!at || !Number.isFinite(s)) continue;
+        out.push({ lat: at.lat, lng: at.lng, score: s, daysAgo });
+      }
+    }
+    return out;
+  }
+
+  function predictRoundScoreFromHistory(history, targetLat, targetLng, playerMean) {
+    if (!history.length || !Number.isFinite(playerMean)) return playerMean;
+    const recencyLambda = Math.LN2 / PREDICTION_RECENCY_HALF_LIFE_DAYS;
+    let sumW = 0, sumWX = 0, sumW2 = 0;
+    for (const r of history) {
+      const km = haversineKm(targetLat, targetLng, r.lat, r.lng);
+      const distW = 1 / (km + PREDICTION_DISTANCE_EPS_KM);
+      const recW = Math.exp(-r.daysAgo * recencyLambda);
+      const w = distW * recW;
+      sumW += w;
+      sumWX += w * r.score;
+      sumW2 += w * w;
+    }
+    if (sumW <= 0 || sumW2 <= 0) return playerMean;
+    const weightedAvg = sumWX / sumW;
+    // Kish's effective sample size: (Σw)² / Σw² — counts evidence by
+    // weight concentration. A handful of close-and-recent rounds give
+    // nEff ≈ their count; lots of far/old rounds give nEff ≈ 1-2.
+    const nEff = (sumW * sumW) / sumW2;
+    // Shrinkage toward the player's long-term mean. With nEff = 0 we
+    // get the prior outright; with nEff >> K we trust the local mean.
+    return (nEff * weightedAvg + PREDICTION_SHRINKAGE_K * playerMean) /
+           (nEff + PREDICTION_SHRINKAGE_K);
+  }
+
+  // Predict a player's weighted total + per-round breakdown for a given
+  // 5-city array, computed as of `asOfISO` (excludes any rounds from
+  // that day or later). Returns null when the player has too little
+  // pre-cutoff history to give a meaningful number.
+  // `confidence` = number of rounds informing the estimate (rough
+  // sample-size cue for the UI, not a probability).
+  // A puzzle with any city lacking valid coordinates gets no prediction at
+  // all: every round's estimate is geographic, and before this a missing
+  // coordinate read as (0, 0) and produced five identical numbers that looked
+  // like a real forecast.
+  function predictRoundsForPlayer(rounds, todaysCities, asOfISO) {
+    if (!allCitiesLocated(todaysCities)) return null;
+    const history = flattenRoundsForPrediction(rounds, asOfISO);
+    if (history.length < PREDICTION_MIN_ROUNDS) return null;
+    // Player's overall mean used as the shrinkage prior. Straight
+    // unweighted average keeps the prior stable over time — recency
+    // already lives in the per-round weights.
+    let total = 0;
+    for (const r of history) total += r.score;
+    const playerMean = total / history.length;
+    const scores = new Array(N_LOCS);
+    for (let i = 0; i < N_LOCS; i++) {
+      const c = validLatLng(todaysCities[i]);
+      const s = predictRoundScoreFromHistory(history, c.lat, c.lng, playerMean);
+      scores[i] = Math.max(0, Math.min(100, s));
+    }
+    return { scores, confidence: history.length };
+  }
+  // ---------- pre-game prediction snapshots ----------
+  // A day D is played on each player's LOCAL calendar day (maptap.gg builds
+  // the play day from the device's month and day), and civil time runs from
+  // UTC-12 to UTC+14, so nobody anywhere can start D's puzzle before D
+  // 00:00 at UTC+14, which is 10:00 UTC on the day before. A prediction
+  // captured before that instant is pre-game for every player, whatever
+  // their timezone and whether or not their result has synced. Nothing
+  // captured later is ever labelled pre-game.
+  const EARLIEST_UTC_OFFSET_MS = 14 * 3600 * 1000;
+  function preGameCutoffMs(iso) {
+    const p = parseDateISO(iso);
+    return p ? p.ms - EARLIEST_UTC_OFFSET_MS : NaN;
+  }
+  function isPreGameInstant(iso, nowMs) {
+    const cut = preGameCutoffMs(iso);
+    return Number.isFinite(cut) && Number.isFinite(nowMs) && nowMs < cut;
+  }
+
+  // Short fingerprint of the 5 puzzle coordinates a snapshot was computed
+  // from, so a later comparison can tell whether the cities actually played
+  // were the ones predicted (MapTap can rewrite a file). FNV-1a over the
+  // coordinates at 4 decimals; null when any city is unlocated.
+  function fnv1a(text) {
+    let h = 0x811c9dc5;
+    for (let i = 0; i < text.length; i++) { h ^= text.charCodeAt(i); h = Math.imul(h, 0x01000193) >>> 0; }
+    return h.toString(16).padStart(8, '0');
+  }
+  function puzzleFingerprint(cities) {
+    if (!allCitiesLocated(cities)) return null;
+    return fnv1a(cities.map(c => { const v = validLatLng(c); return v.lat.toFixed(4) + ',' + v.lng.toFixed(4); }).join(';'));
+  }
+
+  // Who captured a snapshot. 'device' is the app itself (verified puzzle
+  // only); 'scheduled' is the netlify/functions/maptap-snapshot-capture job,
+  // which runs whether or not anyone opens the app.
+  const SNAPSHOT_SOURCES = ['device', 'scheduled'];
+
+  // Build one immutable snapshot of a day's predictions as the card shows
+  // them: per-round scores rounded the way the chips are, the total those
+  // chips sum to (predTotalFromScores) and the predicted place, which is the
+  // competition rank of that total (equal totals share a place, as on the
+  // actual side; never a name order). Only player keys are stored (rival ids
+  // and the '@me' sentinel), never names. Returns null unless the capture is
+  // pre-game, the puzzle is fully located and at least one player has a
+  // prediction.
+  //   o: { date, takenAtMs, model, through, cities, source, puzzleDated,
+  //        roster, unread, historyAt, players: [{ key, scores: number[5] | null }] }
+  // `puzzleDated` says whether the puzzle file proved its date (its city ids
+  // name it) when the snapshot was taken. An undated one is still a genuine
+  // pre-game forecast, but it only counts once the cities actually played
+  // that day are known to match (snapshotMatchesPuzzle).
+  // Coverage, so a partial forecast is never mistaken for the card's:
+  // `roster` is how many players the app had (the user and every rival);
+  // `unread` lists players whose fresh results could not be read when it was
+  // taken (their forecast, if any, comes from the app's log as last uploaded,
+  // `historyAt`); a snapshot is complete when `unread` is empty. A player the
+  // app itself cannot predict (too little history) is simply absent, exactly
+  // as on the card.
+  function buildPredictionSnapshot(o) {
+    if (!o || !isPreGameInstant(o.date, o.takenAtMs)) return null;
+    const puzzle = puzzleFingerprint(o.cities);
+    if (!puzzle || typeof o.model !== 'string' || !o.model) return null;
+    if (!SNAPSHOT_SOURCES.includes(o.source) || typeof o.puzzleDated !== 'boolean') return null;
+    const rows = (Array.isArray(o.players) ? o.players : [])
+      .filter(p => p && typeof p.key === 'string' && Array.isArray(p.scores) && p.scores.length === N_LOCS &&
+                   p.scores.every(Number.isFinite))
+      .map(p => ({ key: p.key, r: p.scores.map(s => Math.round(s)), total: predTotalFromScores(p.scores) }));
+    if (!rows.length) return null;
+    const roster = Number.isInteger(o.roster) ? o.roster : rows.length;
+    const unread = Array.isArray(o.unread) ? o.unread.filter(k => typeof k === 'string') : [];
+    if (roster < rows.length) return null;
+    const place = competitionRanksForDay(rows);
+    const players = new Map();
+    for (const row of rows) players.set(row.key, { r: row.r, t: row.total, p: rows.length === 1 ? 1 : place[row.key] });
+    return {
+      date: o.date,
+      takenAt: new Date(o.takenAtMs).toISOString(),
+      model: o.model,
+      source: o.source,
+      through: typeof o.through === 'string' ? o.through : null,
+      puzzle,
+      puzzleDated: o.puzzleDated,
+      roster,
+      unread,
+      historyAt: typeof o.historyAt === 'string' && Number.isFinite(Date.parse(o.historyAt)) ? o.historyAt : null,
+      players: Object.fromEntries(players),
+    };
+  }
+
+  // Storage key of a snapshot inside the map: one entry per capture, so two
+  // devices capturing the same day before either syncs add two entries that
+  // the record merge keeps side by side instead of colliding on one id.
+  function snapshotId(snap) { return `${snap.date}@${snap.takenAt}`; }
+
+  function isSnapshot(s, id) {
+    if (!s || typeof s !== 'object' || !parseDateISO(s.date)) return false;
+    const taken = Date.parse(s.takenAt);
+    if (!Number.isFinite(taken) || new Date(taken).toISOString() !== s.takenAt) return false;
+    if (id !== undefined && id !== `${s.date}@${s.takenAt}`) return false;
+    // The pre-game rule is re-checked on every read, so an entry that claims
+    // a capture after its day had begun somewhere is never accepted.
+    if (!isPreGameInstant(s.date, taken)) return false;
+    if (typeof s.model !== 'string' || !s.model || typeof s.puzzle !== 'string') return false;
+    if (!SNAPSHOT_SOURCES.includes(s.source) || typeof s.puzzleDated !== 'boolean') return false;
+    if (s.through !== null && !parseDateISO(s.through)) return false;
+    if (!s.players || typeof s.players !== 'object' || Array.isArray(s.players)) return false;
+    const rows = Object.values(s.players);
+    if (!rows.length) return false;
+    if (!Number.isInteger(s.roster) || s.roster < rows.length) return false;
+    if (!Array.isArray(s.unread) || !s.unread.every(k => typeof k === 'string')) return false;
+    if (s.historyAt !== null && !Number.isFinite(Date.parse(s.historyAt))) return false;
+    if (!rows.every(r => r && Array.isArray(r.r) && r.r.length === N_LOCS &&
+      r.r.every(v => Number.isInteger(v) && v >= 0 && v <= MAX_RAW) &&
+      Number.isInteger(r.t) && Number.isInteger(r.p))) return false;
+    // The place must be the competition rank of the stored totals.
+    const ranks = competitionRanksForDay(Object.entries(s.players).map(([key, r]) => ({ key, total: r.t })));
+    return Object.entries(s.players).every(([key, r]) => r.p === (rows.length === 1 ? 1 : ranks[key]));
+  }
+
+  // Read the stored map, keeping only well-formed pre-game entries under
+  // their own id. Never rewrites an entry: what survives is byte-for-byte
+  // what was stored.
+  function sanitizeSnapshots(raw) {
+    const out = new Map();
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
+    for (const [id, s] of Object.entries(raw)) if (isSnapshot(s, id)) out.set(id, s);
+    return Object.fromEntries(out);
+  }
+
+  // Add incoming snapshots (a backup's, or the scheduled job's) to the stored
+  // map without ever removing or replacing anything already there: an id
+  // already present keeps the stored entry, so importing the same backup
+  // twice adds nothing, and an entry this code cannot read is kept in storage
+  // as it was. Incoming entries are accepted only as sanitizeSnapshots accepts
+  // them (well-formed, pre-game, under their own id).
+  // Returns { merged, added, already, invalid }.
+  function mergeSnapshotMaps(storedRaw, incomingRaw) {
+    const stored = storedRaw && typeof storedRaw === 'object' && !Array.isArray(storedRaw) ? storedRaw : {};
+    const merged = new Map(Object.entries(stored));
+    let added = 0, already = 0, invalid = 0;
+    if (incomingRaw && typeof incomingRaw === 'object' && !Array.isArray(incomingRaw)) {
+      const valid = sanitizeSnapshots(incomingRaw);
+      invalid = Object.keys(incomingRaw).length - Object.keys(valid).length;
+      for (const [id, snap] of Object.entries(valid)) {
+        if (merged.has(id)) { already++; continue; }
+        merged.set(id, snap);
+        added++;
+      }
+    }
+    return { merged: Object.fromEntries(merged), added, already, invalid };
+  }
+
+  // Whether a snapshot forecast the puzzle that was actually played: its
+  // fingerprint against the five cities recorded for that day. The daily
+  // file's first five coordinates and MapTap's recorded ones are the same
+  // numbers (checked 2026-11-17 on every located day from November 8 to 16).
+  function snapshotMatchesPuzzle(snap, playedCities) {
+    const played = puzzleFingerprint(playedCities);
+    return !!snap && !!played && snap.puzzle === played;
+  }
+
+  // The snapshot that stands for each date when forecasts are scored: the
+  // EARLIEST capture that qualifies. Later captures (another device that had
+  // not synced yet, the scheduled job) stay in storage but never replace it.
+  // `playedCities` (Map date -> City[5], the cities recorded for the day):
+  //   - where a day's played cities are known, only snapshots of that puzzle
+  //     qualify, so a forecast of a file MapTap later rewrote never counts;
+  //   - an undated snapshot (`puzzleDated: false`) qualifies ONLY once those
+  //     cities are known and match: its puzzle identity is otherwise unproven;
+  //   - a partial snapshot (`unread` not empty) qualifies only with
+  //     `{ includePartial: true }`, so a forecast missing players' fresh
+  //     results is never scored as the leaderboard the card would have shown.
+  function canonicalSnapshots(map, playedCities, options) {
+    const includePartial = !!(options && options.includePartial);
+    const out = new Map();
+    for (const s of Object.values(sanitizeSnapshots(map))) {
+      if (!includePartial && s.unread.length) continue;
+      const played = playedCities && typeof playedCities.get === 'function' ? playedCities.get(s.date) : null;
+      const known = !!played && allCitiesLocated(played);
+      if (known && !snapshotMatchesPuzzle(s, played)) continue;
+      if (!s.puzzleDated && !known) continue;
+      const cur = out.get(s.date);
+      if (!cur || s.takenAt < cur.takenAt) out.set(s.date, s);
+    }
+    return out;
+  }
+
+  // The app's own prediction inputs, for the scheduled capture: each
+  // player's rounds exactly as myProfileRounds / rivalRounds hand them to the
+  // predictor, in that order (so the server's sums run in the same order and
+  // land on the same bits). A day's coordinates are written once in `days`
+  // and a row repeats them only when its own copy differs; names are dropped
+  // (the predictor reads coordinates only).
+  //   in:  { key: [{ date, cities, scores }] }
+  //   out: { days: { date: [[lat, lng] | null] x5 }, players: { key: [[date, scores, coords?]] } }
+  const coordPairs = (cities) => (Array.isArray(cities) ? cities : []).slice(0, N_LOCS)
+    .map(c => { const v = validLatLng(c); return v ? [v.lat, v.lng] : null; });
+  function encodeRoundsHistory(playerRounds) {
+    const days = new Map();
+    const players = new Map();
+    for (const [key, rounds] of Object.entries(playerRounds || {})) {
+      const rows = [];
+      for (const r of Array.isArray(rounds) ? rounds : []) {
+        if (!r || !parseDateISO(r.date) || !Array.isArray(r.scores) || r.scores.length !== N_LOCS) continue;
+        const pairs = coordPairs(r.cities);
+        if (pairs.length !== N_LOCS) continue;
+        const text = JSON.stringify(pairs);
+        if (!days.has(r.date) && allCitiesLocated(r.cities)) days.set(r.date, pairs);
+        const day = days.get(r.date);
+        const row = [r.date, r.scores.map(Number)];
+        if (!day || JSON.stringify(day) !== text) row.push(pairs);
+        rows.push(row);
+      }
+      players.set(key, rows);
+    }
+    return { days: Object.fromEntries(days), players: Object.fromEntries(players) };
+  }
+
+  // The inverse, from an untrusted upload: null when the shape is wrong or a
+  // bound is exceeded, otherwise { key: [{ date, cities, scores }] }.
+  const HISTORY_MAX_PLAYERS = 61;
+  const HISTORY_MAX_ROWS = 4000;
+  function decodeRoundsHistory(payload) {
+    if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return null;
+    const { days, players } = payload;
+    if (!days || typeof days !== 'object' || Array.isArray(days)) return null;
+    if (!players || typeof players !== 'object' || Array.isArray(players)) return null;
+    const okPair = (p) => p === null || (Array.isArray(p) && p.length === 2 && validLatLng({ lat: p[0], lng: p[1] }) !== null);
+    const okPairs = (a) => Array.isArray(a) && a.length === N_LOCS && a.every(okPair);
+    const dayMap = new Map();
+    const dayKeys = Object.keys(days);
+    if (dayKeys.length > HISTORY_MAX_ROWS) return null;
+    for (const d of dayKeys) {
+      if (!parseDateISO(d) || !okPairs(days[d])) return null;
+      dayMap.set(d, days[d]);
+    }
+    const keys = Object.keys(players);
+    if (keys.length > HISTORY_MAX_PLAYERS) return null;
+    const toCities = (pairs) => pairs.map(p => (p ? { lat: p[0], lng: p[1] } : { lat: null, lng: null }));
+    const out = new Map();
+    for (const key of keys) {
+      const rows = players[key];
+      if (!Array.isArray(rows) || rows.length > HISTORY_MAX_ROWS) return null;
+      const rounds = [];
+      for (const row of rows) {
+        if (!Array.isArray(row) || (row.length !== 2 && row.length !== 3)) return null;
+        const [date, scores, own] = row;
+        if (!parseDateISO(date) || !Array.isArray(scores) || !validRawScores(scores)) return null;
+        const pairs = row.length === 3 ? own : dayMap.get(date);
+        if (!okPairs(pairs)) return null;
+        rounds.push({ date, cities: toCities(pairs), scores: scores.slice() });
+      }
+      out.set(key, rounds);
+    }
+    return Object.fromEntries(out);
+  }
+
+  // A player's rounds for a scheduled capture: everything the app logged
+  // (`logged`, decoded from its upload) and, after it, each newer day from
+  // the public profile (`fresh`, roundsFromHistories) that the log does not
+  // hold yet, which is what the app would add on its next sync. A day the
+  // log holds is never replaced by the profile's copy, so a profile that now
+  // returns fewer days (Dean: 43 of 125) loses nothing. `days` is the
+  // uploaded day map: a fresh day another player already logged takes the
+  // log's copy of its cities, as the app's day map would give it.
+  function mergeLoggedAndFresh(logged, fresh, days) {
+    const out = Array.isArray(logged) ? logged.slice() : [];
+    const have = new Set(out.map(r => r.date));
+    const extra = (Array.isArray(fresh) ? fresh : []).filter(r => r && !have.has(r.date))
+      .sort((a, b) => a.date.localeCompare(b.date));
+    for (const r of extra) {
+      const pairs = days && Array.isArray(days[r.date]) ? days[r.date] : null;
+      out.push(pairs ? { date: r.date, scores: r.scores, cities: pairs.map(p => (p ? { lat: p[0], lng: p[1] } : { lat: null, lng: null })) } : r);
+    }
+    return out;
+  }
+
+  // Per-player rounds for the predictor, built from MapTap game histories
+  // the way the app's synced game log holds them: `histories` maps a player
+  // key to mapTapHistoryToRounds output ({ date: { scores, cities } }). The
+  // log keeps ONE copy of a day's cities, the first located one (the user's,
+  // then a rival's: mergeMapTapSync, splitGameCities), and every player's
+  // round on that day is read against it; `order` puts '@me' first so this
+  // picks the same copy. Returns { key: [{ date, cities, scores }] }.
+  function roundsFromHistories(histories, order) {
+    const keys = Array.isArray(order) ? order : Object.keys(histories || {});
+    const dayCities = new Map();
+    for (const key of keys) {
+      const byDate = histories && histories[key];
+      if (!byDate || typeof byDate !== 'object') continue;
+      for (const [date, day] of Object.entries(byDate)) {
+        if (!dayCities.has(date) && day && allCitiesLocated(day.cities)) dayCities.set(date, day.cities);
+      }
+    }
+    const out = new Map();
+    for (const key of keys) {
+      const byDate = histories && histories[key];
+      const rounds = [];
+      if (byDate && typeof byDate === 'object') {
+        for (const date of Object.keys(byDate).sort()) {
+          const day = byDate[date];
+          if (!day || !Array.isArray(day.scores) || day.scores.length !== N_LOCS) continue;
+          // The shared copy first, exactly as the log stores one per day: on
+          // 2026-05-06 MapTap served one city at two positions to different
+          // players, and the log holds the user's for everybody.
+          const cities = dayCities.get(date) || null;
+          if (!cities) continue;
+          rounds.push({ date, cities, scores: day.scores });
+        }
+      }
+      out.set(key, rounds);
     }
     return Object.fromEntries(out);
   }
@@ -1626,13 +2194,23 @@
     sanitizeBackup, sanitizeRival, sanitizeGame, collapseDuplicateDays,
     periodOutcomeVsRival, runningRivalPeriodRecords, periodTallyText,
     // predicted-position accuracy
-    rankByScore, positionHitsForDay, accumulatePositionHits,
+    rankByScore, rankAccuracyForDay, accumulateRankAccuracy,
+    // maptap.gg daily puzzle file and the predictor (shared with the
+    // scheduled snapshot function)
+    parseDailyCitiesText, dailyFileIsFor, dailyCitiesSection,
+    haversineKm, flattenRoundsForPrediction, predictRoundScoreFromHistory, predictRoundsForPlayer,
+    PREDICTION_MODEL_VERSION,
+    // pre-game prediction snapshots
+    preGameCutoffMs, isPreGameInstant, puzzleFingerprint, buildPredictionSnapshot,
+    snapshotId, sanitizeSnapshots, canonicalSnapshots, snapshotMatchesPuzzle, roundsFromHistories,
+    mergeSnapshotMaps, fnv1a, encodeRoundsHistory, decodeRoundsHistory, mergeLoggedAndFresh,
+    SNAPSHOT_SOURCES,
     // finishing positions
     finishPositionsForDay, fieldSharesForDay, competitionRanksForDay,
     roundRanksForDay, podiumTier, accumulateFinishPositions,
     avgPositionColor, avgPositionColors,
     // continents
-    coordNum, myAvgByContinent,
+    coordNum, validLatLng, allCitiesLocated, myAvgByContinent,
     // rounds against my rivals
     myAvgByRound,
     // ordering

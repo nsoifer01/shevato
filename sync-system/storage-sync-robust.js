@@ -3653,6 +3653,35 @@ export async function eraseRivalNetworkIdentity() {
   }
 }
 
+/**
+ * Delete what MapTap Rivals' scheduled-prediction function keeps for this
+ * account on the site's server (netlify/functions/lib/maptap-snapshots.mjs):
+ * the roster, the uploaded round history, the run status and every stored
+ * prediction. It sits outside Firestore, so deleting the synced documents
+ * does not reach it. Any signed-in account may call it, enabled or not, and
+ * it is idempotent: an account that never had anything there gets a 200.
+ * Must run while the auth user still exists, since it proves who is asking
+ * with the account's ID token.
+ *
+ * @param {typeof fetch} [fetchImpl]
+ * @returns {Promise<void>}
+ */
+export async function eraseScheduledPredictions(fetchImpl = fetch) {
+  const user = auth.currentUser;
+  if (!user) {
+    throw new Error('eraseScheduledPredictions: not signed in');
+  }
+  const token = await user.getIdToken();
+  const res = await fetchImpl('/.netlify/functions/maptap-snapshots?scope=account', {
+    method: 'DELETE',
+    headers: { Authorization: `Bearer ${token}` },
+    cache: 'no-store'
+  });
+  if (!res.ok) {
+    throw new Error(`the prediction service answered ${res.status}`);
+  }
+}
+
 // Expose the global-status getter to non-module code (e.g. the gym
 // tracker's sync status pill, which is loaded as an ES module but reads
 // state through window because the sync layer is loaded before it).
@@ -3663,6 +3692,10 @@ if (typeof window !== 'undefined') {
   // leave first. firebase-config.js cannot import this module (this module
   // imports it), hence the window hook.
   window.__shevatoFlushSync = () => syncManager.flushAllNow();
+  // MapTap Rivals (a classic script) asks this before registering anything
+  // with its scheduled-prediction function, so a tab never re-registers an
+  // account that is being deleted in another tab.
+  window.__shevatoAccountDeletionLatched = (uid) => syncManager.isAccountDeletionLatched(uid);
 }
 
 // Debug helpers

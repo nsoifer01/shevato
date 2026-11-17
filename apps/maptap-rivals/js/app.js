@@ -76,6 +76,13 @@
     // stored under `KEY.DAILY_CITIES_PREFIX + isoDate`. Only coordinates
     // are persisted — never names or trivia from the daily file.
     DAILY_CITIES_PREFIX: 'maptapRivalsDailyCities/',
+    // Pre-game prediction snapshots: { '<date>@<takenAt>': Snapshot }, see
+    // buildPredictionSnapshot in stats.js. Written only before the day can
+    // have started anywhere, never edited, never back-filled.
+    SNAPSHOTS: 'maptapRivalsPredictionSnapshots',
+    // Device-local, never synced: a hash of the roster this device last
+    // registered for scheduled snapshots, so it is sent only when it changes.
+    SNAPSHOT_ROSTER_SENT: 'maptapRivalsSnapshotRosterSent',
   };
 
   // Public MapTap Cloud Function — returns gameHistory keyed by YYYY-MM-DD.
@@ -194,10 +201,16 @@
     resultOf, resultLoc, stdDev, average, streaks, linearTrend, projectNext,
     rivalryScoreFromGames,
     isoWeekId, monthId, periodRecords, runningRivalPeriodRecords, periodTallyText,
-    accumulatePositionHits,
+    accumulateRankAccuracy,
+    buildPredictionSnapshot, snapshotId, sanitizeSnapshots, isPreGameInstant, mergeSnapshotMaps, fnv1a,
+    encodeRoundsHistory,
+    // The predictor and the daily-file parser live in stats.js so the
+    // scheduled snapshot function runs the same code (moved 2026-11-17).
+    predictRoundsForPlayer, flattenRoundsForPrediction, PREDICTION_MODEL_VERSION,
+    parseDailyCitiesText, dailyFileIsFor, dailyCitiesSection,
     accumulateFinishPositions, avgPositionColor, avgPositionColors,
     roundRanksForDay, podiumTier,
-    coordNum, myAvgByContinent, myAvgByRound,
+    coordNum, validLatLng, allCitiesLocated, myAvgByContinent, myAvgByRound,
     compareNamesCI, compareWinPctDesc,
     // Local calendar dates (see stats.js "local calendar dates"): every day
     // the app shows is the user's local day, and ISO-string arithmetic is
@@ -315,15 +328,22 @@
   // would silently rewrite one of the two, and this fix must not lose a
   // byte of anyone's history.
   function splitGameCities(games) {
+    const list = Array.isArray(games) ? games : [];
+    // The day's entry is its first LOCATED copy when one exists, else its
+    // first copy: a name-only copy that happened to come first must not
+    // become the day's geography while a located one sits on another row.
     const days = new Map();
+    for (const g of list) {
+      if (!g || typeof g !== 'object' || !Array.isArray(g.cities) || g.cities.length !== N_LOCS) continue;
+      const known = days.get(g.date);
+      if (!known || (!allCitiesLocated(known) && allCitiesLocated(g.cities))) days.set(g.date, g.cities);
+    }
     const rows = [];
-    for (const g of Array.isArray(games) ? games : []) {
+    for (const g of list) {
       if (!g || typeof g !== 'object') continue;
       const cities = Array.isArray(g.cities) && g.cities.length === N_LOCS ? g.cities : null;
       if (!cities) { rows.push(g); continue; }
-      const known = days.get(g.date);
-      if (!known) days.set(g.date, cities);
-      else if (!sameCities(known, cities)) { rows.push(g); continue; }
+      if (!sameCities(days.get(g.date), cities)) { rows.push(g); continue; }
       const row = {};
       for (const k of Object.keys(g)) if (k !== 'cities') row[k] = g[k];
       rows.push(row);
@@ -341,8 +361,15 @@
     if (!Array.isArray(rows) || !dayMap || dayMap.size === 0) return rows;
     for (const g of rows) {
       if (!g || typeof g !== 'object') continue;
-      if (Array.isArray(g.cities) && g.cities.length === N_LOCS) continue;
       const cities = dayMap.get(g.date);
+      const own = Array.isArray(g.cities) && g.cities.length === N_LOCS;
+      // A row's own copy wins, except one with a missing or invalid
+      // coordinate when the day's entry is fully located: four synced rows
+      // kept { lat: null, lng: null } inline while their day had the real
+      // cities. Persisting then normalises the row (splitGameCities sees the
+      // same cities as the day), and the merge never trades located cities
+      // for unlocated ones, so a later sync cannot put the nulls back.
+      if (own && (allCitiesLocated(g.cities) || !cities || !allCitiesLocated(cities))) continue;
       if (cities) g.cities = cities;
     }
     return rows;
@@ -617,55 +644,6 @@
   // Days before today in the window: 3 back, today 4th, 3 ahead.
   const PREDICT_PAST_DAYS = 3;
 
-  // Pull only the first N_LOCS lat/lng pairs from a daily puzzle file.
-  // The MapTap client plays the first 5 cities in file order regardless
-  // of how many the file lists (verified across May 10-14 plays). The
-  // coordinates are all that is ever persisted (see fetchDailyCities) and
-  // all the predictor needs. City names are parsed separately and only
-  // lazily, behind the played gate (see parseDailyNamesText / fetchDailyNames)
-  // — they never enter the localStorage cache and never reach the UI before
-  // the user has logged their own game for that day.
-  // Regex: match `lat:` not preceded by a letter (excludes `labelLat:`),
-  // then the nearest `lng:` (same letter-boundary exclusion).
-  const DAILY_LATLNG_RE =
-    /(?<![A-Za-z])lat\s*:\s*(-?\d+(?:\.\d+)?)\s*,[\s\S]{0,80}?(?<![A-Za-z])lng\s*:\s*(-?\d+(?:\.\d+)?)/g;
-  // Some days' files open with a `secretMessages = [ { lat, lng, message } ]`
-  // block ahead of `cities` (August 8 and 28, October 9 2026, among others).
-  // Scanning from the top read that pin as round 1 and shifted rounds 2-5 by
-  // one. Others park a commented-out draft city AFTER the array (November 21
-  // has four real cities and a fifth in a `/* PARKED DRAFT */` block), which a
-  // scan to the end of the file counted as round 5. MapTap's own loader reads
-  // exactly `cities = [ ... ];`, so both parsers read that span too, and fall
-  // back to the whole file only when it has no such assignment.
-  const DAILY_CITIES_START_RE = /(?:^|[^A-Za-z0-9_$])cities\s*=\s*\[/;
-  function dailyCitiesSection(src) {
-    const m = DAILY_CITIES_START_RE.exec(src);
-    if (!m) return src;
-    // The first `];` closes it (a nested array never ends in `;`). January 1
-    // closes on a bare `]` and has nothing after it, hence the fallback.
-    // Checked 2026-10-11 against every daily file evaluated as JavaScript:
-    // 361 of 361 agree (the unanchored parser: 345).
-    const end = src.indexOf('];', m.index);
-    return end === -1 ? src.slice(m.index) : src.slice(m.index, end + 2);
-  }
-  // The file is named by month and day only and MapTap rewrites it each year,
-  // so the same URL serves different years' puzzles (on 2026-11-15, December
-  // 14-31 still held 2025's). It is `iso`'s puzzle only when that is provable:
-  // it was fetched ON `iso` (MapTap's own client, js/jjbasics.js and
-  // js/data-loader.js, plays `<Month><Day>.js` for the player's local day with
-  // no year check and records the game under that day's full ISO date, so the
-  // file served on `iso` IS that day's puzzle even when its content is an old
-  // year's), or every city id in the played array names `iso` itself
-  // (`id: "2026-11-12-..."`, carried by the files from August 2026 on).
-  // Both fetches use `cache: 'no-cache'`: the file is served `max-age=300`, so
-  // a default fetch just after midnight could return bytes cached the evening
-  // before and label them as fetched on the new day.
-  const DAILY_ID_DATE_RE = /(?<![A-Za-z])id\s*:\s*["'](\d{4}-\d{2}-\d{2})-/g;
-  function dailyFileIsFor(src, iso, fetchedOnISO) {
-    if (fetchedOnISO === iso) return true;
-    const dates = Array.from(dailyCitiesSection(src).matchAll(DAILY_ID_DATE_RE), m => m[1]);
-    return dates.length > 0 && dates.every(d => d === iso);
-  }
   // v3 entries are written only after dailyFileIsFor accepted the file. v2
   // was written for any parsed file, so one is trusted only when it was
   // cached on its own day; anything older is not (it may be another year's).
@@ -681,23 +659,7 @@
     if (cached.v === DAILY_CITIES_CACHE_V) return cached.cities;
     return cached.v === 2 && localDateISO(cached.cachedAt) === iso ? cached.cities : null;
   }
-  function parseDailyCitiesText(src) {
-    if (typeof src !== 'string' || !src.length) return null;
-    src = dailyCitiesSection(src);
-    DAILY_LATLNG_RE.lastIndex = 0;
-    const out = [];
-    let m;
-    while ((m = DAILY_LATLNG_RE.exec(src)) !== null) {
-      const lat = parseFloat(m[1]);
-      const lng = parseFloat(m[2]);
-      if (Number.isFinite(lat) && Number.isFinite(lng) &&
-          lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180) {
-        out.push({ lat, lng });
-      }
-      if (out.length >= N_LOCS) break;
-    }
-    return out.length === N_LOCS ? out : null;
-  }
+
 
   // Fetch + cache the day's 5 puzzle coordinates. Cache is keyed by ISO
   // date and holds only a file accepted as that date's puzzle
@@ -1985,7 +1947,7 @@
       // A `stale` day shows its verified cached puzzle while its refresh keeps failing.
       const recheck = (entry.status === 'pending' || entry.status === 'error' || entry.stale) &&
         !entry.inFlight && now - (entry.checkedAt || 0) >= PREDICT_RECHECK_MS &&
-        !(entry.iso < today && storedPuzzleCities(entry.iso));
+        !(entry.iso < today && allCitiesLocated(storedPuzzleCities(entry.iso)));
       if (entry.status !== 'idle' && !recheck) continue;
       if (entry.status === 'idle') entry.status = 'fetching';
       entry.inFlight = true;
@@ -2085,9 +2047,11 @@
 
   // A past day's 5 puzzle cities: synced games carry them inline, and the
   // daily-cities cache covers days whose games were logged without them.
+  // Only located cities can be predicted from, so a day whose stored cities
+  // lack coordinates falls through to the verified cached file.
   function citiesForPastDay(iso, fromGames) {
     const inline = fromGames.get(iso);
-    if (inline) return inline;
+    if (inline && allCitiesLocated(inline)) return inline;
     try {
       const cached = JSON.parse(localStorage.getItem(KEY.DAILY_CITIES_PREFIX + iso) || 'null');
       const cities = cachedDailyCities(cached, iso);
@@ -2148,7 +2112,145 @@
       }
       if (entries.length) days.push(entries);
     }
-    return accumulatePositionHits(days);
+    return accumulateRankAccuracy(days);
+  }
+
+  // Save today's-window predictions for every day that cannot have started
+  // anywhere yet (isPreGameInstant), once per day per device. A day's puzzle
+  // must be verified for that date (status 'ok' from fetchDailyCities) and
+  // fully located. The first capture of a date stays its canonical snapshot
+  // (canonicalSnapshots); nothing here edits or removes an entry, and
+  // entries this code cannot read are left in storage untouched.
+  // Every player the app predicts, the user first, with the rounds the card
+  // reads: the input to both capture paths.
+  function predictionPlayers() {
+    return [{ key: MY_PLAYER_KEY, rounds: myProfileRounds() }]
+      .concat(state.rivals.map(r => ({ key: r.id, rounds: rivalRounds(r.id) })));
+  }
+
+  function capturePreGameSnapshots() {
+    const now = Date.now();
+    const due = (state.predictWindow || []).filter(e =>
+      e.status === 'ok' && allCitiesLocated(e.cities) && isPreGameInstant(e.iso, now));
+    if (!due.length) return;
+    const raw = load(KEY.SNAPSHOTS, null);
+    const stored = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
+    const have = new Set(Object.values(sanitizeSnapshots(stored)).map(snap => snap.date));
+    const players = predictionPlayers();
+    let changed = false;
+    for (const entry of due) {
+      if (have.has(entry.iso)) continue;
+      let through = null;
+      for (const p of players) for (const r of p.rounds) {
+        if (r.date < entry.iso && (!through || r.date > through)) through = r.date;
+      }
+      const snap = buildPredictionSnapshot({
+        date: entry.iso,
+        takenAtMs: now,
+        model: PREDICTION_MODEL_VERSION,
+        // The device only ever captures a puzzle verified for its date, from
+        // the very log the card reads, so it is complete by construction.
+        source: 'device',
+        puzzleDated: true,
+        through,
+        cities: entry.cities,
+        roster: players.length,
+        unread: [],
+        historyAt: null,
+        players: players.map(p => {
+          const pred = predictRoundsForPlayer(p.rounds, entry.cities, entry.iso);
+          return { key: p.key, scores: pred ? pred.scores : null };
+        }),
+      });
+      if (!snap) continue;
+      stored[snapshotId(snap)] = snap;
+      have.add(entry.iso);
+      changed = true;
+    }
+    if (changed) save(KEY.SNAPSHOTS, stored);
+  }
+
+  // Scheduled snapshots (netlify/functions/lib/maptap-snapshots.mjs) are taken
+  // on the server whether or not the app is open, for accounts the site has
+  // enabled. Once per page load, for a signed-in account: read what the
+  // server holds and add it to the synced snapshot map (never replacing an
+  // entry); then, unless the account turned capture off, register what the
+  // server needs to predict exactly as the card does: every player by id
+  // (with a MapTap username where there is one, so newer days can be read
+  // from MapTap) and the round history the card reads (encodeRoundsHistory),
+  // sent only when it changed since this device last sent it. An account that
+  // is not enabled gets a 403 on the read and nothing else is sent. A tab never
+  // registers an account that is being deleted (the sync layer's latch).
+  const SNAPSHOT_ENDPOINT = '/.netlify/functions/maptap-snapshots';
+  let scheduledSnapshotsStarted = false;
+  const deletionLatched = (u) => typeof window.__shevatoAccountDeletionLatched === 'function' &&
+    !!window.__shevatoAccountDeletionLatched(u.uid);
+  function scheduledRegistration() {
+    const players = predictionPlayers();
+    const rounds = {};
+    for (const p of players) rounds[p.key] = p.rounds;
+    return {
+      me: state.myMapTap || null,
+      rivals: state.rivals.map(r => ({ id: r.id, username: r.maptapUsername || null })),
+      history: encodeRoundsHistory(rounds),
+    };
+  }
+  async function putRegistration(u, auth, optIn) {
+    if (deletionLatched(u)) return null;
+    const body = scheduledRegistration();
+    const sig = fnv1a(u.uid + '|' + JSON.stringify(body));
+    if (!optIn && localStorage.getItem(KEY.SNAPSHOT_ROSTER_SENT) === sig) return 'unchanged';
+    const put = await fetch(SNAPSHOT_ENDPOINT, {
+      method: 'PUT', headers: { ...auth, 'Content-Type': 'application/json' },
+      body: JSON.stringify(optIn ? { ...body, optIn: true } : body),
+    });
+    if (put.ok) localStorage.setItem(KEY.SNAPSHOT_ROSTER_SENT, sig);
+    return put.ok ? 'sent' : put.status;
+  }
+  async function syncScheduledSnapshots() {
+    if (scheduledSnapshotsStarted) return null;
+    const u = authUser();
+    if (!isRegisteredUser(u) || typeof u.getIdToken !== 'function' || deletionLatched(u)) return null;
+    scheduledSnapshotsStarted = true;
+    try {
+      const auth = { Authorization: 'Bearer ' + await u.getIdToken() };
+      const res = await fetch(SNAPSHOT_ENDPOINT, { headers: auth, cache: 'no-store' });
+      if (!res.ok) return { status: res.status };
+      const body = await res.json();
+      const merge = mergeSnapshotMaps(load(KEY.SNAPSHOTS, null), body && body.snapshots);
+      if (merge.added) save(KEY.SNAPSHOTS, merge.merged);
+      state.scheduledCapture = { optedOut: !!body.optedOut, lastRun: body.lastRun || null };
+      const registered = body.optedOut ? null : await putRegistration(u, auth, false);
+      if (state.view === 'dashboard') renderProfileCard();
+      return { status: res.status, added: merge.added, registered };
+    } catch (_) {
+      return null;  // offline or the function is down: the next page load retries
+    }
+  }
+
+  // The account's on/off switch for scheduled capture (the profile card).
+  // Off deletes everything the function holds for the account and leaves an
+  // opt-out marker that refuses any device's roster until it is turned on
+  // here again; on re-registers immediately.
+  async function setScheduledCapture(on) {
+    const u = authUser();
+    if (!isRegisteredUser(u) || typeof u.getIdToken !== 'function' || deletionLatched(u)) return false;
+    try {
+      const auth = { Authorization: 'Bearer ' + await u.getIdToken() };
+      if (!on) {
+        const res = await fetch(SNAPSHOT_ENDPOINT, { method: 'DELETE', headers: auth, cache: 'no-store' });
+        if (!res.ok) return false;
+        localStorage.removeItem(KEY.SNAPSHOT_ROSTER_SENT);
+        state.scheduledCapture = { optedOut: true, lastRun: null };
+      } else {
+        if ((await putRegistration(u, auth, true)) !== 'sent') return false;
+        state.scheduledCapture = { optedOut: false, lastRun: null };
+      }
+      if (state.view === 'dashboard') renderProfileCard();
+      return true;
+    } catch (_) {
+      return false;
+    }
   }
 
   function positionHitRecords() {
@@ -2161,16 +2263,23 @@
     return positionHitCache.records;
   }
 
-  // Compact accuracy badge for a prediction row. A player with no eligible
-  // day gets no badge at all rather than a meaningless "0%". The chip shows
-  // the rate because that is what compares across players with different
-  // amounts of history; the raw hits-of-days count lives in the tooltip.
+  // Compact accuracy badges for a prediction row: Spot-on (exact place) and
+  // Order (head-to-head order), both over the same back-tested days. A player
+  // with no eligible day gets no badge at all rather than a meaningless "0%".
+  // The chips show the rates because those compare across players with
+  // different amounts of history; the raw counts, the random-order baseline
+  // for the same days and the tie rule live in the tooltips.
+  // A predicted tie earns a share of a hit (or of a pair), so counts can be
+  // fractional: shown to one decimal only when they are.
+  const fmtCount = (x) => (Number.isInteger(x) ? String(x) : x.toFixed(1));
   function makeHitBadge(record) {
     if (!record || !record.eligible) return null;
     const pct = Math.round((record.hits / record.eligible) * 100);
-    const title = `Finished in the predicted position on ${record.hits} of ` +
-      `${record.eligible} past day${record.eligible === 1 ? '' : 's'} with a prediction ` +
-      `(${pct}%)`;
+    const chance = Math.round((record.chance / record.eligible) * 100);
+    const title = `Finished in the predicted place on ${fmtCount(record.hits)} of ` +
+      `${countNoun(record.eligible, 'past day')} with a prediction (${pct}%). ` +
+      `A random order would get about ${chance}% on the same days. ` +
+      'Tied places count as shared, predicted or actual.';
     const hot = record.hits * 2 >= record.eligible;
     return el('span', {
       class: 'pred-hit-badge' + (hot ? ' is-hot' : ''),
@@ -2178,6 +2287,17 @@
       'aria-label': title,
     }, [
       el('span', { class: 'pred-hit-label' }, 'Spot-on'),
+      el('span', { class: 'pred-hit-num' }, `${pct}%`),
+    ]);
+  }
+  function makeOrderBadge(record) {
+    if (!record || !record.pairs) return null;
+    const pct = Math.round((record.pairsRight / record.pairs) * 100);
+    const title = `Predicted order right in ${fmtCount(record.pairsRight)} of ` +
+      `${countNoun(record.pairs, 'head-to-head')} on the same days (${pct}%). ` +
+      'A coin flip gets 50%. Tied finishes are left out; a pair predicted level counts half.';
+    return el('span', { class: 'pred-hit-badge', title, 'aria-label': title }, [
+      el('span', { class: 'pred-hit-label' }, 'Order'),
       el('span', { class: 'pred-hit-num' }, `${pct}%`),
     ]);
   }
@@ -2441,7 +2561,9 @@
         nameNode,
         makeAvgPosition(avgPosition, avgColor),
       ]),
-      makeHitBadge(hitRecord),
+      hitRecord && hitRecord.eligible
+        ? el('span', { class: 'pred-acc-badges' }, [makeHitBadge(hitRecord), makeOrderBadge(hitRecord)])
+        : null,
     ])];
     cells.push(el('div', { class: 'pred-cell pred-predicted' },
       predictedTotal != null ? String(predictedTotal) : '—'));
@@ -2571,6 +2693,9 @@
 
   function renderTodaysPredictions() {
     ensureSevenDayWindowLoaded();
+    // Never let bookkeeping break the card.
+    try { capturePreGameSnapshots(); } catch (_) { /* storage full or blocked */ }
+    syncScheduledSnapshots();
     const card = $('#todays-card');
     if (!card) return;
     const body = $('#todays-card-body');
@@ -2600,9 +2725,15 @@
     // synced games when there is one, and the fetched puzzle otherwise.
     const isPast = selectedISO < today;
     const stored = isPast ? storedPuzzleCities(selectedISO) : null;
-    const dayCities = stored || (selected && selected.cities) || null;
-    schedulePredictRecheck(stored ? null : selected);
-    if (!stored && (!selected || selected.status === 'fetching')) {
+    // Predictions need every city located. A past day whose stored cities
+    // have names but no coordinates (MapTap's iOS history shape) still shows
+    // its results from them, and predicts only from a verified file.
+    const storedLocated = !!stored && allCitiesLocated(stored);
+    const fetched = selected && selected.status === 'ok' ? selected.cities : null;
+    const dayCities = (storedLocated ? stored : fetched) || stored || null;
+    const unlocated = !!dayCities && !allCitiesLocated(dayCities);
+    schedulePredictRecheck(storedLocated ? null : selected);
+    if (!storedLocated && !stored && (!selected || selected.status === 'fetching')) {
       status.textContent = 'Loading…';
       status.className = 'todays-card-status is-loading';
       body.appendChild(el('p', { class: 'pred-empty' },
@@ -2711,6 +2842,10 @@
       body.appendChild(el('p', { class: 'pred-rank-note' },
         'Rank after each round · Based on cumulative actual scores'));
     }
+    if (unlocated) {
+      body.appendChild(el('p', { class: 'pred-rank-note' },
+        'No map coordinates for this puzzle, so there are no predictions'));
+    }
 
     rows.sort((a, b) => {
       const aPlayed = a.actualTotal != null, bPlayed = b.actualTotal != null;
@@ -2730,8 +2865,8 @@
       body.appendChild(makeLocationRevealStrip(selectedISO));
     }
 
-    if (predictedCount === 0) {
-      status.textContent = 'Need more games';
+    if (predictedCount === 0 && !(unlocated && myActuals.mineTotal != null)) {
+      status.textContent = unlocated ? 'No coordinates' : 'Need more games';
       status.className = 'todays-card-status is-muted';
     } else if (selectedISO > today) {
       status.textContent = 'Upcoming';
@@ -6611,6 +6746,8 @@
         body.appendChild(el('div', { class: 'profile-meta-line' },
           `Last checked ${shortDate(p.verifiedAt) || 'unknown'}${p.mostRecentDate ? ` · most recent MapTap game ${shortDate(p.mostRecentDate)}` : ''}`));
       }
+      const capture = makeScheduledCaptureLine();
+      if (capture) body.appendChild(capture);
     } else if (!editing && hasUsername) {
       body.appendChild(el('div', { class: 'profile-status-line' }, [
         el('span', { class: 'tag warn' }, '⚠ Not linked yet'),
@@ -6624,6 +6761,29 @@
         ' to update every rivalry in one shot.',
       ]));
     }
+  }
+
+  // One quiet line, only for an account the site enabled for scheduled
+  // capture (the server answered the read): whether it is on, how the last
+  // run went, and the switch.
+  function makeScheduledCaptureLine() {
+    const sc = state.scheduledCapture;
+    if (!sc) return null;
+    const run = sc.lastRun;
+    let text;
+    if (sc.optedOut) text = 'Scheduled predictions: off';
+    else if (!run) text = 'Scheduled predictions: on';
+    else if (run.status === 'captured' || run.status === 'exists') {
+      text = `Scheduled predictions: on · ${shortDate(run.target)} saved${run.complete === false ? ' (some players not refreshed)' : ''}`;
+    } else text = `Scheduled predictions: on · last run ${shortDate(String(run.at).slice(0, 10))}: ${String(run.status).replace(/-/g, ' ')}`;
+    return el('div', { class: 'profile-meta-line' }, [
+      text + ' · ',
+      el('button', {
+        type: 'button',
+        class: 'link-btn',
+        onclick: () => setScheduledCapture(!!sc.optedOut),
+      }, sc.optedOut ? 'Turn on' : 'Turn off'),
+    ]);
   }
 
   // Put the profile card into edit mode and focus its username input,
@@ -7684,85 +7844,6 @@
     return { rows: out, totalRounds };
   }
 
-  // ---------- prediction ----------
-  // Per-round prediction blends three signals:
-  //   (1) Geographic similarity (haversine distance) — closer past
-  //       rounds get more weight via 1/(km + ε).
-  //   (2) Recency — exponential decay with a 30-day half-life so a
-  //       player's recent skill dominates over stale rounds.
-  //   (3) Bayesian shrinkage toward the player's overall mean —
-  //       sparse-evidence predictions get pulled back to the baseline
-  //       so a single hot/cold local round can't whipsaw the estimate.
-  // Continent buckets are *not* used here; classifyContinent is still
-  // around for the rival detail's continent breakdown view.
-  const PREDICTION_MIN_ROUNDS = 5;
-  const PREDICTION_RECENCY_HALF_LIFE_DAYS = 30;
-  const PREDICTION_SHRINKAGE_K = 5;       // pseudo-rounds at the player's mean
-  const PREDICTION_DISTANCE_EPS_KM = 25;  // floor on inverse-distance to avoid divide-by-zero / over-weighting exact matches
-  const EARTH_RADIUS_KM = 6371;
-
-  function haversineKm(aLat, aLng, bLat, bLng) {
-    const toRad = (d) => (d * Math.PI) / 180;
-    const dLat = toRad(bLat - aLat);
-    const dLng = toRad(bLng - aLng);
-    const h = Math.sin(dLat / 2) ** 2 +
-              Math.cos(toRad(aLat)) * Math.cos(toRad(bLat)) * Math.sin(dLng / 2) ** 2;
-    return 2 * EARTH_RADIUS_KM * Math.asin(Math.sqrt(h));
-  }
-
-  // Flatten `rounds` (one entry per day) into individual {lat, lng,
-  // score, daysAgo} samples relative to `asOfISO`. Rounds on or after
-  // asOfISO are excluded so we never "predict" using data from the
-  // same day or later — back-testing stays honest, and same-day
-  // actuals don't bleed into their own prediction.
-  function flattenRoundsForPrediction(rounds, asOfISO) {
-    const out = [];
-    if (!asOfISO || !Array.isArray(rounds)) return out;
-    const asOfP = parseDateISO(asOfISO);
-    if (!asOfP) return out;
-    for (const r of rounds) {
-      if (!r || !Array.isArray(r.cities) || !Array.isArray(r.scores) || !r.date) continue;
-      const tp = parseDateISO(r.date);
-      if (!tp || tp.ms >= asOfP.ms) continue;
-      const daysAgo = (asOfP.ms - tp.ms) / 86400000;
-      const n = Math.min(r.cities.length, r.scores.length, N_LOCS);
-      for (let i = 0; i < n; i++) {
-        const c = r.cities[i] || {};
-        const lat = Number(c.lat);
-        const lng = Number(c.lng);
-        const s = Number(r.scores[i]);
-        if (!Number.isFinite(lat) || !Number.isFinite(lng) || !Number.isFinite(s)) continue;
-        out.push({ lat, lng, score: s, daysAgo });
-      }
-    }
-    return out;
-  }
-
-  function predictRoundScoreFromHistory(history, targetLat, targetLng, playerMean) {
-    if (!history.length || !Number.isFinite(playerMean)) return playerMean;
-    const recencyLambda = Math.LN2 / PREDICTION_RECENCY_HALF_LIFE_DAYS;
-    let sumW = 0, sumWX = 0, sumW2 = 0;
-    for (const r of history) {
-      const km = haversineKm(targetLat, targetLng, r.lat, r.lng);
-      const distW = 1 / (km + PREDICTION_DISTANCE_EPS_KM);
-      const recW = Math.exp(-r.daysAgo * recencyLambda);
-      const w = distW * recW;
-      sumW += w;
-      sumWX += w * r.score;
-      sumW2 += w * w;
-    }
-    if (sumW <= 0 || sumW2 <= 0) return playerMean;
-    const weightedAvg = sumWX / sumW;
-    // Kish's effective sample size: (Σw)² / Σw² — counts evidence by
-    // weight concentration. A handful of close-and-recent rounds give
-    // nEff ≈ their count; lots of far/old rounds give nEff ≈ 1-2.
-    const nEff = (sumW * sumW) / sumW2;
-    // Shrinkage toward the player's long-term mean. With nEff = 0 we
-    // get the prior outright; with nEff >> K we trust the local mean.
-    return (nEff * weightedAvg + PREDICTION_SHRINKAGE_K * playerMean) /
-           (nEff + PREDICTION_SHRINKAGE_K);
-  }
-
   // Your own per-round history derived from `state.games`. `state.myProfile`
   // intentionally drops `gameHistory` to keep the localStorage payload
   // small (see summarizeMapTapProfile), so the paired Game records are
@@ -7776,7 +7857,9 @@
       if (byDate.has(g.date)) continue;
       if (!Array.isArray(g.cities) || g.cities.length !== N_LOCS) continue;
       if (!Array.isArray(g.myScores) || g.myScores.length !== N_LOCS) continue;
-      const cities = g.cities.map(c => ({ lat: Number(c.lat), lng: Number(c.lng) }));
+      // Coordinates are validated where they are read
+      // (flattenRoundsForPrediction), so the cities go through untouched.
+      const cities = g.cities;
       const scores = g.myScores.map(Number);
       if (!scores.every(s => Number.isFinite(s))) continue;
       byDate.set(g.date, { date: g.date, cities, scores });
@@ -7794,30 +7877,7 @@
       .map(g => ({ date: g.date, cities: g.cities, scores: g.theirScores }));
   }
 
-  // Predict a player's weighted total + per-round breakdown for a given
-  // 5-city array, computed as of `asOfISO` (excludes any rounds from
-  // that day or later). Returns null when the player has too little
-  // pre-cutoff history to give a meaningful number.
-  // `confidence` = number of rounds informing the estimate (rough
-  // sample-size cue for the UI, not a probability).
-  function predictRoundsForPlayer(rounds, todaysCities, asOfISO) {
-    if (!Array.isArray(todaysCities) || todaysCities.length !== N_LOCS) return null;
-    const history = flattenRoundsForPrediction(rounds, asOfISO);
-    if (history.length < PREDICTION_MIN_ROUNDS) return null;
-    // Player's overall mean used as the shrinkage prior. Straight
-    // unweighted average keeps the prior stable over time — recency
-    // already lives in the per-round weights.
-    let total = 0;
-    for (const r of history) total += r.score;
-    const playerMean = total / history.length;
-    const scores = new Array(N_LOCS);
-    for (let i = 0; i < N_LOCS; i++) {
-      const c = todaysCities[i];
-      const s = predictRoundScoreFromHistory(history, c.lat, c.lng, playerMean);
-      scores[i] = Math.max(0, Math.min(100, s));
-    }
-    return { scores, confidence: history.length };
-  }
+
 
   // Resolves to the run's outcome so "Sync all rivals" can total the pulls
   // up: { ok, added, updated, backfilled } on success, { ok: false, error }
@@ -8432,15 +8492,33 @@
   }
 
   // ---------- export / import ----------
-  function exportData() {
-    const blob = new Blob([JSON.stringify({
+  // The backup file. Pre-game snapshots travel with it because they cannot
+  // be rebuilt afterwards; only entries the app can read are written.
+  function backupPayload() {
+    return {
       version: 1,
       exportedAt: new Date().toISOString(),
       me: state.me,
       myIcon: state.myIcon,
       rivals: state.rivals,
       games: state.games,
-    }, null, 2)], { type: 'application/json' });
+      snapshots: sanitizeSnapshots(load(KEY.SNAPSHOTS, null)),
+    };
+  }
+
+  // Add a backup's snapshots to the stored ones. Unlike rivals and games,
+  // which an import replaces, snapshots are only ever added: an id already
+  // stored keeps its stored entry (a repeated import adds nothing), nothing
+  // stored is removed, and an older backup without the field changes nothing.
+  function importSnapshotsFrom(parsed) {
+    const incoming = parsed && typeof parsed === 'object' ? parsed.snapshots : undefined;
+    const merge = mergeSnapshotMaps(load(KEY.SNAPSHOTS, null), incoming);
+    if (merge.added) save(KEY.SNAPSHOTS, merge.merged);
+    return { added: merge.added, already: merge.already, invalid: merge.invalid };
+  }
+
+  function exportData() {
+    const blob = new Blob([JSON.stringify(backupPayload(), null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
@@ -8483,6 +8561,7 @@
         persistGames();
         persistMe();
         persistMyIcon();
+        const snaps = importSnapshotsFrom(parsed);
         $('#my-name').value = state.me;
         const cur = $('#my-icon-current'); if (cur) cur.textContent = state.myIcon || '🧍';
         refreshRivalSelects();
@@ -8503,6 +8582,8 @@
         // they cannot see anything wrong with.
         const { rejected, repaired } = clean;
         let msg = `Imported ${countNoun(clean.rivals.length, 'rival')}, ${countNoun(clean.games.length, 'game')}.`;
+        if (snaps.added || snaps.already) msg += ` Added ${countNoun(snaps.added, 'saved prediction')}${snaps.already ? ` (${snaps.already} already here)` : ''}.`;
+        if (snaps.invalid) msg += ` Skipped ${countNoun(snaps.invalid, 'unreadable saved prediction')}.`;
         if (rejected.length) msg += ` Skipped ${rejected.length} invalid entr${rejected.length === 1 ? 'y' : 'ies'}: ${rejected.slice(0, 3).join('; ')}${rejected.length > 3 ? '; ...' : ''}.`;
         if (repaired.length) msg += ` Repaired ${repaired.length}: ${repaired.slice(0, 2).join('; ')}${repaired.length > 2 ? '; ...' : ''}.`;
         alert(msg);
@@ -8945,6 +9026,21 @@
       summarizeMapTapProfile,
       syncMapTapForRival,
       syncAllRivals,
+      // The predictor and its accuracy back-test, and the pre-game snapshot
+      // capture, driven through the real code on seeded storage.
+      predictRoundsForPlayer,
+      flattenRoundsForPrediction,
+      myProfileRounds,
+      rivalRounds,
+      positionHitRecords,
+      capturePreGameSnapshots,
+      syncScheduledSnapshots,
+      setScheduledCapture,
+      scheduledRegistration,
+      backupPayload,
+      importSnapshotsFrom,
+      PREDICTION_MODEL_VERSION,
+      KEY,
     };
   }
 })();
