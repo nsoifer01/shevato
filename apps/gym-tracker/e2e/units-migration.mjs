@@ -17,6 +17,7 @@
 //   E. flipping the display unit converts, and flipping back returns the
 //      original numbers exactly
 import { newPage, closePage, goto, waitForExpr } from '../../../tests/browser/cdp.mjs';
+import { armBootDiagnostic, resetBootDiagnostic, reportFailedBoot } from './boot-diagnostic.mjs';
 
 /** Independently computed: 65 x 0.45359237. Not derived from app code. */
 const KG_FOR_65_LB = 29.48350405;
@@ -75,6 +76,17 @@ export async function run({ base, cdpPort }) {
     return r.result.value;
   };
 
+  // Every navigation to the app goes through here so a boot where app.js never
+  // ran leaves evidence behind (boot-diagnostic.mjs, issue #676). The
+  // report only reads, after the same settle, and asserts nothing.
+  let scenario = '';
+  const gotoApp = async (s, settle) => {
+    armBootDiagnostic(s);
+    resetBootDiagnostic(s);
+    await goto(s, APP, { settle });
+    await reportFailedBoot(s, scenario);
+  };
+
   /** Seed a whole localStorage profile, then boot the real app on it. */
   const boot = async (s, profile) => {
     await goto(s, `${base}/apps/gym-tracker/manifest.webmanifest`, { settle: 200 });
@@ -82,7 +94,7 @@ export async function run({ base, cdpPort }) {
       const p = ${JSON.stringify(profile)};
       for (const [k, v] of Object.entries(p)) localStorage.setItem(k, JSON.stringify(v));
       return true; })()`);
-    await goto(s, APP, { settle: 3500 });
+    await gotoApp(s, 3500);
   };
 
   /** The stored (canonical) weight of the first logged set. */
@@ -111,6 +123,7 @@ export async function run({ base, cdpPort }) {
 
   const withPage = async (label, fn) => {
     let s = null;
+    scenario = label;
     try { s = await newPage(cdpPort); await fn(s); }
     catch (e) { t(`${label}: block ran`, false, String(e && e.message).slice(0, 160)); }
     finally { if (s) try { await closePage(cdpPort, s); } catch { /* gone */ } }
@@ -154,7 +167,7 @@ export async function run({ base, cdpPort }) {
   await withPage('gym-units D', async (s) => {
     await boot(s, legacyProfile('lb', 65));
     const first = await storedWeight(s);
-    for (let i = 0; i < 3; i++) await goto(s, APP, { settle: 2500 });
+    for (let i = 0; i < 3; i++) await gotoApp(s, 2500);
     const after = await storedWeight(s);
     t('gym-units D: three reloads do not reconvert', first === after,
       `${first} -> ${after}`);
@@ -171,7 +184,7 @@ export async function run({ base, cdpPort }) {
     // which is what the Settings screen does.
     await evaluate(s, `(() => { const st = JSON.parse(localStorage.getItem('gymTrackerSettings'));
       st.weightUnit = 'kg'; localStorage.setItem('gymTrackerSettings', JSON.stringify(st)); return true; })()`);
-    await goto(s, APP, { settle: 3000 });
+    await gotoApp(s, 3000);
     const afterFlip = await storedWeight(s);
     t('gym-units E: switching to kg does not rewrite storage',
       afterFlip === stored, `${stored} -> ${afterFlip}`);
@@ -181,7 +194,7 @@ export async function run({ base, cdpPort }) {
     // ...and back to pounds returns exactly 65.
     await evaluate(s, `(() => { const st = JSON.parse(localStorage.getItem('gymTrackerSettings'));
       st.weightUnit = 'lb'; localStorage.setItem('gymTrackerSettings', JSON.stringify(st)); return true; })()`);
-    await goto(s, APP, { settle: 3000 });
+    await gotoApp(s, 3000);
     const backTxt = await renderedHistory(s);
     t('gym-units E: back in lb it is 65lb again',
       /65\s*lb/i.test(backTxt) && !/143\.3/.test(backTxt), backTxt.slice(0, 90));
@@ -226,7 +239,7 @@ export async function run({ base, cdpPort }) {
     t('gym-units F: the open question is recorded as owed',
       (await evaluate(s, `(JSON.parse(localStorage.getItem('gymTrackerMeasurementUnits') || 'null') || {}).status`)) === 'unresolved',
       '');
-    await goto(s, APP, { settle: 3500 });
+    await gotoApp(s, 3500);
     const reopened = await evaluate(s, `(() => {
       const m = document.getElementById('measurement-units-modal');
       const rec = JSON.parse(localStorage.getItem('gymTrackerMeasurements'))[0];
@@ -252,7 +265,7 @@ export async function run({ base, cdpPort }) {
       (await evaluate(s, `JSON.parse(localStorage.getItem('gymTrackerMeasurementUnits')).status`)) === 'resolved', '');
 
     // Re-boot: the question must not come back, and nothing may convert again.
-    await goto(s, APP, { settle: 3000 });
+    await gotoApp(s, 3000);
     const reasked = await evaluate(s,
       `document.getElementById('measurement-units-modal').classList.contains('active')`);
     t('gym-units F: not asked again after a reload', !reasked, '');
@@ -310,7 +323,7 @@ export async function run({ base, cdpPort }) {
     // Switching display unit must not make the scan want to convert anything.
     await evaluate(s, `(() => { const st = JSON.parse(localStorage.getItem('gymTrackerSettings'));
       st.weightUnit = 'kg'; localStorage.setItem('gymTrackerSettings', JSON.stringify(st)); return true; })()`);
-    await goto(s, APP, { settle: 3000 });
+    await gotoApp(s, 3000);
     const third = await runRecheck();
     t('gym-units G: clean after a display-unit switch', /No repairs needed/i.test(third), third);
     t('gym-units G: unit switch did not move stored data',
