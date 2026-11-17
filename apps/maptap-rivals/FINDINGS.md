@@ -714,15 +714,153 @@ after that round. Decisions a future change should keep:
   under the column headers (`.pred-rank-note`, `text-wrap: balance` so it
   does not leave a one-word orphan at 390), rendered only when a pill is.
 
+## Prediction audit and accuracy statistics (2026-11-16)
+
+Two read-only audits back-tested the predictor on the owner's real log (2,305
+rows, 10 players, 2026-03-05 to 2026-11-16), every prediction made only from
+rounds dated before its day. What they established, so it is not re-litigated:
+
+- **The model is kept as it is.** On a held-out window (Sep 1 to Nov 16, 420
+  predictions) it beat every simple baseline on daily-total MAE (57.8 vs 62.5
+  to 69.5; player mean +5.0, 95% CI 2.3 to 7.0) and even a hindsight predictor
+  that knew each player's median for that window (60.7). Its geography term is
+  real signal (per-round correlation 0.46 with the actual deviation).
+- **Nothing ranking-specific beat it.** Month-by-month nested walk-forward over
+  Jun 1 to Nov 16 (settings chosen only from earlier months): Bradley-Terry,
+  Elo, historical-average and field-share ranking, head-to-head records,
+  per-player and per-round bias corrections, blends, volatility-aware Monte
+  Carlo ranking and a max-expected-hits assignment were all equal or worse on
+  exact place, pairwise order and rank error. REJECTED. The shrinkage change
+  eps 25 -> 5, K 5 -> 1 cut score MAE by 1.05 (CI -1.70 to -0.45) but exact
+  place fell 1.9 points (CI -3.6 to +0.1). REJECTED: parameters unchanged.
+- **Why exact places are hard.** 54% of squared error is a shift the whole
+  field shares that day (puzzle difficulty), unpredictable beforehand
+  (day-to-day correlation -0.12). Adjacent predicted places are a median 11
+  points apart against about 70 points of per-player noise, so close pairs
+  are coin flips (51% when the gap is under 10 points). Exact place is
+  easiest at the ends (winner 49%, last 46%) and hardest in the middle (23%,
+  random 16%), and falls with field size.
+- **Daily totals are left-skewed** (rounds under 50 are 3% of rounds and 28%
+  of the weighted error; round 5 averages 75 against 94 for round 1), so the
+  predictor sits near the median rather than the mean: it over-predicts the
+  mean by about 29 points while players beat it on 47% of days. A round-slot
+  correction removed that bias but made MAE worse. REJECTED.
+- **Live updates are unproven.** Shifting not-yet-played players by the error
+  of those already finished looked like 5 to 9 points of MAE in a simulation,
+  but play times were not in the stored data, so the finishing order was
+  assumed random, and the ranking gain for the remaining players was within
+  noise. Not built.
+
+### Missing coordinates were read as (0, 0)
+
+`flattenRoundsForPrediction` and the target cities read `Number(c.lat)`, and
+`Number(null)` is 0. Seven name-only puzzle days (2026-08-11, 08-14, 09-20,
+09-23, 10-03, 11-04, 11-12: MapTap's iOS history shape, names and no
+coordinates) were predicted from the Gulf of Guinea, five identical rounds per
+player, and counted toward Spot-on; their 245 history rounds sat at (0, 0) and
+pulled every prediction for a West African city. Four synced rows (2026-06-15,
+2026-08-05, two on 2026-08-23) also kept `{ lat: null, lng: null }` inline
+while their day map had the real cities, and `joinGameCities` let the inline
+copy win.
+
+Now every coordinate goes through `validLatLng` (stats.js): `coordNum`, finite,
+in range, so null, '', [] and text are missing while a real 0 is kept. A
+puzzle with any unlocated city gets no prediction (`predictRoundsForPlayer`
+returns null) and so no accuracy day; the card still shows that day's results
+and says "No map coordinates for this puzzle, so there are no predictions".
+An unlocated inline copy yields to a located day entry, the next persist
+normalises the row, and `mergeMapTapSync` never trades located cities for
+unlocated ones. A past day whose stored cities are unlocated predicts only
+from a verified maptap.gg file, the same fallback as a day with no stored
+cities. Measured effect on the 180-day badges: 25.9% -> 26.0% overall.
+
+### 2026-06-03: two hand-entered rows (verified against MapTap)
+
+The only two rows in the log not written by sync (Emmett and Gal, entered on
+the day, note '') stored 6,3,26,21,14 (166) for BOTH sides. MapTap's own game
+history, fetched for this audit, records Nikita 95,96,88,79,57 (775), Emmett
+96,98,99,77,47 (764), Gal 97,100,94,78,96 (907). Every other row for those
+three players matches MapTap exactly (a check that has to read both history
+shapes, web `roundData` and the `rounds`/`roundNumber` one).
+
+The profile aggregate is consistent with that, and its 253 vs 250 is not a
+discrepancy: the history has 253 entries, of which 3 (2026-03-15, 03-18,
+03-20) are abandoned games with `finalScore` 0 and 1, 2 and 4 rounds, which
+sync skips because it needs all five. 253 x 807.336... = 204,256, the exact
+sum of the 250 logged totals with June 3 = 775.
+
+`mergeMapTapSync` never touches a row whose note is not `SYNC_NOTE`, so sync
+cannot repair these. The correction is made in the app: delete the two rows
+(History) and sync Emmett and Gal, which writes MapTap's values as synced rows
+(pinned in `tests/stats.test.js`). It goes through the normal sync engine, a
+three-way merge that honours deletions on every device. Until the owner does
+that, the card counts 166.
+
+### Spot-on and ties
+
+Spot-on used to compare indexes in two name-tie-broken orders, so on the 94
+of 256 days with an actual tie, a correctly placed tied player could score a
+miss decided by which name sorts first, and a field of one was an automatic
+hit. The rule now (`rankAccuracyForDay`): predicted places are the card's
+distinct slots 1..N; the actual place of k players tied on a total is the span
+of slots c..c+k-1 from competition ranking; a hit is a predicted slot inside
+the span. Strict competition-rank equality was considered and not used: two
+players tied for 1st and predicted 1st and 2nd would score one hit and one miss
+although the prediction put exactly those two in exactly those places. The
+random baseline uses the same rule (k / N per day, so it carries the same
+days, field sizes and ties), and the Order chip counts each player's
+head-to-heads with players they did not tie with (a coin flip gets 50%).
+
+Owner's log, computed by the shipped code (positionHitRecords, 180-day window):
+
+| | Spot-on | random | Order |
+|---|---:|---:|---:|
+| master | 25.9% (324/1249) | | |
+| this change | 28.0% (337/1204) | 15.6% | 68.0% (5054/7428) |
+| plus the June 3 correction | 28.5% (343/1204) | 15.6% | 68.5% (5092/7434) |
+
+All history with the same code: 31.3% exact vs 17.3% random, 69.3% pairwise.
+Every one of those increases is a measurement correction (ties counted
+consistently, broken-coordinate days and solo days no longer counted, a wrong
+historical score corrected), not better prediction. The 180-day window is
+unchanged; "avg %" still covers all days.
+
+### Pre-game prediction snapshots
+
+A day is played on each player's local date, and the first local date on
+Earth is UTC+14, so day D cannot have started anywhere before 10:00 UTC on
+D-1 (`preGameCutoffMs`). `capturePreGameSnapshots` runs on every predictions
+render and saves, once, every day in the window that is before that instant,
+has a puzzle verified for that date (`status: 'ok'`) and is fully located.
+Nothing captured later is labelled pre-game, and the rule is re-checked on
+read (`sanitizeSnapshots`). The first capture of a date is canonical; later
+ones (a second device before it synced) are kept, keyed `<date>@<takenAt>`, so
+the map merge unions them instead of raising a conflict. Entries are never
+edited or removed, and unreadable ones are left in storage untouched.
+
+Coverage is limited by two facts. maptap.gg dates its files only about two
+days ahead (2026-11-17: November 17 and 18 carried ids, 19 to 21 did not), and
+a file is verified for a future day only by those ids. For the owner (UTC-6)
+the cutoff for tomorrow is 04:00 local today, so in practice a day is captured
+when the app is opened two or more days ahead while its file is already
+dated. Days MapTap does not date in advance are never captured. A capture made
+days ahead also lacks the results played since, which `through` records.
+
+Not built, possible later: MapTap's game history carries `startTime` and
+`completedAt` per entry (from 2026-06-10 on the owner's profile), which would
+let a same-day capture be classified pre-game per player. Snapshots are not
+part of the JSON backup export, and nothing in the UI reads them yet.
+
 ## Past days in the predictions window (2026-11-15)
 
 The day tabs run 3 days back, Today (4th, selected by default), 3 days ahead
 (`PREDICT_PAST_DAYS` in `js/app.js`). Before this they ran Today plus six days
 ahead. What a past tab shows, and where each number comes from:
 
-- **Predictions are not stored anywhere.** No snapshot of what the card showed
-  on a given day exists, so a past tab computes the prediction the same way the
-  Spot-on badge already does: `predictRoundsForPlayer` with `asOfISO` set to
+- **A past tab reconstructs its prediction.** Pre-game snapshots exist since
+  2026-11-17 (see "Pre-game prediction snapshots") but cover only days captured
+  ahead of time, so a past tab still computes the prediction the same way the
+  Spot-on badge does: `predictRoundsForPlayer` with `asOfISO` set to
   that day, which drops every round dated that day or later
   (`flattenRoundsForPrediction`). Games played after the day cannot move it
   (pinned in `e2e/quality.mjs`). What can move it is a round dated BEFORE the

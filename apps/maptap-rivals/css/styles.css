@@ -1801,6 +1801,14 @@ body.maptap-rivals-app textarea:focus {
   color: var(--text);
 }
 .pred-hit-badge.is-hot .pred-hit-num { color: var(--good); }
+/* Spot-on and Order side by side, wrapping onto a second line rather than
+   squeezing when the label column is narrow. */
+.pred-acc-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  max-width: 100%;
+}
 .pred-cell {
   text-align: right;
   font-variant-numeric: tabular-nums;

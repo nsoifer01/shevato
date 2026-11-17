@@ -76,6 +76,10 @@
     // stored under `KEY.DAILY_CITIES_PREFIX + isoDate`. Only coordinates
     // are persisted — never names or trivia from the daily file.
     DAILY_CITIES_PREFIX: 'maptapRivalsDailyCities/',
+    // Pre-game prediction snapshots: { '<date>@<takenAt>': Snapshot }, see
+    // buildPredictionSnapshot in stats.js. Written only before the day can
+    // have started anywhere, never edited, never back-filled.
+    SNAPSHOTS: 'maptapRivalsPredictionSnapshots',
   };
 
   // Public MapTap Cloud Function — returns gameHistory keyed by YYYY-MM-DD.
@@ -194,10 +198,11 @@
     resultOf, resultLoc, stdDev, average, streaks, linearTrend, projectNext,
     rivalryScoreFromGames,
     isoWeekId, monthId, periodRecords, runningRivalPeriodRecords, periodTallyText,
-    accumulatePositionHits,
+    accumulateRankAccuracy,
+    buildPredictionSnapshot, snapshotId, sanitizeSnapshots, isPreGameInstant,
     accumulateFinishPositions, avgPositionColor, avgPositionColors,
     roundRanksForDay, podiumTier,
-    coordNum, myAvgByContinent, myAvgByRound,
+    coordNum, validLatLng, allCitiesLocated, myAvgByContinent, myAvgByRound,
     compareNamesCI, compareWinPctDesc,
     // Local calendar dates (see stats.js "local calendar dates"): every day
     // the app shows is the user's local day, and ISO-string arithmetic is
@@ -341,8 +346,15 @@
     if (!Array.isArray(rows) || !dayMap || dayMap.size === 0) return rows;
     for (const g of rows) {
       if (!g || typeof g !== 'object') continue;
-      if (Array.isArray(g.cities) && g.cities.length === N_LOCS) continue;
       const cities = dayMap.get(g.date);
+      const own = Array.isArray(g.cities) && g.cities.length === N_LOCS;
+      // A row's own copy wins, except one with a missing or invalid
+      // coordinate when the day's entry is fully located: four synced rows
+      // kept { lat: null, lng: null } inline while their day had the real
+      // cities. Persisting then normalises the row (splitGameCities sees the
+      // same cities as the day), and the merge never trades located cities
+      // for unlocated ones, so a later sync cannot put the nulls back.
+      if (own && (allCitiesLocated(g.cities) || !cities || !allCitiesLocated(cities))) continue;
       if (cities) g.cities = cities;
     }
     return rows;
@@ -1985,7 +1997,7 @@
       // A `stale` day shows its verified cached puzzle while its refresh keeps failing.
       const recheck = (entry.status === 'pending' || entry.status === 'error' || entry.stale) &&
         !entry.inFlight && now - (entry.checkedAt || 0) >= PREDICT_RECHECK_MS &&
-        !(entry.iso < today && storedPuzzleCities(entry.iso));
+        !(entry.iso < today && allCitiesLocated(storedPuzzleCities(entry.iso)));
       if (entry.status !== 'idle' && !recheck) continue;
       if (entry.status === 'idle') entry.status = 'fetching';
       entry.inFlight = true;
@@ -2085,9 +2097,11 @@
 
   // A past day's 5 puzzle cities: synced games carry them inline, and the
   // daily-cities cache covers days whose games were logged without them.
+  // Only located cities can be predicted from, so a day whose stored cities
+  // lack coordinates falls through to the verified cached file.
   function citiesForPastDay(iso, fromGames) {
     const inline = fromGames.get(iso);
-    if (inline) return inline;
+    if (inline && allCitiesLocated(inline)) return inline;
     try {
       const cached = JSON.parse(localStorage.getItem(KEY.DAILY_CITIES_PREFIX + iso) || 'null');
       const cities = cachedDailyCities(cached, iso);
@@ -2148,7 +2162,49 @@
       }
       if (entries.length) days.push(entries);
     }
-    return accumulatePositionHits(days);
+    return accumulateRankAccuracy(days);
+  }
+
+  // Save today's-window predictions for every day that cannot have started
+  // anywhere yet (isPreGameInstant), once per day per device. A day's puzzle
+  // must be verified for that date (status 'ok' from fetchDailyCities) and
+  // fully located. The first capture of a date stays its canonical snapshot
+  // (canonicalSnapshots); nothing here edits or removes an entry, and
+  // entries this code cannot read are left in storage untouched.
+  function capturePreGameSnapshots() {
+    const now = Date.now();
+    const due = (state.predictWindow || []).filter(e =>
+      e.status === 'ok' && allCitiesLocated(e.cities) && isPreGameInstant(e.iso, now));
+    if (!due.length) return;
+    const raw = load(KEY.SNAPSHOTS, null);
+    const stored = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
+    const have = new Set(Object.values(sanitizeSnapshots(stored)).map(snap => snap.date));
+    const players = [{ key: MY_PLAYER_KEY, name: state.me || 'You', rounds: myProfileRounds() }]
+      .concat(state.rivals.map(r => ({ key: r.id, name: r.name, rounds: rivalRounds(r.id) })));
+    let changed = false;
+    for (const entry of due) {
+      if (have.has(entry.iso)) continue;
+      let through = null;
+      for (const p of players) for (const r of p.rounds) {
+        if (r.date < entry.iso && (!through || r.date > through)) through = r.date;
+      }
+      const snap = buildPredictionSnapshot({
+        date: entry.iso,
+        takenAtMs: now,
+        model: PREDICTION_MODEL_VERSION,
+        through,
+        cities: entry.cities,
+        players: players.map(p => {
+          const pred = predictRoundsForPlayer(p.rounds, entry.cities, entry.iso);
+          return { key: p.key, name: p.name, scores: pred ? pred.scores : null };
+        }),
+      });
+      if (!snap) continue;
+      stored[snapshotId(snap)] = snap;
+      have.add(entry.iso);
+      changed = true;
+    }
+    if (changed) save(KEY.SNAPSHOTS, stored);
   }
 
   function positionHitRecords() {
@@ -2161,16 +2217,20 @@
     return positionHitCache.records;
   }
 
-  // Compact accuracy badge for a prediction row. A player with no eligible
-  // day gets no badge at all rather than a meaningless "0%". The chip shows
-  // the rate because that is what compares across players with different
-  // amounts of history; the raw hits-of-days count lives in the tooltip.
+  // Compact accuracy badges for a prediction row: Spot-on (exact place) and
+  // Order (head-to-head order), both over the same back-tested days. A player
+  // with no eligible day gets no badge at all rather than a meaningless "0%".
+  // The chips show the rates because those compare across players with
+  // different amounts of history; the raw counts, the random-order baseline
+  // for the same days and the tie rule live in the tooltips.
   function makeHitBadge(record) {
     if (!record || !record.eligible) return null;
     const pct = Math.round((record.hits / record.eligible) * 100);
-    const title = `Finished in the predicted position on ${record.hits} of ` +
-      `${record.eligible} past day${record.eligible === 1 ? '' : 's'} with a prediction ` +
-      `(${pct}%)`;
+    const chance = Math.round((record.chance / record.eligible) * 100);
+    const title = `Finished in the predicted place on ${record.hits} of ` +
+      `${countNoun(record.eligible, 'past day')} with a prediction (${pct}%). ` +
+      `A random order would get about ${chance}% on the same days. ` +
+      'A tie counts when the predicted place is one of the tied places.';
     const hot = record.hits * 2 >= record.eligible;
     return el('span', {
       class: 'pred-hit-badge' + (hot ? ' is-hot' : ''),
@@ -2178,6 +2238,17 @@
       'aria-label': title,
     }, [
       el('span', { class: 'pred-hit-label' }, 'Spot-on'),
+      el('span', { class: 'pred-hit-num' }, `${pct}%`),
+    ]);
+  }
+  function makeOrderBadge(record) {
+    if (!record || !record.pairs) return null;
+    const pct = Math.round((record.pairsRight / record.pairs) * 100);
+    const title = `Predicted order right in ${record.pairsRight} of ` +
+      `${countNoun(record.pairs, 'head-to-head')} on the same days (${pct}%). ` +
+      'A coin flip gets 50%. Tied finishes are left out.';
+    return el('span', { class: 'pred-hit-badge', title, 'aria-label': title }, [
+      el('span', { class: 'pred-hit-label' }, 'Order'),
       el('span', { class: 'pred-hit-num' }, `${pct}%`),
     ]);
   }
@@ -2441,7 +2512,9 @@
         nameNode,
         makeAvgPosition(avgPosition, avgColor),
       ]),
-      makeHitBadge(hitRecord),
+      hitRecord && hitRecord.eligible
+        ? el('span', { class: 'pred-acc-badges' }, [makeHitBadge(hitRecord), makeOrderBadge(hitRecord)])
+        : null,
     ])];
     cells.push(el('div', { class: 'pred-cell pred-predicted' },
       predictedTotal != null ? String(predictedTotal) : '—'));
@@ -2571,6 +2644,8 @@
 
   function renderTodaysPredictions() {
     ensureSevenDayWindowLoaded();
+    // Never let bookkeeping break the card.
+    try { capturePreGameSnapshots(); } catch (_) { /* storage full or blocked */ }
     const card = $('#todays-card');
     if (!card) return;
     const body = $('#todays-card-body');
@@ -2600,9 +2675,15 @@
     // synced games when there is one, and the fetched puzzle otherwise.
     const isPast = selectedISO < today;
     const stored = isPast ? storedPuzzleCities(selectedISO) : null;
-    const dayCities = stored || (selected && selected.cities) || null;
-    schedulePredictRecheck(stored ? null : selected);
-    if (!stored && (!selected || selected.status === 'fetching')) {
+    // Predictions need every city located. A past day whose stored cities
+    // have names but no coordinates (MapTap's iOS history shape) still shows
+    // its results from them, and predicts only from a verified file.
+    const storedLocated = !!stored && allCitiesLocated(stored);
+    const fetched = selected && selected.status === 'ok' ? selected.cities : null;
+    const dayCities = (storedLocated ? stored : fetched) || stored || null;
+    const unlocated = !!dayCities && !allCitiesLocated(dayCities);
+    schedulePredictRecheck(storedLocated ? null : selected);
+    if (!storedLocated && !stored && (!selected || selected.status === 'fetching')) {
       status.textContent = 'Loading…';
       status.className = 'todays-card-status is-loading';
       body.appendChild(el('p', { class: 'pred-empty' },
@@ -2711,6 +2792,10 @@
       body.appendChild(el('p', { class: 'pred-rank-note' },
         'Rank after each round · Based on cumulative actual scores'));
     }
+    if (unlocated) {
+      body.appendChild(el('p', { class: 'pred-rank-note' },
+        'No map coordinates for this puzzle, so there are no predictions'));
+    }
 
     rows.sort((a, b) => {
       const aPlayed = a.actualTotal != null, bPlayed = b.actualTotal != null;
@@ -2730,8 +2815,8 @@
       body.appendChild(makeLocationRevealStrip(selectedISO));
     }
 
-    if (predictedCount === 0) {
-      status.textContent = 'Need more games';
+    if (predictedCount === 0 && !(unlocated && myActuals.mineTotal != null)) {
+      status.textContent = unlocated ? 'No coordinates' : 'Need more games';
       status.className = 'todays-card-status is-muted';
     } else if (selectedISO > today) {
       status.textContent = 'Upcoming';
@@ -7700,6 +7785,9 @@
   const PREDICTION_SHRINKAGE_K = 5;       // pseudo-rounds at the player's mean
   const PREDICTION_DISTANCE_EPS_KM = 25;  // floor on inverse-distance to avoid divide-by-zero / over-weighting exact matches
   const EARTH_RADIUS_KM = 6371;
+  // Recorded on every pre-game snapshot. Change it whenever anything above
+  // changes what the predictor returns, so stored forecasts stay attributable.
+  const PREDICTION_MODEL_VERSION = 'geo-idw-1';
 
   function haversineKm(aLat, aLng, bLat, bLng) {
     const toRad = (d) => (d * Math.PI) / 180;
@@ -7727,12 +7815,12 @@
       const daysAgo = (asOfP.ms - tp.ms) / 86400000;
       const n = Math.min(r.cities.length, r.scores.length, N_LOCS);
       for (let i = 0; i < n; i++) {
-        const c = r.cities[i] || {};
-        const lat = Number(c.lat);
-        const lng = Number(c.lng);
+        // validLatLng, never Number(): Number(null) is 0, which put every
+        // round with a missing coordinate at (0, 0) in the Gulf of Guinea.
+        const at = validLatLng(r.cities[i]);
         const s = Number(r.scores[i]);
-        if (!Number.isFinite(lat) || !Number.isFinite(lng) || !Number.isFinite(s)) continue;
-        out.push({ lat, lng, score: s, daysAgo });
+        if (!at || !Number.isFinite(s)) continue;
+        out.push({ lat: at.lat, lng: at.lng, score: s, daysAgo });
       }
     }
     return out;
@@ -7776,7 +7864,9 @@
       if (byDate.has(g.date)) continue;
       if (!Array.isArray(g.cities) || g.cities.length !== N_LOCS) continue;
       if (!Array.isArray(g.myScores) || g.myScores.length !== N_LOCS) continue;
-      const cities = g.cities.map(c => ({ lat: Number(c.lat), lng: Number(c.lng) }));
+      // Coordinates are validated where they are read
+      // (flattenRoundsForPrediction), so the cities go through untouched.
+      const cities = g.cities;
       const scores = g.myScores.map(Number);
       if (!scores.every(s => Number.isFinite(s))) continue;
       byDate.set(g.date, { date: g.date, cities, scores });
@@ -7800,8 +7890,12 @@
   // pre-cutoff history to give a meaningful number.
   // `confidence` = number of rounds informing the estimate (rough
   // sample-size cue for the UI, not a probability).
+  // A puzzle with any city lacking valid coordinates gets no prediction at
+  // all: every round's estimate is geographic, and before this a missing
+  // coordinate read as (0, 0) and produced five identical numbers that looked
+  // like a real forecast.
   function predictRoundsForPlayer(rounds, todaysCities, asOfISO) {
-    if (!Array.isArray(todaysCities) || todaysCities.length !== N_LOCS) return null;
+    if (!allCitiesLocated(todaysCities)) return null;
     const history = flattenRoundsForPrediction(rounds, asOfISO);
     if (history.length < PREDICTION_MIN_ROUNDS) return null;
     // Player's overall mean used as the shrinkage prior. Straight
@@ -7812,7 +7906,7 @@
     const playerMean = total / history.length;
     const scores = new Array(N_LOCS);
     for (let i = 0; i < N_LOCS; i++) {
-      const c = todaysCities[i];
+      const c = validLatLng(todaysCities[i]);
       const s = predictRoundScoreFromHistory(history, c.lat, c.lng, playerMean);
       scores[i] = Math.max(0, Math.min(100, s));
     }
@@ -8945,6 +9039,16 @@
       summarizeMapTapProfile,
       syncMapTapForRival,
       syncAllRivals,
+      // The predictor and its accuracy back-test, and the pre-game snapshot
+      // capture, driven through the real code on seeded storage.
+      predictRoundsForPlayer,
+      flattenRoundsForPrediction,
+      myProfileRounds,
+      rivalRounds,
+      positionHitRecords,
+      capturePreGameSnapshots,
+      PREDICTION_MODEL_VERSION,
+      KEY,
     };
   }
 })();

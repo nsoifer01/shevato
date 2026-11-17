@@ -157,6 +157,7 @@ const APP_SYNC_CONFIG = {
       'maptapRivalsRivals',         // Rival list (id, name, color, icon, maptapUsername, createdAt)
       'maptapRivalsGames',          // All daily games (id, rivalId, date, myScore, theirScore, note)
       'maptapRivalsDays',           // Day-global puzzle geography: { 'YYYY-MM-DD': City[5] }, normalised out of the game log
+      'maptapRivalsPredictionSnapshots', // Pre-game prediction snapshots: { 'YYYY-MM-DD@takenAt': predicted rounds, total, place per player key }
       'maptapRivalsMe',             // Owner display name
       'maptapRivalsMyIcon',         // Owner avatar icon (emoji from ICONS palette)
       'maptapRivalsMyMapTap',       // Your maptap.gg username (for syncing)

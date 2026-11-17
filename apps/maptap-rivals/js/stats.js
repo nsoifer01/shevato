@@ -58,6 +58,23 @@
     return NaN;
   }
 
+  // A city's coordinates as numbers, or null when either is missing, not a
+  // number, not finite or out of range. Built on coordNum, so null, '' and []
+  // are missing rather than the point (0, 0), while a real 0 (the equator or
+  // the prime meridian) is kept. Every geographic calculation in the predictor
+  // reads coordinates through this.
+  function validLatLng(c) {
+    if (!c || typeof c !== 'object') return null;
+    const lat = coordNum(c.lat);
+    const lng = coordNum(c.lng);
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+    if (lat < -90 || lat > 90 || lng < -180 || lng > 180) return null;
+    return { lat, lng };
+  }
+  function allCitiesLocated(cities) {
+    return Array.isArray(cities) && cities.length === N_LOCS && cities.every(c => validLatLng(c) !== null);
+  }
+
   // Side presence. A rival-only game (saved by sync when the rival played but
   // the user didn't) has theirScores/theirScore but no myScores/myScore.
   // Old totals-only games have both totals defined but no arrays; bothPlayed
@@ -927,47 +944,188 @@
       .map(e => e.key);
   }
 
-  // Which players hit their predicted finishing position on this day.
-  // Both rankings are taken over the same set: players with a computable
-  // prediction who actually played. A predicted player who sat the day out
-  // holds no predicted slot, so he cannot make the players ranked below him
-  // structurally unable to hit.
-  // Players without a prediction, or who sat the day out, are absent from
-  // the result and so count toward nobody's eligible days.
+  // How well one day's predicted order matched the finish, per player.
+  //
+  // The field is the players with a computable prediction who actually
+  // played; anyone else holds no slot in either order and is absent from the
+  // result. A field of one is no ranking at all (first of one is just showing
+  // up, the same rule as the finishing positions), so it yields nothing.
+  //
+  // Predicted places are the distinct slots 1..N of the card's own order
+  // (predicted total, name as the tie-break). Actual places follow the app's
+  // competition ranking: players on the same total share a place and
+  // together occupy the slots c..c+k-1. The rule, chosen over strict
+  // competition-rank equality (FINDINGS.md "Spot-on and ties"):
+  //   - `hit`: the predicted slot falls inside the player's tied span. Strict
+  //     equality would mean two players tied for 1st, predicted 1st and 2nd,
+  //     score one hit and one miss although the prediction put exactly those
+  //     two in exactly those two places, and the miss would be decided by
+  //     which name sorts first.
+  //   - `chance`: the probability a uniformly random order of the same field
+  //     hits under the same rule, k / N, so a player's baseline uses the same
+  //     days, field sizes and ties as their rate.
+  //   - `pairsRight` / `pairs`: of the other players this one did not tie
+  //     with, how many the predicted order placed correctly above or below
+  //     them. A tied pair has no right answer, so it is not counted, and the
+  //     chance of calling a counted pair is exactly 1/2.
   //
   // Every per-player accumulator below builds in a Map and returns through
   // Object.fromEntries: player keys are rival ids straight from storage, and
   // backup import accepts ids verbatim, so a '__proto__' id must become an
   // own data property (which fromEntries guarantees) rather than hitting the
   // Object.prototype setter and vanishing or corrupting the accumulator.
-  function positionHitsForDay(entries) {
+  function rankAccuracyForDay(entries) {
     const played = (Array.isArray(entries) ? entries : [])
       .filter(e => e && Number.isFinite(e.predictedTotal) && Number.isFinite(e.actualTotal));
+    const n = played.length;
+    if (n < 2) return {};
     const predictedOrder = rankByScore(played, 'predictedTotal');
-    const actualOrder = rankByScore(played, 'actualTotal');
+    const slot = new Map(predictedOrder.map((key, i) => [key, i + 1]));
+    const place = competitionRanksForDay(played.map(e => ({ key: e.key, total: e.actualTotal })));
+    const tiedWith = new Map();
+    for (const e of played) tiedWith.set(e.actualTotal, (tiedWith.get(e.actualTotal) || 0) + 1);
     const out = new Map();
-    for (const entry of played) {
-      out.set(entry.key, predictedOrder.indexOf(entry.key) === actualOrder.indexOf(entry.key));
+    for (const e of played) {
+      const k = tiedWith.get(e.actualTotal);
+      const lo = place[e.key], hi = lo + k - 1, s = slot.get(e.key);
+      let pairsRight = 0, pairs = 0;
+      for (const o of played) {
+        if (o === e || o.actualTotal === e.actualTotal) continue;
+        pairs++;
+        if ((s < slot.get(o.key)) === (e.actualTotal > o.actualTotal)) pairsRight++;
+      }
+      out.set(e.key, { hit: s >= lo && s <= hi, chance: k / n, pairsRight, pairs });
     }
     return Object.fromEntries(out);
   }
 
-  // Accumulate per-player { hits, eligible } over a list of days, each day
-  // being its own entries array. Players with no eligible day are absent
-  // from the result, which is what lets the UI skip the badge entirely
-  // instead of rendering a meaningless "0/0".
-  function accumulatePositionHits(days) {
+  // Sum rankAccuracyForDay over a list of days (each its own entries array)
+  // into per-player { hits, eligible, chance, pairsRight, pairs }, where
+  // `chance` is the expected number of random-order hits on those same days.
+  // Players with no eligible day are absent, which is what lets the UI skip
+  // the badge entirely instead of rendering a meaningless "0/0".
+  function accumulateRankAccuracy(days) {
     const out = new Map();
     for (const entries of Array.isArray(days) ? days : []) {
-      const hits = positionHitsForDay(entries);
-      for (const key of Object.keys(hits)) {
+      const day = rankAccuracyForDay(entries);
+      for (const key of Object.keys(day)) {
         let rec = out.get(key);
-        if (!rec) { rec = { hits: 0, eligible: 0 }; out.set(key, rec); }
+        if (!rec) { rec = { hits: 0, eligible: 0, chance: 0, pairsRight: 0, pairs: 0 }; out.set(key, rec); }
+        const d = day[key];
         rec.eligible += 1;
-        if (hits[key]) rec.hits += 1;
+        if (d.hit) rec.hits += 1;
+        rec.chance += d.chance;
+        rec.pairsRight += d.pairsRight;
+        rec.pairs += d.pairs;
       }
     }
     return Object.fromEntries(out);
+  }
+
+  // ---------- pre-game prediction snapshots ----------
+  // A day D is played on each player's LOCAL calendar day (maptap.gg builds
+  // the play day from the device's month and day), and civil time runs from
+  // UTC-12 to UTC+14, so nobody anywhere can start D's puzzle before D
+  // 00:00 at UTC+14, which is 10:00 UTC on the day before. A prediction
+  // captured before that instant is pre-game for every player, whatever
+  // their timezone and whether or not their result has synced. Nothing
+  // captured later is ever labelled pre-game.
+  const EARLIEST_UTC_OFFSET_MS = 14 * 3600 * 1000;
+  function preGameCutoffMs(iso) {
+    const p = parseDateISO(iso);
+    return p ? p.ms - EARLIEST_UTC_OFFSET_MS : NaN;
+  }
+  function isPreGameInstant(iso, nowMs) {
+    const cut = preGameCutoffMs(iso);
+    return Number.isFinite(cut) && Number.isFinite(nowMs) && nowMs < cut;
+  }
+
+  // Short fingerprint of the 5 puzzle coordinates a snapshot was computed
+  // from, so a later comparison can tell whether the cities actually played
+  // were the ones predicted (MapTap can rewrite a file). FNV-1a over the
+  // coordinates at 4 decimals; null when any city is unlocated.
+  function puzzleFingerprint(cities) {
+    if (!allCitiesLocated(cities)) return null;
+    const text = cities.map(c => { const v = validLatLng(c); return v.lat.toFixed(4) + ',' + v.lng.toFixed(4); }).join(';');
+    let h = 0x811c9dc5;
+    for (let i = 0; i < text.length; i++) { h ^= text.charCodeAt(i); h = Math.imul(h, 0x01000193) >>> 0; }
+    return h.toString(16).padStart(8, '0');
+  }
+
+  // Build one immutable snapshot of a day's predictions as the card shows
+  // them: per-round scores rounded the way the chips are, the total those
+  // chips sum to (predTotalFromScores) and the predicted place (the card's
+  // predicted order, name as the tie-break). Only player keys are stored
+  // (rival ids and the '@me' sentinel), never names, so no personal data is
+  // duplicated. Returns null unless the capture is pre-game, the puzzle is
+  // fully located and at least one player has a prediction.
+  //   o: { date, takenAtMs, model, through, cities,
+  //        players: [{ key, name, scores: number[5] | null }] }
+  function buildPredictionSnapshot(o) {
+    if (!o || !isPreGameInstant(o.date, o.takenAtMs)) return null;
+    const puzzle = puzzleFingerprint(o.cities);
+    if (!puzzle || typeof o.model !== 'string' || !o.model) return null;
+    const rows = (Array.isArray(o.players) ? o.players : [])
+      .filter(p => p && typeof p.key === 'string' && Array.isArray(p.scores) && p.scores.length === N_LOCS &&
+                   p.scores.every(Number.isFinite))
+      .map(p => ({ key: p.key, name: p.name, r: p.scores.map(s => Math.round(s)), predictedTotal: predTotalFromScores(p.scores) }));
+    if (!rows.length) return null;
+    const order = rankByScore(rows, 'predictedTotal');
+    const players = new Map();
+    for (const row of rows) players.set(row.key, { r: row.r, t: row.predictedTotal, p: order.indexOf(row.key) + 1 });
+    return {
+      date: o.date,
+      takenAt: new Date(o.takenAtMs).toISOString(),
+      model: o.model,
+      through: typeof o.through === 'string' ? o.through : null,
+      puzzle,
+      players: Object.fromEntries(players),
+    };
+  }
+
+  // Storage key of a snapshot inside the map: one entry per capture, so two
+  // devices capturing the same day before either syncs add two entries that
+  // the record merge keeps side by side instead of colliding on one id.
+  function snapshotId(snap) { return `${snap.date}@${snap.takenAt}`; }
+
+  function isSnapshot(s, id) {
+    if (!s || typeof s !== 'object' || !parseDateISO(s.date)) return false;
+    const taken = Date.parse(s.takenAt);
+    if (!Number.isFinite(taken) || new Date(taken).toISOString() !== s.takenAt) return false;
+    if (id !== undefined && id !== `${s.date}@${s.takenAt}`) return false;
+    // The pre-game rule is re-checked on every read, so an entry that claims
+    // a capture after its day had begun somewhere is never accepted.
+    if (!isPreGameInstant(s.date, taken)) return false;
+    if (typeof s.model !== 'string' || !s.model || typeof s.puzzle !== 'string') return false;
+    if (s.through !== null && !parseDateISO(s.through)) return false;
+    if (!s.players || typeof s.players !== 'object' || Array.isArray(s.players)) return false;
+    const rows = Object.values(s.players);
+    if (!rows.length) return false;
+    return rows.every(r => r && Array.isArray(r.r) && r.r.length === N_LOCS &&
+      r.r.every(v => Number.isInteger(v) && v >= 0 && v <= MAX_RAW) &&
+      Number.isInteger(r.t) && Number.isInteger(r.p) && r.p >= 1 && r.p <= rows.length);
+  }
+
+  // Read the stored map, keeping only well-formed pre-game entries under
+  // their own id. Never rewrites an entry: what survives is byte-for-byte
+  // what was stored.
+  function sanitizeSnapshots(raw) {
+    const out = new Map();
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
+    for (const [id, s] of Object.entries(raw)) if (isSnapshot(s, id)) out.set(id, s);
+    return Object.fromEntries(out);
+  }
+
+  // The canonical snapshot of each date: the EARLIEST capture. Later
+  // captures of the same date (another device that had not synced yet) are
+  // kept in storage but never replace the original.
+  function canonicalSnapshots(map) {
+    const out = new Map();
+    for (const s of Object.values(sanitizeSnapshots(map))) {
+      const cur = out.get(s.date);
+      if (!cur || s.takenAt < cur.takenAt) out.set(s.date, s);
+    }
+    return out;
   }
 
   // ---------- daily finishing positions ----------
@@ -1626,13 +1784,16 @@
     sanitizeBackup, sanitizeRival, sanitizeGame, collapseDuplicateDays,
     periodOutcomeVsRival, runningRivalPeriodRecords, periodTallyText,
     // predicted-position accuracy
-    rankByScore, positionHitsForDay, accumulatePositionHits,
+    rankByScore, rankAccuracyForDay, accumulateRankAccuracy,
+    // pre-game prediction snapshots
+    preGameCutoffMs, isPreGameInstant, puzzleFingerprint, buildPredictionSnapshot,
+    snapshotId, sanitizeSnapshots, canonicalSnapshots,
     // finishing positions
     finishPositionsForDay, fieldSharesForDay, competitionRanksForDay,
     roundRanksForDay, podiumTier, accumulateFinishPositions,
     avgPositionColor, avgPositionColors,
     // continents
-    coordNum, myAvgByContinent,
+    coordNum, validLatLng, allCitiesLocated, myAvgByContinent,
     // rounds against my rivals
     myAvgByRound,
     // ordering

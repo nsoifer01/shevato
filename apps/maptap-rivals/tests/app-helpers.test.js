@@ -2363,3 +2363,159 @@ test('issue #674: a selected day served from its expired cache shows predictions
   assert.doesNotMatch(todayTab.className, /\bis-(pending|error|loading)\b/);
   assert.equal(timers.filter((ms) => ms >= c._testExports.PREDICT_RECHECK_MS - 1000).length, 0, 'no 5-minute timer for a day that already shows its puzzle');
 });
+
+// --- predictor coordinates, the Spot-on back-test and pre-game snapshots ------
+// Fixtures follow the real log's shapes: synced rows with no inline cities and
+// a day map, where the seven name-only puzzle days the 2026-11-16 audit found
+// (MapTap's iOS history shape) carry names and null coordinates.
+
+const NAME_ONLY_DAYS = ['2026-08-11', '2026-08-14', '2026-09-20', '2026-09-23', '2026-10-03', '2026-11-04', '2026-11-12'];
+const nameOnly = (iso) => Array.from({ length: 5 }, (_, i) => ({ lat: null, lng: null, name: `${iso} city ${i + 1}` }));
+const located = (k) => Array.from({ length: 5 }, (_, i) => ({ lat: -40 + ((k * 7 + i * 13) % 80), lng: -170 + ((k * 11 + i * 29) % 340) }));
+
+// Four players (me + three rivals) on every day from 2026-08-01 to 2026-11-12.
+function accuracyFixture() {
+  const rivals = ['r0', 'r1', 'r2'].map((id, i) => ({ id, name: `Rival ${i}`, color: '#6366f1', icon: '🦊', createdAt: i + 1 }));
+  const days = {};
+  const games = [];
+  let k = 0;
+  for (let t = Date.UTC(2026, 7, 1); t <= Date.UTC(2026, 10, 12); t += 86400000, k++) {
+    const iso = new Date(t).toISOString().slice(0, 10);
+    days[iso] = NAME_ONLY_DAYS.includes(iso) ? nameOnly(iso) : located(k);
+    const s = (p) => [0, 1, 2, 3, 4].map(i => 40 + ((k * (p + 3) + i * 17 + p * 31) % 61));
+    const mine = s(0);
+    rivals.forEach((r, p) => {
+      const theirs = s(p + 1);
+      games.push({ id: `${iso}-${r.id}`, rivalId: r.id, date: iso, note: MapTapStats.SYNC_NOTE, createdAt: k,
+        myScores: mine, myScore: MapTapStats.weightedTotal(mine), theirScores: theirs, theirScore: MapTapStats.weightedTotal(theirs) });
+    });
+  }
+  return { rivals, days, games, locatedDays: Object.values(days).filter(c => c[0].lat !== null).length };
+}
+
+test('the seven name-only puzzle days get no prediction and no Spot-on day', () => {
+  const fx = accuracyFixture();
+  const app = loadApp({ maptapRivalsRivals: fx.rivals, maptapRivalsGames: fx.games, maptapRivalsDays: fx.days });
+  const t = app._testExports;
+  for (const iso of NAME_ONLY_DAYS) {
+    const cities = t.storedPuzzleCities(iso);
+    assert.equal(cities.length, 5, `${iso} still has its stored (name-only) cities for showing results`);
+    assert.equal(t.predictRoundsForPlayer(t.myProfileRounds(), cities, iso), null, `${iso}: no prediction`);
+  }
+  // Oracle: every located day except the first (no history yet) is
+  // eligible for each of the four players. Before the fix the seven
+  // name-only days were predicted from (0, 0) and counted as well.
+  const records = t.positionHitRecords();
+  assert.deepEqual(Object.keys(records).sort(), ['@me', 'r0', 'r1', 'r2']);
+  for (const key of Object.keys(records)) assert.equal(records[key].eligible, fx.locatedDays - 1, key);
+});
+
+test('a round with a missing coordinate is left out of the history, not placed at (0, 0)', () => {
+  const fx = accuracyFixture();
+  const app = loadApp({ maptapRivalsRivals: fx.rivals, maptapRivalsGames: fx.games, maptapRivalsDays: fx.days });
+  const t = app._testExports;
+  const all = t.myProfileRounds();
+  const withoutNameOnly = all.filter(r => !NAME_ONLY_DAYS.includes(r.date));
+  assert.equal(all.length - withoutNameOnly.length, NAME_ONLY_DAYS.length);
+  // Onitsha, Nigeria (6.15N, 6.79E), the round-4 city of 2026-11-16, ~1,000 km from (0, 0).
+  const target = [{ lat: 6.1498, lng: 6.7857 }, { lat: 0, lng: 0 }, { lat: 1, lng: 1 }, { lat: 0, lng: 9.4 }, { lat: 3.8, lng: 11.5 }];
+  const a = t.predictRoundsForPlayer(all, target, '2026-11-16');
+  const b = t.predictRoundsForPlayer(withoutNameOnly, target, '2026-11-16');
+  assert.ok(a && b);
+  assert.deepEqual(Array.from(a.scores), Array.from(b.scores), 'the name-only days must not move a prediction near (0, 0)');
+  assert.equal(a.confidence, b.confidence);
+  // And the flattened history holds no point at (0, 0) at all.
+  assert.equal(t.flattenRoundsForPrediction(all, '2026-11-16').filter(r => r.lat === 0 && r.lng === 0).length, 0);
+});
+
+test('predictRoundsForPlayer: any unlocated city means no prediction; a real zero coordinate does not', () => {
+  const fx = accuracyFixture();
+  const app = loadApp({ maptapRivalsRivals: fx.rivals, maptapRivalsGames: fx.games, maptapRivalsDays: fx.days });
+  const t = app._testExports;
+  const rounds = t.myProfileRounds();
+  const base = located(3);
+  for (const bad of [null, undefined, '', 'x', NaN]) {
+    const cities = base.slice(); cities[2] = { lat: bad, lng: 10 };
+    assert.equal(t.predictRoundsForPlayer(rounds, cities, '2026-11-16'), null, `lat ${String(bad)}`);
+  }
+  const equator = base.slice(); equator[0] = { lat: 0, lng: 32.5 }; equator[1] = { lat: 51.48, lng: 0 };
+  const pred = t.predictRoundsForPlayer(rounds, equator, '2026-11-16');
+  assert.ok(pred && pred.scores.every(Number.isFinite));
+});
+
+test('joinGameCities: a row with null inline coordinates takes its located day; located rows keep theirs', () => {
+  const day = located(5);
+  const own = located(9);
+  const rows = [
+    { id: 'n', rivalId: 'r', date: '2026-06-15', cities: Array.from({ length: 5 }, () => ({ lat: null, lng: null })) },
+    { id: 'o', rivalId: 'r', date: '2026-06-15', cities: own },
+    { id: 'u', rivalId: 'r', date: '2026-08-11', cities: Array.from({ length: 5 }, () => ({ lat: null, lng: null })) },
+    { id: 'p', rivalId: 'r', date: '2026-06-15' },
+  ];
+  const days = new Map([['2026-06-15', day], ['2026-08-11', nameOnly('2026-08-11')]]);
+  const out = joinGameCities(rows, days);
+  assert.equal(out[0].cities, day, 'unlocated inline copy replaced by the located day');
+  assert.equal(out[1].cities, own, 'a located inline copy is never replaced');
+  assert.deepEqual(out[2].cities.map(c => c.lat), [null, null, null, null, null], 'nothing located to take: kept as is');
+  assert.equal(out[3].cities, day);
+  // Persisting normalises the repaired row into the day map.
+  const split = splitGameCities(out);
+  assert.equal('cities' in split.rows[0], false);
+});
+
+test('capturePreGameSnapshots: saves a day only before it can start anywhere, once, and never rewrites it', () => {
+  const fx = accuracyFixture();
+  const app = loadApp({ maptapRivalsRivals: fx.rivals, maptapRivalsGames: fx.games, maptapRivalsDays: fx.days });
+  const t = app._testExports;
+  const S = MapTapStats;
+  const today = S.todayISO();
+  const ahead = S.addDaysISO(today, 3);
+  const cities = located(4);
+  t.state.predictWindow = [
+    { iso: today, status: 'ok', cities },                      // already started somewhere: never pre-game
+    { iso: S.addDaysISO(today, 2), status: 'pending', cities: null },
+    { iso: ahead, status: 'ok', cities },
+  ];
+  t.capturePreGameSnapshots();
+  const read = () => JSON.parse(app.localStorage.getItem(t.KEY.SNAPSHOTS));
+  const first = read();
+  const ids = Object.keys(first);
+  assert.equal(ids.length, 1);
+  const snap = first[ids[0]];
+  assert.equal(snap.date, ahead);
+  assert.equal(snap.model, t.PREDICTION_MODEL_VERSION);
+  assert.ok(Date.parse(snap.takenAt) < S.preGameCutoffMs(ahead));
+  assert.deepEqual(Object.keys(snap.players).sort(), ['@me', 'r0', 'r1', 'r2']);
+  // Second code path: the card's own predictor for the same day.
+  const mine = t.predictRoundsForPlayer(t.myProfileRounds(), cities, ahead);
+  assert.deepEqual(snap.players['@me'].r, Array.from(mine.scores, Math.round));
+  assert.equal(snap.players['@me'].t, S.predTotalFromScores(mine.scores));
+  assert.deepEqual(Object.values(snap.players).map(p => p.p).sort(), [1, 2, 3, 4]);
+  // Idempotent: a second pass writes nothing.
+  const before = app.localStorage.writes.filter(w => w.key === t.KEY.SNAPSHOTS).length;
+  t.capturePreGameSnapshots();
+  assert.equal(app.localStorage.writes.filter(w => w.key === t.KEY.SNAPSHOTS).length, before);
+  // Immutable: new history that would change the forecast leaves it alone.
+  t.state.games.push({ id: 'late', rivalId: 'r0', date: S.addDaysISO(today, -1), note: S.SYNC_NOTE, createdAt: 9e12,
+    myScores: [1, 1, 1, 1, 1], myScore: 10, theirScores: [1, 1, 1, 1, 1], theirScore: 10, cities: located(1) });
+  t.capturePreGameSnapshots();
+  assert.equal(JSON.stringify(read()), JSON.stringify(first));
+});
+
+test('capturePreGameSnapshots: an unreadable stored entry is left in place, and a day already held is not re-captured', () => {
+  const fx = accuracyFixture();
+  const S = MapTapStats;
+  const ahead = S.addDaysISO(S.todayISO(), 3);
+  const held = S.buildPredictionSnapshot({ date: ahead, takenAtMs: Date.now() - 1000, model: 'older-model',
+    through: null, cities: located(4), players: [{ key: '@me', name: 'Me', scores: [50, 50, 50, 50, 50] }] });
+  const app = loadApp({
+    maptapRivalsRivals: fx.rivals, maptapRivalsGames: fx.games, maptapRivalsDays: fx.days,
+    maptapRivalsPredictionSnapshots: { 'junk': { hello: 1 }, [S.snapshotId(held)]: held },
+  });
+  const t = app._testExports;
+  t.state.predictWindow = [{ iso: ahead, status: 'ok', cities: located(4) }];
+  t.capturePreGameSnapshots();
+  const stored = JSON.parse(app.localStorage.getItem(t.KEY.SNAPSHOTS));
+  assert.deepEqual(Object.keys(stored).sort(), [S.snapshotId(held), 'junk'].sort());
+  assert.equal(stored[S.snapshotId(held)].model, 'older-model');
+});

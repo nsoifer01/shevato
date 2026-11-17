@@ -184,8 +184,9 @@ const EXPECTED_CHECKS = {
   // 166 since 2026-11-16: +3 for unverified ("pending") day tabs (neutral
   // styling vs an orange error, their message, recovery once served dated).
   // 167 since 2026-11-16: +1 that a verified cached puzzle survives a failed
-  // refresh (#674).
-  'apps/maptap-rivals/e2e/quality.mjs': 167,
+  // refresh (#674). 169 since 2026-11-17: +2 for the Spot-on and Order chips
+  // (numbers match their tooltip counts; contained at 390).
+  'apps/maptap-rivals/e2e/quality.mjs': 169,
   // Deliberately NOT pinned: apps/rising-shows/e2e/audit-2026-08.mjs emits 51
   // checks when the dataset is on disk and 11 skip entries when it is not, so
   // a single number cannot describe both environments. The zero-run guard

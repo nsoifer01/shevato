@@ -63,12 +63,12 @@ const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const html = readFileSync(join(REPO_ROOT, 'privacy.html'), 'utf8');
 
 // The two most recent reviews. Append by moving CURRENT down to PREVIOUS.
-const PREVIOUS = { date: '11 October 2026', digest: 'bf2da3a73d525d065375d04a141d268e332972668f264c4558f3636efb758fca' };
+const PREVIOUS = { date: '25 October 2026', digest: '5bedfb1680ecb51fd8de980848b3a6adc2fee992e351f8135ba74643c3edcc65' };
 const CURRENT = {
-  // The FPL Planner's synced saved plans are now kept per team ID and season
-  // (at most the three most recently planned), so each carries its team ID.
-  date: '25 October 2026',
-  digest: '5bedfb1680ecb51fd8de980848b3a6adc2fee992e351f8135ba74643c3edcc65',
+  // MapTap Rivals now saves pre-game prediction snapshots (predicted rounds,
+  // total and place per player id) as a synced key.
+  date: '17 November 2026',
+  digest: 'f1f8d70f404813bdeeebe853192e081e30433b16497cde81c7c1bc260a62d061',
 };
 
 /**

@@ -17,7 +17,9 @@ const {
   parseDateISO, isoWeekStart, isoWeekEnd, isoWeekId,
   monthId, monthStart, monthEnd, periodBounds, periodRecords,
   periodOutcomeVsRival, runningRivalPeriodRecords, periodTallyText,
-  rankByScore, positionHitsForDay, accumulatePositionHits,
+  rankByScore, rankAccuracyForDay, accumulateRankAccuracy,
+  preGameCutoffMs, isPreGameInstant, puzzleFingerprint, buildPredictionSnapshot,
+  snapshotId, sanitizeSnapshots, canonicalSnapshots, validLatLng, allCitiesLocated,
   finishPositionsForDay, fieldSharesForDay, competitionRanksForDay,
   roundRanksForDay, podiumTier, accumulateFinishPositions,
   avgPositionColor, avgPositionColors,
@@ -1065,28 +1067,117 @@ test('rankByScore: does not mutate the caller array', () => {
   assert.deepEqual(entries.map(e => e.key), ['a', 'b']);
 });
 
-// --- positionHitsForDay ----------------------------------------------------
+// --- rankAccuracyForDay / accumulateRankAccuracy ---------------------------
+// Oracles below never call rankByScore or competitionRanksForDay: the
+// predicted slot is worked out by hand from the totals and names, the random
+// baseline by enumerating every possible order, and pairwise accuracy pair by
+// pair from the totals.
 
-test('positionHitsForDay: a hit is finishing exactly where you were predicted', () => {
+// Every permutation of [0..n-1].
+function permutations(n) {
+  if (n === 1) return [[0]];
+  const out = [];
+  for (const p of permutations(n - 1)) for (let i = 0; i <= p.length; i++) out.push([...p.slice(0, i), n - 1, ...p.slice(i)]);
+  return out;
+}
+// Oracle: share of all N! orders in which `key` lands in a slot no other
+// player with a strictly higher total needs and no lower one takes, i.e.
+// inside the span of slots its tied group occupies.
+function randomHitRateOracle(field, key) {
+  const me = field.find(e => e.key === key);
+  const above = field.filter(e => e.actualTotal > me.actualTotal).length;
+  const tied = field.filter(e => e.actualTotal === me.actualTotal).length;
+  const perms = permutations(field.length);
+  let hits = 0;
+  for (const perm of perms) {
+    const slot = perm.indexOf(field.indexOf(me)) + 1;
+    if (slot > above && slot <= above + tied) hits++;
+  }
+  return hits / perms.length;
+}
+// Oracle: the predicted order compared pair by pair, ties in the predicted
+// total broken by name exactly as the card lists them.
+function pairwiseOracle(field, key) {
+  const me = field.find(e => e.key === key);
+  const ahead = (a, b) => a.predictedTotal > b.predictedTotal ||
+    (a.predictedTotal === b.predictedTotal && a.name.localeCompare(b.name) < 0);
+  let right = 0, pairs = 0;
+  for (const o of field) {
+    if (o === me || o.actualTotal === me.actualTotal) continue;
+    pairs++;
+    if (ahead(me, o) === (me.actualTotal > o.actualTotal)) right++;
+  }
+  return { right, pairs };
+}
+
+test('rankAccuracyForDay: a hit is finishing in the predicted place', () => {
   const day = [
     { key: 'a', name: 'Ann', predictedTotal: 900, actualTotal: 800 },
     { key: 'b', name: 'Bob', predictedTotal: 700, actualTotal: 850 },
     { key: 'c', name: 'Cid', predictedTotal: 500, actualTotal: 400 },
   ];
   // Predicted a, b, c. Actual b (850), a (800), c (400): only c held its spot.
-  assert.deepEqual(positionHitsForDay(day), { a: false, b: false, c: true });
+  const r = rankAccuracyForDay(day);
+  assert.deepEqual({ a: r.a.hit, b: r.b.hit, c: r.c.hit }, { a: false, b: false, c: true });
+  for (const k of ['a', 'b', 'c']) closeTo(r[k].chance, 1 / 3);
+  // a-b wrong, a-c right, b-c right.
+  assert.deepEqual([r.a.pairsRight, r.a.pairs, r.b.pairsRight, r.b.pairs, r.c.pairsRight, r.c.pairs],
+    [1, 2, 1, 2, 2, 2]);
 });
 
-test('positionHitsForDay: ties in the actual scores fall back to name order', () => {
+test('rankAccuracyForDay: players tied on the day both hit when predicted into the tied places', () => {
+  // Tied for 1st (competition rank 1 and 1), predicted 1st and 2nd. Under
+  // strict competition-rank equality Zed, predicted 2nd but ranked 1st,
+  // would miss; the tie-span rule credits both, and the outcome no longer
+  // depends on which name sorts first.
+  const day = [
+    { key: 'z', name: 'Zed', predictedTotal: 700, actualTotal: 600 },
+    { key: 'a', name: 'Ann', predictedTotal: 900, actualTotal: 600 },
+    { key: 'c', name: 'Cid', predictedTotal: 500, actualTotal: 400 },
+  ];
+  const r = rankAccuracyForDay(day);
+  assert.deepEqual([r.a.hit, r.z.hit, r.c.hit], [true, true, true]);
+  closeTo(r.a.chance, 2 / 3);
+  closeTo(r.c.chance, 1 / 3);
+  // The tied pair has no right answer and is not counted.
+  assert.deepEqual([r.a.pairs, r.z.pairs, r.c.pairs], [1, 1, 2]);
+  // Renaming so the other player sorts first changes nothing.
+  const renamed = day.map(e => ({ ...e, name: e.key === 'z' ? 'Aaa' : e.name }));
+  assert.deepEqual(rankAccuracyForDay(renamed), r);
+});
+
+test('rankAccuracyForDay: a player predicted outside the tied places still misses', () => {
   const day = [
     { key: 'a', name: 'Ann', predictedTotal: 900, actualTotal: 600 },
-    { key: 'z', name: 'Zed', predictedTotal: 700, actualTotal: 600 },
+    { key: 'b', name: 'Bob', predictedTotal: 800, actualTotal: 900 },
+    { key: 'c', name: 'Cid', predictedTotal: 700, actualTotal: 600 },
   ];
-  // Equal actuals: Ann sorts first by name and so keeps her predicted spot.
-  assert.deepEqual(positionHitsForDay(day), { a: true, z: true });
+  // Actual: Bob 1st, Ann and Cid tied over places 2-3. Predicted Ann 1st.
+  const r = rankAccuracyForDay(day);
+  assert.deepEqual([r.a.hit, r.b.hit, r.c.hit], [false, false, true]);
 });
 
-test('positionHitsForDay: a player with no prediction is invisible to the ranking', () => {
+test('rankAccuracyForDay: matches the enumeration and pair oracles on random fields of 2 to 6 players', () => {
+  let seed = 20261116;
+  const rnd = (n) => { seed = (seed * 1103515245 + 12345) % 2147483648; return seed % n; };
+  const names = ['Ann', 'Bob', 'Cid', 'Dee', 'Eve', 'Fay'];
+  for (let trial = 0; trial < 300; trial++) {
+    const n = 2 + rnd(5);
+    // Totals from a tiny range so ties in both orders are common.
+    const field = names.slice(0, n).map((name, i) => ({
+      key: 'k' + i, name, predictedTotal: 800 + 10 * rnd(3), actualTotal: 800 + 10 * rnd(3),
+    }));
+    const r = rankAccuracyForDay(field);
+    assert.equal(Object.keys(r).length, n);
+    for (const e of field) {
+      closeTo(r[e.key].chance, randomHitRateOracle(field, e.key));
+      const pw = pairwiseOracle(field, e.key);
+      assert.deepEqual([r[e.key].pairsRight, r[e.key].pairs], [pw.right, pw.pairs]);
+    }
+  }
+});
+
+test('rankAccuracyForDay: a player with no prediction is invisible to the ranking', () => {
   const day = [
     { key: 'a', name: 'Ann', predictedTotal: 900, actualTotal: 800 },
     { key: 'b', name: 'Bob', predictedTotal: 700, actualTotal: 850 },
@@ -1094,57 +1185,45 @@ test('positionHitsForDay: a player with no prediction is invisible to the rankin
     // Newcomer with a synced score but not enough history to be predicted.
     { key: 'd', name: 'Dee', predictedTotal: null, actualTotal: 1000 },
   ];
-  const hits = positionHitsForDay(day);
-  assert.equal('d' in hits, false);
-  // Dee's 1000 must not push everyone down a rank.
-  assert.deepEqual(hits, { a: false, b: false, c: true });
+  const r = rankAccuracyForDay(day);
+  assert.equal('d' in r, false);
+  // Dee's 1000 must not push everyone down a place.
+  assert.deepEqual([r.a.hit, r.b.hit, r.c.hit], [false, false, true]);
 });
 
-test('positionHitsForDay: a predicted player who sat out is not eligible', () => {
-  const day = [
-    { key: 'a', name: 'Ann', predictedTotal: 900, actualTotal: 800 },
-    { key: 'b', name: 'Bob', predictedTotal: 700, actualTotal: null },
-    { key: 'c', name: 'Cid', predictedTotal: 500, actualTotal: 400 },
-  ];
-  const hits = positionHitsForDay(day);
-  assert.equal('b' in hits, false);
-  // Both rankings cover only Ann and Cid, so each one keeps its predicted spot.
-  assert.deepEqual(hits, { a: true, c: true });
-});
-
-test('positionHitsForDay: an absent player does not shift the ranks of those who played', () => {
+test('rankAccuracyForDay: an absent player does not shift the places of those who played', () => {
   const withAbsentee = [
     { key: 'a', name: 'Ann', predictedTotal: 900, actualTotal: 800 },
-    // Predicted to finish second but never played: holds no rank slot.
+    // Predicted to finish second but never played: holds no slot.
     { key: 'b', name: 'Bob', predictedTotal: 700, actualTotal: null },
     { key: 'c', name: 'Cid', predictedTotal: 500, actualTotal: 400 },
     { key: 'd', name: 'Dee', predictedTotal: 300, actualTotal: 200 },
   ];
-  const sameDayWithoutHim = withAbsentee.filter(e => e.key !== 'b');
-  // Cid and Dee, predicted third and fourth, can still hit their real
-  // positions (first and second among the three who showed up) - the whole
-  // point of ranking predictions over the players who actually played.
-  assert.deepEqual(positionHitsForDay(withAbsentee), { a: true, c: true, d: true });
-  assert.deepEqual(positionHitsForDay(withAbsentee), positionHitsForDay(sameDayWithoutHim));
+  const without = withAbsentee.filter(e => e.key !== 'b');
+  const r = rankAccuracyForDay(withAbsentee);
+  assert.deepEqual(Object.keys(r).sort(), ['a', 'c', 'd']);
+  assert.ok(r.a.hit && r.c.hit && r.d.hit);
+  assert.deepEqual(r, rankAccuracyForDay(without));
 });
 
-test('positionHitsForDay: a lone player who played always hits', () => {
-  assert.deepEqual(
-    positionHitsForDay([{ key: 'a', name: 'Ann', predictedTotal: 400, actualTotal: 900 }]),
-    { a: true });
+test('rankAccuracyForDay: a lone player is not a ranking and is not eligible', () => {
+  // Before 2026-11-16 a field of one counted as an automatic hit.
+  assert.deepEqual(rankAccuracyForDay([{ key: 'a', name: 'Ann', predictedTotal: 400, actualTotal: 900 }]), {});
+  assert.deepEqual(rankAccuracyForDay([
+    { key: 'a', name: 'Ann', predictedTotal: 900, actualTotal: 800 },
+    { key: 'b', name: 'Bob', predictedTotal: 700, actualTotal: null },
+  ]), {});
 });
 
-test('positionHitsForDay: a day nobody played produces no eligible players', () => {
-  assert.deepEqual(positionHitsForDay([
+test('rankAccuracyForDay: a day nobody played produces no eligible players', () => {
+  assert.deepEqual(rankAccuracyForDay([
     { key: 'a', name: 'Ann', predictedTotal: 900, actualTotal: null },
     { key: 'b', name: 'Bob', predictedTotal: 700, actualTotal: null },
   ]), {});
-  assert.deepEqual(positionHitsForDay([]), {});
+  assert.deepEqual(rankAccuracyForDay([]), {});
 });
 
-// --- accumulatePositionHits ------------------------------------------------
-
-test('accumulatePositionHits: counts hits and eligible days per player', () => {
+test('accumulateRankAccuracy: sums hits, eligible days, chance and pairs per player', () => {
   const days = [
     [ // both hold their spots
       { key: 'a', name: 'Ann', predictedTotal: 900, actualTotal: 800 },
@@ -1154,709 +1233,33 @@ test('accumulatePositionHits: counts hits and eligible days per player', () => {
       { key: 'a', name: 'Ann', predictedTotal: 900, actualTotal: 500 },
       { key: 'b', name: 'Bob', predictedTotal: 700, actualTotal: 950 },
     ],
-    [ // Ann alone: eligible for her, not for Bob
+    [ // Ann alone: a field of one counts for nobody
       { key: 'a', name: 'Ann', predictedTotal: 900, actualTotal: 800 },
       { key: 'b', name: 'Bob', predictedTotal: 700, actualTotal: null },
     ],
+    [ // three players, Cid and Ann tie for 2nd
+      { key: 'a', name: 'Ann', predictedTotal: 900, actualTotal: 700 },
+      { key: 'b', name: 'Bob', predictedTotal: 800, actualTotal: 900 },
+      { key: 'c', name: 'Cid', predictedTotal: 600, actualTotal: 700 },
+    ],
   ];
-  assert.deepEqual(accumulatePositionHits(days), {
-    a: { hits: 2, eligible: 3 },
-    b: { hits: 1, eligible: 2 },
-  });
+  const r = accumulateRankAccuracy(days);
+  assert.deepEqual(Object.keys(r).sort(), ['a', 'b', 'c']);
+  assert.deepEqual({ ...r.a, chance: 0 }, { hits: 1, eligible: 3, chance: 0, pairsRight: 1, pairs: 3 });
+  closeTo(r.a.chance, 0.5 + 0.5 + 2 / 3);
+  // Bob: right on day 1, wrong on day 2; day 4 wrong against Ann, right against Cid.
+  assert.deepEqual({ ...r.b, chance: 0 }, { hits: 1, eligible: 3, chance: 0, pairsRight: 2, pairs: 4 });
+  closeTo(r.b.chance, 0.5 + 0.5 + 1 / 3);
+  assert.deepEqual({ ...r.c, chance: 0 }, { hits: 1, eligible: 1, chance: 0, pairsRight: 1, pairs: 1 });
+  closeTo(r.c.chance, 2 / 3);
 });
 
-test('accumulatePositionHits: days without any prediction contribute nothing', () => {
-  const days = [
-    [{ key: 'a', name: 'Ann', predictedTotal: null, actualTotal: 800 }],
-    [],
-  ];
-  assert.deepEqual(accumulatePositionHits(days), {});
+test('accumulateRankAccuracy: no history at all yields no records (never 0/0)', () => {
+  assert.deepEqual(accumulateRankAccuracy([]), {});
+  assert.deepEqual(accumulateRankAccuracy(null), {});
+  assert.deepEqual(accumulateRankAccuracy([[{ key: 'a', name: 'Ann', predictedTotal: null, actualTotal: 800 }], []]), {});
 });
 
-test('accumulatePositionHits: no history at all yields no records (never 0/0)', () => {
-  assert.deepEqual(accumulatePositionHits([]), {});
-  assert.deepEqual(accumulatePositionHits(null), {});
-});
-
-// --- finishPositionsForDay -------------------------------------------------
-
-test('finishPositionsForDay: highest daily total finishes first', () => {
-  assert.deepEqual(finishPositionsForDay([
-    { key: 'a', total: 700 },
-    { key: 'b', total: 900 },
-    { key: 'c', total: 500 },
-  ]), { b: 1, a: 2, c: 3 });
-});
-
-test('finishPositionsForDay: tied totals share the mean of the ranks they span', () => {
-  // Two tied firsts split ranks 1 and 2, so the podium reads 1.5, 1.5, 3
-  // instead of handing one of them first place on a name coin-flip.
-  assert.deepEqual(finishPositionsForDay([
-    { key: 'zoe', total: 900 },
-    { key: 'ann', total: 900 },
-    { key: 'bob', total: 400 },
-  ]), { zoe: 1.5, ann: 1.5, bob: 3 });
-});
-
-test('finishPositionsForDay: a three-way tie for second averages ranks 2, 3 and 4', () => {
-  assert.deepEqual(finishPositionsForDay([
-    { key: 'a', total: 900 },
-    { key: 'b', total: 600 },
-    { key: 'c', total: 600 },
-    { key: 'd', total: 600 },
-  ]), { a: 1, b: 3, c: 3, d: 3 });
-});
-
-test('finishPositionsForDay: everyone tied shares one position', () => {
-  assert.deepEqual(finishPositionsForDay([
-    { key: 'a', total: 500 },
-    { key: 'b', total: 500 },
-  ]), { a: 1.5, b: 1.5 });
-});
-
-test('finishPositionsForDay: a solo day has no position to award', () => {
-  // Position is a claim about the other players; with nobody else there is
-  // nothing to claim, so the day must not inflate anyone's average to 1.0.
-  assert.deepEqual(finishPositionsForDay([{ key: 'a', total: 900 }]), {});
-  assert.deepEqual(finishPositionsForDay([]), {});
-  assert.deepEqual(finishPositionsForDay(null), {});
-});
-
-test('finishPositionsForDay: players who did not play are not ranked', () => {
-  assert.deepEqual(finishPositionsForDay([
-    { key: 'a', total: 900 },
-    { key: 'b', total: null },
-    { key: 'c', total: 300 },
-  ]), { a: 1, c: 2 });
-  // Only one of the three actually played: still a solo day.
-  assert.deepEqual(finishPositionsForDay([
-    { key: 'a', total: 900 },
-    { key: 'b', total: null },
-    { key: 'c', total: undefined },
-  ]), {});
-});
-
-test('finishPositionsForDay: does not mutate the caller array', () => {
-  const day = [{ key: 'a', total: 100 }, { key: 'b', total: 900 }];
-  finishPositionsForDay(day);
-  assert.deepEqual(day.map(e => e.key), ['a', 'b']);
-});
-
-// --- fieldSharesForDay -----------------------------------------------------
-
-test('fieldSharesForDay: first beats the whole field, last beats none of it', () => {
-  assert.deepEqual(fieldSharesForDay([
-    { key: 'a', total: 700 },
-    { key: 'b', total: 900 },
-    { key: 'c', total: 500 },
-  ]), { b: 1, a: 0.5, c: 0 });
-});
-
-test('fieldSharesForDay: finishing last is 0% whatever the field size', () => {
-  // The whole point of the metric: last of three is not a better day than
-  // last of ten just because the number 3 is smaller than the number 10.
-  const last3 = fieldSharesForDay([
-    { key: 'a', total: 900 }, { key: 'b', total: 800 }, { key: 'z', total: 100 },
-  ]);
-  const last4 = fieldSharesForDay([
-    { key: 'a', total: 900 }, { key: 'b', total: 800 },
-    { key: 'c', total: 700 }, { key: 'z', total: 100 },
-  ]);
-  const last10 = fieldSharesForDay(
-    Array.from({ length: 9 }, (_, i) => ({ key: `p${i}`, total: 900 - i * 10 }))
-      .concat([{ key: 'z', total: 100 }]));
-  assert.equal(last3.z, 0);
-  assert.equal(last4.z, 0);
-  assert.equal(last10.z, 0);
-  // And first is 1 across the same three field sizes.
-  assert.equal(last3.a, 1);
-  assert.equal(last4.a, 1);
-  assert.equal(last10.p0, 1);
-});
-
-test('fieldSharesForDay: a two-player day is all or nothing', () => {
-  assert.deepEqual(fieldSharesForDay([
-    { key: 'a', total: 900 },
-    { key: 'b', total: 500 },
-  ]), { a: 1, b: 0 });
-});
-
-test('fieldSharesForDay: tied players split the credit their ranks span', () => {
-  // Two tied firsts of three share rank 1.5, so each beat (3 - 1.5) / 2 of
-  // the field: three quarters, not the full field and not half of it.
-  closeTo(fieldSharesForDay([
-    { key: 'zoe', total: 900 },
-    { key: 'ann', total: 900 },
-    { key: 'bob', total: 400 },
-  ]).zoe, 0.75);
-  // Everyone tied means nobody beat anybody: dead centre.
-  assert.deepEqual(fieldSharesForDay([
-    { key: 'a', total: 500 },
-    { key: 'b', total: 500 },
-  ]), { a: 0.5, b: 0.5 });
-  const allTied = fieldSharesForDay([
-    { key: 'a', total: 500 }, { key: 'b', total: 500 }, { key: 'c', total: 500 },
-  ]);
-  closeTo(allTied.a, 0.5);
-  closeTo(allTied.c, 0.5);
-});
-
-test('fieldSharesForDay: a solo day awards no share', () => {
-  assert.deepEqual(fieldSharesForDay([{ key: 'a', total: 900 }]), {});
-  assert.deepEqual(fieldSharesForDay([
-    { key: 'a', total: 900 }, { key: 'b', total: null },
-  ]), {});
-  assert.deepEqual(fieldSharesForDay([]), {});
-  assert.deepEqual(fieldSharesForDay(null), {});
-});
-
-// --- competitionRanksForDay ------------------------------------------------
-
-test('competitionRanksForDay: distinct totals rank 1..N by total descending', () => {
-  assert.deepEqual(competitionRanksForDay([
-    { key: 'a', total: 700 },
-    { key: 'b', total: 900 },
-    { key: 'c', total: 500 },
-  ]), { b: 1, a: 2, c: 3 });
-});
-
-test('competitionRanksForDay: ties take the top of their span, next rank skips', () => {
-  // "1224": both tied players finished 2nd, and nobody finished 3rd.
-  assert.deepEqual(competitionRanksForDay([
-    { key: 'a', total: 900 },
-    { key: 'b', total: 700 },
-    { key: 'c', total: 700 },
-    { key: 'd', total: 500 },
-  ]), { a: 1, b: 2, c: 2, d: 4 });
-  // Tied for first: both finished 1st, unlike the fractional 1.5 of
-  // finishPositionsForDay.
-  assert.deepEqual(competitionRanksForDay([
-    { key: 'a', total: 900 },
-    { key: 'b', total: 900 },
-    { key: 'c', total: 400 },
-  ]), { a: 1, b: 1, c: 3 });
-});
-
-test('competitionRanksForDay: same eligibility rules as fractional positions', () => {
-  // Non-players are unranked, and a day with fewer than two actual players
-  // awards no positions at all.
-  assert.deepEqual(competitionRanksForDay([
-    { key: 'a', total: 900 },
-    { key: 'b', total: null },
-    { key: 'c', total: 300 },
-  ]), { a: 1, c: 2 });
-  assert.deepEqual(competitionRanksForDay([{ key: 'a', total: 900 }]), {});
-  assert.deepEqual(competitionRanksForDay([]), {});
-  assert.deepEqual(competitionRanksForDay(null), {});
-});
-
-test('competitionRanksForDay: does not mutate the caller array', () => {
-  const day = [{ key: 'a', total: 100 }, { key: 'b', total: 900 }];
-  competitionRanksForDay(day);
-  assert.deepEqual(day.map(e => e.key), ['a', 'b']);
-});
-
-// --- accumulateFinishPositions ---------------------------------------------
-
-test('accumulateFinishPositions: averages the qualifying days only', () => {
-  const days = [
-    [{ key: 'a', total: 900 }, { key: 'b', total: 500 }],   // a 1st, b 2nd
-    [{ key: 'a', total: 400 }, { key: 'b', total: 800 }],   // a 2nd, b 1st
-    [{ key: 'a', total: 700 }, { key: 'b', total: 700 }],   // both 1.5
-    [{ key: 'a', total: 650 }],                             // solo: excluded
-  ];
-  const out = accumulateFinishPositions(days);
-  assert.equal(out.a.days, 3);
-  assert.equal(out.b.days, 3);
-  closeTo(out.a.avg, (1 + 2 + 1.5) / 3);
-  closeTo(out.b.avg, (2 + 1 + 1.5) / 3);
-  // Same three days as shares of the field beaten: won, lost, drew.
-  closeTo(out.a.share, (1 + 0 + 0.5) / 3);
-  closeTo(out.b.share, (0 + 1 + 0.5) / 3);
-});
-
-test('accumulateFinishPositions: the share is field-size proof, the average is not', () => {
-  // Two days finishing dead last, one in a field of three and one in a field
-  // of four. The raw average finish drifts to 3.5 purely because the second
-  // field was bigger; the share stays at 0 because last is last.
-  const out = accumulateFinishPositions([
-    [{ key: 'a', total: 900 }, { key: 'b', total: 800 }, { key: 'z', total: 100 }],
-    [{ key: 'a', total: 900 }, { key: 'b', total: 800 },
-     { key: 'c', total: 700 }, { key: 'z', total: 100 }],
-  ]);
-  assert.equal(out.z.days, 2);
-  closeTo(out.z.avg, 3.5);
-  assert.equal(out.z.share, 0);
-  // The player who won both is 100% both times, again regardless of N.
-  closeTo(out.a.avg, 1);
-  assert.equal(out.a.share, 1);
-});
-
-test('accumulateFinishPositions: a day you sat out is nobody else\'s problem', () => {
-  const days = [
-    [{ key: 'a', total: 900 }, { key: 'b', total: 500 }, { key: 'c', total: 100 }],
-    [{ key: 'a', total: 900 }, { key: 'b', total: null }, { key: 'c', total: 100 }],
-  ];
-  const out = accumulateFinishPositions(days);
-  assert.equal(out.b.days, 1);
-  closeTo(out.b.avg, 2);
-  closeTo(out.b.share, 0.5);
-  // With b away, c is second on day two, so c averages (3 + 2) / 2.
-  assert.equal(out.c.days, 2);
-  closeTo(out.c.avg, 2.5);
-  // c was last on both days though, so the share does not reward the smaller
-  // field the way the raw position does.
-  assert.equal(out.c.share, 0);
-});
-
-test('accumulateFinishPositions: counts bucket each day at the competition rank', () => {
-  const days = [
-    [{ key: 'a', total: 900 }, { key: 'b', total: 500 }],   // a 1st, b 2nd
-    [{ key: 'a', total: 400 }, { key: 'b', total: 800 }],   // a 2nd, b 1st
-    [{ key: 'a', total: 700 }, { key: 'b', total: 700 }],   // tied: both 1st
-  ];
-  const out = accumulateFinishPositions(days);
-  assert.deepEqual(out.a.counts, { 1: 2, 2: 1 });
-  assert.deepEqual(out.b.counts, { 1: 2, 2: 1 });
-  // The tie counts as a 1st for both, while the fractional average still
-  // carries the 1.5 - the two metrics legitimately disagree on tie days.
-  closeTo(out.a.avg, (1 + 2 + 1.5) / 3);
-});
-
-test('accumulateFinishPositions: a parallel ISO array attributes each finish to its day', () => {
-  const days = [
-    [{ key: 'a', total: 900 }, { key: 'b', total: 500 }],   // a 1st, b 2nd
-    [{ key: 'a', total: 400 }, { key: 'b', total: 800 }],   // a 2nd, b 1st
-    [{ key: 'a', total: 700 }, { key: 'b', total: 700 }],   // tied: both 1st
-  ];
-  const out = accumulateFinishPositions(days, ['2026-08-01', '2026-08-02', '2026-08-03']);
-  assert.deepEqual(out.a.dates, { 1: ['2026-08-01', '2026-08-03'], 2: ['2026-08-02'] });
-  assert.deepEqual(out.b.dates, { 1: ['2026-08-02', '2026-08-03'], 2: ['2026-08-01'] });
-});
-
-test('accumulateFinishPositions: without ISO dates the counts stand alone', () => {
-  const out = accumulateFinishPositions([
-    [{ key: 'a', total: 900 }, { key: 'b', total: 500 }],
-  ]);
-  assert.deepEqual(out.a.dates, {});
-  assert.deepEqual(out.a.counts, { 1: 1 });
-});
-
-test('accumulateFinishPositions: maxField tracks the biggest field each player saw', () => {
-  const out = accumulateFinishPositions([
-    [{ key: 'a', total: 900 }, { key: 'b', total: 500 }],
-    [{ key: 'a', total: 900 }, { key: 'b', total: 500 }, { key: 'c', total: 100 }],
-  ]);
-  assert.equal(out.a.maxField, 3);
-  assert.equal(out.b.maxField, 3);
-  // c only ever competed in the three-player day.
-  assert.equal(out.c.maxField, 3);
-  assert.deepEqual(out.c.counts, { 3: 1 });
-  // A zero-count position inside the range stays absent from counts - the
-  // UI renders the gap from maxField, not from a stored zero.
-  assert.equal('2' in out.c.counts, false);
-});
-
-test('accumulateFinishPositions: a player with no qualifying day is absent', () => {
-  const out = accumulateFinishPositions([
-    [{ key: 'a', total: 900 }, { key: 'b', total: 500 }],
-    [{ key: 'c', total: 900 }],
-  ]);
-  assert.equal('c' in out, false);
-  assert.deepEqual(Object.keys(out).sort(), ['a', 'b']);
-});
-
-// --- avgPositionColor / avgPositionColors ----------------------------------
-
-test('avgPositionColor: the ramp ends and midpoint are the app tone colors', () => {
-  assert.equal(avgPositionColor(0), 'rgb(74, 222, 128)');
-  assert.equal(avgPositionColor(0.5), 'rgb(250, 204, 21)');
-  assert.equal(avgPositionColor(1), 'rgb(248, 113, 113)');
-});
-
-test('avgPositionColor: each half is a straight blend between its two anchors', () => {
-  assert.equal(avgPositionColor(0.25), 'rgb(162, 213, 75)');
-  assert.equal(avgPositionColor(0.75), 'rgb(249, 159, 67)');
-  // Out-of-range input clamps rather than running off the end of the ramp.
-  assert.equal(avgPositionColor(-2), avgPositionColor(0));
-  assert.equal(avgPositionColor(9), avgPositionColor(1));
-});
-
-test('avgPositionColor: hue only ever walks green -> yellow -> red', () => {
-  // The point of the ramp is that a reader sees one gradient, not a set of
-  // unrelated colors, so hue must fall monotonically from green to red with
-  // no detour through blue.
-  const hueOf = (t) => {
-    const [r, g, b] = avgPositionColor(t).match(/\d+/g).map(Number);
-    const max = Math.max(r, g, b), min = Math.min(r, g, b);
-    if (max === min) return 0;
-    const h = max === r ? (g - b) / (max - min)
-            : max === g ? 2 + (b - r) / (max - min)
-                        : 4 + (r - g) / (max - min);
-    return ((h * 60) % 360 + 360) % 360;
-  };
-  let prev = hueOf(0);
-  assert.ok(prev > 130 && prev < 150, `green end hue was ${prev}`);
-  for (let i = 1; i <= 40; i++) {
-    const h = hueOf(i / 40);
-    assert.ok(h < prev, `hue rose at step ${i}: ${prev} -> ${h}`);
-    prev = h;
-  }
-  assert.equal(prev, 0);
-});
-
-test('avgPositionColors: lowest input is green, highest is red, middles interpolate', () => {
-  // The card feeds negated field shares, so the biggest share (1) arrives as
-  // the smallest number and must take the green end.
-  const out = avgPositionColors([-1, -0.75, -0.5, 0]);
-  assert.equal(out[0], 'rgb(74, 222, 128)');
-  assert.equal(out[3], 'rgb(248, 113, 113)');
-  assert.equal(out[1], avgPositionColor(0.25));
-  assert.equal(out[2], avgPositionColor(0.5));
-});
-
-test('avgPositionColors: rows without a figure keep their slot and stay null', () => {
-  const out = avgPositionColors([-0.8, null, -0.2, undefined]);
-  assert.deepEqual(out, ['rgb(74, 222, 128)', null, 'rgb(248, 113, 113)', null]);
-});
-
-test('avgPositionColors: nothing to compare against means no ramp at all', () => {
-  // One player with a figure has no better or worse to be measured against,
-  // and identical figures are not a ranking, so both stay neutral.
-  assert.deepEqual(avgPositionColors([-0.5, null, null]), [null, null, null]);
-  assert.deepEqual(avgPositionColors([-0.5, -0.5, -0.5]), [null, null, null]);
-  assert.deepEqual(avgPositionColors([]), []);
-});
-
-test('accumulateFinishPositions: no history at all yields no records', () => {
-  assert.deepEqual(accumulateFinishPositions([]), {});
-  assert.deepEqual(accumulateFinishPositions(null), {});
-  assert.deepEqual(accumulateFinishPositions([[], [{ key: 'a', total: 700 }]]), {});
-});
-
-// --- myAvgByContinent ------------------------------------------------------
-
-// Stand-in for app.js's classifyContinent. The whole point of injecting the
-// classifier is that stats.js never needs the real bounding boxes, so a crude
-// longitude split is enough to exercise the bucketing - with ONE box standing
-// in for the real classifier's Africa (js/app.js, a polygon since
-// 2026-09-13), because (0, 0) sits inside it and (0, 0) is where a null
-// coordinate USED to land before the coordNum fix (2026-08-15); the
-// genuine-Gulf-of-Guinea test below still needs the box. A stub that answered 'Unknown' for every coordinate it did
-// not like would hide that seam instead of exercising it.
-//
-// The tests here assert the CONTRACT stats.js uses to call the classifier;
-// the real bounding-box table is unit-tested against the real classifyContinent
-// through the window._testExports seam in tests/app-helpers.test.js.
-const classifyStub = (lat, lng) => {
-  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return 'Unknown';
-  if (lat >= -35 && lat <= 38 && lng >= -20 && lng <= 52) return 'Africa'; // real box, js/app.js classifyContinent
-  if (lng < -30) return 'North America';
-  if (lng < 60) return 'Europe';
-  return 'Asia';
-};
-// 5 cities, all in Europe unless overridden.
-const euCities = () => [
-  { lat: 48, lng: 2 }, { lat: 52, lng: 13 }, { lat: 41, lng: 12 },
-  { lat: 55, lng: -3 }, { lat: 40, lng: -3 },
-];
-const geoGame = (date, rivalId, myScores, cities) =>
-  ({ id: `${date}-${rivalId}`, rivalId, date, myScores, theirScores: [1, 1, 1, 1, 1], cities });
-
-test('myAvgByContinent: one day logged against 3 rivals counts its rounds once', () => {
-  // The trap: a multi-rival day is stored as one game record per rival, each
-  // repeating the SAME myScores and the SAME cities. Counting every record
-  // would triple the round count and leave the average untouched, so the
-  // skew is invisible without this assertion.
-  const scores = [80, 90, 100, 60, 70];
-  const games = ['r1', 'r2', 'r3'].map(r => geoGame('2026-08-01', r, scores, euCities()));
-  const out = myAvgByContinent(games, classifyStub);
-  assert.equal(out.totalRounds, 5);
-  assert.equal(out.days, 1);
-  assert.deepEqual(out.rows, [{ continent: 'Europe', rounds: 5, myAvg: 80 }]);
-});
-
-test('myAvgByContinent: averages my raw round scores per continent', () => {
-  const cities = [
-    { lat: 48, lng: 2 }, { lat: 52, lng: 13 },      // Europe
-    { lat: 40, lng: -74 }, { lat: 34, lng: -118 },  // North America
-    { lat: 35, lng: 139 },                          // Asia
-  ];
-  const out = myAvgByContinent([geoGame('2026-08-01', 'r1', [90, 80, 60, 40, 100], cities)], classifyStub);
-  assert.equal(out.totalRounds, 5);
-  assert.deepEqual(out.rows, [
-    { continent: 'Europe', rounds: 2, myAvg: 85 },
-    { continent: 'North America', rounds: 2, myAvg: 50 },
-    { continent: 'Asia', rounds: 1, myAvg: 100 },
-  ]);
-});
-
-test('myAvgByContinent: chips sort by rounds desc, then continent name A-Z', () => {
-  // Asia and North America tie on 2 rounds each; Europe leads on 6.
-  const day1 = [
-    { lat: 48, lng: 2 }, { lat: 52, lng: 13 },
-    { lat: 35, lng: 139 }, { lat: 40, lng: -74 }, { lat: 34, lng: -118 },
-  ];
-  const day2 = [
-    { lat: 48, lng: 2 }, { lat: 52, lng: 13 },
-    { lat: 35, lng: 139 }, { lat: 48, lng: 2 }, { lat: 48, lng: 2 },
-  ];
-  const out = myAvgByContinent([
-    geoGame('2026-08-01', 'r1', [50, 50, 50, 50, 50], day1),
-    geoGame('2026-08-02', 'r1', [50, 50, 50, 50, 50], day2),
-  ], classifyStub);
-  assert.deepEqual(out.rows.map(r => [r.continent, r.rounds]), [
-    ['Europe', 6], ['Asia', 2], ['North America', 2],
-  ]);
-});
-
-test('myAvgByContinent: pasted games carry no coordinates and contribute nothing', () => {
-  const out = myAvgByContinent([
-    { id: 'a', rivalId: 'r1', date: '2026-08-01', myScores: [90, 90, 90, 90, 90], theirScores: [1, 1, 1, 1, 1] },
-    { id: 'b', rivalId: 'r1', date: '2026-08-02', myScore: 700, theirScore: 600 },
-    // A short cities array is corrupt geo, not a partial day.
-    { id: 'c', rivalId: 'r1', date: '2026-08-03', myScores: [90, 90, 90, 90, 90], cities: [{ lat: 48, lng: 2 }] },
-  ], classifyStub);
-  assert.deepEqual(out, { rows: [], totalRounds: 0, days: 0 });
-});
-
-test('myAvgByContinent: rival-only days (my side absent) contribute nothing', () => {
-  // Sync writes a game for a day the rival played and I did not. Counting it
-  // would drag every continent average toward 0 with rounds I never played.
-  const out = myAvgByContinent([
-    { id: 'a', rivalId: 'r1', date: '2026-08-01', theirScores: [90, 90, 90, 90, 90], cities: euCities() },
-    geoGame('2026-08-02', 'r1', [60, 60, 60, 60, 60], euCities()),
-  ], classifyStub);
-  assert.equal(out.days, 1);
-  assert.deepEqual(out.rows, [{ continent: 'Europe', rounds: 5, myAvg: 60 }]);
-});
-
-test('myAvgByContinent: rounds whose coordinates coerce to NaN are dropped, not bucketed', () => {
-  // Absent keys and non-numeric strings are the only shapes that survive the
-  // Number() coercion as NaN, which is what makes the classifier answer
-  // 'Unknown'. null and '' do NOT (see the next two tests).
-  const cities = [
-    { lat: 48, lng: 2 }, { lat: 52, lng: 13 }, { lat: 41, lng: 12 },
-    {}, { lat: 'nope', lng: 'nope' },
-  ];
-  const out = myAvgByContinent([geoGame('2026-08-01', 'r1', [90, 60, 90, 0, 0], cities)], classifyStub);
-  assert.equal(out.totalRounds, 3);
-  assert.deepEqual(out.rows, [{ continent: 'Europe', rounds: 3, myAvg: 80 }]);
-  assert.equal(out.rows.some(r => r.continent === 'Unknown'), false);
-});
-
-test('myAvgByContinent: non-finite raw coordinates never reach the classifier', () => {
-  // The call contract since the 2026-08-15 fix: coordNum (js/stats.js) turns
-  // null, '' and every other non-numeric shape into NaN BEFORE classification
-  // and the caller drops non-finite rounds outright, so the classifier only
-  // ever sees finite pairs. Before the fix, Number(null) and Number('') were
-  // 0, so a coordinate-less round arrived as the valid point (0, 0) in the
-  // Gulf of Guinea and was bucketed as Africa via the real classifier's
-  // lat -35..38 / lng -20..52 box.
-  const seen = [];
-  const spy = (lat, lng) => { seen.push([lat, lng]); return classifyStub(lat, lng); };
-  const cities = [
-    { lat: 48, lng: 2 }, { lat: 52, lng: 13 }, { lat: 41, lng: 12 },
-    { lat: null, lng: null }, { lat: '', lng: '' },
-  ];
-  myAvgByContinent([geoGame('2026-08-01', 'r1', [90, 60, 90, 0, 0], cities)], spy);
-  assert.equal(seen.length, 3); // the two coordinate-less rounds were dropped first
-  assert.ok(seen.every(([lat, lng]) => Number.isFinite(lat) && Number.isFinite(lng)));
-  assert.equal(seen.some(([lat, lng]) => lat === 0 && lng === 0), false);
-});
-
-test('myAvgByContinent: null / empty-string coordinates are dropped like any other missing coordinate', () => {
-  // Regression test for the fixed defect (2026-08-15): a coordinate-less
-  // round is excluded from the buckets and the round count, never averaged
-  // into Africa.
-  const cities = [
-    { lat: 48, lng: 2 }, { lat: 52, lng: 13 }, { lat: 41, lng: 12 },
-    { lat: null, lng: null }, { lat: '', lng: '' },
-  ];
-  const out = myAvgByContinent([geoGame('2026-08-01', 'r1', [90, 60, 90, 0, 0], cities)], classifyStub);
-  assert.equal(out.totalRounds, 3);
-  assert.deepEqual(out.rows, [{ continent: 'Europe', rounds: 3, myAvg: 80 }]);
-  assert.equal(out.rows.some(r => r.continent === 'Africa'), false);
-});
-
-test('myAvgByContinent: a real (0, 0) round is distinguishable from a null one', () => {
-  // Why the fix lives at the coercion (NaN, not 0) rather than inside the
-  // classifier: a genuine Gulf of Guinea round at (0, 0) still counts as
-  // Africa, while a null round vanishes. Under the old Number() coercion the
-  // two games below produced the exact same band.
-  const nulled = geoGame('2026-08-01', 'r1', [50, 50, 50, 50, 50],
-    [{ lat: null, lng: null }, { lat: null, lng: null }, { lat: null, lng: null },
-     { lat: null, lng: null }, { lat: null, lng: null }]);
-  const gulf = geoGame('2026-08-02', 'r1', [50, 50, 50, 50, 50],
-    [{ lat: 0, lng: 0 }, { lat: 0, lng: 0 }, { lat: 0, lng: 0 },
-     { lat: 0, lng: 0 }, { lat: 0, lng: 0 }]);
-  assert.deepEqual(myAvgByContinent([nulled], classifyStub),
-                   { rows: [], totalRounds: 0, days: 1 });
-  assert.deepEqual(myAvgByContinent([gulf], classifyStub).rows,
-                   [{ continent: 'Africa', rounds: 5, myAvg: 50 }]);
-});
-
-test('myAvgByContinent: no games at all yields an empty band', () => {
-  assert.deepEqual(myAvgByContinent([], classifyStub), { rows: [], totalRounds: 0, days: 0 });
-  assert.deepEqual(myAvgByContinent(null, classifyStub), { rows: [], totalRounds: 0, days: 0 });
-});
-
-// --- compareNamesCI --------------------------------------------------------
-
-test('compareNamesCI: sorts ABC regardless of case', () => {
-  const names = ['Zoe', 'ann', 'Bob', 'charlie'];
-  assert.deepEqual(names.slice().sort(compareNamesCI), ['ann', 'Bob', 'charlie', 'Zoe']);
-  // A plain code-unit sort buries every lowercase name under the capitals,
-  // which is exactly the ordering the rival lists must not fall back to.
-  assert.deepEqual(names.slice().sort(), ['Bob', 'Zoe', 'ann', 'charlie']);
-});
-
-test('compareNamesCI: names differing only in case keep a stable order', () => {
-  assert.ok(compareNamesCI('bob', 'Bob') !== 0);
-  assert.equal(compareNamesCI('bob', 'Bob'), -compareNamesCI('Bob', 'bob'));
-});
-
-test('compareNamesCI: identical names compare equal, missing names sort first', () => {
-  assert.equal(compareNamesCI('Ann', 'Ann'), 0);
-  assert.ok(compareNamesCI(null, 'Ann') < 0);
-  assert.ok(compareNamesCI(undefined, '') === 0);
-});
-
-// --- compareWinPctDesc -----------------------------------------------------
-
-test('compareWinPctDesc: best win % first', () => {
-  const recs = [
-    { rivalId: 'a', decided: 4, winPct: 50 },
-    { rivalId: 'b', decided: 3, winPct: 100 },
-    { rivalId: 'c', decided: 5, winPct: 20 },
-  ];
-  assert.deepEqual(recs.slice().sort(compareWinPctDesc).map(r => r.rivalId), ['b', 'a', 'c']);
-});
-
-test('compareWinPctDesc: a record with nothing decided sorts below a real 0%', () => {
-  const allTies = { rivalId: 'ties', decided: 0, winPct: 0 };
-  const allLosses = { rivalId: 'losses', decided: 3, winPct: 0 };
-  assert.ok(compareWinPctDesc(allTies, allLosses) > 0);
-  assert.deepEqual([allTies, allLosses].sort(compareWinPctDesc).map(r => r.rivalId),
-    ['losses', 'ties']);
-});
-
-test('compareWinPctDesc: equal win % is left to the caller tie-break', () => {
-  assert.equal(compareWinPctDesc({ decided: 2, winPct: 50 }, { decided: 6, winPct: 50 }), 0);
-});
-
-// --- repeat paste: two records for the same (date, rival) ------------------
-//
-// Fixed 2026-08-15: saveDay now funnels every pasted day through
-// upsertPastedGame (js/app.js), which UPDATES the existing record for that
-// (rivalId, date) instead of appending a duplicate; the upsert itself is
-// unit-tested through the window._testExports seam in
-// tests/app-helpers.test.js. The other two write paths always deduped on
-// their own (profile sync indexes existing games by date per rival, the
-// WhatsApp importer skips existing (rival, date) pairs in its preview).
-//
-// The tests below stay: the stats functions are correctly id-agnostic and
-// cannot tell such a pair from two real days, and these pin what the layer
-// reports for that input. That is why the app never hands them one: since
-// 2026-09-13 every game list entering the app is collapsed to one row per
-// (rival, date) by sanitizeBackup (see collapseDuplicateDays at the end of
-// this file), which covers old backups and two devices logging the same day.
-
-// The two records a pre-fix saveDay wrote for one day pasted twice:
-// identical payload, different ids.
-const pastedTwice = (date, rivalId, my, their) => [
-  { id: `${date}-${rivalId}-a`, rivalId, date, myScore: my, theirScore: their },
-  { id: `${date}-${rivalId}-b`, rivalId, date, myScore: my, theirScore: their },
-];
-
-test('periodRecords: a day pasted twice counts twice, in the total and the per-rival split', () => {
-  // One real win and one real loss in week 2026-W32 should read 1-1 (50%).
-  // With the win pasted twice it reads 2-1 (66.7%) in the Records view.
-  const games = [
-    ...pastedTwice('2026-08-03', 'r1', 700, 500),
-    { id: 'l', rivalId: 'r1', date: '2026-08-04', myScore: 600, theirScore: 700 },
-  ];
-  const [week] = periodRecords(games, 'week');
-  assert.equal(week.id, '2026-W32');
-  assert.equal(week.games, 3);            // two real days played
-  assert.equal(week.wins, 2);             // one real win
-  assert.equal(week.losses, 1);
-  closeTo(week.winPct, 200 / 3);          // the honest figure is 50
-  assert.deepEqual(week.byRival.map(r => [r.rivalId, r.games, r.wins, r.losses]),
-    [['r1', 3, 2, 1]]);
-});
-
-test('runningRivalPeriodRecords: a duplicated win can flip which way a period went', () => {
-  // One win (pasted twice) and two losses against the same rival inside one
-  // week. Deduped that is a week LOST 1-2; duplicated it is a 2-2 draw, so the
-  // rival row's running "(won-lost-tied)" figure gains a tie it never earned.
-  const games = [
-    ...pastedTwice('2026-08-03', 'r1', 700, 500),
-    { id: 'l1', rivalId: 'r1', date: '2026-08-04', myScore: 600, theirScore: 700 },
-    { id: 'l2', rivalId: 'r1', date: '2026-08-05', myScore: 600, theirScore: 700 },
-  ];
-  const withDup = periodRecords(games, 'week');
-  assert.equal(periodOutcomeVsRival(withDup[0].byRival[0]), 'tied');
-  assert.deepEqual(runningRivalPeriodRecords(withDup), {
-    '2026-W32': { r1: { won: 0, lost: 0, tied: 1 } },
-  });
-  assert.equal(periodTallyText(runningRivalPeriodRecords(withDup)['2026-W32'].r1), '0-0-1');
-
-  // The same log with the duplicate removed, for contrast.
-  const deduped = periodRecords(games.filter(g => g.id !== '2026-08-03-r1-b'), 'week');
-  assert.equal(periodOutcomeVsRival(deduped[0].byRival[0]), 'lost');
-  assert.equal(periodTallyText(runningRivalPeriodRecords(deduped)['2026-W32'].r1), '0-1');
-});
-
-test('streaks: a day pasted twice reads as a two-game streak', () => {
-  // The rival card's "W2" after a single win, and longestMine inflated with it.
-  const dup = pastedTwice('2026-08-03', 'r1', 700, 500);
-  assert.deepEqual(streaks(dup), { curMine: 2, curTheirs: 0, longestMine: 2, longestTheirs: 0 });
-  assert.equal(streaks([dup[0]]).curMine, 1);
-});
-
-test('rivalryScoreFromGames: a day pasted twice doubles the rivalry score', () => {
-  // Volume confidence is min(1, n / 10), so a duplicate buys a real confidence
-  // step: one max-margin win scores 10, the same win twice scores 20.
-  const dup = pastedTwice('2026-08-03', 'r1', 1000, 0);
-  closeTo(rivalryScoreFromGames([dup[0]]), 10);
-  closeTo(rivalryScoreFromGames(dup), 20);
-});
-
-test('myAvgByContinent: a day pasted twice is deduped by date, so the band is immune', () => {
-  // The one aggregate that already guards against this, because it had to for
-  // the multi-rival case: first qualifying game per date wins. Same-rival
-  // duplicates fall out of the same rule for free.
-  const cities = euCities();
-  const out = myAvgByContinent([
-    geoGame('2026-08-01', 'r1', [80, 90, 100, 60, 70], cities),
-    { ...geoGame('2026-08-01', 'r1', [80, 90, 100, 60, 70], cities), id: 'dup' },
-  ], classifyStub);
-  assert.equal(out.days, 1);
-  assert.equal(out.totalRounds, 5);
-  assert.deepEqual(out.rows, [{ continent: 'Europe', rounds: 5, myAvg: 80 }]);
-});
-
-test('finishPositionsForDay: one player twice in a day is a caller-contract breach', () => {
-  // Not reachable from the app: computeFinishPositionRecords (js/app.js:1632)
-  // folds the log into a Map keyed by date then by rivalId before it gets here,
-  // so a repeat paste collapses to one entry and the predictions distribution
-  // stays honest. Pinned because the failure is silent if a future caller
-  // skips that step: the field size N used for the positions counts the
-  // duplicate, the share denominator counts the deduped keys, and the two
-  // disagree enough to push a share outside 0..1.
-  const entries = [
-    { key: 'r1', total: 900 }, { key: 'r1', total: 900 }, { key: 'r2', total: 100 },
-  ];
-  assert.deepEqual(finishPositionsForDay(entries), { r1: 1.5, r2: 3 });
-  assert.deepEqual(fieldSharesForDay(entries), { r1: 0.5, r2: -1 });
-  // Deduped, the same day is the ordinary two-player result.
-  const clean = [{ key: 'r1', total: 900 }, { key: 'r2', total: 100 }];
-  assert.deepEqual(finishPositionsForDay(clean), { r1: 1, r2: 2 });
-  assert.deepEqual(fieldSharesForDay(clean), { r1: 1, r2: 0 });
-});
-
-// --- player keys plain-object accumulators could not hold ------------------
 //
 // The per-player accumulators key by rival id straight from storage. Ids the
 // app generates (uid(), js/app.js:191) are safe, but importData (js/app.js)
@@ -1865,7 +1268,7 @@ test('finishPositionsForDay: one player twice in a day is a caller-contract brea
 // Export / import feature. Fixed 2026-08-15: every such accumulator builds in
 // a Map and returns via Object.fromEntries, so any string is a safe key.
 
-test('positionHitsForDay: a rival id of "__proto__" gets a hit record like anyone else',
+test('rankAccuracyForDay: a rival id of "__proto__" gets a record like anyone else',
   () => {
     // Regression test for the fixed defect (2026-08-15): the accumulators
     // build in a Map and return through Object.fromEntries, which defines
@@ -1875,10 +1278,10 @@ test('positionHitsForDay: a rival id of "__proto__" gets a hit record like anyon
       { key: '__proto__', name: 'Imported', predictedTotal: 900, actualTotal: 900 },
       { key: 'r1', name: 'Bea', predictedTotal: 100, actualTotal: 100 },
     ];
-    const hits = positionHitsForDay(day);
+    const hits = rankAccuracyForDay(day);
     assert.deepEqual(Object.keys(hits).sort(), ['__proto__', 'r1']);
-    assert.equal(hits['__proto__'], true);
-    assert.equal(hits.r1, true);
+    assert.equal(hits['__proto__'].hit, true);
+    assert.equal(hits.r1.hit, true);
   });
 
 test('accumulateFinishPositions: a rival id of "__proto__" does not corrupt the other players',
@@ -2647,4 +2050,193 @@ test('podiumTier: gold, silver, bronze for 1-3, none below, whatever the field s
   assert.equal(t2.b[4].tied, true);
   assert.equal(podiumTier(t2.b[4].rank), 'silver');
   assert.equal(podiumTier(t2.c[4].rank), 'silver');
+});
+
+// --- coordinates ------------------------------------------------------------
+
+test('validLatLng: missing, blank and non-numeric coordinates are missing, never (0, 0)', () => {
+  // Number(null), Number('') and Number([]) are all 0: the defect that put
+  // seven name-only puzzle days and four synced rows at the Gulf of Guinea.
+  for (const bad of [null, undefined, '', '  ', [], {}, 'abc', NaN, Infinity, true]) {
+    assert.equal(validLatLng({ lat: bad, lng: 10 }), null, `lat ${String(bad)}`);
+    assert.equal(validLatLng({ lat: 10, lng: bad }), null, `lng ${String(bad)}`);
+  }
+  assert.equal(validLatLng({}), null);
+  assert.equal(validLatLng(null), null);
+  assert.equal(validLatLng({ lat: 91, lng: 0 }), null);
+  assert.equal(validLatLng({ lat: 0, lng: -180.5 }), null);
+});
+
+test('validLatLng: a real zero is a coordinate (equator, prime meridian, both)', () => {
+  assert.deepEqual(validLatLng({ lat: 0, lng: 32.5 }), { lat: 0, lng: 32.5 });
+  assert.deepEqual(validLatLng({ lat: 51.48, lng: 0 }), { lat: 51.48, lng: 0 });
+  assert.deepEqual(validLatLng({ lat: 0, lng: 0 }), { lat: 0, lng: 0 });
+  assert.deepEqual(validLatLng({ lat: '-33.9', lng: '18.4' }), { lat: -33.9, lng: 18.4 });
+  assert.deepEqual(validLatLng({ lat: 90, lng: -180 }), { lat: 90, lng: -180 });
+});
+
+test('allCitiesLocated: all five must be located', () => {
+  const city = { lat: 1, lng: 2 };
+  assert.equal(allCitiesLocated([city, city, city, city, city]), true);
+  assert.equal(allCitiesLocated([city, city, city, city, { lat: null, lng: null, name: 'Apia' }]), false);
+  assert.equal(allCitiesLocated([city, city, city, city]), false);
+  assert.equal(allCitiesLocated(null), false);
+});
+
+// --- June 3 2026: a hand-entered row and the MapTap sync ----------------------
+// The real conflict: two rows typed in by hand on 2026-06-03 carried
+// 6,3,26,21,14 (166) for both sides, while MapTap's game history records
+// 95,96,88,79,57 (775) for the owner and different scores for each rival.
+
+const JUNE3 = '2026-06-03';
+const mapTapSide = (scores) => ({ [JUNE3]: { scores, cities: null } });
+
+test('mergeMapTapSync: a hand-entered row is never overwritten, however MapTap disagrees', () => {
+  const hand = { id: 'h1', rivalId: 'em', date: JUNE3, note: '', createdAt: 1,
+    myScores: [6, 3, 26, 21, 14], myScore: 166, theirScores: [6, 3, 26, 21, 14], theirScore: 166 };
+  const res = mergeMapTapSync({
+    rivalId: 'em', existingGames: [hand], makeId: () => 'new', now: 2,
+    mineByDate: mapTapSide([95, 96, 88, 79, 57]), theirsByDate: mapTapSide([96, 98, 99, 77, 47]),
+  });
+  assert.equal(res.newGames.length, 0);
+  assert.equal(res.updated, 0);
+  assert.deepEqual(hand.myScores, [6, 3, 26, 21, 14]);
+});
+
+test('mergeMapTapSync: with the hand-entered row deleted, one synced row carries MapTap\'s scores', () => {
+  const res = mergeMapTapSync({
+    rivalId: 'em', existingGames: [], makeId: () => 'new', now: 2,
+    mineByDate: mapTapSide([95, 96, 88, 79, 57]), theirsByDate: mapTapSide([96, 98, 99, 77, 47]),
+  });
+  assert.equal(res.newGames.length, 1);
+  const row = res.newGames[0];
+  assert.equal(row.note, SYNC_NOTE);
+  // Totals worked by hand at weights 1,1,2,3,3.
+  assert.equal(row.myScore, 95 + 96 + 2 * 88 + 3 * 79 + 3 * 57);
+  assert.equal(row.myScore, 775);
+  assert.equal(row.theirScore, 96 + 98 + 2 * 99 + 3 * 77 + 3 * 47);
+  assert.equal(row.theirScore, 764);
+  // A second sync with the same history adds nothing and changes nothing.
+  const again = mergeMapTapSync({
+    rivalId: 'em', existingGames: res.newGames, makeId: () => 'dup', now: 3,
+    mineByDate: mapTapSide([95, 96, 88, 79, 57]), theirsByDate: mapTapSide([96, 98, 99, 77, 47]),
+  });
+  assert.deepEqual([again.newGames.length, again.added, again.updated], [0, 0, 0]);
+  assert.equal(res.newGames[0].myScore, 775);
+});
+
+// --- pre-game prediction snapshots -------------------------------------------
+
+const LOCATED = [
+  { lat: 24.0889, lng: 32.8998 }, { lat: 41.3275, lng: 19.8189 }, { lat: 49.5938, lng: 17.2509 },
+  { lat: 6.1498, lng: 6.7857 }, { lat: 18.4706, lng: -66.7208 },
+];
+const snapInput = (over = {}) => ({
+  date: '2026-11-20',
+  takenAtMs: Date.UTC(2026, 10, 18, 12, 0, 0),
+  model: 'geo-idw-1',
+  through: '2026-11-17',
+  cities: LOCATED,
+  players: [
+    { key: '@me', name: 'Nikita', scores: [88.4, 89.6, 91.2, 88.0, 86.5] },
+    { key: 'r1', name: 'Jenia', scores: [92.1, 95.0, 95.4, 90.2, 91.0] },
+    { key: 'r2', name: 'Greg', scores: [90, 92, 93, 89, 93] },
+    { key: 'r3', name: 'Newcomer', scores: null },
+  ],
+  ...over,
+});
+
+test('preGameCutoffMs: a day starts first at UTC+14, 10:00 UTC the day before', () => {
+  assert.equal(preGameCutoffMs('2026-11-20'), Date.UTC(2026, 10, 19, 10, 0, 0));
+  assert.equal(preGameCutoffMs('2027-01-01'), Date.UTC(2026, 11, 31, 10, 0, 0));
+  assert.equal(preGameCutoffMs('2028-03-01'), Date.UTC(2028, 1, 29, 10, 0, 0));
+  assert.ok(Number.isNaN(preGameCutoffMs('2026-02-30')));
+  assert.equal(isPreGameInstant('2026-11-20', Date.UTC(2026, 10, 19, 9, 59, 59, 999)), true);
+  assert.equal(isPreGameInstant('2026-11-20', Date.UTC(2026, 10, 19, 10, 0, 0)), false);
+});
+
+test('buildPredictionSnapshot: stores rounded rounds, their weighted total and the predicted place', () => {
+  const snap = buildPredictionSnapshot(snapInput());
+  assert.equal(snap.date, '2026-11-20');
+  assert.equal(snap.takenAt, '2026-11-18T12:00:00.000Z');
+  assert.equal(snap.model, 'geo-idw-1');
+  assert.equal(snap.through, '2026-11-17');
+  // Rounded per round first, then weighted 1,1,2,3,3 (the card's chips).
+  assert.deepEqual(snap.players['@me'], { r: [88, 90, 91, 88, 87], t: 88 + 90 + 182 + 264 + 261, p: 3 });
+  assert.deepEqual(snap.players.r1, { r: [92, 95, 95, 90, 91], t: 92 + 95 + 190 + 270 + 273, p: 1 });
+  assert.deepEqual(snap.players.r2, { r: [90, 92, 93, 89, 93], t: 90 + 92 + 186 + 267 + 279, p: 2 });
+  // No prediction, no entry; and no names anywhere in what is stored.
+  assert.equal('r3' in snap.players, false);
+  assert.ok(!/Nikita|Jenia|Greg/.test(JSON.stringify(snap)));
+  assert.match(snap.puzzle, /^[0-9a-f]{8}$/);
+});
+
+test('buildPredictionSnapshot: equal predicted totals take the card order (name)', () => {
+  const snap = buildPredictionSnapshot(snapInput({ players: [
+    { key: 'b', name: 'Bob', scores: [90, 90, 90, 90, 90] },
+    { key: 'a', name: 'Ann', scores: [90, 90, 90, 90, 90] },
+  ] }));
+  assert.deepEqual([snap.players.a.p, snap.players.b.p], [1, 2]);
+});
+
+test('buildPredictionSnapshot: refuses anything that cannot be called pre-game or is not a forecast', () => {
+  const cut = Date.UTC(2026, 10, 19, 10, 0, 0);
+  assert.equal(buildPredictionSnapshot(snapInput({ takenAtMs: cut })), null);
+  assert.equal(buildPredictionSnapshot(snapInput({ takenAtMs: cut + 3600e3 })), null);
+  assert.notEqual(buildPredictionSnapshot(snapInput({ takenAtMs: cut - 1 })), null);
+  assert.equal(buildPredictionSnapshot(snapInput({ cities: LOCATED.slice(0, 4).concat([{ lat: null, lng: null }]) })), null);
+  assert.equal(buildPredictionSnapshot(snapInput({ players: [{ key: 'x', name: 'X', scores: null }] })), null);
+  assert.equal(buildPredictionSnapshot(snapInput({ model: '' })), null);
+  assert.equal(buildPredictionSnapshot(null), null);
+});
+
+test('puzzleFingerprint: same coordinates same print, any change a different one', () => {
+  assert.equal(puzzleFingerprint(LOCATED), puzzleFingerprint(LOCATED.map(c => ({ ...c, name: 'x' }))));
+  const moved = LOCATED.slice(); moved[4] = { lat: 18.4706, lng: -66.7209 };
+  assert.notEqual(puzzleFingerprint(LOCATED), puzzleFingerprint(moved));
+  const swapped = [LOCATED[1], LOCATED[0], ...LOCATED.slice(2)];
+  assert.notEqual(puzzleFingerprint(LOCATED), puzzleFingerprint(swapped));
+  assert.equal(puzzleFingerprint(LOCATED.slice(0, 4)), null);
+});
+
+test('sanitizeSnapshots: keeps valid entries byte for byte and drops everything else', () => {
+  const good = buildPredictionSnapshot(snapInput());
+  const id = snapshotId(good);
+  assert.equal(id, '2026-11-20@2026-11-18T12:00:00.000Z');
+  const late = { ...good, takenAt: '2026-11-19T10:00:00.000Z' };          // after the cutoff
+  const wrongId = { ...good };
+  const badRound = { ...good, takenAt: '2026-11-18T13:00:00.000Z', players: { a: { r: [1, 2, 3, 4, 101], t: 10, p: 1 } } };
+  const raw = {
+    [id]: good,
+    [snapshotId(late)]: late,
+    'nonsense@key': wrongId,
+    [snapshotId(badRound)]: badRound,                                          // a round over 100
+    '__proto__': good,
+  };
+  const out = sanitizeSnapshots(JSON.parse(JSON.stringify(raw)));
+  assert.deepEqual(Object.keys(out), [id]);
+  assert.equal(JSON.stringify(out[id]), JSON.stringify(good));
+  assert.deepEqual(sanitizeSnapshots(null), {});
+  assert.deepEqual(sanitizeSnapshots([good]), {});
+});
+
+test('canonicalSnapshots: the earliest capture of a date stays the original', () => {
+  const first = buildPredictionSnapshot(snapInput({ takenAtMs: Date.UTC(2026, 10, 17, 8) }));
+  const later = buildPredictionSnapshot(snapInput({ takenAtMs: Date.UTC(2026, 10, 18, 20),
+    players: [{ key: '@me', name: 'Nikita', scores: [10, 10, 10, 10, 10] }] }));
+  const other = buildPredictionSnapshot(snapInput({ date: '2026-11-21', takenAtMs: Date.UTC(2026, 10, 18, 20) }));
+  const map = { [snapshotId(later)]: later, [snapshotId(first)]: first, [snapshotId(other)]: other };
+  const canon = canonicalSnapshots(map);
+  assert.deepEqual([...canon.keys()].sort(), ['2026-11-20', '2026-11-21']);
+  assert.equal(canon.get('2026-11-20').takenAt, first.takenAt);
+});
+
+test('snapshots: two devices capturing the same day merge as two entries, no conflict', async () => {
+  const { mergeValues } = await import('../../../sync-system/sync-helpers.mjs');
+  const a = buildPredictionSnapshot(snapInput({ takenAtMs: Date.UTC(2026, 10, 17, 8) }));
+  const b = buildPredictionSnapshot(snapInput({ takenAtMs: Date.UTC(2026, 10, 17, 9) }));
+  const res = mergeValues(null, { [snapshotId(a)]: a }, { [snapshotId(b)]: b });
+  assert.deepEqual(res.conflicts, []);
+  assert.deepEqual(Object.keys(res.merged).sort(), [snapshotId(a), snapshotId(b)].sort());
+  assert.equal(canonicalSnapshots(res.merged).get('2026-11-20').takenAt, a.takenAt);
 });
