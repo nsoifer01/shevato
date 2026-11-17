@@ -1,6 +1,223 @@
 {
   "updates": [
     {
+      "builtAt": "2026-11-17T16:13:06.819Z",
+      "totals": {
+        "seasons": 67938,
+        "delta": 15
+      },
+      "shapeCounts": {
+        "rebound": 9822,
+        "big-finale": 11884,
+        "u-shaped": 2662,
+        "rollercoaster": 13541,
+        "mid-peak": 4389,
+        "consistent": 2549,
+        "bad-finale": 4388,
+        "front-loaded": 3096,
+        "slow-burn": 4008,
+        "declining": 1653,
+        "saved-best-for-last": 1376,
+        "shape-drift": 1393,
+        "rising": 2398
+      },
+      "shapeDeltas": {
+        "rebound": 12,
+        "big-finale": -1,
+        "u-shaped": 5,
+        "mid-peak": -3,
+        "consistent": 9,
+        "bad-finale": -2,
+        "front-loaded": 5,
+        "slow-burn": -3,
+        "declining": -1,
+        "saved-best-for-last": -3,
+        "rising": -6
+      },
+      "added": [
+        {
+          "seriesId": "tt4406178",
+          "title": "The Gilded Age",
+          "season": 4,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt5622316",
+          "title": "The Chosen",
+          "season": 6,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt40887908",
+          "title": "Ugly",
+          "season": 2,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt0098789",
+          "title": "Equal Justice",
+          "season": 2,
+          "seasonYear": 1991
+        },
+        {
+          "seriesId": "tt33258229",
+          "title": "Khemjira",
+          "season": 2,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt7148058",
+          "title": "Sons of Moufida",
+          "season": 2,
+          "seasonYear": 2016
+        },
+        {
+          "seriesId": "tt6835380",
+          "title": "Alphablocks",
+          "season": 1,
+          "seasonYear": 2010
+        },
+        {
+          "seriesId": "tt6835380",
+          "title": "Alphablocks",
+          "season": 4,
+          "seasonYear": 2021
+        },
+        {
+          "seriesId": "tt10739006",
+          "title": "The Killer in My Family",
+          "season": 3,
+          "seasonYear": 2021
+        },
+        {
+          "seriesId": "tt14810290",
+          "title": "The Life Series",
+          "season": 8,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt7828138",
+          "title": "Susedia",
+          "season": 4,
+          "seasonYear": 2018
+        },
+        {
+          "seriesId": "tt16709520",
+          "title": "Vida Cruel W2M",
+          "season": 1,
+          "seasonYear": 2012
+        },
+        {
+          "seriesId": "tt37677064",
+          "title": "Manhunt",
+          "season": 2,
+          "seasonYear": 2024
+        },
+        {
+          "seriesId": "tt38647499",
+          "title": "Tasacak Bu Deniz",
+          "season": 2,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt5926310",
+          "title": "First Love Monster",
+          "season": 1,
+          "seasonYear": 2016
+        }
+      ],
+      "removed": [],
+      "ratingSwings": [
+        {
+          "seriesId": "tt40887908",
+          "title": "Ugly",
+          "season": 1,
+          "from": 7.65,
+          "to": 5.86,
+          "delta": -1.79
+        },
+        {
+          "seriesId": "tt12471116",
+          "title": "Pokétoon",
+          "season": 2,
+          "from": 8.05,
+          "to": 6.95,
+          "delta": -1.1
+        },
+        {
+          "seriesId": "tt7180934",
+          "title": "Kis Günesi",
+          "season": 1,
+          "from": 8.41,
+          "to": 7.38,
+          "delta": -1.03
+        },
+        {
+          "seriesId": "tt0496195",
+          "title": "FETCH! with Ruff Ruffman",
+          "season": 3,
+          "from": 6.54,
+          "to": 7.33,
+          "delta": 0.79
+        },
+        {
+          "seriesId": "tt39390491",
+          "title": "Alicia's Law",
+          "season": 1,
+          "from": 6.86,
+          "to": 6.18,
+          "delta": -0.68
+        },
+        {
+          "seriesId": "tt0496195",
+          "title": "FETCH! with Ruff Ruffman",
+          "season": 2,
+          "from": 6.83,
+          "to": 7.43,
+          "delta": 0.6
+        },
+        {
+          "seriesId": "tt28450216",
+          "title": "Student of the Year 3",
+          "season": 1,
+          "from": 8.9,
+          "to": 8.33,
+          "delta": -0.57
+        },
+        {
+          "seriesId": "tt26083408",
+          "title": "The Queen",
+          "season": 1,
+          "from": 8.11,
+          "to": 7.54,
+          "delta": -0.57
+        },
+        {
+          "seriesId": "tt21874026",
+          "title": "Secrets of an Angel",
+          "season": 1,
+          "from": 9.16,
+          "to": 8.61,
+          "delta": -0.55
+        },
+        {
+          "seriesId": "tt27995115",
+          "title": "The Devil's Plan",
+          "season": 3,
+          "from": 8.74,
+          "to": 8.2,
+          "delta": -0.54
+        }
+      ],
+      "modifiedCounts": {
+        "seriesVotes": 20473,
+        "avgRating": 1258,
+        "seriesRating": 307,
+        "shapes": 209,
+        "episodeCount": 100
+      }
+    },
+    {
       "builtAt": "2026-11-16T15:41:02.094Z",
       "totals": {
         "seasons": 67923,
@@ -7841,341 +8058,6 @@
         "poster": 4,
         "overview": 8,
         "episodeCount": 83
-      }
-    },
-    {
-      "builtAt": "2026-10-18T11:07:58.744Z",
-      "totals": {
-        "seasons": 67351,
-        "delta": 32
-      },
-      "shapeCounts": {
-        "rebound": 9758,
-        "big-finale": 11814,
-        "u-shaped": 2639,
-        "rollercoaster": 13504,
-        "mid-peak": 4363,
-        "consistent": 2516,
-        "bad-finale": 4336,
-        "front-loaded": 3064,
-        "slow-burn": 3969,
-        "declining": 1631,
-        "saved-best-for-last": 1380,
-        "shape-drift": 1394,
-        "rising": 2353
-      },
-      "shapeDeltas": {
-        "rebound": -6,
-        "big-finale": 5,
-        "u-shaped": 1,
-        "rollercoaster": 10,
-        "mid-peak": 3,
-        "consistent": -5,
-        "bad-finale": 3,
-        "front-loaded": 5,
-        "slow-burn": 6,
-        "declining": -6,
-        "saved-best-for-last": 1,
-        "shape-drift": -4,
-        "rising": 1
-      },
-      "added": [
-        {
-          "seriesId": "tt26743760",
-          "title": "The Apothecary Diaries",
-          "season": 3,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt13196080",
-          "title": "Tokyo Revengers",
-          "season": 4,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt32344704",
-          "title": "Tougen Anki: Dark Demon of Paradise",
-          "season": 2,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt39328047",
-          "title": "Doctor X: Age of the White Mafia",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt38589502",
-          "title": "Blithe In",
-          "season": 1,
-          "seasonYear": 2025
-        },
-        {
-          "seriesId": "tt42026819",
-          "title": "Nord Sud Ovest Est: La leggendaria storia degli 883",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt42727894",
-          "title": "Romelia War Chronicle",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt1129398",
-          "title": "Murder in Sweden",
-          "season": 10,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt38732131",
-          "title": "Money Trap: The Karun Treasure",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt0094530",
-          "title": "The Betrothed",
-          "season": 1,
-          "seasonYear": 1989
-        },
-        {
-          "seriesId": "tt27053309",
-          "title": "The Unbelievable with Dan Aykroyd",
-          "season": 4,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt34581662",
-          "title": "Kanzlei Liebling Kreuzberg",
-          "season": 1,
-          "seasonYear": 2025
-        },
-        {
-          "seriesId": "tt47661704",
-          "title": "Make Me Tingle",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt6906110",
-          "title": "Maine Cabin Masters",
-          "season": 7,
-          "seasonYear": 2021
-        },
-        {
-          "seriesId": "tt5698216",
-          "title": "Jamie Johnson",
-          "season": 7,
-          "seasonYear": 2022
-        },
-        {
-          "seriesId": "tt1400819",
-          "title": "Horrible Histories",
-          "season": 11,
-          "seasonYear": 2025
-        },
-        {
-          "seriesId": "tt11876490",
-          "title": "Doc: In Your Hands",
-          "season": 4,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt13369892",
-          "title": "Pearl Next Door",
-          "season": 1,
-          "seasonYear": 2020
-        },
-        {
-          "seriesId": "tt4119504",
-          "title": "Hi! School-Love On",
-          "season": 1,
-          "seasonYear": 2014
-        },
-        {
-          "seriesId": "tt0348512",
-          "title": "Mega Babies",
-          "season": 1,
-          "seasonYear": 1999
-        },
-        {
-          "seriesId": "tt6556992",
-          "title": "Hot Ones",
-          "season": 31,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt11704040",
-          "title": "Love Is Blind",
-          "season": 11,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt13711670",
-          "title": "Naked Attraction Suomi",
-          "season": 3,
-          "seasonYear": 2023
-        },
-        {
-          "seriesId": "tt4633666",
-          "title": "Marooned with Ed Stafford",
-          "season": 1,
-          "seasonYear": 2013
-        },
-        {
-          "seriesId": "tt22440568",
-          "title": "An/Na",
-          "season": 1,
-          "seasonYear": 2022
-        },
-        {
-          "seriesId": "tt30128014",
-          "title": "The Traitors Hungary",
-          "season": 5,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt30828747",
-          "title": "Dracula's Kiss, Spellbound by a Doppelganger",
-          "season": 1,
-          "seasonYear": 2023
-        },
-        {
-          "seriesId": "tt31975781",
-          "title": "Zussen",
-          "season": 2,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt36192875",
-          "title": "The Race",
-          "season": 3,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt37673572",
-          "title": "Polden",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt4016396",
-          "title": "The Idle Mermaid",
-          "season": 1,
-          "seasonYear": 2014
-        },
-        {
-          "seriesId": "tt37180305",
-          "title": "Friends Sex and Games",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt6139710",
-          "title": "Fall in Love with Me",
-          "season": 1,
-          "seasonYear": 2014
-        }
-      ],
-      "removed": [
-        {
-          "seriesId": "tt1626459",
-          "title": "My Kitchen Rules",
-          "season": 14,
-          "seasonYear": 2024
-        }
-      ],
-      "ratingSwings": [
-        {
-          "seriesId": "tt3076512",
-          "title": "Just You",
-          "season": 1,
-          "from": 7,
-          "to": 5.7,
-          "delta": -1.3
-        },
-        {
-          "seriesId": "tt37109705",
-          "title": "The Lament of Autumn",
-          "season": 1,
-          "from": 9.92,
-          "to": 8.88,
-          "delta": -1.04
-        },
-        {
-          "seriesId": "tt35163061",
-          "title": "0bvEL FNAF Plush",
-          "season": 1,
-          "from": 1.48,
-          "to": 2.3,
-          "delta": 0.82
-        },
-        {
-          "seriesId": "tt31925820",
-          "title": "Dupahiya",
-          "season": 2,
-          "from": 8.54,
-          "to": 7.78,
-          "delta": -0.76
-        },
-        {
-          "seriesId": "tt2458514",
-          "title": "Mary Stayed Out All Night",
-          "season": 1,
-          "from": 7.69,
-          "to": 7.03,
-          "delta": -0.66
-        },
-        {
-          "seriesId": "tt13486352",
-          "title": "ZDF Magazin Royale",
-          "season": 7,
-          "from": 7.4,
-          "to": 6.8,
-          "delta": -0.6
-        },
-        {
-          "seriesId": "tt39379365",
-          "title": "4 Blocks Zero",
-          "season": 1,
-          "from": 7.97,
-          "to": 8.48,
-          "delta": 0.51
-        },
-        {
-          "seriesId": "tt0356228",
-          "title": "Bakuryuu Sentai Abaranger",
-          "season": 1,
-          "from": 7.1,
-          "to": 6.6,
-          "delta": -0.5
-        },
-        {
-          "seriesId": "tt2623064",
-          "title": "Heartstrings",
-          "season": 1,
-          "from": 8.15,
-          "to": 7.68,
-          "delta": -0.47
-        },
-        {
-          "seriesId": "tt35520662",
-          "title": "Duck Dynasty: The Revival",
-          "season": 1,
-          "from": 7.67,
-          "to": 7.23,
-          "delta": -0.44
-        }
-      ],
-      "modifiedCounts": {
-        "seriesVotes": 20970,
-        "avgRating": 1205,
-        "shapes": 216,
-        "episodeCount": 91,
-        "seriesRating": 314,
-        "poster": 6
       }
     }
   ]
