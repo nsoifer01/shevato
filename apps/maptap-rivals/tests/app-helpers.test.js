@@ -2506,7 +2506,7 @@ test('capturePreGameSnapshots: an unreadable stored entry is left in place, and 
   const fx = accuracyFixture();
   const S = MapTapStats;
   const ahead = S.addDaysISO(S.todayISO(), 3);
-  const held = S.buildPredictionSnapshot({ date: ahead, takenAtMs: Date.now() - 1000, model: 'older-model',
+  const held = S.buildPredictionSnapshot({ date: ahead, takenAtMs: Date.now() - 1000, model: 'older-model', source: 'scheduled', puzzleDated: false,
     through: null, cities: located(4), players: [{ key: '@me', name: 'Me', scores: [50, 50, 50, 50, 50] }] });
   const app = loadApp({
     maptapRivalsRivals: fx.rivals, maptapRivalsGames: fx.games, maptapRivalsDays: fx.days,
@@ -2518,4 +2518,116 @@ test('capturePreGameSnapshots: an unreadable stored entry is left in place, and 
   const stored = JSON.parse(app.localStorage.getItem(t.KEY.SNAPSHOTS));
   assert.deepEqual(Object.keys(stored).sort(), [S.snapshotId(held), 'junk'].sort());
   assert.equal(stored[S.snapshotId(held)].model, 'older-model');
+});
+
+// --- backups carry the snapshots; scheduled snapshots reach the device -------
+
+function heldSnapshot(dateOffset, takenOffsetMs, over = {}) {
+  const S = MapTapStats;
+  return S.buildPredictionSnapshot({ date: S.addDaysISO(S.todayISO(), dateOffset), takenAtMs: Date.now() + takenOffsetMs,
+    model: 'geo-idw-1', source: 'scheduled', puzzleDated: true, through: null, cities: located(4),
+    players: [{ key: '@me', name: 'Me', scores: [81.4, 82.6, 83, 84, 85] }, { key: 'r0', name: 'A', scores: [70, 71, 72, 73, 74] }], ...over });
+}
+
+test('backup: snapshots are exported, restored exactly, and a repeated import adds nothing', () => {
+  const S = MapTapStats;
+  const a = heldSnapshot(3, -60000), b = heldSnapshot(4, -30000, { source: 'device' });
+  const app = loadApp({ maptapRivalsPredictionSnapshots: { [S.snapshotId(a)]: a, [S.snapshotId(b)]: b, 'unreadable@x': { junk: 1 } } });
+  const payload = JSON.parse(JSON.stringify(app._testExports.backupPayload()));
+  // Only readable entries are written to the file, byte for byte.
+  assert.deepEqual(Object.keys(payload.snapshots).sort(), [S.snapshotId(a), S.snapshotId(b)].sort());
+  assert.equal(JSON.stringify(payload.snapshots[S.snapshotId(a)]), JSON.stringify(a));
+
+  // Restore on a device that holds nothing: originals, timestamps and all.
+  const other = loadApp({});
+  const t = other._testExports;
+  assert.deepEqual(plain(t.importSnapshotsFrom(payload)), { added: 2, already: 0, invalid: 0 });
+  const stored = JSON.parse(other.localStorage.getItem(t.KEY.SNAPSHOTS));
+  assert.equal(JSON.stringify(stored[S.snapshotId(a)]), JSON.stringify(a));
+  assert.equal(stored[S.snapshotId(b)].takenAt, b.takenAt);
+  // Again: nothing added, nothing written.
+  const writes = other.localStorage.writes.filter(w => w.key === t.KEY.SNAPSHOTS).length;
+  assert.deepEqual(plain(t.importSnapshotsFrom(payload)), { added: 0, already: 2, invalid: 0 });
+  assert.equal(other.localStorage.writes.filter(w => w.key === t.KEY.SNAPSHOTS).length, writes);
+});
+
+test('backup: an older file without snapshots, or a damaged snapshot section, never loses stored ones', () => {
+  const S = MapTapStats;
+  const a = heldSnapshot(3, -60000);
+  const app = loadApp({ maptapRivalsPredictionSnapshots: { [S.snapshotId(a)]: a } });
+  const t = app._testExports;
+  const before = app.localStorage.getItem(t.KEY.SNAPSHOTS);
+  const oldBackup = { version: 1, me: 'Me', rivals: [], games: [] };
+  assert.deepEqual(plain(t.importSnapshotsFrom(oldBackup)), { added: 0, already: 0, invalid: 0 });
+  for (const damaged of [null, [], 'text', { [S.snapshotId(a)]: { ...a, players: {} } }, { 'x@y': { ...a } }]) {
+    const r = t.importSnapshotsFrom({ ...oldBackup, snapshots: damaged });
+    assert.equal(r.added, 0);
+  }
+  assert.equal(t.importSnapshotsFrom({ ...oldBackup, snapshots: { 'x@y': { ...a } } }).invalid, 1);
+  assert.equal(app.localStorage.getItem(t.KEY.SNAPSHOTS), before);
+});
+
+test('splitGameCities: the day map takes a located copy over a name-only one that came first', () => {
+  const rows = [
+    { id: 'a', rivalId: 'r1', date: '2026-08-11', cities: nameOnly('2026-08-11') },
+    { id: 'b', rivalId: 'r2', date: '2026-08-11', cities: located(7) },
+  ];
+  const { rows: out, days } = splitGameCities(rows);
+  assert.deepEqual(plain(days['2026-08-11']), located(7));
+  assert.equal('cities' in out[1], false, 'the located row is normalised into the day');
+  assert.equal(out[0].cities.length, 5, 'the name-only row keeps its own copy until its join repairs it');
+  const joined = joinGameCities(out, new Map(Object.entries(days)));
+  assert.deepEqual(plain(joined.map(g => g.cities[0].lat)), [located(7)[0].lat, located(7)[0].lat]);
+});
+
+test('syncScheduledSnapshots: a non-enabled account reads once, gets a 403, and sends no roster', async () => {
+  const calls = [];
+  const fetchImpl = async (url, init = {}) => { calls.push({ url, method: init.method || 'GET', body: init.body }); return { ok: false, status: 403, json: async () => ({ error: 'not_enabled' }) }; };
+  const fx = accuracyFixture();
+  const app = loadApp({ maptapRivalsRivals: fx.rivals.map(r => ({ ...r, maptapUsername: 'user_' + r.id })), maptapRivalsMyMapTap: 'me_user' }, { fetchImpl });
+  app.firebaseAuth = { getCurrentUser: () => ({ uid: 'u1', isAnonymous: false, getIdToken: async () => 'token-u1' }) };
+  assert.deepEqual(plain(await app._testExports.syncScheduledSnapshots()), { status: 403 });
+  assert.deepEqual(calls.map(c => c.method), ['GET']);
+  assert.equal(await app._testExports.syncScheduledSnapshots(), null, 'once per page load');
+});
+
+test('syncScheduledSnapshots: an enabled account gets the server\'s snapshots added and registers its roster once', async () => {
+  const S = MapTapStats;
+  const server = heldSnapshot(2, -3600000);
+  const local = heldSnapshot(3, -60000, { source: 'device' });
+  const calls = [];
+  const fetchImpl = async (url, init = {}) => {
+    calls.push({ method: init.method || 'GET', auth: init.headers && init.headers.Authorization, body: init.body });
+    if ((init.method || 'GET') === 'GET') return { ok: true, status: 200, json: async () => ({ snapshots: { [S.snapshotId(server)]: server, [S.snapshotId(local)]: { ...local, model: 'tampered' } } }) };
+    return { ok: true, status: 200, json: async () => ({ ok: true }) };
+  };
+  const rivals = [{ id: 'r0', name: 'A', color: '#000', icon: 'x', createdAt: 1, maptapUsername: 'a_user' }, { id: 'r1', name: 'B', color: '#000', icon: 'x', createdAt: 2 }];
+  const seed = { maptapRivalsRivals: rivals, maptapRivalsMyMapTap: 'me_user', maptapRivalsPredictionSnapshots: { [S.snapshotId(local)]: local } };
+  const user = { uid: 'u1', isAnonymous: false, getIdToken: async () => 'token-u1' };
+  const app = loadApp(seed, { fetchImpl });
+  app.firebaseAuth = { getCurrentUser: () => user };
+  const r = await app._testExports.syncScheduledSnapshots();
+  assert.deepEqual(plain(r), { status: 200, added: 1 });
+  const stored = JSON.parse(app.localStorage.getItem('maptapRivalsPredictionSnapshots'));
+  assert.equal(JSON.stringify(stored[S.snapshotId(server)]), JSON.stringify(server));
+  assert.equal(stored[S.snapshotId(local)].model, local.model, 'a local entry is never replaced by the server\'s');
+  assert.deepEqual(calls.map(c => c.method), ['GET', 'PUT']);
+  assert.ok(calls.every(c => c.auth === 'Bearer token-u1'));
+  // Only rivals with a MapTap username, keyed by rival id; no names are sent.
+  assert.deepEqual(JSON.parse(calls[1].body), { me: 'me_user', rivals: [{ id: 'r0', username: 'a_user' }] });
+  // Next page load, same roster: read only.
+  const again = loadApp({ ...seed, maptapRivalsSnapshotRosterSent: JSON.parse(JSON.stringify(app.localStorage.getItem('maptapRivalsSnapshotRosterSent'))) }, { fetchImpl });
+  again.firebaseAuth = { getCurrentUser: () => user };
+  calls.length = 0;
+  await again._testExports.syncScheduledSnapshots();
+  assert.deepEqual(calls.map(c => c.method), ['GET']);
+});
+
+test('syncScheduledSnapshots: signed out or a guest account sends nothing', async () => {
+  const calls = [];
+  const app = loadApp({}, { fetchImpl: async () => { calls.push(1); return { ok: true, status: 200, json: async () => ({}) }; } });
+  assert.equal(await app._testExports.syncScheduledSnapshots(), null);
+  app.firebaseAuth = { getCurrentUser: () => ({ uid: 'g', isAnonymous: true, getIdToken: async () => 't' }) };
+  assert.equal(await app._testExports.syncScheduledSnapshots(), null);
+  assert.equal(calls.length, 0);
 });

@@ -754,10 +754,10 @@ rounds dated before its day. What they established, so it is not re-litigated:
 ### Missing coordinates were read as (0, 0)
 
 `flattenRoundsForPrediction` and the target cities read `Number(c.lat)`, and
-`Number(null)` is 0. Seven name-only puzzle days (2026-08-11, 08-14, 09-20,
-09-23, 10-03, 11-04, 11-12: MapTap's iOS history shape, names and no
-coordinates) were predicted from the Gulf of Guinea, five identical rounds per
-player, and counted toward Spot-on; their 245 history rounds sat at (0, 0) and
+`Number(null)` is 0. Seven puzzle days (2026-08-11, 08-14, 09-20, 09-23,
+10-03, 11-04, 11-12) stored names and no coordinates and were predicted from
+the Gulf of Guinea, five identical rounds per player, and counted toward
+Spot-on; their 245 history rounds sat at (0, 0) and
 pulled every prediction for a West African city. Four synced rows (2026-06-15,
 2026-08-05, two on 2026-08-23) also kept `{ lat: null, lng: null }` inline
 while their day map had the real cities, and `joinGameCities` let the inline
@@ -773,6 +773,19 @@ normalises the row, and `mergeMapTapSync` never trades located cities for
 unlocated ones. A past day whose stored cities are unlocated predicts only
 from a verified maptap.gg file, the same fallback as a day with no stored
 cities. Measured effect on the 180-day badges: 25.9% -> 26.0% overall.
+
+**Why those seven days had no coordinates (corrected 2026-11-17).** The first
+write-up blamed MapTap's iOS history shape, which was half the story. The
+owner's own history has that shape on those days, but every rival's copy of
+the same days carries the coordinates (re-fetched 2026-11-17). The sync merge
+took the owner's copy whenever it existed (`syncCities(mine) ||
+syncCities(theirs)`), backfilled only rows with no cities at all, and the day
+map kept the first copy it met. Now `mergeMapTapSync` takes the located copy
+(the owner's when located, else the rival's), upgrades a row whose cities are
+unlocated once a located copy arrives (scores untouched), and
+`splitGameCities` makes the first LOCATED copy the day's entry. On the owner's
+log the next "Sync all rivals" fills those 7 days (63 rows), which gives them
+predictions and Spot-on days again; no score changes.
 
 ### 2026-06-03: two hand-entered rows (verified against MapTap)
 
@@ -790,7 +803,16 @@ sync skips because it needs all five. 253 x 807.336... = 204,256, the exact
 sum of the 250 logged totals with June 3 = 775.
 
 `mergeMapTapSync` never touches a row whose note is not `SYNC_NOTE`, so sync
-cannot repair these. The correction is made in the app: delete the two rows
+cannot repair these.
+
+The procedure was replayed on a copy of the real log (revision 585) with the
+real MapTap histories, through the shipped merge and persist code: deleting the
+two rows by id (`mq0mqtfwncvfr0` Emmett, `mq0mqtfwuib14o` Gal, both
+2026-06-03, 166-166, note '') and syncing Emmett then Gal removes exactly
+those two and adds two synced rows, 775-764 and 775-907. On master's code no
+other row changes at all (scores, notes, dates, cities, day map). On this
+branch's code the same two sync runs also fill the located cities of the seven
+days above for those rivals (no score changes). The correction is made in the app: delete the two rows
 (History) and sync Emmett and Gal, which writes MapTap's values as synced rows
 (pinned in `tests/stats.test.js`). It goes through the normal sync engine, a
 three-way merge that honours deletions on every device. Until the owner does
@@ -829,27 +851,80 @@ unchanged; "avg %" still covers all days.
 
 A day is played on each player's local date, and the first local date on
 Earth is UTC+14, so day D cannot have started anywhere before 10:00 UTC on
-D-1 (`preGameCutoffMs`). `capturePreGameSnapshots` runs on every predictions
-render and saves, once, every day in the window that is before that instant,
-has a puzzle verified for that date (`status: 'ok'`) and is fully located.
-Nothing captured later is labelled pre-game, and the rule is re-checked on
-read (`sanitizeSnapshots`). The first capture of a date is canonical; later
-ones (a second device before it synced) are kept, keyed `<date>@<takenAt>`, so
-the map merge unions them instead of raising a conflict. Entries are never
-edited or removed, and unreadable ones are left in storage untouched.
+D-1 (`preGameCutoffMs`, identical in every timezone: pinned by a test that
+runs it under six). Nothing captured later is labelled pre-game, the rule is
+re-checked on every read (`sanitizeSnapshots`), and a snapshot is never edited
+or removed. Each one records `source` ('device' or 'scheduled'), `model`
+(`PREDICTION_MODEL_VERSION`), `through` (the latest result date its inputs
+held), `puzzle` (fingerprint of the five coordinates) and `puzzleDated`
+(whether the file's city ids named the date when it was taken).
 
-Coverage is limited by two facts. maptap.gg dates its files only about two
-days ahead (2026-11-17: November 17 and 18 carried ids, 19 to 21 did not), and
-a file is verified for a future day only by those ids. For the owner (UTC-6)
-the cutoff for tomorrow is 04:00 local today, so in practice a day is captured
-when the app is opened two or more days ahead while its file is already
-dated. Days MapTap does not date in advance are never captured. A capture made
-days ahead also lacks the results played since, which `through` records.
+**Two capture paths.**
 
-Not built, possible later: MapTap's game history carries `startTime` and
-`completedAt` per entry (from 2026-06-10 on the owner's profile), which would
-let a same-day capture be classified pre-game per player. Snapshots are not
-part of the JSON backup export, and nothing in the UI reads them yet.
+- *Scheduled* (netlify/functions/maptap-snapshot-capture.mjs, runs 03:17,
+  06:17 and 09:17 UTC). Each run targets D = tomorrow (UTC) for every account
+  listed in the `MAPTAP_SNAPSHOT_UIDS` environment variable that has
+  registered a roster: it reads D's maptap.gg file and every rostered
+  player's public MapTap profile, and predicts with the app's own predictor
+  (moved verbatim from app.js into stats.js so both run one copy; on the
+  owner's log all 2,570 player-day predictions were bit-identical before and
+  after the move). The first run that succeeds stores the snapshot
+  (`onlyIfNew`, one per day and puzzle); a run missing a profile waits for the
+  next, and the 09:17 run captures whoever it has. Netlify, not GitHub, because
+  GitHub fires this repository's schedules 5 to 8 hours late
+  (netlify/functions/lib/fpl-archive-stage.mjs) and the cutoff is 10:00 UTC.
+- *Device* (`capturePreGameSnapshots`), unchanged: whenever the card renders a
+  window day that is verified and still before its cutoff.
+
+**The roster and the read.** For a signed-in account, once per page load the
+app GETs `/.netlify/functions/maptap-snapshots` with its Firebase ID token;
+the function asks Google's `accounts:lookup` (with the site's public web API
+key, so no new credential) who the token belongs to, and answers only an
+allowlisted account. A 403 ends it there, so a non-enabled account sends no
+usernames. An enabled account gets its stored snapshots added to the synced
+map (`mergeSnapshotMaps`: add-only, an existing id keeps its entry), then PUTs
+its roster (its MapTap username, each rival's id and username, no names) only
+when it changed since that device last sent it. DELETE removes the roster and
+every stored snapshot.
+
+**Puzzle timing, measured.** maptap.gg dates a file 1 to 2 days ahead
+(2026-11-15: November 16-17 dated; 2026-11-17 05:31 UTC: November 18 dated,
+19-21 not). A capture on D-1 morning that finds D undated still predicts D
+(`puzzleDated: false`); it counts only if the cities actually played match
+its fingerprint (`snapshotMatchesPuzzle`, `canonicalSnapshots(map,
+playedCities)`). The file's first five coordinates and MapTap's recorded ones
+are the same numbers (every located day from November 8 to 16, 2026), so the
+check is exact. A file MapTap rewrites before the cutoff yields a second
+snapshot (new fingerprint); one rewritten after the cutoff leaves a snapshot
+that never matches and is excluded, which is the correct outcome: no pre-game
+forecast of that puzzle was possible.
+
+**Server and app agree, with two measured exceptions.** Rebuilding every
+rival's rounds from MapTap profiles (`roundsFromHistories`: one shared copy of
+a day's cities, the first located one with the owner first, as the log keeps
+it) and comparing with the app after a full sync on the owner's log: 8 of 10
+players bit-identical on every day; Nikita identical in every displayed round
+on all 256 days (raw values differ by at most 1.7e-13, summation order);
+Dean different on every day, because MapTap's profile now returns 43 of his
+days where the log holds 125 (116 of them since his first returned date): a
+server working only from public profiles cannot see data the app kept. On
+2026-05-06 MapTap served one city at two positions to different players; the
+log, and so the server, uses the owner's.
+
+**Limits.** Capture needs Netlify's scheduler, MapTap's profile endpoint and
+the daily file to answer during the three runs; nothing has been observed in
+production yet, so daily capture is not demonstrated. Only accounts listed by
+hand are captured (today: the owner). Rivals without a MapTap username are not
+in scheduled snapshots. Scheduled snapshots break an exact tie in predicted
+total by player key, not name (the server keeps no names), so evaluation
+should rank by `t`. The function's data is not removed by deleting the account
+(privacy.html says so); DELETE, or asking, removes it.
+
+**Backups.** The JSON export carries `snapshots` (only readable entries, byte
+for byte). Import adds them with `mergeSnapshotMaps` while rivals and games are
+replaced as before: nothing stored is removed, an id already present keeps its
+stored entry, a repeated import adds nothing, an older backup without the
+field changes nothing, and unreadable entries are counted and skipped.
 
 ## Past days in the predictions window (2026-11-15)
 

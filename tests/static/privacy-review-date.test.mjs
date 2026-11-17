@@ -66,9 +66,10 @@ const html = readFileSync(join(REPO_ROOT, 'privacy.html'), 'utf8');
 const PREVIOUS = { date: '25 October 2026', digest: '5bedfb1680ecb51fd8de980848b3a6adc2fee992e351f8135ba74643c3edcc65' };
 const CURRENT = {
   // MapTap Rivals now saves pre-game prediction snapshots (predicted rounds,
-  // total and place per player id) as a synced key.
+  // total and place per player id) as a synced key, and its scheduled
+  // prediction function for accounts enabled by hand.
   date: '17 November 2026',
-  digest: 'f1f8d70f404813bdeeebe853192e081e30433b16497cde81c7c1bc260a62d061',
+  digest: '23dd2796eabcead198db5b7003806c5e70b89e1e9f9bc3ec9bcc2d60ad8be30a',
 };
 
 /**

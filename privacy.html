@@ -325,7 +325,7 @@
           </div>
           <div class="skill-row">
             <h3>MapTap.gg</h3>
-            <p>MapTap Rivals sends the MapTap usernames you enter, yours and your rivals', to a MapTap endpoint to fetch public profiles, and downloads each day's puzzle from MapTap.gg.</p>
+            <p>MapTap Rivals sends the MapTap usernames you enter, yours and your rivals', to a MapTap endpoint to fetch public profiles, and downloads each day's puzzle from MapTap.gg. For an account enabled for scheduled predictions (described under "Logs and server-side records"), a function we host does the same each morning: it sends those usernames to that endpoint and downloads the next day's puzzle.</p>
           </div>
           <div class="skill-row">
             <h3>TMDB</h3>
@@ -364,6 +364,8 @@
         <p>A third function is the Fantasy Premier League proxy behind the FPL Planner. It keeps a server-side cache of what it fetches, so that many people asking for the same public data cause roughly one request upstream. Everything in that cache is a copy of a public Fantasy Premier League response, including, where a team was looked up, that team's own public FPL entry. Nothing is stored against your account, and these requests carry no per-browser identifier. It does apply one usage limit: when a request cannot be answered from that cache and has to go upstream, it is counted against a per-network counter of exactly the kind described below. A request the cache can answer is not counted at all.</p>
 
         <p>A fourth function receives Content Security Policy violation reports. Your browser sends one on its own, without asking you, when a page on this site tries to load something our security policy does not expect. For each report the function logs which policy rule was involved, the origin (scheme and host only) of whatever was blocked, the path of the page it happened on with any query or fragment removed, and whether the policy was blocking or only reporting. It does not log the page's full address, the referrer, any code sample, your IP address or anything else that identifies you, and it stores nothing: that log line is the whole record.</p>
+
+        <p>A fifth function saves MapTap Rivals predictions before each day's puzzle can be played, so they can later be compared with what happened. It works only for accounts we enable by hand, which today is only the site owner's; for every other account it does nothing and stores nothing. For an enabled account, the app sends that function, with proof of the signed-in account: your MapTap username and, for each rival who has one, the rival's MapTap username and the app's internal id for that rival (no display names). It stores that list against your account id. Three times each morning (UTC) it fetches those players' public MapTap profiles and the next day's puzzle, and stores one prediction per day: each player's predicted round scores, total and place, keyed by the rival id, with the time it was made and a short fingerprint of the puzzle. Only your signed-in account can read them back, and the app copies them into your synced data. Its log records only how each run went (captured, retried, how many players), never usernames or account ids. These records are kept until you ask us to remove them; deleting your account does not remove them on its own.</p>
 
         <p>Those first two functions apply usage limits, and to do that they count requests against two identifiers. There are two because the first one alone could not do the job.</p>
 
