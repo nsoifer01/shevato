@@ -299,8 +299,11 @@ test('handleSnapshots: register, read own data only, opt out (idempotent), refus
   assert.equal((await handleSnapshots(req('PUT', { token: GOOD, body: JSON.stringify({ rivals: 'x' }) }), opts)).status, 400);
   assert.equal((await handleSnapshots(req('PUT', { token: GOOD, body: JSON.stringify({ ...ROSTER, history: { days: {}, players: { x: [['bad']] } } }) }), opts)).status, 400);
   assert.equal((await handleSnapshots(req('PUT', { token: GOOD, body: 'x'.repeat(2 * 1024 * 1024 + 1) }), opts)).status, 413);
-  assert.equal((await handleSnapshots(req('PUT', { token: GOOD, body: JSON.stringify(registration()) }), opts)).status, 200);
+  const extra = registration(); extra.history.note = 'x'.repeat(1000); extra.secret = 'y';
+  assert.equal((await handleSnapshots(req('PUT', { token: GOOD, body: JSON.stringify(extra) }), opts)).status, 200);
   assert.deepEqual(store.keys(), [historyKey('owner'), rosterKey('owner')]);
+  assert.deepEqual(Object.keys((await store.get(historyKey('owner'))).history).sort(), ['days', 'players'], 'only the validated fields are stored');
+  assert.deepEqual(Object.keys(await store.get(rosterKey('owner'))).sort(), ['me', 'rivals', 'updatedAt']);
   await store.setJSON(snapKey('owner', '2026-11-18', 'abc'), { not: 'a snapshot' });
   await store.setJSON(snapKey('someone', '2026-11-18', 'abc'), { not: 'theirs' });
   const got = await (await handleSnapshots(req('GET', { token: GOOD }), opts)).json();

@@ -367,7 +367,10 @@ export async function handleSnapshots(request, { store, allowlist, fetchImpl = f
       await store.delete(optoutKey(uid));
     }
     const at = new Date().toISOString();
-    if (body.history !== undefined) await store.setJSON(historyKey(uid), { at, history: body.history });
+    // Only the two validated fields are kept, whatever else the body carried.
+    if (body.history !== undefined) {
+      await store.setJSON(historyKey(uid), { at, history: { days: body.history.days, players: body.history.players } });
+    }
     await store.setJSON(rosterKey(uid), { ...roster, updatedAt: at });
     // A delete or opt-out that landed while this was writing wins.
     if (await blocked(store, uid)) {
