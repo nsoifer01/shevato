@@ -820,105 +820,133 @@ that, the card counts 166.
 
 ### Spot-on and ties
 
-Spot-on used to compare indexes in two name-tie-broken orders, so on the 94
-of 256 days with an actual tie, a correctly placed tied player could score a
-miss decided by which name sorts first, and a field of one was an automatic
-hit. The rule now (`rankAccuracyForDay`): predicted places are the card's
-distinct slots 1..N; the actual place of k players tied on a total is the span
-of slots c..c+k-1 from competition ranking; a hit is a predicted slot inside
-the span. Strict competition-rank equality was considered and not used: two
-players tied for 1st and predicted 1st and 2nd would score one hit and one miss
-although the prediction put exactly those two in exactly those places. The
-random baseline uses the same rule (k / N per day, so it carries the same
-days, field sizes and ties), and the Order chip counts each player's
-head-to-heads with players they did not tie with (a coin flip gets 50%).
+Spot-on used to compare indexes in two name-tie-broken orders, so a tied
+player's hit or miss was decided by which name sorts first (94 of 256 days
+have an actual tie, 34 a predicted tie among the players who played), and a
+field of one was an automatic hit. The rule now (`rankAccuracyForDay`) uses
+competition ranking on BOTH sides and never a name: k players level on a total
+occupy the slots c..c+k-1. A player's hit is the share of their predicted
+slots that lie inside their actual span: 1 or 0 without a predicted tie, and
+for players predicted level, what an unbiased coin ordering them would score
+on average (two predicted level for 2nd/3rd who finish 2nd and 4th get 0.5
+each). Strict competition-rank equality was considered and not used: two
+players tied for 1st and predicted 1st and 2nd would score one hit and one
+miss although the prediction put exactly those two in exactly those places.
+The random baseline uses the same rule (k / N per day, so it carries the same
+days, field sizes and ties). The Order chip counts each player's head-to-heads
+with players they did not tie with on the day; a pair predicted level counts
+0.5; a coin flip gets 50%. Counts can therefore be fractional, and the
+tooltips show one decimal when they are. The card itself still lists level
+predictions in name order; only the measurement is name-free (renaming any
+player leaves every figure unchanged, pinned by a test).
 
 Owner's log, computed by the shipped code (positionHitRecords, 180-day window):
 
 | | Spot-on | random | Order |
 |---|---:|---:|---:|
 | master | 25.9% (324/1249) | | |
-| this change | 28.0% (337/1204) | 15.6% | 68.0% (5054/7428) |
-| plus the June 3 correction | 28.5% (343/1204) | 15.6% | 68.5% (5092/7434) |
+| this change | 28.1% (338/1204) | 15.6% | 68.1% (5060/7428) |
+| after the June 3 correction and the located-cities sync | 27.9% (349/1249) | 15.6% | 68.5% (5266/7682) |
 
-All history with the same code: 31.3% exact vs 17.3% random, 69.3% pairwise.
-Every one of those increases is a measurement correction (ties counted
-consistently, broken-coordinate days and solo days no longer counted, a wrong
-historical score corrected), not better prediction. The 180-day window is
-unchanged; "avg %" still covers all days.
+All history with the same code: 31.2% exact vs 17.3% random, 69.3% pairwise.
+Every change from master is a measurement correction (ties counted without
+names, solo days and coordinate-less days no longer counted, a wrong
+historical score corrected, seven days' coordinates restored), not better
+prediction. The 180-day window is unchanged; "avg %" still covers all days.
 
 ### Pre-game prediction snapshots
 
-A day is played on each player's local date, and the first local date on
-Earth is UTC+14, so day D cannot have started anywhere before 10:00 UTC on
-D-1 (`preGameCutoffMs`, identical in every timezone: pinned by a test that
-runs it under six). Nothing captured later is labelled pre-game, the rule is
-re-checked on every read (`sanitizeSnapshots`), and a snapshot is never edited
-or removed. Each one records `source` ('device' or 'scheduled'), `model`
-(`PREDICTION_MODEL_VERSION`), `through` (the latest result date its inputs
-held), `puzzle` (fingerprint of the five coordinates) and `puzzleDated`
-(whether the file's city ids named the date when it was taken).
+**When a snapshot is pre-game.** A day is played on each player's local date,
+and the first local date on Earth is UTC+14, so day D cannot have started
+anywhere before 10:00 UTC on D-1 (`preGameCutoffMs`, identical in every
+timezone: pinned by a test that runs it under six). Nothing captured later is
+labelled pre-game, the rule is re-checked on every read (`sanitizeSnapshots`),
+and a snapshot is never edited or removed by the app.
+
+**What one holds.** `source` ('device' or 'scheduled'), `model`
+(`PREDICTION_MODEL_VERSION`), `through` (latest result date in its inputs),
+`puzzle` (fingerprint of the five coordinates), `puzzleDated` (the file's city
+ids named the date when it was taken), coverage (`roster`: players the app
+had, the user and every rival; `unread`: players whose newest games could not
+be read; `historyAt`: when the app's history was last uploaded), and per
+player key `r` (rounded rounds), `t` (their weighted total) and `p` (the
+competition rank of `t`: equal totals share a place, never a name or key
+order; `sanitizeSnapshots` refuses any other `p`). Scoring reads `t`, ranking
+only the players who had a prediction AND played, with the tie rule above.
+
+**Which ones are scored** (`canonicalSnapshots(map, playedCities)`): the
+earliest that is complete (`unread` empty; partial ones only with
+`includePartial`), matches the cities actually played when those are known,
+and, if it was taken from an undated file, has had that match confirmed: an
+undated snapshot is never scored on its own.
 
 **Two capture paths.**
 
-- *Scheduled* (netlify/functions/maptap-snapshot-capture.mjs, runs 03:17,
-  06:17 and 09:17 UTC). Each run targets D = tomorrow (UTC) for every account
-  listed in the `MAPTAP_SNAPSHOT_UIDS` environment variable that has
-  registered a roster: it reads D's maptap.gg file and every rostered
-  player's public MapTap profile, and predicts with the app's own predictor
-  (moved verbatim from app.js into stats.js so both run one copy; on the
-  owner's log all 2,570 player-day predictions were bit-identical before and
-  after the move). The first run that succeeds stores the snapshot
-  (`onlyIfNew`, one per day and puzzle); a run missing a profile waits for the
-  next, and the 09:17 run captures whoever it has. Netlify, not GitHub, because
-  GitHub fires this repository's schedules 5 to 8 hours late
-  (netlify/functions/lib/fpl-archive-stage.mjs) and the cutoff is 10:00 UTC.
-- *Device* (`capturePreGameSnapshots`), unchanged: whenever the card renders a
-  window day that is verified and still before its cutoff.
+- *Device* (`capturePreGameSnapshots`): whenever the card renders a window day
+  that is verified and still before its cutoff, from the log the card reads.
+  Complete by construction.
+- *Scheduled* (netlify/functions/maptap-snapshot-capture.mjs, 03:17, 06:17 and
+  09:17 UTC, accounts in `MAPTAP_SNAPSHOT_UIDS` only). Each run targets
+  D = tomorrow (UTC). Its inputs are the app's own: on each page load an
+  enabled account uploads every player by rival id (a MapTap username where it
+  has one) and the round history the card reads, exactly as
+  myProfileRounds / rivalRounds return it (`encodeRoundsHistory`, about 80 KB
+  for the owner's log, re-sent only when it changes). The run adds, per player,
+  each newer day from the public MapTap profile that the upload does not hold
+  (`mergeLoggedAndFresh`: the log always wins a day it holds), which is what
+  the app's next sync would add, and predicts with the app's own predictor
+  (moved verbatim into stats.js). Netlify, not GitHub, because GitHub fires
+  this repository's schedules 5 to 8 hours late and the cutoff is 10:00 UTC.
 
-**The roster and the read.** For a signed-in account, once per page load the
-app GETs `/.netlify/functions/maptap-snapshots` with its Firebase ID token;
-the function asks Google's `accounts:lookup` (with the site's public web API
-key, so no new credential) who the token belongs to, and answers only an
-allowlisted account. A 403 ends it there, so a non-enabled account sends no
-usernames. An enabled account gets its stored snapshots added to the synced
-map (`mergeSnapshotMaps`: add-only, an existing id keeps its entry), then PUTs
-its roster (its MapTap username, each rival's id and username, no names) only
-when it changed since that device last sent it. DELETE removes the roster and
-every stored snapshot.
+**Parity, measured on the owner's log (2026-11-17).** The decoded upload
+predicts bit-identically to the card on all 2,500 player-days with located
+cities (row order is preserved, so even summation order matches). A scheduled
+capture of 2026-11-18 from the real log and the real profiles equals the card
+for all 10 players, including Dean, whose public profile now returns 43 of the
+125 days the log holds, and stays 10 of 10 when Dean has no username or when a
+profile comes back empty. A rival with no MapTap username is predicted from the
+log alone, exactly as the card does (the card cannot see newer games of theirs
+either). An earlier version that predicted from public profiles only matched
+8 of 10 and is not what shipped.
+
+**Failures.** A run that cannot read a profile waits for the next run; the
+09:17 run captures anyway with that player in `unread` (from the uploaded log)
+and the snapshot is partial, never scored as the card's leaderboard. No
+puzzle file, an unreadable one, or no predictable player stores nothing. A
+second run the same morning finds the snapshot and stores nothing (`onlyIfNew`
+per day and puzzle; a file rewritten before the cutoff gets a second one).
+Failures are visible three ways: the function log (statuses and counts only),
+the per-account `status/<uid>` record that the profile card shows ("last run
+...: puzzle unavailable", "(some players not refreshed)"), and a day with no
+snapshot. A store that cannot be read throws and Netlify marks the run failed.
 
 **Puzzle timing, measured.** maptap.gg dates a file 1 to 2 days ahead
-(2026-11-15: November 16-17 dated; 2026-11-17 05:31 UTC: November 18 dated,
-19-21 not). A capture on D-1 morning that finds D undated still predicts D
-(`puzzleDated: false`); it counts only if the cities actually played match
-its fingerprint (`snapshotMatchesPuzzle`, `canonicalSnapshots(map,
-playedCities)`). The file's first five coordinates and MapTap's recorded ones
-are the same numbers (every located day from November 8 to 16, 2026), so the
-check is exact. A file MapTap rewrites before the cutoff yields a second
-snapshot (new fingerprint); one rewritten after the cutoff leaves a snapshot
-that never matches and is excluded, which is the correct outcome: no pre-game
-forecast of that puzzle was possible.
+(2026-11-15: November 16-17 dated; 2026-11-17: November 18 dated, 19-21 not at
+05:31 and 06:09 UTC). A capture that finds D undated still predicts it and
+waits for the played cities to confirm it. The file's first five coordinates
+and MapTap's recorded ones are the same numbers (every located day from
+November 8 to 16, 2026), so the check is exact.
 
-**Server and app agree, with two measured exceptions.** Rebuilding every
-rival's rounds from MapTap profiles (`roundsFromHistories`: one shared copy of
-a day's cities, the first located one with the owner first, as the log keeps
-it) and comparing with the app after a full sync on the owner's log: 8 of 10
-players bit-identical on every day; Nikita identical in every displayed round
-on all 256 days (raw values differ by at most 1.7e-13, summation order);
-Dean different on every day, because MapTap's profile now returns 43 of his
-days where the log holds 125 (116 of them since his first returned date): a
-server working only from public profiles cannot see data the app kept. On
-2026-05-06 MapTap served one city at two positions to different players; the
-log, and so the server, uses the owner's.
+**Opt-out and deletion.** The profile card shows "Scheduled predictions: on /
+off" for an enabled account. Off (`DELETE`) removes the roster, history, run
+status and every stored snapshot and keeps `optout/<uid>`, which refuses any
+device's roster (409) until "Turn on" sends `optIn`. Account deletion runs
+`eraseScheduledPredictions` (sync-system) while the auth user still exists:
+`DELETE ?scope=account` writes `gone/<uid>` first, then removes everything,
+marker included; a roster sent after that is refused (410); a roster write or
+a capture that lands during a delete re-checks the markers and removes what it
+wrote; the next run a day later sweeps `gone/<uid>` and anything left under
+it. Tabs also skip registering while the sync layer's deletion latch is set
+(`window.__shevatoAccountDeletionLatched`). Deleting works for any signed-in
+account, enabled or not, and repeats safely. If the function cannot be
+reached, account deletion fails by name and keeps the credential so the user
+can retry, like every other deletion step.
 
-**Limits.** Capture needs Netlify's scheduler, MapTap's profile endpoint and
-the daily file to answer during the three runs; nothing has been observed in
-production yet, so daily capture is not demonstrated. Only accounts listed by
-hand are captured (today: the owner). Rivals without a MapTap username are not
-in scheduled snapshots. Scheduled snapshots break an exact tie in predicted
-total by player key, not name (the server keeps no names), so evaluation
-should rank by `t`. The function's data is not removed by deleting the account
-(privacy.html says so); DELETE, or asking, removes it.
+**Limits.** Daily capture has not been observed in production (the feature is
+off until `MAPTAP_SNAPSHOT_UIDS` is set). A snapshot is only as fresh as the
+upload for rivals without a username, and for anyone whose profile cannot be
+read (recorded as `unread`). Rows the app would correct on its next sync
+(a changed MapTap score on an already-logged day) are not re-read from MapTap.
 
 **Backups.** The JSON export carries `snapshots` (only readable entries, byte
 for byte). Import adds them with `mergeSnapshotMaps` while rivals and games are

@@ -960,23 +960,28 @@
   // result. A field of one is no ranking at all (first of one is just showing
   // up, the same rule as the finishing positions), so it yields nothing.
   //
-  // Predicted places are the distinct slots 1..N of the card's own order
-  // (predicted total, name as the tie-break). Actual places follow the app's
-  // competition ranking: players on the same total share a place and
-  // together occupy the slots c..c+k-1. The rule, chosen over strict
-  // competition-rank equality (FINDINGS.md "Spot-on and ties"):
-  //   - `hit`: the predicted slot falls inside the player's tied span. Strict
-  //     equality would mean two players tied for 1st, predicted 1st and 2nd,
-  //     score one hit and one miss although the prediction put exactly those
-  //     two in exactly those two places, and the miss would be decided by
-  //     which name sorts first.
+  // Both orders follow the app's competition ranking: players on the same
+  // total share a place and together occupy the slots c..c+k-1, on the
+  // predicted side as on the actual one. No name ever decides anything, so
+  // renaming a player cannot move a measured figure. The rule, chosen over
+  // strict competition-rank equality (FINDINGS.md "Spot-on and ties"):
+  //   - `hit` (0 to 1): the share of the player's predicted slots that fall
+  //     inside their actual tied span. With no predicted tie that is 1 or 0:
+  //     the predicted slot is inside the span or not. Strict equality would
+  //     mean two players tied for 1st, predicted 1st and 2nd, score one hit
+  //     and one miss although the prediction put exactly those two in exactly
+  //     those two places. Two players predicted level for 2nd and 3rd who
+  //     finish 2nd and 4th get 0.5 each: what an unbiased coin deciding the
+  //     predicted order would score on average, instead of whichever name
+  //     sorts first.
   //   - `chance`: the probability a uniformly random order of the same field
   //     hits under the same rule, k / N, so a player's baseline uses the same
   //     days, field sizes and ties as their rate.
   //   - `pairsRight` / `pairs`: of the other players this one did not tie
-  //     with, how many the predicted order placed correctly above or below
-  //     them. A tied pair has no right answer, so it is not counted, and the
-  //     chance of calling a counted pair is exactly 1/2.
+  //     with on the day, how many the prediction placed correctly above or
+  //     below them; a pair predicted level counts 0.5. A pair tied on the day
+  //     has no right answer, so it is not counted, and the chance of calling
+  //     a counted pair is exactly 1/2.
   //
   // Every per-player accumulator below builds in a Map and returns through
   // Object.fromEntries: player keys are rival ids straight from storage, and
@@ -988,22 +993,27 @@
       .filter(e => e && Number.isFinite(e.predictedTotal) && Number.isFinite(e.actualTotal));
     const n = played.length;
     if (n < 2) return {};
-    const predictedOrder = rankByScore(played, 'predictedTotal');
-    const slot = new Map(predictedOrder.map((key, i) => [key, i + 1]));
+    const predPlace = competitionRanksForDay(played.map(e => ({ key: e.key, total: e.predictedTotal })));
     const place = competitionRanksForDay(played.map(e => ({ key: e.key, total: e.actualTotal })));
-    const tiedWith = new Map();
-    for (const e of played) tiedWith.set(e.actualTotal, (tiedWith.get(e.actualTotal) || 0) + 1);
+    const tiedWith = new Map(), predTiedWith = new Map();
+    for (const e of played) {
+      tiedWith.set(e.actualTotal, (tiedWith.get(e.actualTotal) || 0) + 1);
+      predTiedWith.set(e.predictedTotal, (predTiedWith.get(e.predictedTotal) || 0) + 1);
+    }
     const out = new Map();
     for (const e of played) {
-      const k = tiedWith.get(e.actualTotal);
-      const lo = place[e.key], hi = lo + k - 1, s = slot.get(e.key);
+      const k = tiedWith.get(e.actualTotal), pk = predTiedWith.get(e.predictedTotal);
+      const lo = place[e.key], hi = lo + k - 1;
+      const plo = predPlace[e.key], phi = plo + pk - 1;
+      const overlap = Math.max(0, Math.min(hi, phi) - Math.max(lo, plo) + 1);
       let pairsRight = 0, pairs = 0;
       for (const o of played) {
         if (o === e || o.actualTotal === e.actualTotal) continue;
         pairs++;
-        if ((s < slot.get(o.key)) === (e.actualTotal > o.actualTotal)) pairsRight++;
+        if (o.predictedTotal === e.predictedTotal) pairsRight += 0.5;
+        else if ((e.predictedTotal > o.predictedTotal) === (e.actualTotal > o.actualTotal)) pairsRight++;
       }
-      out.set(e.key, { hit: s >= lo && s <= hi, chance: k / n, pairsRight, pairs });
+      out.set(e.key, { hit: overlap / pk, chance: k / n, pairsRight, pairs });
     }
     return Object.fromEntries(out);
   }
@@ -1022,7 +1032,7 @@
         if (!rec) { rec = { hits: 0, eligible: 0, chance: 0, pairsRight: 0, pairs: 0 }; out.set(key, rec); }
         const d = day[key];
         rec.eligible += 1;
-        if (d.hit) rec.hits += 1;
+        rec.hits += d.hit;
         rec.chance += d.chance;
         rec.pairsRight += d.pairsRight;
         rec.pairs += d.pairs;
@@ -1252,17 +1262,25 @@
 
   // Build one immutable snapshot of a day's predictions as the card shows
   // them: per-round scores rounded the way the chips are, the total those
-  // chips sum to (predTotalFromScores) and the predicted place (the card's
-  // predicted order, name as the tie-break). Only player keys are stored
-  // (rival ids and the '@me' sentinel), never names, so no personal data is
-  // duplicated. Returns null unless the capture is pre-game, the puzzle is
-  // fully located and at least one player has a prediction.
+  // chips sum to (predTotalFromScores) and the predicted place, which is the
+  // competition rank of that total (equal totals share a place, as on the
+  // actual side; never a name order). Only player keys are stored (rival ids
+  // and the '@me' sentinel), never names. Returns null unless the capture is
+  // pre-game, the puzzle is fully located and at least one player has a
+  // prediction.
   //   o: { date, takenAtMs, model, through, cities, source, puzzleDated,
-  //        players: [{ key, name, scores: number[5] | null }] }
+  //        roster, unread, historyAt, players: [{ key, scores: number[5] | null }] }
   // `puzzleDated` says whether the puzzle file proved its date (its city ids
   // name it) when the snapshot was taken. An undated one is still a genuine
   // pre-game forecast, but it only counts once the cities actually played
   // that day are known to match (snapshotMatchesPuzzle).
+  // Coverage, so a partial forecast is never mistaken for the card's:
+  // `roster` is how many players the app had (the user and every rival);
+  // `unread` lists players whose fresh results could not be read when it was
+  // taken (their forecast, if any, comes from the app's log as last uploaded,
+  // `historyAt`); a snapshot is complete when `unread` is empty. A player the
+  // app itself cannot predict (too little history) is simply absent, exactly
+  // as on the card.
   function buildPredictionSnapshot(o) {
     if (!o || !isPreGameInstant(o.date, o.takenAtMs)) return null;
     const puzzle = puzzleFingerprint(o.cities);
@@ -1271,11 +1289,14 @@
     const rows = (Array.isArray(o.players) ? o.players : [])
       .filter(p => p && typeof p.key === 'string' && Array.isArray(p.scores) && p.scores.length === N_LOCS &&
                    p.scores.every(Number.isFinite))
-      .map(p => ({ key: p.key, name: p.name, r: p.scores.map(s => Math.round(s)), predictedTotal: predTotalFromScores(p.scores) }));
+      .map(p => ({ key: p.key, r: p.scores.map(s => Math.round(s)), total: predTotalFromScores(p.scores) }));
     if (!rows.length) return null;
-    const order = rankByScore(rows, 'predictedTotal');
+    const roster = Number.isInteger(o.roster) ? o.roster : rows.length;
+    const unread = Array.isArray(o.unread) ? o.unread.filter(k => typeof k === 'string') : [];
+    if (roster < rows.length) return null;
+    const place = competitionRanksForDay(rows);
     const players = new Map();
-    for (const row of rows) players.set(row.key, { r: row.r, t: row.predictedTotal, p: order.indexOf(row.key) + 1 });
+    for (const row of rows) players.set(row.key, { r: row.r, t: row.total, p: rows.length === 1 ? 1 : place[row.key] });
     return {
       date: o.date,
       takenAt: new Date(o.takenAtMs).toISOString(),
@@ -1284,6 +1305,9 @@
       through: typeof o.through === 'string' ? o.through : null,
       puzzle,
       puzzleDated: o.puzzleDated,
+      roster,
+      unread,
+      historyAt: typeof o.historyAt === 'string' && Number.isFinite(Date.parse(o.historyAt)) ? o.historyAt : null,
       players: Object.fromEntries(players),
     };
   }
@@ -1307,9 +1331,15 @@
     if (!s.players || typeof s.players !== 'object' || Array.isArray(s.players)) return false;
     const rows = Object.values(s.players);
     if (!rows.length) return false;
-    return rows.every(r => r && Array.isArray(r.r) && r.r.length === N_LOCS &&
+    if (!Number.isInteger(s.roster) || s.roster < rows.length) return false;
+    if (!Array.isArray(s.unread) || !s.unread.every(k => typeof k === 'string')) return false;
+    if (s.historyAt !== null && !Number.isFinite(Date.parse(s.historyAt))) return false;
+    if (!rows.every(r => r && Array.isArray(r.r) && r.r.length === N_LOCS &&
       r.r.every(v => Number.isInteger(v) && v >= 0 && v <= MAX_RAW) &&
-      Number.isInteger(r.t) && Number.isInteger(r.p) && r.p >= 1 && r.p <= rows.length);
+      Number.isInteger(r.t) && Number.isInteger(r.p))) return false;
+    // The place must be the competition rank of the stored totals.
+    const ranks = competitionRanksForDay(Object.entries(s.players).map(([key, r]) => ({ key, total: r.t })));
+    return Object.entries(s.players).every(([key, r]) => r.p === (rows.length === 1 ? 1 : ranks[key]));
   }
 
   // Read the stored map, keeping only well-formed pre-game entries under
@@ -1354,19 +1384,118 @@
     return !!snap && !!played && snap.puzzle === played;
   }
 
-  // The canonical snapshot of each date: the EARLIEST capture. Later
-  // captures of the same date (another device that had not synced yet, the
-  // scheduled job) are kept in storage but never replace the original.
-  // `playedCities` (optional Map date -> City[5]): where a day's played
-  // cities are known, only snapshots of that puzzle qualify, so a forecast
-  // made from a file MapTap later rewrote never stands for the day.
-  function canonicalSnapshots(map, playedCities) {
+  // The snapshot that stands for each date when forecasts are scored: the
+  // EARLIEST capture that qualifies. Later captures (another device that had
+  // not synced yet, the scheduled job) stay in storage but never replace it.
+  // `playedCities` (Map date -> City[5], the cities recorded for the day):
+  //   - where a day's played cities are known, only snapshots of that puzzle
+  //     qualify, so a forecast of a file MapTap later rewrote never counts;
+  //   - an undated snapshot (`puzzleDated: false`) qualifies ONLY once those
+  //     cities are known and match: its puzzle identity is otherwise unproven;
+  //   - a partial snapshot (`unread` not empty) qualifies only with
+  //     `{ includePartial: true }`, so a forecast missing players' fresh
+  //     results is never scored as the leaderboard the card would have shown.
+  function canonicalSnapshots(map, playedCities, options) {
+    const includePartial = !!(options && options.includePartial);
     const out = new Map();
     for (const s of Object.values(sanitizeSnapshots(map))) {
+      if (!includePartial && s.unread.length) continue;
       const played = playedCities && typeof playedCities.get === 'function' ? playedCities.get(s.date) : null;
-      if (played && allCitiesLocated(played) && !snapshotMatchesPuzzle(s, played)) continue;
+      const known = !!played && allCitiesLocated(played);
+      if (known && !snapshotMatchesPuzzle(s, played)) continue;
+      if (!s.puzzleDated && !known) continue;
       const cur = out.get(s.date);
       if (!cur || s.takenAt < cur.takenAt) out.set(s.date, s);
+    }
+    return out;
+  }
+
+  // The app's own prediction inputs, for the scheduled capture: each
+  // player's rounds exactly as myProfileRounds / rivalRounds hand them to the
+  // predictor, in that order (so the server's sums run in the same order and
+  // land on the same bits). A day's coordinates are written once in `days`
+  // and a row repeats them only when its own copy differs; names are dropped
+  // (the predictor reads coordinates only).
+  //   in:  { key: [{ date, cities, scores }] }
+  //   out: { days: { date: [[lat, lng] | null] x5 }, players: { key: [[date, scores, coords?]] } }
+  const coordPairs = (cities) => (Array.isArray(cities) ? cities : []).slice(0, N_LOCS)
+    .map(c => { const v = validLatLng(c); return v ? [v.lat, v.lng] : null; });
+  function encodeRoundsHistory(playerRounds) {
+    const days = new Map();
+    const players = new Map();
+    for (const [key, rounds] of Object.entries(playerRounds || {})) {
+      const rows = [];
+      for (const r of Array.isArray(rounds) ? rounds : []) {
+        if (!r || !parseDateISO(r.date) || !Array.isArray(r.scores) || r.scores.length !== N_LOCS) continue;
+        const pairs = coordPairs(r.cities);
+        if (pairs.length !== N_LOCS) continue;
+        const text = JSON.stringify(pairs);
+        if (!days.has(r.date) && allCitiesLocated(r.cities)) days.set(r.date, pairs);
+        const day = days.get(r.date);
+        const row = [r.date, r.scores.map(Number)];
+        if (!day || JSON.stringify(day) !== text) row.push(pairs);
+        rows.push(row);
+      }
+      players.set(key, rows);
+    }
+    return { days: Object.fromEntries(days), players: Object.fromEntries(players) };
+  }
+
+  // The inverse, from an untrusted upload: null when the shape is wrong or a
+  // bound is exceeded, otherwise { key: [{ date, cities, scores }] }.
+  const HISTORY_MAX_PLAYERS = 61;
+  const HISTORY_MAX_ROWS = 4000;
+  function decodeRoundsHistory(payload) {
+    if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return null;
+    const { days, players } = payload;
+    if (!days || typeof days !== 'object' || Array.isArray(days)) return null;
+    if (!players || typeof players !== 'object' || Array.isArray(players)) return null;
+    const okPair = (p) => p === null || (Array.isArray(p) && p.length === 2 && validLatLng({ lat: p[0], lng: p[1] }) !== null);
+    const okPairs = (a) => Array.isArray(a) && a.length === N_LOCS && a.every(okPair);
+    const dayMap = new Map();
+    const dayKeys = Object.keys(days);
+    if (dayKeys.length > HISTORY_MAX_ROWS) return null;
+    for (const d of dayKeys) {
+      if (!parseDateISO(d) || !okPairs(days[d])) return null;
+      dayMap.set(d, days[d]);
+    }
+    const keys = Object.keys(players);
+    if (keys.length > HISTORY_MAX_PLAYERS) return null;
+    const toCities = (pairs) => pairs.map(p => (p ? { lat: p[0], lng: p[1] } : { lat: null, lng: null }));
+    const out = new Map();
+    for (const key of keys) {
+      const rows = players[key];
+      if (!Array.isArray(rows) || rows.length > HISTORY_MAX_ROWS) return null;
+      const rounds = [];
+      for (const row of rows) {
+        if (!Array.isArray(row) || (row.length !== 2 && row.length !== 3)) return null;
+        const [date, scores, own] = row;
+        if (!parseDateISO(date) || !Array.isArray(scores) || !validRawScores(scores)) return null;
+        const pairs = row.length === 3 ? own : dayMap.get(date);
+        if (!okPairs(pairs)) return null;
+        rounds.push({ date, cities: toCities(pairs), scores: scores.slice() });
+      }
+      out.set(key, rounds);
+    }
+    return Object.fromEntries(out);
+  }
+
+  // A player's rounds for a scheduled capture: everything the app logged
+  // (`logged`, decoded from its upload) and, after it, each newer day from
+  // the public profile (`fresh`, roundsFromHistories) that the log does not
+  // hold yet, which is what the app would add on its next sync. A day the
+  // log holds is never replaced by the profile's copy, so a profile that now
+  // returns fewer days (Dean: 43 of 125) loses nothing. `days` is the
+  // uploaded day map: a fresh day another player already logged takes the
+  // log's copy of its cities, as the app's day map would give it.
+  function mergeLoggedAndFresh(logged, fresh, days) {
+    const out = Array.isArray(logged) ? logged.slice() : [];
+    const have = new Set(out.map(r => r.date));
+    const extra = (Array.isArray(fresh) ? fresh : []).filter(r => r && !have.has(r.date))
+      .sort((a, b) => a.date.localeCompare(b.date));
+    for (const r of extra) {
+      const pairs = days && Array.isArray(days[r.date]) ? days[r.date] : null;
+      out.push(pairs ? { date: r.date, scores: r.scores, cities: pairs.map(p => (p ? { lat: p[0], lng: p[1] } : { lat: null, lng: null })) } : r);
     }
     return out;
   }
@@ -2074,7 +2203,7 @@
     // pre-game prediction snapshots
     preGameCutoffMs, isPreGameInstant, puzzleFingerprint, buildPredictionSnapshot,
     snapshotId, sanitizeSnapshots, canonicalSnapshots, snapshotMatchesPuzzle, roundsFromHistories,
-    mergeSnapshotMaps, fnv1a,
+    mergeSnapshotMaps, fnv1a, encodeRoundsHistory, decodeRoundsHistory, mergeLoggedAndFresh,
     SNAPSHOT_SOURCES,
     // finishing positions
     finishPositionsForDay, fieldSharesForDay, competitionRanksForDay,

@@ -1651,3 +1651,31 @@ test('the Arena collection names match the ones the app writes', async () => {
     assert.ok(app.includes(`'${name}'`), `${name} must be the collection apps/arena/js/app.js writes`);
   }
 });
+
+// --- MapTap Rivals scheduled predictions: erased with the account -------------
+
+test('eraseScheduledPredictions: one DELETE of the whole account scope, with the account token, and a refusal is a failure', async () => {
+  const calls = [];
+  const ok = async (url, init) => { calls.push({ url, init }); return { ok: true, status: 200 }; };
+  await mod.eraseScheduledPredictions(ok);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].url, '/.netlify/functions/maptap-snapshots?scope=account');
+  assert.equal(calls[0].init.method, 'DELETE');
+  assert.equal(calls[0].init.headers.Authorization, 'Bearer fake-token');
+  for (const status of [401, 403, 500]) {
+    await assert.rejects(mod.eraseScheduledPredictions(async () => ({ ok: false, status })), new RegExp(String(status)));
+  }
+  await assert.rejects(mod.eraseScheduledPredictions(async () => { throw new Error('offline'); }), /offline/);
+  const saved = authFakes().currentUser;
+  authFakes().currentUser = null;
+  try {
+    await assert.rejects(mod.eraseScheduledPredictions(ok), /not signed in/);
+  } finally {
+    authFakes().currentUser = saved;
+  }
+});
+
+test('the deletion latch is readable by classic scripts (MapTap Rivals asks it before registering)', () => {
+  assert.equal(typeof globalThis.window.__shevatoAccountDeletionLatched, 'function');
+  assert.equal(globalThis.window.__shevatoAccountDeletionLatched('uid-nobody'), mod.isAccountDeletionLatched('uid-nobody'));
+});

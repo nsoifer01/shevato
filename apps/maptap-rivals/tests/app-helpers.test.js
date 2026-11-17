@@ -2607,14 +2607,18 @@ test('syncScheduledSnapshots: an enabled account gets the server\'s snapshots ad
   const app = loadApp(seed, { fetchImpl });
   app.firebaseAuth = { getCurrentUser: () => user };
   const r = await app._testExports.syncScheduledSnapshots();
-  assert.deepEqual(plain(r), { status: 200, added: 1 });
+  assert.deepEqual(plain(r), { status: 200, added: 1, registered: 'sent' });
   const stored = JSON.parse(app.localStorage.getItem('maptapRivalsPredictionSnapshots'));
   assert.equal(JSON.stringify(stored[S.snapshotId(server)]), JSON.stringify(server));
   assert.equal(stored[S.snapshotId(local)].model, local.model, 'a local entry is never replaced by the server\'s');
   assert.deepEqual(calls.map(c => c.method), ['GET', 'PUT']);
   assert.ok(calls.every(c => c.auth === 'Bearer token-u1'));
-  // Only rivals with a MapTap username, keyed by rival id; no names are sent.
-  assert.deepEqual(JSON.parse(calls[1].body), { me: 'me_user', rivals: [{ id: 'r0', username: 'a_user' }] });
+  // Every rival by id (a username where there is one), no names, and the
+  // round history the card reads.
+  const sent = JSON.parse(calls[1].body);
+  assert.deepEqual({ me: sent.me, rivals: sent.rivals }, { me: 'me_user', rivals: [{ id: 'r0', username: 'a_user' }, { id: 'r1', username: null }] });
+  assert.ok(!calls[1].body.includes('"A"') && !calls[1].body.includes('"B"'));
+  assert.deepEqual(Object.keys(sent.history.players).sort(), ['@me', 'r0', 'r1']);
   // Next page load, same roster: read only.
   const again = loadApp({ ...seed, maptapRivalsSnapshotRosterSent: JSON.parse(JSON.stringify(app.localStorage.getItem('maptapRivalsSnapshotRosterSent'))) }, { fetchImpl });
   again.firebaseAuth = { getCurrentUser: () => user };
@@ -2629,5 +2633,67 @@ test('syncScheduledSnapshots: signed out or a guest account sends nothing', asyn
   assert.equal(await app._testExports.syncScheduledSnapshots(), null);
   app.firebaseAuth = { getCurrentUser: () => ({ uid: 'g', isAnonymous: true, getIdToken: async () => 't' }) };
   assert.equal(await app._testExports.syncScheduledSnapshots(), null);
+  assert.equal(calls.length, 0);
+});
+
+test('scheduled registration: the uploaded history predicts exactly what the card predicts, for every player, on every day', () => {
+  const S = MapTapStats;
+  const fx = accuracyFixture();
+  const app = loadApp({ maptapRivalsRivals: fx.rivals, maptapRivalsGames: fx.games, maptapRivalsDays: fx.days });
+  const t = app._testExports;
+  const body = plain(t.scheduledRegistration());
+  assert.deepEqual(body.rivals.map(r => r.username), [null, null, null], 'rivals without a MapTap username are still in the roster');
+  const decoded = S.decodeRoundsHistory(body.history);
+  let compared = 0;
+  for (const date of Object.keys(fx.days)) {
+    const cities = t.storedPuzzleCities(date);
+    for (const key of ['@me', 'r0', 'r1', 'r2']) {
+      const app_ = t.predictRoundsForPlayer(key === '@me' ? t.myProfileRounds() : t.rivalRounds(key), cities, date);
+      const srv = S.predictRoundsForPlayer(decoded[key], cities, date);
+      assert.equal(JSON.stringify(srv), JSON.stringify(app_), `${key} ${date}`);
+      compared++;
+    }
+  }
+  assert.ok(compared > 400);
+});
+
+test('setScheduledCapture: off deletes and stops re-registering; on re-registers with optIn', async () => {
+  const calls = [];
+  let optedOut = false;
+  const fetchImpl = async (url, init = {}) => {
+    const method = init.method || 'GET';
+    calls.push({ method, body: init.body });
+    if (method === 'GET') return { ok: true, status: 200, json: async () => ({ snapshots: {}, optedOut, lastRun: null }) };
+    if (method === 'DELETE') { optedOut = true; return { ok: true, status: 200, json: async () => ({ ok: true }) }; }
+    return { ok: true, status: 200, json: async () => ({ ok: true }) };
+  };
+  const user = { uid: 'u1', isAnonymous: false, getIdToken: async () => 'token-u1' };
+  const seed = { maptapRivalsRivals: [{ id: 'r0', name: 'A', color: '#000', icon: 'x', createdAt: 1, maptapUsername: 'a_user' }], maptapRivalsMyMapTap: 'me_user' };
+  const app = loadApp(seed, { fetchImpl });
+  app.firebaseAuth = { getCurrentUser: () => user };
+  const t = app._testExports;
+  assert.equal(await t.setScheduledCapture(false), true);
+  assert.deepEqual(calls.map(c => c.method), ['DELETE']);
+  assert.equal(t.state.scheduledCapture.optedOut, true);
+  // A later page load reads, sees the opt-out, and sends nothing else.
+  const next = loadApp(seed, { fetchImpl });
+  next.firebaseAuth = { getCurrentUser: () => user };
+  calls.length = 0;
+  const r = await next._testExports.syncScheduledSnapshots();
+  assert.deepEqual([plain(r).registered, calls.map(c => c.method)], [null, ['GET']]);
+  // Turning it on again is explicit.
+  calls.length = 0;
+  assert.equal(await next._testExports.setScheduledCapture(true), true);
+  assert.deepEqual(calls.map(c => c.method), ['PUT']);
+  assert.equal(JSON.parse(calls[0].body).optIn, true);
+});
+
+test('scheduled capture: a tab never registers or reads while the account is being deleted', async () => {
+  const calls = [];
+  const app = loadApp({ maptapRivalsMyMapTap: 'me_user' }, { fetchImpl: async () => { calls.push(1); return { ok: true, status: 200, json: async () => ({}) }; } });
+  app.firebaseAuth = { getCurrentUser: () => ({ uid: 'u1', isAnonymous: false, getIdToken: async () => 't-u1' }) };
+  app.__shevatoAccountDeletionLatched = (uid) => uid === 'u1';
+  assert.equal(await app._testExports.syncScheduledSnapshots(), null);
+  assert.equal(await app._testExports.setScheduledCapture(true), false);
   assert.equal(calls.length, 0);
 });

@@ -67,9 +67,10 @@ const PREVIOUS = { date: '25 October 2026', digest: '5bedfb1680ecb51fd8de980848b
 const CURRENT = {
   // MapTap Rivals now saves pre-game prediction snapshots (predicted rounds,
   // total and place per player id) as a synced key, and its scheduled
-  // prediction function for accounts enabled by hand.
+  // prediction function for accounts enabled by hand, its opt-out and its
+  // deletion with the account.
   date: '17 November 2026',
-  digest: '23dd2796eabcead198db5b7003806c5e70b89e1e9f9bc3ec9bcc2d60ad8be30a',
+  digest: 'f661b50700d858d06dfab78cd9ec81710c6f8dbbd2757bdabe28356fa1e24649',
 };
 
 /**

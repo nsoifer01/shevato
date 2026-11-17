@@ -21,6 +21,7 @@ const {
   preGameCutoffMs, isPreGameInstant, puzzleFingerprint, buildPredictionSnapshot,
   snapshotId, sanitizeSnapshots, canonicalSnapshots, validLatLng, allCitiesLocated,
   mergeSnapshotMaps, snapshotMatchesPuzzle, roundsFromHistories, predictRoundsForPlayer,
+  encodeRoundsHistory, decodeRoundsHistory, mergeLoggedAndFresh,
   finishPositionsForDay, fieldSharesForDay, competitionRanksForDay,
   roundRanksForDay, podiumTier, accumulateFinishPositions,
   avgPositionColor, avgPositionColors,
@@ -1096,19 +1097,34 @@ function randomHitRateOracle(field, key) {
   }
   return hits / perms.length;
 }
-// Oracle: the predicted order compared pair by pair, ties in the predicted
-// total broken by name exactly as the card lists them.
+// Oracle: the predicted order compared pair by pair; a pair predicted level
+// is a coin flip, worth 0.5.
 function pairwiseOracle(field, key) {
   const me = field.find(e => e.key === key);
-  const ahead = (a, b) => a.predictedTotal > b.predictedTotal ||
-    (a.predictedTotal === b.predictedTotal && a.name.localeCompare(b.name) < 0);
   let right = 0, pairs = 0;
   for (const o of field) {
     if (o === me || o.actualTotal === me.actualTotal) continue;
     pairs++;
-    if (ahead(me, o) === (me.actualTotal > o.actualTotal)) right++;
+    if (o.predictedTotal === me.predictedTotal) right += 0.5;
+    else if ((me.predictedTotal > o.predictedTotal) === (me.actualTotal > o.actualTotal)) right++;
   }
   return { right, pairs };
+}
+// Oracle: the average, over every order the predicted totals allow (players
+// predicted level in either order), of landing inside the actual tied span.
+function predictedHitOracle(field, key) {
+  const me = field.find(e => e.key === key);
+  const above = field.filter(e => e.actualTotal > me.actualTotal).length;
+  const tied = field.filter(e => e.actualTotal === me.actualTotal).length;
+  let hits = 0, orders = 0;
+  for (const perm of permutations(field.length)) {
+    const order = perm.map(i => field[i]);
+    if (order.some((e, i) => i > 0 && order[i - 1].predictedTotal < e.predictedTotal)) continue;
+    orders++;
+    const slot = order.indexOf(me) + 1;
+    if (slot > above && slot <= above + tied) hits++;
+  }
+  return hits / orders;
 }
 
 test('rankAccuracyForDay: a hit is finishing in the predicted place', () => {
@@ -1119,7 +1135,7 @@ test('rankAccuracyForDay: a hit is finishing in the predicted place', () => {
   ];
   // Predicted a, b, c. Actual b (850), a (800), c (400): only c held its spot.
   const r = rankAccuracyForDay(day);
-  assert.deepEqual({ a: r.a.hit, b: r.b.hit, c: r.c.hit }, { a: false, b: false, c: true });
+  assert.deepEqual({ a: r.a.hit, b: r.b.hit, c: r.c.hit }, { a: 0, b: 0, c: 1 });
   for (const k of ['a', 'b', 'c']) closeTo(r[k].chance, 1 / 3);
   // a-b wrong, a-c right, b-c right.
   assert.deepEqual([r.a.pairsRight, r.a.pairs, r.b.pairsRight, r.b.pairs, r.c.pairsRight, r.c.pairs],
@@ -1137,7 +1153,7 @@ test('rankAccuracyForDay: players tied on the day both hit when predicted into t
     { key: 'c', name: 'Cid', predictedTotal: 500, actualTotal: 400 },
   ];
   const r = rankAccuracyForDay(day);
-  assert.deepEqual([r.a.hit, r.z.hit, r.c.hit], [true, true, true]);
+  assert.deepEqual([r.a.hit, r.z.hit, r.c.hit], [1, 1, 1]);
   closeTo(r.a.chance, 2 / 3);
   closeTo(r.c.chance, 1 / 3);
   // The tied pair has no right answer and is not counted.
@@ -1155,7 +1171,7 @@ test('rankAccuracyForDay: a player predicted outside the tied places still misse
   ];
   // Actual: Bob 1st, Ann and Cid tied over places 2-3. Predicted Ann 1st.
   const r = rankAccuracyForDay(day);
-  assert.deepEqual([r.a.hit, r.b.hit, r.c.hit], [false, false, true]);
+  assert.deepEqual([r.a.hit, r.b.hit, r.c.hit], [0, 0, 1]);
 });
 
 test('rankAccuracyForDay: matches the enumeration and pair oracles on random fields of 2 to 6 players', () => {
@@ -1172,9 +1188,13 @@ test('rankAccuracyForDay: matches the enumeration and pair oracles on random fie
     assert.equal(Object.keys(r).length, n);
     for (const e of field) {
       closeTo(r[e.key].chance, randomHitRateOracle(field, e.key));
+      closeTo(r[e.key].hit, predictedHitOracle(field, e.key));
       const pw = pairwiseOracle(field, e.key);
       assert.deepEqual([r[e.key].pairsRight, r[e.key].pairs], [pw.right, pw.pairs]);
     }
+    // No name can move any figure.
+    const renamed = field.map((e, i) => ({ ...e, name: names[names.length - 1 - i] }));
+    assert.deepEqual(rankAccuracyForDay(renamed), r);
   }
 });
 
@@ -1189,7 +1209,7 @@ test('rankAccuracyForDay: a player with no prediction is invisible to the rankin
   const r = rankAccuracyForDay(day);
   assert.equal('d' in r, false);
   // Dee's 1000 must not push everyone down a place.
-  assert.deepEqual([r.a.hit, r.b.hit, r.c.hit], [false, false, true]);
+  assert.deepEqual([r.a.hit, r.b.hit, r.c.hit], [0, 0, 1]);
 });
 
 test('rankAccuracyForDay: an absent player does not shift the places of those who played', () => {
@@ -1203,7 +1223,7 @@ test('rankAccuracyForDay: an absent player does not shift the places of those wh
   const without = withAbsentee.filter(e => e.key !== 'b');
   const r = rankAccuracyForDay(withAbsentee);
   assert.deepEqual(Object.keys(r).sort(), ['a', 'c', 'd']);
-  assert.ok(r.a.hit && r.c.hit && r.d.hit);
+  assert.deepEqual([r.a.hit, r.c.hit, r.d.hit], [1, 1, 1]);
   assert.deepEqual(r, rankAccuracyForDay(without));
 });
 
@@ -1961,8 +1981,8 @@ test('rankAccuracyForDay: a rival id of "__proto__" gets a record like anyone el
     ];
     const hits = rankAccuracyForDay(day);
     assert.deepEqual(Object.keys(hits).sort(), ['__proto__', 'r1']);
-    assert.equal(hits['__proto__'].hit, true);
-    assert.equal(hits.r1.hit, true);
+    assert.equal(hits['__proto__'].hit, 1);
+    assert.equal(hits.r1.hit, 1);
   });
 
 test('accumulateFinishPositions: a rival id of "__proto__" does not corrupt the other players',
@@ -2854,12 +2874,31 @@ test('buildPredictionSnapshot: stores rounded rounds, their weighted total and t
   assert.match(snap.puzzle, /^[0-9a-f]{8}$/);
 });
 
-test('buildPredictionSnapshot: equal predicted totals take the card order (name)', () => {
+test('buildPredictionSnapshot: equal predicted totals share a place, whatever the names or keys', () => {
   const snap = buildPredictionSnapshot(snapInput({ players: [
-    { key: 'b', name: 'Bob', scores: [90, 90, 90, 90, 90] },
-    { key: 'a', name: 'Ann', scores: [90, 90, 90, 90, 90] },
+    { key: 'b', scores: [90, 90, 90, 90, 90] },
+    { key: 'a', scores: [90, 90, 90, 90, 90] },
+    { key: 'c', scores: [80, 80, 80, 80, 80] },
   ] }));
-  assert.deepEqual([snap.players.a.p, snap.players.b.p], [1, 2]);
+  assert.deepEqual([snap.players.a.p, snap.players.b.p, snap.players.c.p], [1, 1, 3]);
+  // A stored place that is not the competition rank of the totals is refused.
+  const forged = JSON.parse(JSON.stringify(snap)); forged.players.b.p = 2;
+  assert.deepEqual(sanitizeSnapshots({ [snapshotId(forged)]: forged }), {});
+});
+
+test('rankAccuracyForDay: predicted level for 2nd and 3rd, finishing 2nd and 4th, scores 0.5 each, not a name order', () => {
+  const day = [
+    { key: 'w', name: 'Wes', predictedTotal: 900, actualTotal: 950 },
+    { key: 'a', name: 'Ann', predictedTotal: 800, actualTotal: 900 },
+    { key: 'z', name: 'Zed', predictedTotal: 800, actualTotal: 700 },
+    { key: 'c', name: 'Cid', predictedTotal: 700, actualTotal: 850 },
+  ];
+  const r = rankAccuracyForDay(day);
+  assert.deepEqual([r.w.hit, r.a.hit, r.z.hit, r.c.hit], [1, 0.5, 0, 0]);
+  // Ann vs Zed were predicted level: 0.5 of a pair.
+  assert.deepEqual([r.a.pairsRight, r.a.pairs], [2.5, 3]);
+  const acc = accumulateRankAccuracy([day, day]);
+  assert.equal(acc.a.hits, 1);
 });
 
 test('buildPredictionSnapshot: refuses anything that cannot be called pre-game or is not a forecast', () => {
@@ -2945,11 +2984,20 @@ test('snapshotMatchesPuzzle / canonicalSnapshots: an undated forecast counts onl
   assert.equal(snapshotMatchesPuzzle(later, played), true);
   assert.equal(snapshotMatchesPuzzle(later, played.slice(0, 4)), false);
   const map = { [snapshotId(early)]: early, [snapshotId(later)]: later };
-  // Without the played cities the earliest stands; with them, only the match.
-  assert.equal(canonicalSnapshots(map).get('2026-11-20').takenAt, early.takenAt);
+  // Undated: never scored until the played cities are known and match.
+  assert.equal(canonicalSnapshots(map).has('2026-11-20'), false);
   assert.equal(canonicalSnapshots(map, new Map([['2026-11-20', played]])).get('2026-11-20').takenAt, later.takenAt);
-  // A day whose played cities are unlocated cannot rule anything out.
-  assert.equal(canonicalSnapshots(map, new Map([['2026-11-20', [{ lat: null, lng: null }, ...played.slice(1)]]])).get('2026-11-20').takenAt, early.takenAt);
+  assert.equal(canonicalSnapshots(map, new Map([['2026-11-20', [{ lat: null, lng: null }, ...played.slice(1)]]])).has('2026-11-20'), false);
+  // A dated one stands on its own until the played cities say otherwise.
+  const dated = buildPredictionSnapshot(snapInput({ source: 'scheduled', puzzleDated: true, cities: rewritten, takenAtMs: Date.UTC(2026, 10, 18, 3, 17) }));
+  const dmap = { [snapshotId(dated)]: dated };
+  assert.equal(canonicalSnapshots(dmap).get('2026-11-20').takenAt, dated.takenAt);
+  assert.equal(canonicalSnapshots(dmap, new Map([['2026-11-20', played]])).has('2026-11-20'), false);
+  // A partial capture is never scored unless asked for.
+  const partial = buildPredictionSnapshot(snapInput({ source: 'scheduled', puzzleDated: true, unread: ['r2'], takenAtMs: Date.UTC(2026, 10, 17, 3, 17) }));
+  const pmap = { [snapshotId(partial)]: partial, [snapshotId(dated)]: dated };
+  assert.equal(canonicalSnapshots(pmap).get('2026-11-20').takenAt, dated.takenAt);
+  assert.equal(canonicalSnapshots(pmap, null, { includePartial: true }).get('2026-11-20').takenAt, partial.takenAt);
 });
 
 test('mergeSnapshotMaps: adds new entries only, never replaces or removes, counts what it skipped', () => {
@@ -3037,4 +3085,71 @@ test('pre-game cutoff is the same instant in every timezone the app can run in',
   assert.equal(new Set(runs).size, 1, runs.join('\n'));
   const [nov18] = JSON.parse(runs[0]);
   assert.deepEqual(nov18, [Date.UTC(2026, 10, 17, 10), true, false]);
+});
+
+test('buildPredictionSnapshot: records coverage, and refuses a roster smaller than the players it predicts', () => {
+  const snap = buildPredictionSnapshot(snapInput({ roster: 6, unread: ['r9'], historyAt: '2026-11-17T08:00:00.000Z' }));
+  assert.deepEqual([snap.roster, snap.unread, snap.historyAt], [6, ['r9'], '2026-11-17T08:00:00.000Z']);
+  const plain = buildPredictionSnapshot(snapInput());
+  assert.deepEqual([plain.roster, plain.unread, plain.historyAt], [3, [], null]);
+  assert.equal(buildPredictionSnapshot(snapInput({ roster: 2 })), null);
+  const noCoverage = { ...plain }; delete noCoverage.unread;
+  assert.deepEqual(sanitizeSnapshots({ [snapshotId(noCoverage)]: noCoverage }), {});
+});
+
+test('encodeRoundsHistory / decodeRoundsHistory: the round trip predicts bit-identically, in the same order', () => {
+  const A = LOCATED, B = LOCATED.map(c => ({ lat: c.lat + 1, lng: c.lng - 1 }));
+  const nameOnly = LOCATED.map((c, i) => ({ lat: null, lng: null, name: 'n' + i }));
+  const rounds = {
+    '@me': [
+      { date: '2026-11-03', cities: A, scores: [90, 91, 92, 93, 94] },
+      { date: '2026-11-01', cities: B, scores: [50, 60, 70, 80, 90] },   // insertion order, not date order
+      { date: '2026-11-02', cities: nameOnly, scores: [1, 2, 3, 4, 5] },
+    ],
+    r1: [
+      { date: '2026-11-01', cities: B, scores: [80, 80, 80, 80, 80] },
+      { date: '2026-11-03', cities: B, scores: [70, 71, 72, 73, 74] },  // its own copy differs from the day's
+    ],
+  };
+  const enc = JSON.parse(JSON.stringify(encodeRoundsHistory(rounds)));
+  assert.equal(enc.players.r1[1].length, 3, 'a differing copy is written on the row');
+  assert.equal(enc.players.r1[0].length, 2, 'a copy equal to the day is not repeated');
+  assert.ok(!JSON.stringify(enc).includes('n0'), 'no names');
+  const dec = decodeRoundsHistory(enc);
+  assert.deepEqual(dec['@me'].map(r => r.date), ['2026-11-03', '2026-11-01', '2026-11-02']);
+  for (const key of ['@me', 'r1']) {
+    for (const target of [A, B]) {
+      assert.deepEqual(predictRoundsForPlayer(dec[key], target, '2026-11-10'), predictRoundsForPlayer(rounds[key], target, '2026-11-10'));
+    }
+  }
+});
+
+test('decodeRoundsHistory: anything malformed or oversized is refused whole', () => {
+  const ok = encodeRoundsHistory({ '@me': [{ date: '2026-11-01', cities: LOCATED, scores: [1, 2, 3, 4, 5] }] });
+  assert.ok(decodeRoundsHistory(ok));
+  const bad = [
+    null, [], { days: {}, players: [] }, { days: { 'x': [] }, players: {} },
+    { days: ok.days, players: { '@me': [['2026-11-01', [1, 2, 3, 4, 101]]] } },
+    { days: ok.days, players: { '@me': [['2026-02-30', [1, 2, 3, 4, 5]]] } },
+    { days: {}, players: { '@me': [['2026-11-01', [1, 2, 3, 4, 5]]] } },            // no cities anywhere
+    { days: ok.days, players: { '@me': [['2026-11-01', [1, 2, 3, 4, 5], [[91, 0], null, null, null, null]]] } },
+    { days: ok.days, players: Object.fromEntries(Array.from({ length: 62 }, (_, i) => ['p' + i, []])) },
+  ];
+  for (const b of bad) assert.equal(decodeRoundsHistory(b), null, JSON.stringify(b).slice(0, 80));
+});
+
+test('mergeLoggedAndFresh: the log wins every day it holds; only newer profile days are added, with the log\'s day copy', () => {
+  const logged = [{ date: '2026-03-22', cities: LOCATED, scores: [9, 9, 9, 9, 9] }, { date: '2026-11-10', cities: LOCATED, scores: [8, 8, 8, 8, 8] }];
+  const other = LOCATED.map(c => ({ lat: c.lat + 2, lng: c.lng }));
+  const fresh = [
+    { date: '2026-11-12', cities: other, scores: [7, 7, 7, 7, 7] },
+    { date: '2026-11-10', cities: other, scores: [0, 0, 0, 0, 0] },   // the log holds it: ignored
+    { date: '2026-11-11', cities: other, scores: [6, 6, 6, 6, 6] },
+  ];
+  // A profile that no longer returns 2026-03-22 loses nothing.
+  const out = mergeLoggedAndFresh(logged, fresh, { '2026-11-12': LOCATED.map(c => [c.lat, c.lng]) });
+  assert.deepEqual(out.map(r => [r.date, r.scores[0]]), [['2026-03-22', 9], ['2026-11-10', 8], ['2026-11-11', 6], ['2026-11-12', 7]]);
+  assert.deepEqual(out[3].cities.map(c => c.lat), LOCATED.map(c => c.lat));
+  assert.equal(out[2].cities, other);
+  assert.deepEqual(mergeLoggedAndFresh(undefined, fresh, {}).map(r => r.date), ['2026-11-10', '2026-11-11', '2026-11-12']);
 });

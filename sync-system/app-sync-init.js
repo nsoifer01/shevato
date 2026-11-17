@@ -17,6 +17,7 @@ import {
   eraseArenaIdentity,
   eraseAccountProfile,
   eraseRivalNetworkIdentity,
+  eraseScheduledPredictions,
   registerLocalNamespaces,
   beginAccountDeletion,
   endAccountDeletion,
@@ -580,6 +581,10 @@ export async function deleteAccount({ confirmation, password, user } = {}) {
     // head-to-head records are anonymised. Before this, all three survived a
     // full account deletion and privacy.html had to say so.
     targets.push({ target: 'Arena leaderboard and scores', run: eraseArenaIdentity });
+    // MapTap Rivals' scheduled predictions live on the site's own server, not
+    // in Firestore, so they are deleted through that function, while the auth
+    // user still exists to prove who is asking.
+    targets.push({ target: 'MapTap Rivals scheduled predictions', run: () => eraseScheduledPredictions() });
 
     for (const { target, run } of targets) {
       try {

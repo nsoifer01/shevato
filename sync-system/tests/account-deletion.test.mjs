@@ -111,6 +111,17 @@ test('deletion attempts every namespace the config declares, plus the account ro
   // profile in fields on it, and Firestore deletes are not recursive.
   assert.ok(h.calls().includes('eraseAccountProfile'));
   assert.ok(h.calls().includes('eraseRivalNetworkIdentity'));
+  // MapTap Rivals' scheduled predictions live on the site's server, outside
+  // Firestore, and must go with the account.
+  assert.ok(h.calls().includes('eraseScheduledPredictions'));
+});
+
+test('a failed scheduled-predictions delete is reported by name and keeps the account', async () => {
+  const h = setup({ failures: { eraseScheduledPredictions: 'the prediction service answered 503' } });
+  const result = await deleteAccount({ confirmation: 'DELETE', password: 'pw' });
+  assert.equal(result.ok, false);
+  assert.ok(result.failed.some(f => f.target === 'MapTap Rivals scheduled predictions'));
+  assert.ok(!h.calls().some(c => c.startsWith('deleteUser')), 'the credential survives, so the user can retry');
 });
 
 test('every app in APP_SYNC_CONFIG has its namespace deleted, so a new app cannot be missed', async () => {

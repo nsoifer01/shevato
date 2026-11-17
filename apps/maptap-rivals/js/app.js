@@ -203,6 +203,7 @@
     isoWeekId, monthId, periodRecords, runningRivalPeriodRecords, periodTallyText,
     accumulateRankAccuracy,
     buildPredictionSnapshot, snapshotId, sanitizeSnapshots, isPreGameInstant, mergeSnapshotMaps, fnv1a,
+    encodeRoundsHistory,
     // The predictor and the daily-file parser live in stats.js so the
     // scheduled snapshot function runs the same code (moved 2026-11-17).
     predictRoundsForPlayer, flattenRoundsForPrediction, PREDICTION_MODEL_VERSION,
@@ -2120,6 +2121,13 @@
   // fully located. The first capture of a date stays its canonical snapshot
   // (canonicalSnapshots); nothing here edits or removes an entry, and
   // entries this code cannot read are left in storage untouched.
+  // Every player the app predicts, the user first, with the rounds the card
+  // reads: the input to both capture paths.
+  function predictionPlayers() {
+    return [{ key: MY_PLAYER_KEY, rounds: myProfileRounds() }]
+      .concat(state.rivals.map(r => ({ key: r.id, rounds: rivalRounds(r.id) })));
+  }
+
   function capturePreGameSnapshots() {
     const now = Date.now();
     const due = (state.predictWindow || []).filter(e =>
@@ -2128,8 +2136,7 @@
     const raw = load(KEY.SNAPSHOTS, null);
     const stored = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
     const have = new Set(Object.values(sanitizeSnapshots(stored)).map(snap => snap.date));
-    const players = [{ key: MY_PLAYER_KEY, name: state.me || 'You', rounds: myProfileRounds() }]
-      .concat(state.rivals.map(r => ({ key: r.id, name: r.name, rounds: rivalRounds(r.id) })));
+    const players = predictionPlayers();
     let changed = false;
     for (const entry of due) {
       if (have.has(entry.iso)) continue;
@@ -2141,14 +2148,18 @@
         date: entry.iso,
         takenAtMs: now,
         model: PREDICTION_MODEL_VERSION,
-        // The device only ever captures a puzzle verified for its date.
+        // The device only ever captures a puzzle verified for its date, from
+        // the very log the card reads, so it is complete by construction.
         source: 'device',
         puzzleDated: true,
         through,
         cities: entry.cities,
+        roster: players.length,
+        unread: [],
+        historyAt: null,
         players: players.map(p => {
           const pred = predictRoundsForPlayer(p.rounds, entry.cities, entry.iso);
-          return { key: p.key, name: p.name, scores: pred ? pred.scores : null };
+          return { key: p.key, scores: pred ? pred.scores : null };
         }),
       });
       if (!snap) continue;
@@ -2163,16 +2174,43 @@
   // on the server whether or not the app is open, for accounts the site has
   // enabled. Once per page load, for a signed-in account: read what the
   // server holds and add it to the synced snapshot map (never replacing an
-  // entry), then register the roster the server should predict, but only if
-  // it changed since this device last sent it. An account that is not
-  // enabled gets a 403 on the read and nothing else is sent: no usernames
-  // leave the device for it.
+  // entry); then, unless the account turned capture off, register what the
+  // server needs to predict exactly as the card does: every player by id
+  // (with a MapTap username where there is one, so newer days can be read
+  // from MapTap) and the round history the card reads (encodeRoundsHistory),
+  // sent only when it changed since this device last sent it. An account that
+  // is not enabled gets a 403 on the read and nothing else is sent. A tab never
+  // registers an account that is being deleted (the sync layer's latch).
   const SNAPSHOT_ENDPOINT = '/.netlify/functions/maptap-snapshots';
   let scheduledSnapshotsStarted = false;
+  const deletionLatched = (u) => typeof window.__shevatoAccountDeletionLatched === 'function' &&
+    !!window.__shevatoAccountDeletionLatched(u.uid);
+  function scheduledRegistration() {
+    const players = predictionPlayers();
+    const rounds = {};
+    for (const p of players) rounds[p.key] = p.rounds;
+    return {
+      me: state.myMapTap || null,
+      rivals: state.rivals.map(r => ({ id: r.id, username: r.maptapUsername || null })),
+      history: encodeRoundsHistory(rounds),
+    };
+  }
+  async function putRegistration(u, auth, optIn) {
+    if (deletionLatched(u)) return null;
+    const body = scheduledRegistration();
+    const sig = fnv1a(u.uid + '|' + JSON.stringify(body));
+    if (!optIn && localStorage.getItem(KEY.SNAPSHOT_ROSTER_SENT) === sig) return 'unchanged';
+    const put = await fetch(SNAPSHOT_ENDPOINT, {
+      method: 'PUT', headers: { ...auth, 'Content-Type': 'application/json' },
+      body: JSON.stringify(optIn ? { ...body, optIn: true } : body),
+    });
+    if (put.ok) localStorage.setItem(KEY.SNAPSHOT_ROSTER_SENT, sig);
+    return put.ok ? 'sent' : put.status;
+  }
   async function syncScheduledSnapshots() {
     if (scheduledSnapshotsStarted) return null;
     const u = authUser();
-    if (!isRegisteredUser(u) || typeof u.getIdToken !== 'function') return null;
+    if (!isRegisteredUser(u) || typeof u.getIdToken !== 'function' || deletionLatched(u)) return null;
     scheduledSnapshotsStarted = true;
     try {
       const auth = { Authorization: 'Bearer ' + await u.getIdToken() };
@@ -2181,20 +2219,37 @@
       const body = await res.json();
       const merge = mergeSnapshotMaps(load(KEY.SNAPSHOTS, null), body && body.snapshots);
       if (merge.added) save(KEY.SNAPSHOTS, merge.merged);
-      const roster = {
-        me: state.myMapTap || null,
-        rivals: state.rivals.filter(r => r.maptapUsername).map(r => ({ id: r.id, username: r.maptapUsername })),
-      };
-      const sig = fnv1a(u.uid + '|' + JSON.stringify(roster));
-      if ((roster.me || roster.rivals.length) && localStorage.getItem(KEY.SNAPSHOT_ROSTER_SENT) !== sig) {
-        const put = await fetch(SNAPSHOT_ENDPOINT, {
-          method: 'PUT', headers: { ...auth, 'Content-Type': 'application/json' }, body: JSON.stringify(roster),
-        });
-        if (put.ok) localStorage.setItem(KEY.SNAPSHOT_ROSTER_SENT, sig);
-      }
-      return { status: res.status, added: merge.added };
+      state.scheduledCapture = { optedOut: !!body.optedOut, lastRun: body.lastRun || null };
+      const registered = body.optedOut ? null : await putRegistration(u, auth, false);
+      if (state.view === 'dashboard') renderProfileCard();
+      return { status: res.status, added: merge.added, registered };
     } catch (_) {
       return null;  // offline or the function is down: the next page load retries
+    }
+  }
+
+  // The account's on/off switch for scheduled capture (the profile card).
+  // Off deletes everything the function holds for the account and leaves an
+  // opt-out marker that refuses any device's roster until it is turned on
+  // here again; on re-registers immediately.
+  async function setScheduledCapture(on) {
+    const u = authUser();
+    if (!isRegisteredUser(u) || typeof u.getIdToken !== 'function' || deletionLatched(u)) return false;
+    try {
+      const auth = { Authorization: 'Bearer ' + await u.getIdToken() };
+      if (!on) {
+        const res = await fetch(SNAPSHOT_ENDPOINT, { method: 'DELETE', headers: auth, cache: 'no-store' });
+        if (!res.ok) return false;
+        localStorage.removeItem(KEY.SNAPSHOT_ROSTER_SENT);
+        state.scheduledCapture = { optedOut: true, lastRun: null };
+      } else {
+        if ((await putRegistration(u, auth, true)) !== 'sent') return false;
+        state.scheduledCapture = { optedOut: false, lastRun: null };
+      }
+      if (state.view === 'dashboard') renderProfileCard();
+      return true;
+    } catch (_) {
+      return false;
     }
   }
 
@@ -2214,14 +2269,17 @@
   // The chips show the rates because those compare across players with
   // different amounts of history; the raw counts, the random-order baseline
   // for the same days and the tie rule live in the tooltips.
+  // A predicted tie earns a share of a hit (or of a pair), so counts can be
+  // fractional: shown to one decimal only when they are.
+  const fmtCount = (x) => (Number.isInteger(x) ? String(x) : x.toFixed(1));
   function makeHitBadge(record) {
     if (!record || !record.eligible) return null;
     const pct = Math.round((record.hits / record.eligible) * 100);
     const chance = Math.round((record.chance / record.eligible) * 100);
-    const title = `Finished in the predicted place on ${record.hits} of ` +
+    const title = `Finished in the predicted place on ${fmtCount(record.hits)} of ` +
       `${countNoun(record.eligible, 'past day')} with a prediction (${pct}%). ` +
       `A random order would get about ${chance}% on the same days. ` +
-      'A tie counts when the predicted place is one of the tied places.';
+      'Tied places count as shared, predicted or actual.';
     const hot = record.hits * 2 >= record.eligible;
     return el('span', {
       class: 'pred-hit-badge' + (hot ? ' is-hot' : ''),
@@ -2235,9 +2293,9 @@
   function makeOrderBadge(record) {
     if (!record || !record.pairs) return null;
     const pct = Math.round((record.pairsRight / record.pairs) * 100);
-    const title = `Predicted order right in ${record.pairsRight} of ` +
+    const title = `Predicted order right in ${fmtCount(record.pairsRight)} of ` +
       `${countNoun(record.pairs, 'head-to-head')} on the same days (${pct}%). ` +
-      'A coin flip gets 50%. Tied finishes are left out.';
+      'A coin flip gets 50%. Tied finishes are left out; a pair predicted level counts half.';
     return el('span', { class: 'pred-hit-badge', title, 'aria-label': title }, [
       el('span', { class: 'pred-hit-label' }, 'Order'),
       el('span', { class: 'pred-hit-num' }, `${pct}%`),
@@ -6688,6 +6746,8 @@
         body.appendChild(el('div', { class: 'profile-meta-line' },
           `Last checked ${shortDate(p.verifiedAt) || 'unknown'}${p.mostRecentDate ? ` · most recent MapTap game ${shortDate(p.mostRecentDate)}` : ''}`));
       }
+      const capture = makeScheduledCaptureLine();
+      if (capture) body.appendChild(capture);
     } else if (!editing && hasUsername) {
       body.appendChild(el('div', { class: 'profile-status-line' }, [
         el('span', { class: 'tag warn' }, '⚠ Not linked yet'),
@@ -6701,6 +6761,29 @@
         ' to update every rivalry in one shot.',
       ]));
     }
+  }
+
+  // One quiet line, only for an account the site enabled for scheduled
+  // capture (the server answered the read): whether it is on, how the last
+  // run went, and the switch.
+  function makeScheduledCaptureLine() {
+    const sc = state.scheduledCapture;
+    if (!sc) return null;
+    const run = sc.lastRun;
+    let text;
+    if (sc.optedOut) text = 'Scheduled predictions: off';
+    else if (!run) text = 'Scheduled predictions: on';
+    else if (run.status === 'captured' || run.status === 'exists') {
+      text = `Scheduled predictions: on · ${shortDate(run.target)} saved${run.complete === false ? ' (some players not refreshed)' : ''}`;
+    } else text = `Scheduled predictions: on · last run ${shortDate(String(run.at).slice(0, 10))}: ${String(run.status).replace(/-/g, ' ')}`;
+    return el('div', { class: 'profile-meta-line' }, [
+      text + ' · ',
+      el('button', {
+        type: 'button',
+        class: 'link-btn',
+        onclick: () => setScheduledCapture(!!sc.optedOut),
+      }, sc.optedOut ? 'Turn on' : 'Turn off'),
+    ]);
   }
 
   // Put the profile card into edit mode and focus its username input,
@@ -8952,6 +9035,8 @@
       positionHitRecords,
       capturePreGameSnapshots,
       syncScheduledSnapshots,
+      setScheduledCapture,
+      scheduledRegistration,
       backupPayload,
       importSnapshotsFrom,
       PREDICTION_MODEL_VERSION,

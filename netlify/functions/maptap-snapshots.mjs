@@ -6,7 +6,7 @@ import { SNAPSHOT_STORE, handleSnapshots } from './lib/maptap-snapshots.mjs';
 export default async (request) => {
   const { getStore } = await import('@netlify/blobs');
   return handleSnapshots(request, {
-    store: getStore(SNAPSHOT_STORE),
+    store: getStore({ name: SNAPSHOT_STORE, consistency: 'strong' }),
     allowlist: process.env.MAPTAP_SNAPSHOT_UIDS,
   });
 };

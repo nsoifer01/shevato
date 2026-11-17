@@ -205,10 +205,13 @@ export async function run({ base, cdpPort }) {
     const acc = JSON.parse(await evaluate(s, ACC));
     const accOk = acc.length >= 2 && acc.every(([spot, order]) => {
       if (!spot || !order || spot.label !== 'Spot-on' || order.label !== 'Order') return false;
-      const sm = /on (\d+) of (\d+) past days? with a prediction \((\d+)%\)\. A random order would get about (\d+)% on the same days\. A tie counts when the predicted place is one of the tied places\./.exec(spot.title);
-      const om = /right in (\d+) of (\d+) head-to-heads? on the same days \((\d+)%\)\. A coin flip gets 50%\. Tied finishes are left out\./.exec(order.title);
-      return sm && om && spot.num === `${Math.round(100 * sm[1] / sm[2])}%` && sm[3] + '%' === spot.num &&
-        order.num === `${Math.round(100 * om[1] / om[2])}%` && om[3] + '%' === order.num;
+      const sm = /on (\d+(?:\.\d)?) of (\d+) past days? with a prediction \((\d+)%\)\. A random order would get about (\d+)% on the same days\. Tied places count as shared, predicted or actual\./.exec(spot.title);
+      const om = /right in (\d+(?:\.\d)?) of (\d+) head-to-heads? on the same days \((\d+)%\)\. A coin flip gets 50%\. Tied finishes are left out; a pair predicted level counts half\./.exec(order.title);
+      // Counts are shown to one decimal when a predicted tie made them
+      // fractional, so the rate they imply may round one point either way.
+      const near = (m, num) => Math.abs(Math.round(100 * Number(m[1]) / Number(m[2])) - parseInt(num, 10)) <= 1;
+      return sm && om && near(sm, spot.num) && sm[3] + '%' === spot.num &&
+        near(om, order.num) && om[3] + '%' === order.num;
     });
     t('predictions card: Spot-on and Order chips agree with their own tooltip counts, baselines named', accOk, JSON.stringify(acc).slice(0, 400));
 

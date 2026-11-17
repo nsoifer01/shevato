@@ -5983,6 +5983,24 @@ body.maptap-rivals-app select option {
   font-size: 0.74rem;
   color: var(--muted-2);
 }
+/* The scheduled-capture switch inside that line: plain underlined text in
+   the line's own size, pinned against main.css's forced button colour. */
+.profile-meta-line .link-btn {
+  display: inline;
+  height: auto;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none !important;
+  color: var(--accent) !important;
+  font: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+.profile-meta-line .link-btn:hover { color: var(--text) !important; }
 
 /* ---- horizontal scrollers announce themselves (audit #14). app.js sets
    data-scroll="none|start|middle|end" on each; the tab strips fade the edge
