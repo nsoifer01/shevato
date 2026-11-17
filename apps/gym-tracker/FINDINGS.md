@@ -789,6 +789,21 @@ so `privacy.html` now says it holds a note that the question is waiting for an
 answer before it holds the answer; the note is the status alone, with no
 timestamp, because nothing needs to know when the question first came up.
 
+**Open: a units-migration boot where `app.js` never runs (issue #676).** A
+different failure of the same checks, not the race above: in 3 of 34 full
+six-shard parallel runs (2026-11-16) a boot loaded `index.html` under the
+service worker, ran the async sync modules and fired load, but `window.gymApp`
+never appeared and no console error was logged beyond the harness's GTM
+refusal. CPU slowness, a module missing from the precache and a failed module
+download through the worker were each measured and do not fit. A truncated
+`index.html` (the `app.js` tag is 12 lines from the end) fits every
+observation and reproduces the symptom when served on purpose, but is
+unproven. It never reproduced outside the full parallel run (0 of 35 focused
+runs). `e2e/boot-diagnostic.mjs` records any such boot in this suite (a
+`GYM-BOOT-DIAG` line plus a JSON file in `.screenshots/gym-boot-diag/`, which
+CI uploads with a failed shard); read that report before changing the service
+worker or the harness.
+
 **Profiles the race already damaged cannot be identified, and that was
 checked, not assumed (2026-09-14).** The old reconciler turned unanswered legacy
 measurements into structurally valid canonical records without converting

@@ -285,12 +285,17 @@ jobs:
           BROWSER_TEST_CI: '1'
         run: npm run test:browser -- --shard=${{ matrix.shard }}/${{ strategy.job-total }}
 
+      # include-hidden-files: upload-artifact treats every file under a
+      # dot-directory as hidden and skips it by default, so without this the
+      # step found "no files" under .screenshots/ and never uploaded anything
+      # (measured 2026-11-17 on an induced Gym boot failure, issue #676).
       - name: Keep failure screenshots
         if: failure()
         uses: actions/upload-artifact@v7
         with:
           name: browser-shard-${{ matrix.shard }}-screenshots
           path: .screenshots/
+          include-hidden-files: true
           if-no-files-found: ignore
           retention-days: 14
 
