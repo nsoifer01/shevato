@@ -1,6 +1,250 @@
 {
   "updates": [
     {
+      "builtAt": "2026-11-20T15:22:56.062Z",
+      "totals": {
+        "seasons": 67975,
+        "delta": 15
+      },
+      "shapeCounts": {
+        "rebound": 9836,
+        "big-finale": 11895,
+        "u-shaped": 2671,
+        "rollercoaster": 13551,
+        "mid-peak": 4388,
+        "consistent": 2549,
+        "bad-finale": 4384,
+        "front-loaded": 3103,
+        "slow-burn": 4001,
+        "declining": 1651,
+        "saved-best-for-last": 1380,
+        "shape-drift": 1395,
+        "rising": 2397
+      },
+      "shapeDeltas": {
+        "rebound": 10,
+        "big-finale": -2,
+        "u-shaped": 1,
+        "rollercoaster": 4,
+        "mid-peak": 2,
+        "consistent": 1,
+        "bad-finale": -4,
+        "front-loaded": 4,
+        "slow-burn": -2,
+        "declining": 1,
+        "saved-best-for-last": -3,
+        "rising": 3
+      },
+      "added": [
+        {
+          "seriesId": "tt15295490",
+          "title": "Campus Diaries",
+          "season": 2,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt0068148",
+          "title": "Wait Till Your Father Gets Home",
+          "season": 3,
+          "seasonYear": 1974
+        },
+        {
+          "seriesId": "tt0419304",
+          "title": "Die Alm - Promischweiß und Edelweiß",
+          "season": 2,
+          "seasonYear": 2011
+        },
+        {
+          "seriesId": "tt37253101",
+          "title": "Hunting Alice Bell",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt9181662",
+          "title": "Just Roll with It",
+          "season": 2,
+          "seasonYear": 2020
+        },
+        {
+          "seriesId": "tt9307028",
+          "title": "Windy City Rehab",
+          "season": 2,
+          "seasonYear": 2020
+        },
+        {
+          "seriesId": "tt40939600",
+          "title": "Crime and Punishment in America",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt44079238",
+          "title": "The Law of Beasts",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt41559886",
+          "title": "Gordon",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt3357710",
+          "title": "Blind Film Critic",
+          "season": 1,
+          "seasonYear": 2011
+        },
+        {
+          "seriesId": "tt0352110",
+          "title": "TV Burp",
+          "season": 5,
+          "seasonYear": 2006
+        },
+        {
+          "seriesId": "tt6771876",
+          "title": "Cold War: Armageddon",
+          "season": 1,
+          "seasonYear": 2015
+        },
+        {
+          "seriesId": "tt28656130",
+          "title": "Teoriya bolshikh deneg",
+          "season": 1,
+          "seasonYear": 2023
+        },
+        {
+          "seriesId": "tt38590149",
+          "title": "Antigang",
+          "season": 1,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt38896081",
+          "title": "Karma",
+          "season": 2,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt36983579",
+          "title": "When I Meet the Moon",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt6405196",
+          "title": "Father Is Strange",
+          "season": 1,
+          "seasonYear": 2017
+        }
+      ],
+      "removed": [
+        {
+          "seriesId": "tt0094509",
+          "title": "Medisch Centrum West",
+          "season": 8,
+          "seasonYear": 2024
+        },
+        {
+          "seriesId": "tt0094509",
+          "title": "Medisch Centrum West",
+          "season": 9,
+          "seasonYear": 2025
+        }
+      ],
+      "ratingSwings": [
+        {
+          "seriesId": "tt12245638",
+          "title": "Ordem Paranormal",
+          "season": 7,
+          "from": 8.7,
+          "to": 7.77,
+          "delta": -0.93
+        },
+        {
+          "seriesId": "tt36694933",
+          "title": "90 Day: Hunt for Love",
+          "season": 2,
+          "from": 6.8,
+          "to": 5.92,
+          "delta": -0.88
+        },
+        {
+          "seriesId": "tt4648640",
+          "title": "Talking Tom & Friends",
+          "season": 4,
+          "from": 8.5,
+          "to": 7.74,
+          "delta": -0.76
+        },
+        {
+          "seriesId": "tt2582752",
+          "title": "Sniper: Weapon of Retaliation",
+          "season": 1,
+          "from": 6.98,
+          "to": 6.23,
+          "delta": -0.75
+        },
+        {
+          "seriesId": "tt10023178",
+          "title": "A Little Late with Lilly Singh",
+          "season": 2,
+          "from": 5.46,
+          "to": 4.74,
+          "delta": -0.72
+        },
+        {
+          "seriesId": "tt6800294",
+          "title": "Arctic Circle",
+          "season": 5,
+          "from": 7.68,
+          "to": 6.97,
+          "delta": -0.71
+        },
+        {
+          "seriesId": "tt37599841",
+          "title": "Skibidi Toilet Multiverse",
+          "season": 4,
+          "from": 5.8,
+          "to": 6.5,
+          "delta": 0.7
+        },
+        {
+          "seriesId": "tt4648640",
+          "title": "Talking Tom & Friends",
+          "season": 3,
+          "from": 8.53,
+          "to": 7.84,
+          "delta": -0.69
+        },
+        {
+          "seriesId": "tt0108927",
+          "title": "Sister, Sister",
+          "season": 6,
+          "from": 8.01,
+          "to": 7.34,
+          "delta": -0.67
+        },
+        {
+          "seriesId": "tt6636246",
+          "title": "Ackley Bridge",
+          "season": 5,
+          "from": 6.45,
+          "to": 7.1,
+          "delta": 0.65
+        }
+      ],
+      "modifiedCounts": {
+        "seriesVotes": 19318,
+        "avgRating": 1179,
+        "shapes": 219,
+        "episodeCount": 92,
+        "seriesRating": 261,
+        "overview": 1
+      }
+    },
+    {
       "builtAt": "2026-11-19T15:56:04.613Z",
       "totals": {
         "seasons": 67960,
@@ -7557,226 +7801,6 @@
         "shapes": 169,
         "seriesRating": 233,
         "episodeCount": 66
-      }
-    },
-    {
-      "builtAt": "2026-10-21T11:47:49.253Z",
-      "totals": {
-        "seasons": 67435,
-        "delta": 15
-      },
-      "shapeCounts": {
-        "rebound": 9765,
-        "big-finale": 11802,
-        "u-shaped": 2642,
-        "rollercoaster": 13484,
-        "mid-peak": 4350,
-        "consistent": 2532,
-        "bad-finale": 4336,
-        "front-loaded": 3063,
-        "slow-burn": 3966,
-        "declining": 1635,
-        "saved-best-for-last": 1379,
-        "shape-drift": 1389,
-        "rising": 2370
-      },
-      "shapeDeltas": {
-        "rebound": 8,
-        "big-finale": -2,
-        "u-shaped": -1,
-        "rollercoaster": -7,
-        "mid-peak": -1,
-        "consistent": 2,
-        "bad-finale": 2,
-        "front-loaded": 3,
-        "declining": -2,
-        "saved-best-for-last": 1,
-        "shape-drift": -1,
-        "rising": 2
-      },
-      "added": [
-        {
-          "seriesId": "tt49444745",
-          "title": "Top Gear: Top 40",
-          "season": 1,
-          "seasonYear": 2011
-        },
-        {
-          "seriesId": "tt43650300",
-          "title": "Hello, I am a Witch and my Crush Wants me to Make a Love Potion!",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt7491982",
-          "title": "FBI",
-          "season": 9,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt39181351",
-          "title": "Psyren",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt35515227",
-          "title": "CIA",
-          "season": 2,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt1091909",
-          "title": "Murdoch Mysteries",
-          "season": 20,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt0071022",
-          "title": "The New Adventures of Gilligan",
-          "season": 1,
-          "seasonYear": 1974
-        },
-        {
-          "seriesId": "tt0115311",
-          "title": "Paul Merton in Galton and Simpson's...",
-          "season": 2,
-          "seasonYear": 1997
-        },
-        {
-          "seriesId": "tt9170070",
-          "title": "90 Day Fiancé: The Other Way",
-          "season": 8,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt39170345",
-          "title": "Nine to Five - Das Amt",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt15534302",
-          "title": "Tom Scott",
-          "season": 12,
-          "seasonYear": 2023
-        },
-        {
-          "seriesId": "tt13667230",
-          "title": "Konusanlar",
-          "season": 6,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt27517632",
-          "title": "Benefits with Friends",
-          "season": 2,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt37522954",
-          "title": "Jones",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt49112044",
-          "title": "No Angels - Das sind WIR!",
-          "season": 1,
-          "seasonYear": 2026
-        }
-      ],
-      "removed": [],
-      "ratingSwings": [
-        {
-          "seriesId": "tt37180305",
-          "title": "Friends Sex and Games",
-          "season": 1,
-          "from": 5.07,
-          "to": 4.31,
-          "delta": -0.76
-        },
-        {
-          "seriesId": "tt30052225",
-          "title": "Playboyy the Series",
-          "season": 1,
-          "from": 7.83,
-          "to": 7.07,
-          "delta": -0.76
-        },
-        {
-          "seriesId": "tt6663476",
-          "title": "Mama June: Family Crisis",
-          "season": 6,
-          "from": 7.63,
-          "to": 6.93,
-          "delta": -0.7
-        },
-        {
-          "seriesId": "tt30799082",
-          "title": "Inci Taneleri",
-          "season": 1,
-          "from": 4.68,
-          "to": 4.01,
-          "delta": -0.67
-        },
-        {
-          "seriesId": "tt0346211",
-          "title": "Bir Demet Tiyatro",
-          "season": 1,
-          "from": 8.57,
-          "to": 7.93,
-          "delta": -0.64
-        },
-        {
-          "seriesId": "tt30799082",
-          "title": "Inci Taneleri",
-          "season": 2,
-          "from": 3.86,
-          "to": 3.25,
-          "delta": -0.61
-        },
-        {
-          "seriesId": "tt0773264",
-          "title": "House of Payne",
-          "season": 7,
-          "from": 6.39,
-          "to": 6.88,
-          "delta": 0.49
-        },
-        {
-          "seriesId": "tt0096636",
-          "title": "Live with Kelly and Mark",
-          "season": 27,
-          "from": 7.37,
-          "to": 6.93,
-          "delta": -0.44
-        },
-        {
-          "seriesId": "tt35163061",
-          "title": "0bvEL FNAF Plush",
-          "season": 1,
-          "from": 2.3,
-          "to": 2.73,
-          "delta": 0.43
-        },
-        {
-          "seriesId": "tt43631370",
-          "title": "Villa Coral",
-          "season": 1,
-          "from": 8.53,
-          "to": 8.13,
-          "delta": -0.4
-        }
-      ],
-      "modifiedCounts": {
-        "seriesVotes": 17937,
-        "avgRating": 967,
-        "shapes": 155,
-        "episodeCount": 55,
-        "seriesRating": 194,
-        "overview": 3,
-        "poster": 2
       }
     }
   ]
