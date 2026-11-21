@@ -1,6 +1,244 @@
 {
   "updates": [
     {
+      "builtAt": "2026-11-21T14:52:15.025Z",
+      "totals": {
+        "seasons": 67993,
+        "delta": 18
+      },
+      "shapeCounts": {
+        "rebound": 9841,
+        "big-finale": 11901,
+        "u-shaped": 2665,
+        "rollercoaster": 13553,
+        "mid-peak": 4385,
+        "consistent": 2550,
+        "bad-finale": 4392,
+        "front-loaded": 3102,
+        "slow-burn": 4001,
+        "declining": 1653,
+        "saved-best-for-last": 1379,
+        "shape-drift": 1397,
+        "rising": 2396
+      },
+      "shapeDeltas": {
+        "rebound": 5,
+        "big-finale": 6,
+        "u-shaped": -6,
+        "rollercoaster": 2,
+        "mid-peak": -3,
+        "consistent": 1,
+        "bad-finale": 8,
+        "front-loaded": -1,
+        "declining": 2,
+        "saved-best-for-last": -1,
+        "shape-drift": 2,
+        "rising": -1
+      },
+      "added": [
+        {
+          "seriesId": "tt43598645",
+          "title": "Skitsters",
+          "season": 6,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt38336631",
+          "title": "The Blue Road",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt33095092",
+          "title": "The Black Dagger Brotherhood",
+          "season": 2,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt36786185",
+          "title": "The Altruists",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt1721666",
+          "title": "Sister Wives",
+          "season": 21,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt1327793",
+          "title": "Norwegian Cozy",
+          "season": 1,
+          "seasonYear": 2011
+        },
+        {
+          "seriesId": "tt32374361",
+          "title": "Harry Potter: Wizards of Baking",
+          "season": 3,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt51546982",
+          "title": "Medisch Centrum West",
+          "season": 1,
+          "seasonYear": 2024
+        },
+        {
+          "seriesId": "tt0060015",
+          "title": "Pardon the Expression",
+          "season": 1,
+          "seasonYear": 1965
+        },
+        {
+          "seriesId": "tt32126552",
+          "title": "Lili and Lilon",
+          "season": 1,
+          "seasonYear": 2022
+        },
+        {
+          "seriesId": "tt32126552",
+          "title": "Lili and Lilon",
+          "season": 2,
+          "seasonYear": 2022
+        },
+        {
+          "seriesId": "tt32378211",
+          "title": "Mistletoe Murders",
+          "season": 3,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt39376892",
+          "title": "Basic Bitch Bærum",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt21223050",
+          "title": "Meme Boys",
+          "season": 1,
+          "seasonYear": 2022
+        },
+        {
+          "seriesId": "tt11098386",
+          "title": "Celebrity Race Across the World",
+          "season": 4,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt51546982",
+          "title": "Medisch Centrum West",
+          "season": 2,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt6776162",
+          "title": "As Aventuras de Fujiwara Manchester",
+          "season": 1,
+          "seasonYear": 2017
+        },
+        {
+          "seriesId": "tt2275447",
+          "title": "At the Camping",
+          "season": 1,
+          "seasonYear": 1989
+        }
+      ],
+      "removed": [],
+      "ratingSwings": [
+        {
+          "seriesId": "tt0328789",
+          "title": "Rebel's Way",
+          "season": 2,
+          "from": 7.13,
+          "to": 5.64,
+          "delta": -1.49
+        },
+        {
+          "seriesId": "tt41559886",
+          "title": "Gordon",
+          "season": 1,
+          "from": 7.57,
+          "to": 6.79,
+          "delta": -0.78
+        },
+        {
+          "seriesId": "tt0328789",
+          "title": "Rebel's Way",
+          "season": 1,
+          "from": 7.8,
+          "to": 7.18,
+          "delta": -0.62
+        },
+        {
+          "seriesId": "tt38411336",
+          "title": "Halef: Köklerin Çagrisi",
+          "season": 2,
+          "from": 7.54,
+          "to": 6.94,
+          "delta": -0.6
+        },
+        {
+          "seriesId": "tt37899471",
+          "title": "Krypto Saves the Day!",
+          "season": 2,
+          "from": 5.4,
+          "to": 5.97,
+          "delta": 0.57
+        },
+        {
+          "seriesId": "tt25531288",
+          "title": "The Iceblade Sorcerer Shall Rule the World",
+          "season": 2,
+          "from": 8.63,
+          "to": 8.09,
+          "delta": -0.54
+        },
+        {
+          "seriesId": "tt40939600",
+          "title": "Crime and Punishment in America",
+          "season": 1,
+          "from": 8.1,
+          "to": 7.57,
+          "delta": -0.53
+        },
+        {
+          "seriesId": "tt15295490",
+          "title": "Campus Diaries",
+          "season": 2,
+          "from": 8.3,
+          "to": 8.8,
+          "delta": 0.5
+        },
+        {
+          "seriesId": "tt44079238",
+          "title": "The Law of Beasts",
+          "season": 1,
+          "from": 6.2,
+          "to": 6.7,
+          "delta": 0.5
+        },
+        {
+          "seriesId": "tt0904106",
+          "title": "The Arbitrator",
+          "season": 4,
+          "from": 6.27,
+          "to": 6.76,
+          "delta": 0.49
+        }
+      ],
+      "modifiedCounts": {
+        "seriesVotes": 19121,
+        "avgRating": 1056,
+        "seriesRating": 279,
+        "shapes": 186,
+        "episodeCount": 102,
+        "poster": 4,
+        "overview": 2
+      }
+    },
+    {
       "builtAt": "2026-11-20T15:22:56.062Z",
       "totals": {
         "seasons": 67975,
@@ -7565,242 +7803,6 @@
         "episodeCount": 98,
         "overview": 1,
         "poster": 3
-      }
-    },
-    {
-      "builtAt": "2026-10-22T11:55:04.235Z",
-      "totals": {
-        "seasons": 67453,
-        "delta": 18
-      },
-      "shapeCounts": {
-        "rebound": 9768,
-        "big-finale": 11800,
-        "u-shaped": 2646,
-        "rollercoaster": 13489,
-        "mid-peak": 4354,
-        "consistent": 2532,
-        "bad-finale": 4335,
-        "front-loaded": 3057,
-        "slow-burn": 3965,
-        "declining": 1638,
-        "saved-best-for-last": 1380,
-        "shape-drift": 1392,
-        "rising": 2371
-      },
-      "shapeDeltas": {
-        "rebound": 3,
-        "big-finale": -2,
-        "u-shaped": 4,
-        "rollercoaster": 5,
-        "mid-peak": 4,
-        "bad-finale": -1,
-        "front-loaded": -6,
-        "slow-burn": -1,
-        "declining": 3,
-        "saved-best-for-last": 1,
-        "shape-drift": 3,
-        "rising": 1
-      },
-      "added": [
-        {
-          "seriesId": "tt12590266",
-          "title": "Cyberpunk: Edgerunners",
-          "season": 2,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt43691365",
-          "title": "The Cold Sato-san is Only Sweet to Me",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt43691412",
-          "title": "The Laid-Off Cheat-Granting Mage Enjoys a Second Lease on Life",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt41296544",
-          "title": "Nia Liston: The Merciless Maiden",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt41814550",
-          "title": "NCIS: New York",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt9111220",
-          "title": "Hudson & Rex",
-          "season": 9,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt1319900",
-          "title": "Ghost Adventures",
-          "season": 29,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt21832348",
-          "title": "Bobby's Triple Threat",
-          "season": 5,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt14401604",
-          "title": "Gutfeld!",
-          "season": 3,
-          "seasonYear": 2023
-        },
-        {
-          "seriesId": "tt37626694",
-          "title": "Birangana",
-          "season": 1,
-          "seasonYear": 2025
-        },
-        {
-          "seriesId": "tt36852013",
-          "title": "Harlan Coben's Final Twist",
-          "season": 2,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt0398557",
-          "title": "Saturday Night Thriller",
-          "season": 1,
-          "seasonYear": 1982
-        },
-        {
-          "seriesId": "tt41948472",
-          "title": "Sheep",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt43691391",
-          "title": "Super Psychic Policeman Chojo",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt1483133",
-          "title": "Wasted Land",
-          "season": 1,
-          "seasonYear": 2009
-        },
-        {
-          "seriesId": "tt33344252",
-          "title": "Blood Legacy",
-          "season": 2,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt36940475",
-          "title": "Mengele Unveiled",
-          "season": 1,
-          "seasonYear": 2025
-        },
-        {
-          "seriesId": "tt27755929",
-          "title": "Blood Red - Under the Moonlight",
-          "season": 2,
-          "seasonYear": 2025
-        }
-      ],
-      "removed": [],
-      "ratingSwings": [
-        {
-          "seriesId": "tt30799082",
-          "title": "Inci Taneleri",
-          "season": 2,
-          "from": 3.25,
-          "to": 2.16,
-          "delta": -1.09
-        },
-        {
-          "seriesId": "tt30799082",
-          "title": "Inci Taneleri",
-          "season": 1,
-          "from": 4.01,
-          "to": 3.12,
-          "delta": -0.89
-        },
-        {
-          "seriesId": "tt30799082",
-          "title": "Inci Taneleri",
-          "season": 3,
-          "from": 2.19,
-          "to": 1.53,
-          "delta": -0.66
-        },
-        {
-          "seriesId": "tt14401604",
-          "title": "Gutfeld!",
-          "season": 1,
-          "from": 6.07,
-          "to": 6.61,
-          "delta": 0.54
-        },
-        {
-          "seriesId": "tt1863526",
-          "title": "Bar Rescue",
-          "season": 10,
-          "from": 7.33,
-          "to": 6.8,
-          "delta": -0.53
-        },
-        {
-          "seriesId": "tt14401604",
-          "title": "Gutfeld!",
-          "season": 2,
-          "from": 6.94,
-          "to": 7.46,
-          "delta": 0.52
-        },
-        {
-          "seriesId": "tt43650454",
-          "title": "Kanojo no Tomodachi",
-          "season": 1,
-          "from": 7.93,
-          "to": 7.47,
-          "delta": -0.46
-        },
-        {
-          "seriesId": "tt43599615",
-          "title": "The Love Lab",
-          "season": 1,
-          "from": 7.75,
-          "to": 7.35,
-          "delta": -0.4
-        },
-        {
-          "seriesId": "tt10268080",
-          "title": "My Perfect Landing",
-          "season": 1,
-          "from": 5.72,
-          "to": 6.11,
-          "delta": 0.39
-        },
-        {
-          "seriesId": "tt0176095",
-          "title": "The Challenge",
-          "season": 6,
-          "from": 8.59,
-          "to": 8.23,
-          "delta": -0.36
-        }
-      ],
-      "modifiedCounts": {
-        "seriesVotes": 14870,
-        "avgRating": 1026,
-        "shapes": 169,
-        "seriesRating": 233,
-        "episodeCount": 66
       }
     }
   ]
