@@ -396,6 +396,10 @@ export async function runScheduledProbe({ store, fetchImpl = fetch, now = () => 
     // refusedWhileFplAnswered). More than zero asks for the hourly recheck and
     // refuses the excuse to the run after this one.
     waived: (result.waived || []).length,
+    // The plan build's wall and CPU time (probe.mjs timePlan), for telling a
+    // slow run's waiting from its work. Diagnostic only, judged by nothing;
+    // null when no plan was built.
+    plan: result.planTiming || null,
   };
 
   await store.setJSON('latest', latest);
@@ -404,7 +408,7 @@ export async function runScheduledProbe({ store, fetchImpl = fetch, now = () => 
   // asked, so a red run told nobody.
   try {
     const history = (await store.get('history', { type: 'json' })) || [];
-    history.push({ at, slot, ok: latest.ok, failed: latest.failed.map((f) => f.name), durationMs: latest.durationMs, transient: latest.transient, waived: latest.waived });
+    history.push({ at, slot, ok: latest.ok, failed: latest.failed.map((f) => f.name), durationMs: latest.durationMs, transient: latest.transient, waived: latest.waived, plan: latest.plan });
     await store.setJSON('history', history.slice(-HISTORY_LIMIT));
     // Never a waived run's reading: part of it is a stale copy, and the next run
     // compares against this.

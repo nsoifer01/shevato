@@ -583,6 +583,31 @@ export const MUTANTS = [
     tests: [T('probe-sample')],
     guards: "Inside the window a plain 503 is FPL's update too, not only one carrying its notice (2026-10-24).",
   },
+  // ---- the sample's standings pages span the ranked list (2026-11-22). ----
+  {
+    id: 'probe-sample-pages-by-total-players',
+    file: `${APP}/scripts/evidence-probe.mjs`,
+    find: 'samplePlan(slot, bootstrap.total_players, n, rankedTotal(bootstrap))',
+    replace: 'samplePlan(slot, bootstrap.total_players, n)',
+    tests: [T('probe-sample')],
+    guards: 'Standings pages are drawn inside the ranked list (ranked_count), not up to total_players, whose last pages are empty (2026-11-22, page 225810).',
+  },
+  {
+    id: 'probe-sample-no-page-redraw',
+    file: `${APP}/scripts/evidence-probe.mjs`,
+    find: 'const PAGE_REDRAWS = 3;',
+    replace: 'const PAGE_REDRAWS = 0;',
+    tests: [T('probe-sample')],
+    guards: 'A standings page past the end of the ranked list is drawn again below it, so the sample still reads every manager asked for (2026-11-22).',
+  },
+  {
+    id: 'probe-sample-empty-page-always-past-end',
+    file: `${APP}/scripts/evidence-probe.mjs`,
+    find: 'if (body.standings.has_next !== false) {',
+    replace: 'if (false) {',
+    tests: [T('probe-sample')],
+    guards: 'Only an empty page that says nothing follows is past the end; an empty page that says more follow is an UPSTREAM failure, never redrawn (2026-11-22).',
+  },
   {
     id: 'health-defer-never',
     file: 'netlify/functions/lib/fpl-health-run.mjs',
@@ -724,13 +749,15 @@ export function occurrences(text, needle) {
 
 // What one full run of each mapped test file costs, in seconds, rounded up from
 // a run of the whole table without stopping at the first failure (2026-11-09,
-// five workers). A mutant killed early costs less, so this is the worst case.
+// five workers; probe-sample re-measured 2026-11-22 at 87 s, the mutation
+// baseline, after its standings tests). A mutant killed early costs less, so
+// this is the worst case.
 // Only two things read it: packShards, where a wrong number only unbalances the
 // shards, and the guard in tests/mutation-check.test.mjs that fails `npm test`
 // when the table no longer fits the weekly job's limit.
 export const FILE_COST_SECONDS = {
   'fpl-health': 220, 'probe-freshness': 205, chips: 190, 'gw7-audit-followup-ui': 85,
-  'optimizer-reference': 75, 'probe-sample': 65, 'search-corrections': 40,
+  'optimizer-reference': 75, 'probe-sample': 95, 'search-corrections': 40,
   'real-deadline-gw7': 25, 'real-deadline-gw10': 25, 'season-lifecycle': 25, probe: 25,
   transfers: 20, 'manager-state-properties': 15, 'inherited-club-limit': 14,
   'probe-refusal-waiver': 1, 'archive-release': 2, 'search-work': 30, 'manager-state-lag': 7, 'ui-club-limit-notice': 4, 'plan-history-scope': 3,

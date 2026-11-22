@@ -8,7 +8,7 @@ import { readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { runProbe, payloadShapeFailures } from '../scripts/lib/probe.mjs';
+import { runProbe, payloadShapeFailures, timePlan } from '../scripts/lib/probe.mjs';
 import { deadlinePayload } from './helpers/xp-calibration-fixture.mjs';
 
 const APP = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -74,4 +74,28 @@ test('attacking numerators cleared mid-season (the 2026-08-22 shape): the shape 
   const c = r.checks.find((x) => x.name === SHAPE_CHECK);
   assert.equal(c.ok, false, r.lines.join('\n'));
   assert.match(c.saw, /projection_inverted/);
+});
+
+// The plan's wall and CPU time (diagnostic only, 2026-11-22): the slow
+// 06:41 run of that day could not say whether it waited for a CPU or did
+// more work. Oracles are workloads whose cost is known by construction.
+test('timePlan encloses exactly the build: CPU work reads as CPU, waiting reads as wall only', async () => {
+  const spin = (ms) => { const c0 = process.cpuUsage(); for (;;) { const c = process.cpuUsage(c0); if ((c.user + c.system) / 1000 >= ms) return 'spun'; } };
+  const busy = await timePlan(async () => spin(150));
+  assert.equal(busy.plan, 'spun', 'the build\'s own result is handed back');
+  assert.ok(busy.cpuMs >= 150, `150 ms of CPU inside the build read as ${busy.cpuMs} ms`);
+  const idle = await timePlan(() => new Promise((resolve) => setTimeout(() => resolve('slept'), 200)));
+  assert.equal(idle.plan, 'slept');
+  assert.ok(idle.wallMs >= 190, `a 200 ms wait read as ${idle.wallMs} ms of wall`);
+  assert.ok(idle.cpuMs < 100, `a 200 ms wait read as ${idle.cpuMs} ms of CPU`);
+  await assert.rejects(timePlan(async () => { throw new Error('build failed'); }), /build failed/, 'a failed build still fails');
+});
+
+test('the probe reports the plan\'s wall and CPU time in its result and its plan line', async () => {
+  const r = await runProbe({ bootstrap, fixtures, fetchedAt, now: fetchedAt, source: 'files', loadShipped, planEntry: false });
+  const { wallMs, cpuMs } = r.planTiming;
+  assert.ok(Number.isInteger(wallMs) && wallMs > 0 && Number.isInteger(cpuMs) && cpuMs > 0, JSON.stringify(r.planTiming));
+  const line = r.lines.find((l) => l.startsWith('plan '));
+  assert.match(line, new RegExp(`built in ${(wallMs / 1000).toFixed(1)}s \\(CPU ${(cpuMs / 1000).toFixed(1)}s\\)$`));
+  assert.ok(!r.checks.some((c) => /CPU/i.test(c.name)), 'no check judges it');
 });

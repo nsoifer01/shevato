@@ -545,6 +545,49 @@ test('a run near Netlify\'s 30-second kill fails while it can still say so', asy
   assert.equal(slow.failed.find((f) => f.name === name).saw, '24.0 s');
 });
 
+// The plan's wall and CPU time (probe.mjs timePlan), stored for the next slow
+// run (2026-11-22: 22.7 s of plan at 06:41, 13.0 s at 07:41, identical work,
+// and nothing to say whether the process waited or worked). Diagnostic only.
+test('a run stores the plan\'s wall and CPU time in its result and its history, and an older history is kept as it was', async () => {
+  const store = memoryStore();
+  const older = { at: '2026-11-21T18:41:06.831Z', slot: '2026-11-21T18', ok: true, failed: [], durationMs: 15813, transient: 0, waived: 0 };
+  await store.setJSON('history', [older]);
+  await runScheduledProbe({ store, fetchImpl: production(), now: () => NOW });
+  const latest = store.map.get('latest');
+  assert.ok(Number.isInteger(latest.plan.wallMs) && latest.plan.wallMs > 0 && Number.isInteger(latest.plan.cpuMs) && latest.plan.cpuMs > 0, JSON.stringify(latest.plan));
+  assert.ok(latest.plan.wallMs <= latest.durationMs, 'the plan is inside the run');
+  const history = store.map.get('history');
+  assert.deepEqual(history[0], older, 'an entry from before the field is untouched');
+  assert.deepEqual(history[1].plan, latest.plan);
+  const served = await (await handleStatus(req('?history'), store, Date.parse(NOW) + 60e3)).json();
+  assert.deepEqual(served.history.map((h) => h.plan ?? null), [null, latest.plan]);
+});
+
+test('a run that built no plan stores no plan timing', async () => {
+  const store = memoryStore();
+  await runScheduledProbe({ store, fetchImpl: production({ proxyStatus: 502 }), now: () => NOW });
+  assert.equal(store.map.get('latest').plan, null);
+  assert.equal(store.map.get('history')[0].plan, null);
+});
+
+test('the plan timing never decides a verdict: any CPU reading leaves the same checks and the same result', async () => {
+  const verdict = async () => {
+    const r = await runScheduledProbe({ store: memoryStore(), fetchImpl: production(), now: () => NOW });
+    return { ok: r.ok, failed: r.failed, checks: r.checks.map(({ name, ok }) => ({ name, ok })) };
+  };
+  const real = process.cpuUsage;
+  const base = await verdict();
+  try {
+    for (const fake of [() => ({ user: 0, system: 0 }), (prev) => (prev ? { user: 1e12, system: 1e12 } : { user: 0, system: 0 })]) {
+      process.cpuUsage = fake;
+      assert.deepEqual(await verdict(), base);
+    }
+  } finally {
+    process.cpuUsage = real;
+  }
+  assert.equal(base.ok, true, JSON.stringify(base.failed));
+});
+
 /* ------------------------------------------- 2026-10-16 follow-up audit */
 
 // The real "free-hit" manager of the GW7 fixture behind the REAL proxy
