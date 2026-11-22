@@ -160,22 +160,37 @@ export function entrySquadVerdict({ entry, gameState, bootstrap, gw }) {
 }
 
 /**
+ * One plan build, timed on the wall clock and in process CPU time over the
+ * same span. Diagnostic only: nothing judges either number. buildPlan does no
+ * I/O, so wall well above CPU means the process was waiting for a CPU, and
+ * both rising together means slower hardware or more work; neither names the
+ * infrastructure cause. process.cpuUsage counts every thread (GC and JIT
+ * included), so CPU can exceed wall.
+ */
+export async function timePlan(build) {
+  const c0 = process.cpuUsage();
+  const t0 = performance.now();
+  const plan = await build();
+  const wallMs = performance.now() - t0;
+  const cpu = process.cpuUsage(c0);
+  return { plan, wallMs, cpuMs: (cpu.user + cpu.system) / 1000 };
+}
+
+/**
  * That manager planned exactly as the app plans him (DEFAULT_SETTINGS and
  * the app's seed), validated, and held to its own numbers. Fills
  * `verdict.planned` and `verdict.consistency`.
  */
 export async function planEntryVerdict({ gameState, squadState, verdict }) {
   const rules = gameState.rules;
-  const t0 = performance.now();
-  const plan = await buildPlan({
+  const { plan, wallMs, cpuMs } = await timePlan(() => buildPlan({
     gameState, squadState,
     options: { horizon: DEFAULT_SETTINGS.horizon, risk: DEFAULT_SETTINGS.risk, seed: APP_PLAN_SEED },
-  });
-  const seconds = (performance.now() - t0) / 1000;
+  }));
   const planVerdict = validatePlan(plan.current, squadState, gameState, rules);
   verdict.planned = true;
   verdict.consistency = planConsistencyFailures({ bundle: plan, squadState, rules });
-  return { plan, planVerdict, seconds };
+  return { plan, planVerdict, seconds: wallMs / 1000, cpuSeconds: cpuMs / 1000 };
 }
 
 /** The named checks one manager's verdict makes, in runProbe's words. */
@@ -293,6 +308,7 @@ export async function runProbe({ bootstrap, fixtures, fetchedAt, now = null, sou
   let epCompared = 0;
   let planVerdict = null;
   let planSeconds = null;
+  let planCpuSeconds = null;
   let projections = null;
 
   if (evidence.usable) {
@@ -353,12 +369,13 @@ export async function runProbe({ bootstrap, fixtures, fetchedAt, now = null, sou
     const planReal = !!(realSquad && planEntry);
     let plan;
     if (planReal) {
-      ({ plan, planVerdict, seconds: planSeconds } = await planEntryVerdict({ gameState, squadState: realSquad, verdict: entryVerdict }));
+      ({ plan, planVerdict, seconds: planSeconds, cpuSeconds: planCpuSeconds } = await planEntryVerdict({ gameState, squadState: realSquad, verdict: entryVerdict }));
     } else {
       const squadState = buildSquadState({ entry: null, history: null, transfers: null, picks: null, gameState, gw });
-      const t0 = performance.now();
-      plan = await buildPlan({ gameState, squadState, options: { horizon: 3 } });
-      planSeconds = (performance.now() - t0) / 1000;
+      const timed = await timePlan(() => buildPlan({ gameState, squadState, options: { horizon: 3 } }));
+      plan = timed.plan;
+      planSeconds = timed.wallMs / 1000;
+      planCpuSeconds = timed.cpuMs / 1000;
       planVerdict = validatePlan(plan.current, squadState, gameState, rules);
     }
     const captain = gameState.players.get(plan.current.captain);
@@ -568,7 +585,7 @@ export async function runProbe({ bootstrap, fixtures, fetchedAt, now = null, sou
     for (const b of readiness.blocked) lines.push(`                blocked ${b.code} (ceiling ${b.ceiling})`);
     if (evidence.usable) {
       const planned = entryVerdict && entryVerdict.planned;
-      lines.push(`plan            ${planned ? `entry ${entryVerdict.id}` : 'built squad'}   ${reading.planXp.toFixed(1)} xP for GW${planned ? entryVerdict.gw : gw}   captain ${reading.captain}   chip ${reading.chip}   transfers ${reading.transfers}   built in ${planSeconds.toFixed(1)}s`);
+      lines.push(`plan            ${planned ? `entry ${entryVerdict.id}` : 'built squad'}   ${reading.planXp.toFixed(1)} xP for GW${planned ? entryVerdict.gw : gw}   captain ${reading.captain}   chip ${reading.chip}   transfers ${reading.transfers}   built in ${planSeconds.toFixed(1)}s (CPU ${planCpuSeconds.toFixed(1)}s)`);
       if (entryVerdict) lines.push(`entry           ${entryVerdict.id}   GW${entryVerdict.gw}   free transfers ${entryVerdict.freeTransfers}   chips ${entryVerdict.offered.join(', ') || 'none'}`);
       if (epSpearman !== null) lines.push(`ep_next         Spearman ${epSpearman.toFixed(3)} over ${epCompared} players with a GW${gw} fixture`);
       lines.push(`pool            best-11 ${reading.best11.toFixed(1)}   top-median gap ${reading.topMedianGap.toFixed(2)}   median start ${medianStart.toFixed(3)}   pinned ${pinnedHigh}`);
@@ -593,5 +610,7 @@ export async function runProbe({ bootstrap, fixtures, fetchedAt, now = null, sou
   } else {
     lines.push('OK: every invariant holds.');
   }
-  return { reading, checks, waived, readiness: readiness.level, blocked: readiness.blocked, failed, usable: evidence.usable, lines };
+  // Diagnostic only (timePlan): null when no plan was built.
+  const planTiming = planSeconds === null ? null : { wallMs: Math.round(planSeconds * 1000), cpuMs: Math.round(planCpuSeconds * 1000) };
+  return { reading, checks, waived, readiness: readiness.level, blocked: readiness.blocked, failed, usable: evidence.usable, lines, planTiming };
 }

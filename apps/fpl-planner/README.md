@@ -1276,9 +1276,11 @@ prevention: the defect ledger"; the rules are in the repository `CLAUDE.md`):
   with the code on every run and fails if it outgrows the weekly job's limit.
 
 The GitHub health probe also plans a rotating sample of real managers every
-six hours (`--sample`, top, deep and newest ranks, at most about 70 polite
+six hours (`--sample`, top, deep and newest ranks, at most about 75 polite
 reads, one at a time and at least a second apart on the monotonic clock, so a
-wall clock that steps cannot shorten the gap), prints the paths they exercise, and exits 1 on an application failure
+wall clock that steps cannot shorten the gap; standings pages are drawn
+inside the ranked list, the latest `ranked_count`, and a page past its end is
+drawn again below it up to three times), prints the paths they exercise, and exits 1 on an application failure
 and 2 on an upstream-only one; a requested check that could not run is never
 reported as OK.
 
@@ -1463,7 +1465,11 @@ plan and its consistency checks run in the workflow's `full` mode, which also
 runs on its schedule. `/.netlify/functions/fpl-health-status` serves it: 200 when the
 last run passed and is under 7 hours old; 503 when it failed, when no run has
 landed for 7 hours, when a run claimed its slot and never stored a result, or
-before the first run (`?history` adds the last 120 runs). Every reader and
+before the first run (`?history` adds the last 120 runs). Each result and
+history row also carries `plan: { wallMs, cpuMs }`, the built-squad plan's
+wall and process CPU time (`timePlan` in `scripts/lib/probe.mjs`; `null` when
+no plan was built, absent on rows before 2026-11-22), and the report's plan
+line prints both. It is diagnostic only and decides no check. Every reader and
 writer of the store opens it with strong consistency (`openStrongStore`), so
 the status shows a run the moment it is stored. When the proxy answers a payload
 stale, its own call to FPL has just failed, so the run asks FPL once, directly

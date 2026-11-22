@@ -25,7 +25,10 @@ import { BOOTSTRAP, FIXTURES, ENTRIES, FETCHED_AT } from './helpers/gw7-fixture.
 const APP = join(dirname(fileURLToPath(import.meta.url)), '..');
 const PROBE = join(APP, 'scripts', 'evidence-probe.mjs');
 const CURRENT = BOOTSTRAP.events.find((e) => e.is_current).id;
-const LAST_PAGE = Math.floor(BOOTSTRAP.total_players / 50);
+// The sample's pages span the RANKED list (the latest ranked_count), not every
+// entry: total_players also counts managers the standings do not list yet.
+const RANKED = BOOTSTRAP.events.filter((e) => e.ranked_count > 0).sort((a, b) => b.id - a.id)[0].ranked_count;
+const LAST_PAGE = Math.floor(RANKED / 50);
 
 // A manager's payloads by the path suffix the CLI asks for.
 const served = (label) => {
@@ -57,6 +60,16 @@ const PRELOAD = `data:text/javascript,${encodeURIComponent(`
     if (cfg.network) throw new TypeError('fetch failed');
     const path = String(url).replace('https://fantasy.premierleague.com/api/', '').replace(/\\/$/, '');
     let r = cfg.routes[path];
+    // \`cfg.ranked\`: the overall league as FPL serves it, that many ranked
+    // managers in pages of 50 (ids clear of every random id), then pages past
+    // the end answered 200, empty, has_next false (measured 2026-11-22).
+    if (!r && path.startsWith('leagues-classic/') && cfg.ranked != null) {
+      const page = Number(/page_standings=(\\d+)/.exec(path)[1]);
+      const first = (page - 1) * 50;
+      const n = Math.max(0, Math.min(50, cfg.ranked - first));
+      const results = Array.from({ length: n }, (_, k) => ({ entry: 90000000 + first + k + 1, rank: first + k + 1, entry_name: 'ranked' }));
+      r = { body: { standings: { has_next: first + n < cfg.ranked, page, results } } };
+    }
     if (!r && path.startsWith('leagues-classic/')) r = cfg.standings;
     const m = /^entry\\/(\\d+)(\\/.*)?$/.exec(path);
     if (!r && m) {
@@ -125,7 +138,7 @@ test('the sample rotates with the six-hour slot, is fixed within it, and spans t
       const ids = sampleReads(r.calls).filter((u) => /\/entry\/\d+\/$/.test(u)).map((u) => Number(/entry\/(\d+)/.exec(u)[1]));
       assert.ok(ids.some((id) => id >= Math.floor(BOOTSTRAP.total_players * 0.97)), 'one id from the newest 3%: a late joiner');
       assert.ok(r.calls.length <= 2 + 3 + (12 + 2) * 5, 'the requests stay within their printed bound');
-      assert.match(r.out, /requests {8}\d+ to FPL for the sample, \d+ in all \(bounded at 73 for the sample\)/);
+      assert.match(r.out, /requests {8}\d+ to FPL for the sample, \d+ in all \(bounded at 76 for the sample\)/);
     }
   } finally {
     rmSync(dir, { recursive: true, force: true });
@@ -345,6 +358,123 @@ test('requests stay at least a second apart however the wall clock steps', async
         assert.ok(gap >= 950, `${label}: request ${i + 1} came ${Math.round(gap)} ms after the one before`);
       }
     }
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+/* ---------------------- standings that end before total_players (2026-11-22) */
+
+// The 07:32 UTC GitHub probe of 2026-11-22 read 11 managers of 12 and went red
+// as UPSTREAM: its deep page, 225810, was drawn up to floor(total_players / 50)
+// and FPL's standings ended at page 225,236, so the page answered 200 with no
+// rows and has_next false, and its three managers were never candidates.
+const pagesOf = (r) => r.calls.map((c) => /page_standings=(\d+)/.exec(c.url)).filter(Boolean).map((m) => Number(m[1]));
+const entryIdsOf = (r) => r.calls.map((c) => /\/entry\/(\d+)\/$/.exec(c.url)).filter(Boolean).map((m) => Number(m[1]));
+const PAGE_REDRAWS = 3;
+// The fixture's league with FPL's counts set: `total` entries, `rankedCount`
+// on the latest ranked gameweek, and `listed` managers actually in the
+// standings. Every manager is served as the owner fixture.
+function league({ total = BOOTSTRAP.total_players, rankedCount = RANKED, listed = rankedCount } = {}) {
+  const boot = structuredClone(BOOTSTRAP);
+  boot.total_players = total;
+  boot.events.filter((e) => e.ranked_count > 0).sort((a, b) => b.id - a.id)[0].ranked_count = rankedCount;
+  return { ...base(), routes: { 'bootstrap-static': { body: boot }, fixtures: { body: FIXTURES } }, ranked: listed, fallback: served('owner') };
+}
+
+test('2026-11-22 reproduced: total_players past the ranked list no longer costs the sample a page', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'fpl-sample-1122-'));
+  try {
+    // That slot, the total that draws pages 19, 3486 and 225810 (11,316,150 to
+    // 11,316,199 do), GW11's ranked_count and the standings' measured end.
+    const listed = 11261791;
+    const r = await runCli(dir, 'nov22', league({ total: 11316150, rankedCount: 11262007, listed }), ['--now', '2026-11-22T07:31:40.000Z', '--sample', '12']);
+    const pages = pagesOf(r);
+    assert.ok(pages.every((p) => p <= Math.ceil(listed / 50)), `every page read is a listed page: ${pages}\n${r.out}`);
+    assert.match(r.out, /^sample .* 12 asked .* 12 checked$/m, r.out);
+    assert.doesNotMatch(r.out, /the sample reads 12 real managers/);
+    assert.doesNotMatch(r.out, /\[UPSTREAM\] the overall league's standings page/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('a page past the end of the standings is drawn again below it, boundedly, and the sample still says when it falls short', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'fpl-sample-end-'));
+  try {
+    const args = ['--now', FETCHED_AT, '--sample', '12'];
+    const full = await runCli(dir, 'full', league(), args);
+    assert.equal(full.code, 0, full.out);
+    assert.match(full.out, /^sample .* 12 checked$/m);
+    const [top, middle, deep] = pagesOf(full);
+    assert.equal(pagesOf(full).length, 3);
+    const tenth = Math.floor(LAST_PAGE / 10);
+    // Where the standings end: just before the deep page (one empty page),
+    // halfway down its band (empty pages in a row are likely), and at the
+    // band's floor (every redraw lands past the end).
+    const ends = { justBefore: deep - 1, halfway: Math.floor((tenth + deep) / 2), floor: tenth };
+    const runs = Object.fromEntries(await Promise.all(Object.entries(ends).map(async ([name, end]) => [name, await runCli(dir, name, league({ listed: end * 50 }), args)])));
+    const again = await runCli(dir, 'again', league({ listed: ends.halfway * 50 }), args);
+    assert.deepEqual(again.calls.map((c) => c.url), runs.halfway.calls.map((c) => c.url), 'the same slot and the same answers read the same pages and managers');
+
+    const outcomes = new Set();
+    for (const [name, end] of Object.entries(ends)) {
+      const r = runs[name];
+      const pages = pagesOf(r);
+      const at = `${name}: pages ${pages}\n${r.out}`;
+      assert.deepEqual(pages.slice(0, 2), [top, middle], at);
+      const tries = pages.slice(2);
+      assert.equal(tries[0], deep, at);
+      assert.ok(tries.length <= 1 + PAGE_REDRAWS, `at most ${PAGE_REDRAWS} redraws: ${at}`);
+      assert.equal(new Set(pages).size, pages.length, `no page is read twice: ${at}`);
+      tries.slice(1).forEach((p, k) => assert.ok(p < tries[k] && p >= tenth && p > middle, `each redraw is below the page before it and inside the deep band: ${at}`));
+      tries.slice(0, -1).forEach((p) => assert.ok(p > end, `only a page past the end is drawn again: ${at}`));
+      const ids = entryIdsOf(r);
+      assert.equal(new Set(ids).size, ids.length, `no manager is read twice: ${at}`);
+      assert.equal((r.out.match(/past the end of the ranked list/g) || []).length, tries.length - (tries.at(-1) <= end ? 1 : 0), at);
+      assert.doesNotMatch(r.out, /\[UPSTREAM\] the overall league's standings page/, `an empty last page is no fault of FPL's: ${at}`);
+      if (tries.at(-1) <= end) {
+        outcomes.add('recovered');
+        assert.equal(r.code, 0, at);
+        assert.match(r.out, /^sample .* 12 checked$/m, at);
+        assert.match(r.out, new RegExp(`standings page ${tries.at(-2)}: past the end of the ranked list, read page ${tries.at(-1)} instead`), at);
+      } else {
+        outcomes.add('exhausted');
+        assert.equal(r.code, 2, at);
+        assert.ok(!isOk(r.out), at);
+        assert.match(r.out, /no redraw left/, at);
+        assert.match(r.out, /\[UPSTREAM\] the sample reads 12 real managers: saw 11 read \(0 empty, 0 unreadable, 1 standings page past the end with no redraw left\)/, at);
+      }
+    }
+    assert.ok(runs.justBefore.code === 0 && pagesOf(runs.justBefore).length === 4, `one empty page, one redraw, a full sample: ${runs.justBefore.out}`);
+    assert.deepEqual([...outcomes].sort(), ['exhausted', 'recovered'], 'both endings are exercised');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('an empty page that says more follow, a page with no results and a refused page stay UPSTREAM failures, never redrawn', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'fpl-sample-bad-page-'));
+  try {
+    const cases = {
+      moreFollow: { body: { standings: { has_next: true, results: [] } } },
+      noNext: { body: { standings: { results: [] } } },
+      noResults: { body: { standings: { has_next: false } } },
+      down: { status: 503, body: 'down' },
+    };
+    const runs = Object.fromEntries(await Promise.all(Object.entries(cases).map(async ([name, standings]) => [name,
+      await runCli(dir, name, { ...base(), standings, fallback: served('owner') }, ['--now', FETCHED_AT, '--sample', '1'])])));
+    for (const [name, r] of Object.entries(runs)) {
+      assert.equal(r.code, 2, `${name}: ${r.out}`);
+      assert.ok(!isOk(r.out), name);
+      assert.equal(pagesOf(r).length, 3, `${name}: each page read once, none drawn again`);
+      assert.doesNotMatch(r.out, /past the end/, name);
+      assert.equal(failed(r.out).filter((l) => /\[UPSTREAM\] the overall league's standings page \d+ is served/.test(l)).length, 3, `${name}: ${r.out}`);
+    }
+    assert.match(runs.moreFollow.out, /standings page \d+ is served: saw an empty page that says more pages follow/);
+    assert.match(runs.noNext.out, /standings page \d+ is served: saw an empty page that says more pages follow/);
+    assert.match(runs.noResults.out, /standings page \d+ is served: saw no standings\.results array/);
+    assert.match(runs.down.out, /standings page \d+ is served: saw .*503/);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

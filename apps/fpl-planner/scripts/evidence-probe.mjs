@@ -157,6 +157,9 @@ const SAMPLE_GAP_MS = 1000;
 const LEAGUE_OVERALL = 314;
 const PAGE_SIZE = 50;
 const SPARES = 2;
+// Standings pages read again when one is past the end of the ranked list
+// (rankedTotal below is close to that end, not exact). Each is one request.
+const PAGE_REDRAWS = 3;
 const MAX_SAMPLE = 40;
 // How often a read FPL fails during its update is asked again. A minute: the
 // GW1 update took 27, so a run waits a few minutes past the end for at most a
@@ -412,24 +415,45 @@ function slotOf(iso) {
   return `${d.toISOString().slice(0, 10)} ${String(Math.floor(d.getUTCHours() / 6) * 6).padStart(2, '0')}:00Z`;
 }
 
-/** Which standings pages and random ids this slot reads; pure in (slot, totalPlayers). */
-function samplePlan(slot, totalPlayers, n) {
+// How many managers the overall league ranks: the latest gameweek's
+// `ranked_count`, falling back to `total_players` before any has one. Not
+// `total_players` itself: that counts every entry, and the ones not yet ranked
+// are not in the standings, so its last pages are empty (on 2026-11-22,
+// 11,318,580 entries and standings ending at page 225,236, not 226,371; the
+// sample drew page 225810 and read 11 managers of 12). `ranked_count` was
+// 11,262,007 then, a few pages past the measured end, which is why an empty
+// last page is still read again below.
+function rankedTotal(boot) {
+  const ranked = (boot.events || []).filter((e) => Number(e.ranked_count) > 0).sort((a, b) => b.id - a.id)[0];
+  return ranked ? Number(ranked.ranked_count) : boot.total_players;
+}
+
+/**
+ * Which standings pages and random ids this slot reads; pure in (slot,
+ * totalPlayers, rankedPlayers). Pages span the ranked list; random ids span
+ * every entry id, so late joiners are drawn.
+ */
+function samplePlan(slot, totalPlayers, n, rankedPlayers = totalPlayers) {
   const rng = rngFor(`fpl-sample ${slot}`);
   const int = (lo, hi) => lo + Math.floor(rng() * (hi - lo + 1));
   const total = Math.max(1, Number(totalPlayers) || 1);
-  const lastPage = Math.max(1, Math.floor(total / PAGE_SIZE));
+  const lastPage = Math.max(1, Math.floor(Math.max(1, Number(rankedPlayers) || 1) / PAGE_SIZE));
   const tenth = Math.max(21, Math.floor(lastPage / 10));
-  const pages = [...new Set([
-    int(1, Math.min(20, lastPage)),
-    Math.min(lastPage, Math.round(Math.exp(Math.log(21) + rng() * (Math.log(tenth) - Math.log(21))))),
-    int(Math.min(tenth, lastPage), lastPage),
-  ])];
+  // Each page with the lowest page of its own band, where a page found past
+  // the end is drawn again (runSample).
+  const drawn = [
+    [int(1, Math.min(20, lastPage)), 1],
+    [Math.min(lastPage, Math.round(Math.exp(Math.log(21) + rng() * (Math.log(tenth) - Math.log(21))))), Math.min(21, lastPage)],
+    [int(Math.min(tenth, lastPage), lastPage), Math.min(tenth, lastPage)],
+  ];
+  const pages = [...new Set(drawn.map(([p]) => p))];
+  const floors = pages.map((p) => drawn.find(([q]) => q === p)[1]);
   const randomCount = Math.max(1, Math.round(n / 4));
   const fromPages = Math.max(0, n - randomCount);
   const perPage = pages.map((_, i) => Math.floor(fromPages / pages.length) + (i < fromPages % pages.length ? 1 : 0));
   const randomIds = [int(Math.max(1, Math.floor(total * 0.97)), total)];
   while (randomIds.length < randomCount + SPARES) randomIds.push(int(1, total));
-  return { rng, pages, perPage, randomIds, randomCount, budget: pages.length + (n + SPARES) * 5 };
+  return { rng, int, pages, floors, perPage, randomIds, randomCount, budget: pages.length + PAGE_REDRAWS + (n + SPARES) * 5 };
 }
 
 const fmtRank = (r) => (!Number.isFinite(r) ? 'rank ?' : r >= 1e6 ? `rank ${(r / 1e6).toFixed(1)}M` : r >= 1e3 ? `rank ${(r / 1e3).toFixed(0)}k` : `rank ${r}`);
@@ -472,24 +496,48 @@ function saveFailure(dir, e) {
 
 async function runSample(n) {
   const slot = slotOf(arg('now') || fetchedAt);
-  const plan = samplePlan(slot, bootstrap.total_players, n);
-  const out = { slot, requested: n, pages: plan.pages, managers: [], skipped: [], failures: [], budget: plan.budget };
+  const plan = samplePlan(slot, bootstrap.total_players, n, rankedTotal(bootstrap));
+  const out = { slot, requested: n, pages: [...plan.pages], pastEnd: [], managers: [], skipped: [], failures: [], budget: plan.budget };
   const requestsBefore = requests;
   const seen = new Set(monitored && monitored.id ? [String(monitored.id)] : []);
   const candidates = [];
   const upstream = (name, saw) => out.failures.push({ name, ok: false, class: UPSTREAM, saw, expected: 'FPL answers the read' });
 
-  for (const [i, page] of plan.pages.entries()) {
+  let redraws = PAGE_REDRAWS;
+  let below = 0; // the page read before this one, so a redraw never repeats it
+  for (const [i, drawnPage] of plan.pages.entries()) {
     if (refused) break;
-    let body;
-    try {
-      body = await read(`leagues-classic/${LEAGUE_OVERALL}/standings/?page_standings=${page}`);
-    } catch (err) {
-      upstream(`the overall league's standings page ${page} is served`, err.message);
-      continue;
+    let page = drawnPage;
+    let rows = null;
+    for (;;) {
+      let body;
+      try {
+        body = await read(`leagues-classic/${LEAGUE_OVERALL}/standings/?page_standings=${page}`);
+      } catch (err) {
+        upstream(`the overall league's standings page ${page} is served`, err.message);
+        break;
+      }
+      rows = body && body.standings && Array.isArray(body.standings.results) ? body.standings.results : null;
+      if (!rows) { upstream(`the overall league's standings page ${page} is served`, 'no standings.results array'); break; }
+      if (rows.length) break;
+      if (body.standings.has_next !== false) {
+        upstream(`the overall league's standings page ${page} is served`, 'an empty page that says more pages follow');
+        rows = null;
+        break;
+      }
+      // Past the end of the ranked list: FPL answers an empty page that says
+      // nothing follows. That is no fault, and the page is drawn again from
+      // its own band below it, a bounded number of times.
+      const lo = Math.max(plan.floors[i], below + 1);
+      const next = redraws > 0 && page - 1 >= lo ? plan.int(lo, page - 1) : null;
+      out.pastEnd.push({ page, next });
+      if (next === null) break;
+      redraws--;
+      page = next;
     }
-    const rows = body && body.standings && Array.isArray(body.standings.results) ? body.standings.results : null;
-    if (!rows) { upstream(`the overall league's standings page ${page} is served`, 'no standings.results array'); continue; }
+    below = page;
+    out.pages[i] = page;
+    if (!rows) continue;
     const pool = rows.filter((r) => Number.isInteger(r.entry) && !seen.has(String(r.entry)));
     for (let k = 0; k < plan.perPage[i] && pool.length; k++) {
       const [r] = pool.splice(Math.floor(plan.rng() * pool.length), 1);
@@ -546,7 +594,9 @@ async function runSample(n) {
   }
 
   if (out.managers.length < n) {
-    const why = refused ? `FPL refused ${refused}` : `${out.skipped.length} empty, ${out.failures.filter((f) => f.class === UPSTREAM).length} unreadable`;
+    const unredrawn = out.pastEnd.filter((p) => p.next === null).length;
+    const why = refused ? `FPL refused ${refused}` : `${out.skipped.length} empty, ${out.failures.filter((f) => f.class === UPSTREAM).length} unreadable`
+      + `${unredrawn ? `, ${unredrawn} standings page${unredrawn === 1 ? '' : 's'} past the end with no redraw left` : ''}`;
     out.failures.push({ name: `the sample reads ${n} real managers`, ok: false, class: UPSTREAM,
       saw: `${out.managers.length} read (${why})`, expected: `${n} managers checked; an unread one is never a pass` });
   }
@@ -601,7 +651,7 @@ if (flag('json')) {
   console.log(JSON.stringify({
     reading: result.reading, checks: result.checks, readiness: result.readiness, blocked: result.blocked,
     failures, counts, exitCode, update: updateLine(),
-    sample: sample && { slot: sample.slot, requested: sample.requested, pages: sample.pages, requests: sample.requests, budget: sample.budget,
+    sample: sample && { slot: sample.slot, requested: sample.requested, pages: sample.pages, pastEnd: sample.pastEnd, requests: sample.requests, budget: sample.budget,
       skipped: sample.skipped, managers: sample.managers.map((m) => ({ origin: m.origin, rank: m.rank, path: m.path && m.path.tags, seconds: m.seconds, failed: m.checks.filter((c) => !c.ok) })) },
   }, null, 2));
 } else {
@@ -635,6 +685,7 @@ if (!flag('json')) {
       console.log(`  ${managerLine(m, i)}`);
       for (const c of m.checks.filter((x) => !x.ok)) console.log(`          FAIL ${c.name}: saw ${c.saw}, expected ${c.expected}`);
     });
+    for (const p of sample.pastEnd) console.log(`  skip  standings page ${p.page}: past the end of the ranked list, ${p.next === null ? 'no redraw left' : `read page ${p.next} instead`}`);
     for (const s of sample.skipped) console.log(`  skip  ${s.origin}: ${s.why}`);
     console.log(`coverage        ${coverageLine(sample)}`);
     console.log(`requests        ${sample.requests} to FPL for the sample, ${requests} in all (bounded at ${sample.budget} for the sample), at least ${gapMs / 1000}s apart`
