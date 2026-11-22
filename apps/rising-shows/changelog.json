@@ -1,6 +1,272 @@
 {
   "updates": [
     {
+      "builtAt": "2026-11-22T14:40:20.891Z",
+      "totals": {
+        "seasons": 68010,
+        "delta": 17
+      },
+      "shapeCounts": {
+        "rebound": 9841,
+        "big-finale": 11908,
+        "u-shaped": 2665,
+        "rollercoaster": 13548,
+        "mid-peak": 4385,
+        "consistent": 2552,
+        "bad-finale": 4393,
+        "front-loaded": 3098,
+        "slow-burn": 4012,
+        "declining": 1654,
+        "saved-best-for-last": 1378,
+        "shape-drift": 1397,
+        "rising": 2392
+      },
+      "shapeDeltas": {
+        "big-finale": 7,
+        "rollercoaster": -5,
+        "consistent": 2,
+        "bad-finale": 1,
+        "front-loaded": -4,
+        "slow-burn": 11,
+        "declining": 1,
+        "saved-best-for-last": -1,
+        "rising": -4
+      },
+      "added": [
+        {
+          "seriesId": "tt14650074",
+          "title": "Dhindora",
+          "season": 2,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt33097597",
+          "title": "Small Town Remedy",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt32375763",
+          "title": "12 12 12",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt43657771",
+          "title": "Justiça 2",
+          "season": 2,
+          "seasonYear": 2024
+        },
+        {
+          "seriesId": "tt0118401",
+          "title": "Midsomer Murders",
+          "season": 26,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt0085096",
+          "title": "SuperTed",
+          "season": 3,
+          "seasonYear": 1985
+        },
+        {
+          "seriesId": "tt43636966",
+          "title": "Lo Chudail Chali Sasural",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt40029087",
+          "title": "Unicorn Academy: Secrets Revealed",
+          "season": 2,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt1715042",
+          "title": "Muzzy Comes Back",
+          "season": 1,
+          "seasonYear": 1989
+        },
+        {
+          "seriesId": "tt43724785",
+          "title": "Somos así: La serie de \"Nadie dice nada\"",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt39029630",
+          "title": "Lovers & Gangsters",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt38689910",
+          "title": "Jossi",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt31844371",
+          "title": "Vienna Game",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt3765628",
+          "title": "Vosmidesyatye",
+          "season": 6,
+          "seasonYear": 2016
+        },
+        {
+          "seriesId": "tt23334036",
+          "title": "World War II: Secrets from Above",
+          "season": 3,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt28515403",
+          "title": "Fonoi sto kabanario",
+          "season": 2,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt31228002",
+          "title": "One Pace",
+          "season": 16,
+          "seasonYear": 2021
+        },
+        {
+          "seriesId": "tt33203646",
+          "title": "Murder by Medic",
+          "season": 4,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt43687293",
+          "title": "Kamping",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt45083552",
+          "title": "Taboo Justice for Dre",
+          "season": 1,
+          "seasonYear": 2026
+        }
+      ],
+      "removed": [
+        {
+          "seriesId": "tt38715296",
+          "title": "Small Town Remedy",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt43657771",
+          "title": "Justiça 2",
+          "season": 1,
+          "seasonYear": 2024
+        },
+        {
+          "seriesId": "tt0451460",
+          "title": "Handy Manny",
+          "season": 4,
+          "seasonYear": 2009
+        }
+      ],
+      "ratingSwings": [
+        {
+          "seriesId": "tt37511063",
+          "title": "Police in Love",
+          "season": 1,
+          "from": 9.25,
+          "to": 7.76,
+          "delta": -1.49
+        },
+        {
+          "seriesId": "tt36786185",
+          "title": "The Altruists",
+          "season": 1,
+          "from": 8.19,
+          "to": 6.95,
+          "delta": -1.24
+        },
+        {
+          "seriesId": "tt44320738",
+          "title": "Love Island Adria",
+          "season": 1,
+          "from": 7.83,
+          "to": 6.74,
+          "delta": -1.09
+        },
+        {
+          "seriesId": "tt27303338",
+          "title": "IQ 160",
+          "season": 3,
+          "from": 9.61,
+          "to": 8.57,
+          "delta": -1.04
+        },
+        {
+          "seriesId": "tt44925660",
+          "title": "PowerSMP",
+          "season": 2,
+          "from": 8.4,
+          "to": 7.78,
+          "delta": -0.62
+        },
+        {
+          "seriesId": "tt41559886",
+          "title": "Gordon",
+          "season": 1,
+          "from": 6.79,
+          "to": 7.37,
+          "delta": 0.58
+        },
+        {
+          "seriesId": "tt1996507",
+          "title": "After the First 48",
+          "season": 12,
+          "from": 7.9,
+          "to": 7.33,
+          "delta": -0.57
+        },
+        {
+          "seriesId": "tt38647499",
+          "title": "Tasacak Bu Deniz",
+          "season": 2,
+          "from": 6.83,
+          "to": 7.33,
+          "delta": 0.5
+        },
+        {
+          "seriesId": "tt11098386",
+          "title": "Celebrity Race Across the World",
+          "season": 4,
+          "from": 7.13,
+          "to": 6.67,
+          "delta": -0.46
+        },
+        {
+          "seriesId": "tt44757191",
+          "title": "The Seven Knights of the Marronnier Kingdom",
+          "season": 1,
+          "from": 7.44,
+          "to": 6.99,
+          "delta": -0.45
+        }
+      ],
+      "modifiedCounts": {
+        "seriesVotes": 20676,
+        "avgRating": 1109,
+        "episodeCount": 96,
+        "seriesRating": 280,
+        "shapes": 185,
+        "poster": 6,
+        "overview": 6
+      }
+    },
+    {
       "builtAt": "2026-11-21T14:52:15.025Z",
       "totals": {
         "seasons": 67993,
@@ -7529,280 +7795,6 @@
         "seriesRating": 1198,
         "episodeCount": 155,
         "overview": 4
-      }
-    },
-    {
-      "builtAt": "2026-10-23T11:45:10.423Z",
-      "totals": {
-        "seasons": 67477,
-        "delta": 24
-      },
-      "shapeCounts": {
-        "rebound": 9780,
-        "big-finale": 11808,
-        "u-shaped": 2645,
-        "rollercoaster": 13490,
-        "mid-peak": 4354,
-        "consistent": 2540,
-        "bad-finale": 4344,
-        "front-loaded": 3064,
-        "slow-burn": 3973,
-        "declining": 1643,
-        "saved-best-for-last": 1379,
-        "shape-drift": 1396,
-        "rising": 2372
-      },
-      "shapeDeltas": {
-        "rebound": 12,
-        "big-finale": 8,
-        "u-shaped": -1,
-        "rollercoaster": 1,
-        "consistent": 8,
-        "bad-finale": 9,
-        "front-loaded": 7,
-        "slow-burn": 8,
-        "declining": 5,
-        "saved-best-for-last": -1,
-        "shape-drift": 4,
-        "rising": 1
-      },
-      "added": [
-        {
-          "seriesId": "tt23112594",
-          "title": "VisionQuest",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt30796986",
-          "title": "NCIS: Origins",
-          "season": 3,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt11743610",
-          "title": "The Terminal List",
-          "season": 2,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt0364845",
-          "title": "NCIS",
-          "season": 24,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt49522266",
-          "title": "Top Gear: Top 41",
-          "season": 1,
-          "seasonYear": 2013
-        },
-        {
-          "seriesId": "tt14218830",
-          "title": "Abbott Elementary",
-          "season": 6,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt36235895",
-          "title": "Private Eyes West Coast",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt38937897",
-          "title": "Merry Berry Love",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt2805096",
-          "title": "Chicago P.D.",
-          "season": 14,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt4655480",
-          "title": "Chicago Med",
-          "season": 12,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt36601237",
-          "title": "Ruído",
-          "season": 2,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt42798488",
-          "title": "KiDnap GAME",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt8068852",
-          "title": "The Rocketeer",
-          "season": 1,
-          "seasonYear": 2019
-        },
-        {
-          "seriesId": "tt5017396",
-          "title": "MTV Roadies",
-          "season": 12,
-          "seasonYear": 2015
-        },
-        {
-          "seriesId": "tt5017396",
-          "title": "MTV Roadies",
-          "season": 8,
-          "seasonYear": 2011
-        },
-        {
-          "seriesId": "tt4353976",
-          "title": "Antiques Road Trip",
-          "season": 18,
-          "seasonYear": 2019
-        },
-        {
-          "seriesId": "tt1815377",
-          "title": "Strawberry Shortcake's Berry Bitty Adventures",
-          "season": 2,
-          "seasonYear": 2010
-        },
-        {
-          "seriesId": "tt5017396",
-          "title": "MTV Roadies",
-          "season": 16,
-          "seasonYear": 2019
-        },
-        {
-          "seriesId": "tt5017396",
-          "title": "MTV Roadies",
-          "season": 14,
-          "seasonYear": 2017
-        },
-        {
-          "seriesId": "tt14401604",
-          "title": "Gutfeld!",
-          "season": 4,
-          "seasonYear": 2024
-        },
-        {
-          "seriesId": "tt36794102",
-          "title": "Shatir",
-          "season": 1,
-          "seasonYear": 2025
-        },
-        {
-          "seriesId": "tt39222526",
-          "title": "Underground",
-          "season": 2,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt47743267",
-          "title": "Ishqa Ishqa",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt6722972",
-          "title": "Hot Dog",
-          "season": 4,
-          "seasonYear": 2013
-        }
-      ],
-      "removed": [],
-      "ratingSwings": [
-        {
-          "seriesId": "tt0346211",
-          "title": "Bir Demet Tiyatro",
-          "season": 1,
-          "from": 7.82,
-          "to": 6.91,
-          "delta": -0.91
-        },
-        {
-          "seriesId": "tt6663476",
-          "title": "Mama June: Family Crisis",
-          "season": 6,
-          "from": 6.93,
-          "to": 7.63,
-          "delta": 0.7
-        },
-        {
-          "seriesId": "tt11298328",
-          "title": "The Long Night",
-          "season": 1,
-          "from": 8.38,
-          "to": 7.77,
-          "delta": -0.61
-        },
-        {
-          "seriesId": "tt3206540",
-          "title": "Morganville: The Series",
-          "season": 1,
-          "from": 7.63,
-          "to": 7.02,
-          "delta": -0.61
-        },
-        {
-          "seriesId": "tt15483602",
-          "title": "Reincarnated as a Sword",
-          "season": 2,
-          "from": 9.1,
-          "to": 8.6,
-          "delta": -0.5
-        },
-        {
-          "seriesId": "tt12135844",
-          "title": "Map Men",
-          "season": 5,
-          "from": 8.8,
-          "to": 8.34,
-          "delta": -0.46
-        },
-        {
-          "seriesId": "tt10924104",
-          "title": "Kursun",
-          "season": 1,
-          "from": 8.17,
-          "to": 7.73,
-          "delta": -0.44
-        },
-        {
-          "seriesId": "tt5017396",
-          "title": "MTV Roadies",
-          "season": 1,
-          "from": 6.13,
-          "to": 6.57,
-          "delta": 0.44
-        },
-        {
-          "seriesId": "tt35230907",
-          "title": "Baska Bir Gün",
-          "season": 1,
-          "from": 5.47,
-          "to": 5.03,
-          "delta": -0.44
-        },
-        {
-          "seriesId": "tt37673572",
-          "title": "Polden",
-          "season": 1,
-          "from": 7.93,
-          "to": 7.5,
-          "delta": -0.43
-        }
-      ],
-      "modifiedCounts": {
-        "seriesVotes": 19432,
-        "avgRating": 1294,
-        "shapes": 215,
-        "seriesRating": 252,
-        "episodeCount": 98,
-        "overview": 1,
-        "poster": 3
       }
     }
   ]
