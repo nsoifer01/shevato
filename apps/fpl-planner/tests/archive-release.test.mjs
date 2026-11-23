@@ -1017,6 +1017,31 @@ test('R13. a bootstrap FPL serves with the wrong shape is not an outage: the cop
   assertArchived(rel, [A, B]);
 });
 
+test('R14. a bootstrap that passes the shape check but has no readable first deadline: the copy happens, nothing is captured from it, the run fails (1)', async () => {
+  // Found in review of #687: seasonLabelFrom ran outside the bootstrap's error
+  // handling, so this threw before the release or the staged copy was read.
+  for (const deadline of ['not a date', '']) {
+    const rel = fakeRelease({ snaps: [A] });
+    const fpl = fakeFpl();
+    fpl.faults.push({
+      when: (p) => p === 'bootstrap-static/', times: 1,
+      respond: () => new Response(JSON.stringify({
+        elements: [{ id: 1, team: 1, element_type: 3, now_cost: 50, total_points: 0 }],
+        teams: Array.from({ length: 20 }, (_, i) => ({ id: i + 1 })),
+        events: [{ id: 10, deadline_time: deadline, finished: true, data_checked: false }, { id: 11, deadline_time: iso(GW11), finished: false, data_checked: false }],
+      }), { status: 200 }),
+    });
+    const r = await run(rel, stagedSite([A, B, C]), fpl, { now: FINAL });
+    assert.equal(r.thrown, undefined, `${JSON.stringify(deadline)}: the run reached the copy`);
+    assertArchived(rel, [A, B, C]);
+    assert.equal(rel.manifest().entries.length, 3, 'only the staged entries, no capture of the unreadable bootstrap');
+    assert.deepEqual(r.summary.captures, []);
+    assert.deepEqual(fpl.calls, ['bootstrap-static/'], 'no other FPL endpoint asked');
+    assert.match(r.fplError.message, /cannot derive a season label/);
+    assert.equal(r.code, 1, 'malformed upstream data fails the run, it is not an outage warning');
+  }
+});
+
 test('the exit code for each outcome', () => {
   const upstream = Object.assign(new Error('bootstrap: HTTP 403'), { upstream: true, status: 403 });
   const updating = Object.assign(new Error('updating'), { gameUpdating: true });

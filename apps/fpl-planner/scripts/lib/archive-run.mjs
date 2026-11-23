@@ -92,15 +92,22 @@ export async function runArchive({
 
   // FPL first, as before, but its failure no longer ends the run: the copy
   // needs only the season, and the export can name it.
+  // The season is derived inside the same handler: a bootstrap that passes
+  // assertShape but has no readable first deadline used to throw here before
+  // the copy (review of #687). Such a bootstrap is dropped, so the gate never
+  // captures from it, and its error is not `upstream`, so the run fails.
   let bootstrapFetch = null;
+  let bootstrapSeason = null;
   let fplError = null;
   try {
-    bootstrapFetch = await fetchEndpoint('bootstrap', 'bootstrap-static/', { fetchImpl, ...net });
-    bootstrapFetch.capturedAt = clock();
+    const got = await fetchEndpoint('bootstrap', 'bootstrap-static/', { fetchImpl, ...net });
+    got.capturedAt = clock();
+    bootstrapSeason = seasonLabelFrom(got.body);
+    bootstrapFetch = got;
   } catch (err) {
     fplError = err;
   }
-  let season = seasonLabel || (bootstrapFetch ? seasonLabelFrom(bootstrapFetch.body) : null);
+  let season = seasonLabel || bootstrapSeason;
   if (!season && staged) {
     try { season = await newestStagedSeason({ base: staged, fetchImpl, net }); } catch (err) {
       error(`FPL's bootstrap could not be read (${fplError.message}) and neither could the staged season list (${err.message})`);

@@ -69,7 +69,7 @@ column names the guard added so the whole category is covered, not the case.
 | 35 | The search's own club-limit check was unguarded; illegal plans could crowd the shortlist and a legal +15 upgrade be dropped for a roll | mutation-check (new) | R5 dead test | crowded-shortlist case in transfers.test |
 | 36 | One 403 backed the whole proxy off for 120 s (503s for every uncached path, the app's own retry defeated); the probe read once where the app retries; a red result then stood six hours (#616) | monitor (#616, 2026-10-17) | R6 ops path | corroborated backoff, `x-fpl-upstream`, probe re-read, hourly recheck while red; fpl.test, fpl-health.test; 5 mutants |
 | 37 | Both health probes judged FPL's routine update after a deadline as a failure: GitHub started the probe 5 s after GW8's deadline and every manager read 503'd (red, exit 2), and the Netlify 18:41 run would have opened an incident 11 min after GW10's 18:30 deadline | monitor (GitHub probe run 39995547754, 2026-10-23) | R6 ops path | `UPDATE_WINDOW_MS` / `updateWindowAt`: the CLI waits the window out, the Netlify run defers to the next hour, deferral counts as the scheduler running; probe-sample, fpl-health, probe-freshness; 6 mutants |
-| 53 | The release copy (`fpl-archive.yml`) failed on one 403 from FPL's bootstrap (run 45087799507, 2026-11-23 00:16 UTC): the script read FPL BEFORE the release or the staged snapshots, because the season label came from the bootstrap, so the refusal ended the run with nothing copied. Nothing was due and nothing was waiting (every staged entry was already on the release), so no data was lost; the next run passed. #665's tests rebuilt the production sequence by hand without the bootstrap read, so they could not see it. Reading the code found two more of the same kind: "the game is being updated" also ended the run before the copy, and on BOTH schedulers one capture FPL refused threw away another capture taken in the same run (a pre capture beside a refused `event/N/live`); and the log of a refusal kept only "HTTP 403", so the 403's origin cannot be named | CI (run 45087799507; GitHub emailed the owner); the other three by Claude reading the code while fixing it | R6 ops path; R5 test that skipped the failing step | `scripts/lib/archive-run.mjs` runs the whole sequence: an FPL that cannot be read costs only the gate's capture, the season comes from the export's list, the run exits 75 (warning) after a complete copy and 1 for a failed copy, a due capture that failed, or a requested one; captures independent on both sides; refusals log the edge headers and body start. archive-release R1 to R13 drive `runArchive` with a fake FPL, plus the script as a process; fpl-archive-stage "a capture FPL refuses"; 7 mutants `archive-copy-waits-on-fpl` and siblings. Old code reproduced against the real release and staging, FPL forced to 403: exit 1 before any read; new code: 96 staged entries compared, release up to date, exit 75 |
+| 53 | The release copy (`fpl-archive.yml`) failed on one 403 from FPL's bootstrap (run 45087799507, 2026-11-23 00:16 UTC): the script read FPL BEFORE the release or the staged snapshots, because the season label came from the bootstrap, so the refusal ended the run with nothing copied. Nothing was due and nothing was waiting (every staged entry was already on the release), so no data was lost; the next run passed. #665's tests rebuilt the production sequence by hand without the bootstrap read, so they could not see it. Reading the code found two more of the same kind: "the game is being updated" also ended the run before the copy, and on BOTH schedulers one capture FPL refused threw away another capture taken in the same run (a pre capture beside a refused `event/N/live`); and the log of a refusal kept only "HTTP 403", so the 403's origin cannot be named | CI (run 45087799507; GitHub emailed the owner); the other three by Claude reading the code while fixing it | R6 ops path; R5 test that skipped the failing step | `scripts/lib/archive-run.mjs` runs the whole sequence: an FPL that cannot be read costs only the gate's capture, the season comes from the export's list, the run exits 75 (warning) after a complete copy and 1 for a failed copy, a due capture that failed, or a requested one; captures independent on both sides; refusals log the edge headers and body start; the season is derived inside the bootstrap's error handling (review of #687). archive-release R1 to R14 drive `runArchive` with a fake FPL, plus the script as a process; fpl-archive-stage "a capture FPL refuses"; 9 mutants `archive-copy-waits-on-fpl` and siblings. Open follow-up: no check detects the copy workflow stopping or lagging, or an overdue live capture (section below). Old code reproduced against the real release and staging, FPL forced to 403: exit 1 before any read; new code: 96 staged entries compared, release up to date, exit 75 |
 | 52 | The GitHub probe's sample drew standings pages up to `floor(total_players / 50)`, but the overall league lists only RANKED managers, so its last pages answer 200, empty, `has_next: false`. On 2026-11-22 the deep page was 225810 with the standings ending at 225,236 (`total_players` 11.32M, ranked about 11.26M): its 3 managers were never candidates, 11 of 12 were read, and the run went red as UPSTREAM saying "0 empty, 0 unreadable". At that day's counts 114 of the next 20,000 slots draw such a page | monitor (GitHub probe run 44998635224, 2026-11-22), traced in session | R6 ops path | pages span the latest `ranked_count` (`rankedTotal`), which still overshot the measured end by about 4 pages, so a page past the end is drawn again in its own band below it (`PAGE_REDRAWS` 3, counted in the printed bound); an empty page that says more follow stays UPSTREAM. probe-sample; mutants `probe-sample-pages-by-total-players`, `probe-sample-no-page-redraw`, `probe-sample-empty-page-always-past-end` |
 | 51 | The release copy (`fpl-archive.yml`) failed on one dropped connection: it downloaded all 42 staged snapshots every hour into an empty runner directory, none of it retried, and an FPL body cut off mid-read was not retried either. Reading the code behind it found three more: a run that died after uploading snapshots but before the manifest wedged every later run (gh refuses a no-clobber upload of an existing name), gh's `--clobber` deletes the manifest before uploading the new one so a failed upload left no index that the next run would have rebuilt from the staged copy alone, and any `gh release view` failure read as "no release yet" | CI (run 43330644438 failed and GitHub emailed the owner, 2026-11-12); the other three by Claude reading the code while fixing it | R6 ops path | `scripts/lib/archive-release.mjs`: pull only what the release lacks, `fetchWithRetry` (timeout, body inside the attempt, 408/429/5xx, Retry-After, jitter), gh retried, the index kept in `manifest.json` plus two copies replaced copy first, a copy ahead of `manifest.json` taken as the base, unindexed snapshots indexed from their own records, the index re-read before and read back after every replace; archive-release (32 tests, a kill at every write); 13 mutants `archive-*`; 3 of the same kills (write 1 none/land, write 2 none) run against real gh on a temporary release before GitHub rate-limited the account, the other 9 not yet run |
 | 50 | A health-run test asserted that a real planning run finished inside 24 s of wall clock, so a busy machine failed it (seen under local `npm test`, 2026-11-09). Three more unit tests compared real elapsed time with a fixed window | owner-requested CI audit (2026-11-09) | R5 test that cannot be trusted | the health run's clock is injected and the test states the duration (24.0 s passes, 24.001 s fails); the other three are bounded by when the code really ran |
@@ -875,14 +875,42 @@ arrives with the wrong shape (not an outage: FPL changed something). Captures
 are independent on both schedulers: one FPL refuses is reported and fails the
 run, and the others in that run are kept.
 
+Review of #687 found one more way FPL could still stop the copy:
+`assertShape` accepts any string as `deadline_time`, and `seasonLabelFrom`,
+which throws when the first event's deadline does not parse, ran outside the
+bootstrap's error handling. It now runs inside it, so such a bootstrap is
+dropped: the season comes from the export's list, the copy completes, nothing
+is captured from that bootstrap, and the run exits 1 (bad data, not an
+outage). Archive-release R14 failed on the code before this change and passes
+after it; mutants `archive-season-outside-handler` and
+`archive-unreadable-bootstrap-kept`.
+
 **Left as it is.** No retry of a 403 (no evidence that a second request from
 the same runner address seconds later would pass, and the first rule of a
 block is not to push it), and no proxy or other egress for FPL. If FPL refused
 GitHub's runners for good, every run would still copy and warn; the gate's
 backup capture would be gone, and only the Netlify health run would report a
-deadline Netlify missed. Nothing compares the release with the staging store,
-so a copy job that stopped running altogether would go unreported; the staging
-store is never pruned, so its first run afterwards still copies everything.
+deadline Netlify missed.
+
+**Open follow-up, NOT done (monitoring gaps, recorded 2026-11-23):**
+- *The copy workflow stopping or falling behind is not detected.* Nothing
+  compares the release with the staging store. A failed run emails the owner,
+  but a workflow that stops being scheduled, or one that keeps passing while
+  the release lags the staging store, reports nothing. The staging store is
+  never pruned, so no data is lost while it lags, but the release is the
+  permanent record. Wanted: a check that alerts when a staged entry has been
+  missing from the release for longer than the copy job's normal gap (its
+  scheduled runs land 4 to 8 hours apart, measured 2026-10-27 to 11-23).
+- *An overdue live capture is not detected.* `archiveCoverageFailures` checks
+  pre and post captures only. The gate owes a live capture only for the NEWEST
+  gameweek that is finished and `data_checked`, so if one is missed and the
+  next gameweek is checked first, no run ever owes the earlier one again, and
+  no check says it is missing. A missed one can be taken by hand
+  (`--phase live --gw N`); GW5's live payload was captured by a local run on
+  2026-10-09, days after GW5 finished. Whether FPL serves an old gameweek's
+  live payload unchanged indefinitely has not been verified. Wanted: the coverage check
+  reports any finished, data_checked gameweek of the season with no live
+  capture after a grace period.
 
 ### The release copy must survive a failed run (2026-11-13)
 

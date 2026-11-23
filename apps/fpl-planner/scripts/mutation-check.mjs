@@ -745,6 +745,22 @@ export const MUTANTS = [
     guards: 'An FPL that refuses or cannot be reached no longer stops the run before it copies what Netlify staged (run 45087799507, 2026-11-23, ledger row 53).',
   },
   {
+    id: 'archive-season-outside-handler',
+    file: `${APP}/scripts/lib/archive-run.mjs`,
+    find: '    bootstrapSeason = seasonLabelFrom(got.body);\n    bootstrapFetch = got;\n  } catch (err) {\n    fplError = err;\n  }\n  let season = seasonLabel || bootstrapSeason;',
+    replace: '    bootstrapFetch = got;\n  } catch (err) {\n    fplError = err;\n  }\n  let season = seasonLabel || (bootstrapFetch ? seasonLabelFrom(bootstrapFetch.body) : null);',
+    tests: [T('archive-release')],
+    guards: 'A bootstrap with no readable first deadline does not stop the staged copy (review of #687, 2026-11-23, ledger row 53).',
+  },
+  {
+    id: 'archive-unreadable-bootstrap-kept',
+    file: `${APP}/scripts/lib/archive-run.mjs`,
+    find: '    bootstrapSeason = seasonLabelFrom(got.body);\n    bootstrapFetch = got;',
+    replace: '    bootstrapFetch = got;\n    bootstrapSeason = seasonLabelFrom(got.body);',
+    tests: [T('archive-release')],
+    guards: 'A bootstrap whose season cannot be derived is never the gate input, so nothing is captured from it (review of #687, 2026-11-23, ledger row 53).',
+  },
+  {
     id: 'archive-fpl-outage-fails-run',
     file: `${APP}/scripts/lib/archive-run.mjs`,
     find: "    return phase === 'auto' && fplError.upstream ? 75 : 1;",
