@@ -1358,7 +1358,11 @@ gate, the records and the dedupe; two schedulers run it:
   uploads what the release lacks, and then runs the same gate itself to fill
   any gap Netlify left. Network and gh calls are retried with backoff, a run
   that died half way is finished by the next one, and the new manifest is read
-  back before the run counts as done (`scripts/lib/archive-release.mjs`).
+  back before the run counts as done (`scripts/lib/archive-release.mjs`). The
+  copy does not need FPL: when FPL's bootstrap cannot be read the season comes
+  from the export's season list, everything staged is still copied, and only
+  the gate's own capture waits for the next run (`scripts/lib/archive-run.mjs`,
+  which runs the whole sequence).
 
 The gate:
 
@@ -1378,8 +1382,14 @@ thing replaced, after checking the new one keeps every old entry. It lives in
 three assets, `manifest.json` (what consumers read) and `manifest.copy-1.json`
 / `manifest.copy-2.json`, replaced one at a time, copy first, so gh's
 delete-then-upload never leaves the release without the newest index. About 1.1 MB
-a gameweek, 40 MB a season. "The game is being updated" is refused with exit 75
-and retried by the next hourly run.
+a gameweek, 40 MB a season. Exit codes: 0 done; 75, a warning the workflow
+passes, when FPL could not be read ("the game is being updated", a refusal, no
+answer) on a scheduled run that still copied everything staged, since the next
+run retries and a missed deadline is the health run's alert; 1 for a failed
+copy, a capture the gate found due and could not take, or a capture a person
+asked for that FPL refused. One capture failing never discards another taken
+in the same run, on either scheduler. A refused read is logged with the
+answering edge's headers and the start of its body.
 
 `scripts/scorecard.mjs` rebuilds every archived `pre` snapshot exactly as the
 app resolves it, projects that gameweek and scores it against the archived

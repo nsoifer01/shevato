@@ -100,6 +100,28 @@ test('inside the final two hours the first run stages a pre capture and the live
   }
 });
 
+test('a capture FPL refuses does not cost the other one taken in the same run: it is staged and indexed, and the run still fails', async () => {
+  // 2026-11-23: before, a refused event/N/live threw away the pre capture
+  // fetched seconds earlier, and the manifest was never written.
+  for (const respond of [
+    () => new Response('', { status: 403, headers: { 'x-served-by': 'cache-iad' } }),
+    () => new Response('The game is being updated.', { status: 503 }),
+  ]) {
+    const store = memoryStore();
+    const base = fpl();
+    const refusing = async (url, init) => (url.endsWith('event/6/live/') ? respond() : base(url, init));
+    await assert.rejects(stageCaptures({ store, fetchImpl: refusing, now: at(DEADLINE - 90 * 60e3) }), /^Error: live: /);
+    const manifest = JSON.parse(store.map.get(manifestKey('2026-27')));
+    assert.deepEqual(manifest.entries.map((e) => `${e.phase} ${e.endpoint}`).sort(), ['pre bootstrap', 'pre event-status', 'pre fixtures']);
+    for (const e of manifest.entries) assert.ok(store.map.has(fileKey('2026-27', e.file)), `${e.file} is staged`);
+    // The next run owes only the live capture, and takes it.
+    const next = await stageCaptures({ store, fetchImpl: fpl(), now: at(DEADLINE - 30 * 60e3) });
+    assert.deepEqual(next.captures.map((c) => c.phase), ['live']);
+    const after = JSON.parse(store.map.get(manifestKey('2026-27')));
+    assert.equal(after.entries.length, 4);
+  }
+});
+
 test('the next run in the same window has nothing to do, and asks FPL for the bootstrap only', async () => {
   const store = memoryStore();
   await stageCaptures({ store, fetchImpl: fpl(), now: at(DEADLINE - 90 * 60e3) });
