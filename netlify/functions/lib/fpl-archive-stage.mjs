@@ -58,23 +58,39 @@ export async function stageCaptures({ store, fetchImpl = fetch, now = () => new 
   const { captures, idle } = decideCaptures({ bootstrap: bootstrapFetch.body, manifest, now: now() });
   if (!captures.length) return { season, captures: [], idle, written: [] };
 
+  // Each capture stands alone (2026-11-23): before, a run that owed a pre
+  // capture and a live one threw both away when FPL refused event/N/live, and
+  // a pre capture lost on the last run before a deadline is lost for good.
   const written = [];
+  const done = [];
+  let failed = null;
   for (const c of captures) {
-    const r = await captureRecords({
-      season, phase: c.phase, gw: c.gw, deadline: c.deadline, manifest,
-      bootstrapFetch: c.phase === 'live' ? null : bootstrapFetch, fetchImpl, sleep, now,
-    });
+    let r;
+    try {
+      r = await captureRecords({
+        season, phase: c.phase, gw: c.gw, deadline: c.deadline, manifest,
+        bootstrapFetch: c.phase === 'live' ? null : bootstrapFetch, fetchImpl, sleep, now,
+      });
+    } catch (err) {
+      failed = failed || err;
+      continue;
+    }
     for (const { file, gz } of r.files) {
       const res = await store.set(fileKey(season, file), gz.buffer.slice(gz.byteOffset, gz.byteOffset + gz.byteLength), { onlyIfNew: true });
       if (res && res.modified === false) throw new Error(`staged ${file} already exists`);
       written.push(file);
     }
     manifest = r.manifest;
+    done.push(c);
   }
-  assertAppendOnly(stored, manifest);
-  const res = await store.setJSON(manifestKey(season), manifest, etag ? { onlyIfMatch: etag } : { onlyIfNew: true });
-  if (res && res.modified === false) throw new Error('the staged manifest changed underneath this run; the next run retries');
-  return { season, captures, idle: null, written };
+  if (done.length) {
+    assertAppendOnly(stored, manifest);
+    const res = await store.setJSON(manifestKey(season), manifest, etag ? { onlyIfMatch: etag } : { onlyIfNew: true });
+    if (res && res.modified === false) throw new Error('the staged manifest changed underneath this run; the next run retries');
+  }
+  // The run still fails, so Netlify records it, once what did succeed is kept.
+  if (failed) throw failed;
+  return { season, captures: done, idle: null, written };
 }
 
 /** Seasons with a staged manifest, newest first. */

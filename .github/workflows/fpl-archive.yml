@@ -13,7 +13,7 @@ name: FPL deadline archive
 #   pre .... the next deadline is within 26 hours, and no pre capture exists for
 #            it, or the newest is 6 hours old, or we are inside the final 2
 #            hours and none was taken there. That lands at about T-25h, T-19h,
-#            T-13h, T-7h and on both runs of the final two hours.
+#            T-13h, T-7h and once in the final two hours.
 #   post ... once, within 3 hours after a deadline.
 #   live ... once, for event/{gw}/live of the newest gameweek FPL has marked
 #            finished and data_checked.
@@ -32,8 +32,14 @@ name: FPL deadline archive
 # minutes are free; each run is still kept to seconds. GitHub emails a failed
 # scheduled run to whoever last edited this cron line.
 #
-# Exit 75 from the script means FPL answered "the game is being updated": that
-# is a warning, not a failure, because the next hourly run is the retry.
+# Exit 75 from the script means FPL could not be read (it said "the game is
+# being updated", refused the runner, or did not answer) AFTER everything
+# Netlify staged was copied: a warning, not a failure, because the next run is
+# the retry, and a deadline that went uncaptured is the Netlify health run's
+# alert (archiveCoverageFailures). A failed copy, or a capture the gate found
+# due and could not take, is exit 1. Since 2026-11-23 (run 45087799507) the
+# copy no longer waits on FPL: one 403 on the bootstrap used to end the run
+# before it read the release or the staged snapshots.
 
 # SINCE 2026-10-10 THE CAPTURE IS NETLIFY'S. GitHub fires this repository's
 # schedules hours late or not at all (on 10 October the hourly cron below ran

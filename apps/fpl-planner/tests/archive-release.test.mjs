@@ -6,25 +6,36 @@
 // that matter are about what happens when things go wrong half way: nothing
 // archived is ever replaced or forgotten, a run that died is finished by the
 // next one, a transient failure is retried and a permanent one is loud, and a
-// healthy run moves no bytes it does not have to. Each round below is the
-// production sequence archive-snapshot.mjs runs (readRelease, pullStaged,
-// loadManifest, syncRelease) against a fake `gh` release that keeps real bytes
-// and the REAL staged export handler (netlify/functions/fpl-archive-export.mjs)
-// behind a fetch that can fail on cue. The expected states come from the
-// scenario itself (which snapshots exist where), never from re-running the code.
+// healthy run moves no bytes it does not have to. Each `round` below is the
+// library's copy sequence (readRelease, pullStaged, loadManifest, syncRelease)
+// against a fake `gh` release that keeps real bytes and the REAL staged export
+// handler (netlify/functions/fpl-archive-export.mjs) behind a fetch that can
+// fail on cue. The expected states come from the scenario itself (which
+// snapshots exist where), never from re-running the code.
+//
+// A `round` is not the whole production run: it leaves out FPL's bootstrap,
+// which archive-snapshot.mjs read FIRST, so these tests could not see the
+// 2026-11-23 failure (run 45087799507: one 403 on the bootstrap, nothing
+// copied). The scenarios at the end call `runArchive`
+// (scripts/lib/archive-run.mjs), the function the script runs, with a fake FPL
+// as well.
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync, readFileSync, writeFileSync, readdirSync, existsSync } from 'node:fs';
-import { join, basename } from 'node:path';
+import { join, basename, dirname } from 'node:path';
 import { tmpdir } from 'node:os';
+import { spawnSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 
 import {
   buildRecord, encodeRecord, snapshotFileName, emptyManifest, addToManifest, fetchWithRetry, retryAfterMs, fetchEndpoint, assertAppendOnly,
+  FPL_API, decodeRecord,
 } from '../scripts/lib/archive.mjs';
 import {
   readRelease, pullStaged, loadManifest, syncRelease, planStagedPull, entryKey, indexWrites, MANIFEST, MANIFEST_COPIES,
 } from '../scripts/lib/archive-release.mjs';
+import { runArchive, exitCodeFor, newestStagedSeason } from '../scripts/lib/archive-run.mjs';
 import { handleExport } from '../../../netlify/functions/fpl-archive-export.mjs';
 
 const SEASON = '2026-27';
@@ -138,7 +149,7 @@ function stagedSite(snaps) {
       return v;
     },
     async getWithMetadata(key, opts) { const data = await this.get(key, opts); return data == null ? null : { data, etag: 'e1' }; },
-    async list() { return { blobs: [], directories: [`${SEASON}/`] }; },
+    async list() { return { blobs: [], directories: map.size ? [`${SEASON}/`] : [] }; },
   };
   const site = { map, calls: [], faults: [] };
   site.fetchImpl = async (url, init) => {
@@ -314,7 +325,11 @@ test('7. a permanent status is final at once: no retry, a clear error', async ()
   for (const status of [400, 401, 403, 404, 410, 501]) {
     let n = 0;
     const fetchImpl = async () => { n++; return new Response('no', { status }); };
-    await assert.rejects(fetchWithRetry('https://x.test/', { label: 'thing', fetchImpl, ...noSleep }), new RegExp(`^Error: thing: HTTP ${status}$`));
+    await assert.rejects(fetchWithRetry('https://x.test/', { label: 'thing', fetchImpl, ...noSleep }), (err) => {
+      assert.equal(err.message, `thing: HTTP ${status} (body: "no")`);
+      assert.equal(err.upstream, true);
+      return true;
+    });
     assert.equal(n, 1, `HTTP ${status} not retried`);
   }
   // A staged file the export does not have is a 404, final, never "nothing staged".
@@ -711,4 +726,371 @@ test('a release of 99, 100, 101 or 420 assets is read whole; at 900 the run stop
       assert.deepEqual(short.writes(), []);
     }
   }
+});
+
+/* ------------------------------------------- the whole run, FPL included */
+
+// The GW11 deadline is a week after the staged snapshots (T0), so by default
+// nothing is due: GW10's deadline passed a week before, and GW10 is finished
+// but not yet data_checked (no live capture owed). The bootstrap lists only
+// those two gameweeks, so no older one owes a live capture either.
+const GW10 = '2026-10-25T13:30:00Z';
+const GW11 = Date.parse('2026-11-08T13:30:00Z');
+const QUIET = iso(T0 + 3 * 3600e3);
+// Inside GW11's final two hours, with only A (a pre capture a week old) staged:
+// a pre capture Netlify did not take, which the gate must.
+const FINAL = iso(GW11 - 1.5 * 3600e3);
+// What FPL's Fastly edge sends with a refusal (headers as recorded on
+// 2026-10-16, FINDINGS "FPL refused the proxy again").
+const EDGE_403 = () => new Response('', { status: 403, headers: { via: '1.1 varnish', 'x-served-by': 'cache-iad-kiad7000100-IAD', 'x-cache': 'MISS' } });
+
+/** A fake FPL that serves real-shaped payloads and fails on cue: faults are { when(path), times, respond() }. */
+function fakeFpl({ checked = false } = {}) {
+  const bootstrap = {
+    elements: [{ id: 1, team: 1, element_type: 3, now_cost: 50, total_points: 0 }],
+    teams: Array.from({ length: 20 }, (_, i) => ({ id: i + 1 })),
+    events: [
+      { id: 10, deadline_time: GW10, finished: true, data_checked: checked },
+      { id: 11, deadline_time: iso(GW11), finished: false, data_checked: false },
+    ],
+  };
+  const bodies = {
+    'bootstrap-static/': bootstrap,
+    'fixtures/': [{ id: 1, team_h: 1, team_a: 2 }],
+    'event-status/': { status: [] },
+    'event/10/live/': { elements: [{ id: 1, stats: { total_points: 2 } }] },
+  };
+  const fpl = { calls: [], faults: [] };
+  fpl.fetch = async (url) => {
+    const path = url.slice(FPL_API.length);
+    fpl.calls.push(path);
+    const f = fpl.faults.find((x) => x.times > 0 && x.when(path));
+    if (f) { f.times--; return f.respond(path); }
+    if (!(path in bodies)) return new Response('{}', { status: 404 });
+    return new Response(JSON.stringify(bodies[path]), { status: 200, headers: { date: new Date(T0).toUTCString() } });
+  };
+  return fpl;
+}
+
+/**
+ * One production run: runArchive, as archive-snapshot.mjs calls it in the
+ * workflow (--release --staged, auto unless a phase is given), against the
+ * fake release, the real export over `site`, and `fpl`. `code` is what the
+ * process would exit with, a throw included.
+ */
+async function run(rel, site, fpl, { now = QUIET, phase = 'auto', gw = null, sleeps = null } = {}) {
+  const dir = workDir();
+  const said = { warn: [], error: [], log: [] };
+  let tick = Date.parse(now);
+  const net = sleeps ? { sleep: async (ms) => { sleeps.push(ms); }, random: () => 0 } : noSleep;
+  try {
+    const result = await runArchive({
+      out: dir, phase, gw, now, release: true, staged: BASE, gh: rel.gh,
+      fetchImpl: (url, init) => (url.startsWith(FPL_API) ? fpl.fetch(url, init) : site.fetchImpl(url, init)),
+      net, retry: noSleep,
+      log: (m) => said.log.push(m), warn: (m) => said.warn.push(m), error: (m) => said.error.push(m),
+      clock: () => iso(tick += 1000),
+    });
+    return { ...result, code: exitCodeFor({ phase, ...result }), said, dir };
+  } catch (thrown) {
+    // archive-snapshot.mjs's rejection handler.
+    return { thrown, code: thrown.gameUpdating ? 75 : 1, said, dir };
+  }
+}
+
+/** The release's entries of one phase and gameweek, by endpoint. */
+const releaseCaptures = (rel, phase, gw) => rel.manifest().entries.filter((e) => e.phase === phase && e.gw === gw).map((e) => e.endpoint).sort();
+
+test('R1. FPL refuses the bootstrap (the 2026-11-23 failure): everything staged is still copied, FPL is asked once, the run warns (75)', async () => {
+  const rel = fakeRelease({ snaps: [A] });
+  const site = stagedSite([A, B, C, D]);
+  const fpl = fakeFpl();
+  fpl.faults.push({ when: (p) => p === 'bootstrap-static/', times: 99, respond: EDGE_403 });
+  const r = await run(rel, site, fpl);
+  assert.equal(r.thrown, undefined);
+  assertArchived(rel, [A, B, C, D]);
+  assert.equal(rel.manifest().entries.length, 4);
+  // 403 is final at once: no retry of FPL, and no other FPL endpoint asked.
+  assert.deepEqual(fpl.calls, ['bootstrap-static/']);
+  assert.equal(r.code, 75);
+  assert.equal(r.fplError.status, 403);
+  assert.equal(r.summary.idle, 'FPL could not be read');
+  // The warning names the edge that refused, which the 2026-11-23 log could not.
+  assert.match(r.said.warn.join('\n'), /bootstrap: HTTP 403 \(via: 1\.1 varnish, x-served-by: cache-iad-kiad7000100-IAD, x-cache: MISS, body: ""\)/);
+  // The season came from the export's own list, which was asked once.
+  assert.equal(site.calls.filter((u) => u === BASE).length, 1);
+});
+
+test('R2. FPL keeps refusing across runs while Netlify keeps staging: every run copies what is new, nothing is lost or duplicated', async () => {
+  const rel = fakeRelease({ snaps: [A] });
+  const fpl = fakeFpl();
+  fpl.faults.push({ when: (p) => p === 'bootstrap-static/', times: 99, respond: EDGE_403 });
+  const staged = [A];
+  for (const next of [B, C, D, E]) {
+    staged.push(next);
+    const r = await run(rel, stagedSite(staged), fpl);
+    assert.equal(r.code, 75);
+    assertArchived(rel, staged);
+    assert.equal(rel.manifest().entries.length, staged.length);
+  }
+  assert.equal(fpl.calls.length, 4, 'one FPL request a run, never a retry storm');
+  // And once FPL answers again, the run is clean and writes nothing more.
+  const clean = await run(rel, stagedSite(staged), fakeFpl());
+  assert.equal(clean.code, 0);
+  assert.equal(rel.manifest().entries.length, staged.length);
+});
+
+test('R3. the release is already up to date and FPL refuses: no writes, a warning, not a failure', async () => {
+  const rel = fakeRelease({ snaps: [A, B] });
+  const fpl = fakeFpl();
+  fpl.faults.push({ when: (p) => p === 'bootstrap-static/', times: 1, respond: EDGE_403 });
+  const r = await run(rel, stagedSite([A, B]), fpl);
+  assert.equal(r.code, 75);
+  assert.deepEqual(rel.writes(), []);
+});
+
+test('R4. FPL is updating, unreachable, or rate limiting past every retry: the copy still happens and the run warns (75)', async () => {
+  const cases = {
+    updating: () => new Response('The game is being updated.', { status: 503 }),
+    unreachable: () => { throw new TypeError('fetch failed', { cause: { code: 'ECONNRESET' } }); },
+    'rate limited': () => new Response('', { status: 429, headers: { 'retry-after': '5' } }),
+  };
+  for (const [name, respond] of Object.entries(cases)) {
+    const rel = fakeRelease({ snaps: [A] });
+    const fpl = fakeFpl();
+    fpl.faults.push({ when: (p) => p === 'bootstrap-static/', times: 99, respond });
+    const r = await run(rel, stagedSite([A, B, C]), fpl);
+    assert.equal(r.code, 75, name);
+    assertArchived(rel, [A, B, C]);
+    // The update notice is final at once; a network failure and a 429 are
+    // asked four times, as every FPL read is.
+    assert.equal(fpl.calls.length, name === 'updating' ? 1 : 4, name);
+  }
+});
+
+test('R5. a rate limit that lifts is waited out (Retry-After honoured), and a body cut off half way is asked again: the run is clean', async () => {
+  const rel = fakeRelease({ snaps: [A] });
+  const fpl = fakeFpl();
+  fpl.faults.push({ when: (p) => p === 'bootstrap-static/', times: 1, respond: () => new Response('', { status: 429, headers: { 'retry-after': '7' } }) });
+  // Headers arrive, then the connection drops inside the body.
+  fpl.faults.push({ when: (p) => p === 'bootstrap-static/', times: 1, respond: () => new Response(new ReadableStream({ start(c) { c.enqueue(new TextEncoder().encode('{"elem')); c.error(new TypeError('terminated')); } }), { status: 200 }) });
+  const sleeps = [];
+  const r = await run(rel, stagedSite([A, B]), fpl, { sleeps });
+  assert.equal(r.code, 0);
+  assert.equal(r.fplError, null);
+  assert.equal(sleeps[0], 7000, 'Retry-After, not the shorter backoff');
+  assert.equal(fpl.calls.filter((p) => p === 'bootstrap-static/').length, 3);
+  assertArchived(rel, [A, B]);
+});
+
+test('R6. a capture Netlify did not take becomes due: the gate takes it, it reaches the release, the run is clean', async () => {
+  const rel = fakeRelease({ snaps: [A] });
+  const r = await run(rel, stagedSite([A, B]), fakeFpl(), { now: FINAL });
+  assert.equal(r.code, 0);
+  assert.deepEqual(r.summary.captures.map((c) => c.phase), ['pre']);
+  assertArchived(rel, [A, B]);
+  // A and B, the week-old staged pre capture, plus the three endpoints just taken.
+  assert.deepEqual(releaseCaptures(rel, 'pre', 11), ['bootstrap', 'bootstrap', 'event-status', 'fixtures', 'fixtures']);
+  const fresh = rel.manifest().entries.find((e) => e.phase === 'pre' && e.endpoint === 'fixtures' && e.file && e.file !== B.file);
+  const { meta, body } = decodeRecord(rel.assets.get(fresh.file).buf);
+  assert.equal(meta.deadline, iso(GW11));
+  assert.deepEqual(body, [{ id: 1, team_h: 1, team_a: 2 }]);
+  // The next run has nothing to do: no second final-window capture, no writes.
+  const writes = rel.writes().length;
+  const again = await run(rel, stagedSite([A, B]), fakeFpl(), { now: iso(GW11 - 0.5 * 3600e3) });
+  assert.equal(again.code, 0);
+  assert.deepEqual(again.summary.captures, []);
+  assert.equal(rel.writes().length, writes);
+});
+
+test('R7. two captures due and FPL refuses one: the other is kept and archived, and the run fails (1)', async () => {
+  // Before 2026-11-23 the refused live capture threw away the pre capture
+  // taken seconds earlier in the same run.
+  const rel = fakeRelease({ snaps: [A] });
+  const fpl = fakeFpl({ checked: true });
+  fpl.faults.push({ when: (p) => p === 'event/10/live/', times: 99, respond: EDGE_403 });
+  const r = await run(rel, stagedSite([A]), fpl, { now: FINAL });
+  assert.deepEqual(r.summary.captures.map((c) => c.phase).sort(), ['live', 'pre']);
+  assert.equal(r.captureErrors.length, 1);
+  assert.match(r.captureErrors[0].message, /^live: HTTP 403/);
+  assert.equal(r.code, 1);
+  assert.deepEqual(releaseCaptures(rel, 'pre', 11), ['bootstrap', 'bootstrap', 'event-status', 'fixtures']);
+  assert.deepEqual(releaseCaptures(rel, 'live', 10), []);
+  // FPL answers again: the next run takes only the live capture still owed.
+  const next = await run(rel, stagedSite([A]), fakeFpl({ checked: true }), { now: iso(GW11 - 0.5 * 3600e3) });
+  assert.equal(next.code, 0);
+  assert.deepEqual(next.summary.captures.map((c) => c.phase), ['live']);
+  assert.deepEqual(releaseCaptures(rel, 'live', 10), ['live']);
+  assert.deepEqual(releaseCaptures(rel, 'pre', 11), ['bootstrap', 'bootstrap', 'event-status', 'fixtures']);
+});
+
+test('R8. Netlify staging is down and FPL answers: the gate still captures what is due, and the run fails (1) for the copy', async () => {
+  const rel = fakeRelease({ snaps: [A] });
+  const site = stagedSite([A, B]);
+  site.faults.push({ when: (u) => u.includes('?season='), times: 99, respond: () => new Response('', { status: 503 }) });
+  const r = await run(rel, site, fakeFpl(), { now: FINAL });
+  assert.ok(r.stagedError);
+  assert.equal(r.code, 1);
+  assert.deepEqual(releaseCaptures(rel, 'pre', 11), ['bootstrap', 'bootstrap', 'event-status', 'fixtures']);
+});
+
+test('R9. FPL refuses AND staging is down, unreadable or empty: nothing is written and the run fails (1)', async () => {
+  const fpl403 = () => { const f = fakeFpl(); f.faults.push({ when: (p) => p === 'bootstrap-static/', times: 99, respond: EDGE_403 }); return f; };
+  // The season list is down: no season, nothing can be copied.
+  let rel = fakeRelease({ snaps: [A] });
+  let site = stagedSite([A, B]);
+  site.faults.push({ when: (u) => u === BASE, times: 99, respond: () => new Response('', { status: 400 }) });
+  let r = await run(rel, site, fpl403());
+  assert.equal(r.code, 1);
+  assert.equal(r.thrown.status, 403);
+  assert.deepEqual(rel.writes(), []);
+  // The season list answers, the manifest does not.
+  rel = fakeRelease({ snaps: [A] });
+  site = stagedSite([A, B]);
+  site.faults.push({ when: (u) => u.includes('?season='), times: 99, respond: () => new Response('', { status: 400 }) });
+  r = await run(rel, site, fpl403());
+  assert.equal(r.code, 1);
+  assert.match(r.stagedError.message, /staged manifest: HTTP 400/);
+  assert.deepEqual(rel.writes(), []);
+  // A staged manifest that is not one.
+  rel = fakeRelease({ snaps: [A] });
+  site = stagedSite([A, B]);
+  site.map.set(`${SEASON}/manifest.json`, JSON.stringify({ entries: 'no' }));
+  r = await run(rel, site, fpl403());
+  assert.equal(r.code, 1);
+  assert.match(r.stagedError.message, /malformed/);
+  assert.deepEqual(rel.writes(), []);
+  // Nothing staged at all: there is no season to copy, so FPL's error stands.
+  rel = fakeRelease({ snaps: [A] });
+  r = await run(rel, stagedSite(null), fpl403());
+  assert.equal(r.code, 1);
+  assert.deepEqual(rel.writes(), []);
+});
+
+test('R10. a run killed half way through its upload, then a run with FPL refusing: the second finishes the job, nothing lost or doubled', async () => {
+  const rel = fakeRelease({ snaps: [A] });
+  rel.faults.push({ when: (a) => a[1] === 'upload' && a.join(' ').includes(C.file), times: 1, error: 'the runner was cancelled', effect: 'land', kill: true });
+  const first = await run(rel, stagedSite([A, B, C, D]), fakeFpl());
+  assert.equal(first.code, 1);
+  rel.dead = false;
+  const fpl = fakeFpl();
+  fpl.faults.push({ when: (p) => p === 'bootstrap-static/', times: 1, respond: EDGE_403 });
+  const second = await run(rel, stagedSite([A, B, C, D]), fpl);
+  assert.equal(second.code, 75);
+  assertArchived(rel, [A, B, C, D]);
+  assert.equal(rel.manifest().entries.length, 4);
+});
+
+test('R11. GitHub refusing every upload fails the run (1) even when FPL is down too, and the next run completes it', async () => {
+  const rel = fakeRelease({ snaps: [A] });
+  rel.faults.push({ when: (a) => a[1] === 'upload', times: 4, error: 'HTTP 503' });
+  const fpl = fakeFpl();
+  fpl.faults.push({ when: (p) => p === 'bootstrap-static/', times: 1, respond: EDGE_403 });
+  const r = await run(rel, stagedSite([A, B]), fpl);
+  assert.equal(r.code, 1);
+  assert.match(r.thrown.message, /uploading .* failed after 4 attempts/);
+  assert.equal(rel.manifest().entries.length, 1, 'the index was not touched');
+  const next = await run(rel, stagedSite([A, B]), fakeFpl());
+  assert.equal(next.code, 0);
+  assertArchived(rel, [A, B]);
+});
+
+test('R12. a capture a person asked for that FPL refuses fails the run (1), after the copy', async () => {
+  const rel = fakeRelease({ snaps: [A] });
+  const fpl = fakeFpl();
+  fpl.faults.push({ when: (p) => p === 'bootstrap-static/', times: 1, respond: EDGE_403 });
+  const r = await run(rel, stagedSite([A, B]), fpl, { phase: 'post' });
+  assert.equal(r.code, 1);
+  assertArchived(rel, [A, B]);
+  // A requested live capture of a finished gameweek, with FPL answering: taken.
+  const live = await run(rel, stagedSite([A, B]), fakeFpl(), { phase: 'live', gw: 10 });
+  assert.equal(live.code, 0);
+  assert.deepEqual(releaseCaptures(rel, 'live', 10), ['live']);
+});
+
+test('R13. a bootstrap FPL serves with the wrong shape is not an outage: the copy happens and the run fails (1)', async () => {
+  const rel = fakeRelease({ snaps: [A] });
+  const fpl = fakeFpl();
+  fpl.faults.push({ when: (p) => p === 'bootstrap-static/', times: 1, respond: () => new Response('{"events":[]}', { status: 200 }) });
+  const r = await run(rel, stagedSite([A, B]), fpl);
+  assert.equal(r.code, 1);
+  assertArchived(rel, [A, B]);
+});
+
+test('R14. a bootstrap that passes the shape check but has no readable first deadline: the copy happens, nothing is captured from it, the run fails (1)', async () => {
+  // Found in review of #687: seasonLabelFrom ran outside the bootstrap's error
+  // handling, so this threw before the release or the staged copy was read.
+  for (const deadline of ['not a date', '']) {
+    const rel = fakeRelease({ snaps: [A] });
+    const fpl = fakeFpl();
+    fpl.faults.push({
+      when: (p) => p === 'bootstrap-static/', times: 1,
+      respond: () => new Response(JSON.stringify({
+        elements: [{ id: 1, team: 1, element_type: 3, now_cost: 50, total_points: 0 }],
+        teams: Array.from({ length: 20 }, (_, i) => ({ id: i + 1 })),
+        events: [{ id: 10, deadline_time: deadline, finished: true, data_checked: false }, { id: 11, deadline_time: iso(GW11), finished: false, data_checked: false }],
+      }), { status: 200 }),
+    });
+    const r = await run(rel, stagedSite([A, B, C]), fpl, { now: FINAL });
+    assert.equal(r.thrown, undefined, `${JSON.stringify(deadline)}: the run reached the copy`);
+    assertArchived(rel, [A, B, C]);
+    assert.equal(rel.manifest().entries.length, 3, 'only the staged entries, no capture of the unreadable bootstrap');
+    assert.deepEqual(r.summary.captures, []);
+    assert.deepEqual(fpl.calls, ['bootstrap-static/'], 'no other FPL endpoint asked');
+    assert.match(r.fplError.message, /cannot derive a season label/);
+    assert.equal(r.code, 1, 'malformed upstream data fails the run, it is not an outage warning');
+  }
+});
+
+test('the exit code for each outcome', () => {
+  const upstream = Object.assign(new Error('bootstrap: HTTP 403'), { upstream: true, status: 403 });
+  const updating = Object.assign(new Error('updating'), { gameUpdating: true });
+  const shape = new Error('bootstrap: refused, 19 teams');
+  const cases = [
+    [{}, 0],
+    [{ fplError: upstream }, 75],
+    [{ fplError: updating }, 75],
+    [{ fplError: shape }, 1],
+    [{ phase: 'pre', fplError: upstream }, 1],
+    [{ phase: 'pre', fplError: updating }, 75],
+    [{ fplError: upstream, stagedError: new Error('x') }, 1],
+    [{ captureErrors: [upstream] }, 1],
+    [{ captureErrors: [updating] }, 75],
+    [{ captureErrors: [updating, upstream] }, 1],
+  ];
+  for (const [given, code] of cases) assert.equal(exitCodeFor(given), code, JSON.stringify(given));
+});
+
+test('the staged season list: the newest season, null when empty, an error when it is not a list of seasons', async () => {
+  const answer = (body) => async () => new Response(body, { status: 200 });
+  assert.equal(await newestStagedSeason({ base: BASE, fetchImpl: answer('{"seasons":["2027-28","2026-27"]}') }), '2027-28');
+  assert.equal(await newestStagedSeason({ base: BASE, fetchImpl: answer('{"seasons":[]}') }), null);
+  await assert.rejects(newestStagedSeason({ base: BASE, fetchImpl: answer('{"seasons":["../x"]}') }), /not a season/);
+  await assert.rejects(newestStagedSeason({ base: BASE, fetchImpl: answer('{}') }), /malformed/);
+  await assert.rejects(newestStagedSeason({ base: BASE, fetchImpl: answer('<html>') }), /not JSON/);
+});
+
+test('the script itself: FPL refusing exits 75 with what everything staged copied; FPL and the staged season list both failing exits 1', () => {
+  const here = dirname(fileURLToPath(import.meta.url));
+  const staged = workDir();
+  const snaps = [A, B, C];
+  writeFileSync(join(staged, 'manifest.json'), JSON.stringify(manifestOf(snaps)));
+  for (const s of snaps) writeFileSync(join(staged, s.file), s.gz);
+  const script = (env) => {
+    const out = workDir();
+    const r = spawnSync(process.execPath, [
+      '--import', join(here, 'helpers', 'archive-fetch-preload.mjs'),
+      join(here, '..', 'scripts', 'archive-snapshot.mjs'), '--staged', 'https://staged.test/export', '--out', out,
+    ], { encoding: 'utf8', env: { ...process.env, ARCHIVE_TEST_STAGED_DIR: staged, ...env } });
+    return { ...r, out: join(out, SEASON) };
+  };
+  const ok = script({});
+  assert.equal(ok.status, 75, ok.stderr);
+  assert.match(ok.stderr, /::warning::FPL's bootstrap could not be read: bootstrap: HTTP 403 \(x-served-by: cache-test, body: ""\)/);
+  for (const s of snaps) assert.ok(readFileSync(join(ok.out, s.file)).equals(s.gz), `${s.file} copied byte for byte`);
+  assert.deepEqual(JSON.parse(readFileSync(join(ok.out, 'manifest.json'), 'utf8')).entries.map(entryKey), snaps.map((s) => entryKey(s.entry)));
+  const down = script({ ARCHIVE_TEST_SEASONS_STATUS: '400' });
+  assert.equal(down.status, 1, down.stderr);
+  assert.match(down.stderr, /bootstrap: HTTP 403/);
+  assert.match(down.stderr, /staged seasons: HTTP 400/);
 });

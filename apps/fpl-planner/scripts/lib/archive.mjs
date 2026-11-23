@@ -266,7 +266,8 @@ const capturesOf = (manifest, phase, gw) => (manifest ? manifest.entries : [])
  * - pre: the next deadline is within `preWindowHours`, and either no pre
  *   capture exists for it, or the newest is `preSpacingHours` old, or we are in
  *   the final `finalHours` and none was taken inside them. Hourly runs then
- *   land roughly at T-25h, T-19h, T-13h, T-7h and twice in the final two hours.
+ *   land roughly at T-25h, T-19h, T-13h, T-7h and once in the final two hours
+ *   (the archive's GW10 and GW11 pre captures, 2026-11).
  * - post: a deadline passed less than `postHours` ago and no post capture
  *   exists for that gameweek.
  * - live: the newest finished, data_checked gameweek has no live capture yet.
@@ -363,6 +364,19 @@ export function retryAfterMs(value, nowMs = Date.now()) {
 export const backoffMs = (n, { baseDelayMs, maxDelayMs, random }) => Math.min(maxDelayMs, baseDelayMs * 2 ** (n - 1) * (1 + random() / 2));
 
 /**
+ * Who answered a refused request and what they said: the edge headers and the
+ * start of the body. The archive logged only "bootstrap: HTTP 403" on
+ * 2026-11-23, which cannot tell FPL's Fastly edge from anything in front of it.
+ */
+export function describeResponse(res, body) {
+  const get = (n) => (res && res.headers && typeof res.headers.get === 'function' ? res.headers.get(n) : null);
+  const parts = ['server', 'via', 'x-served-by', 'x-cache', 'retry-after']
+    .map((n) => [n, get(n)]).filter(([, v]) => v != null && v !== '').map(([n, v]) => `${n}: ${v}`);
+  if (typeof body === 'string') parts.push(`body: ${JSON.stringify(body.replace(/\s+/g, ' ').trim().slice(0, 120))}`);
+  return parts.join(', ');
+}
+
+/**
  * GET with a bounded number of attempts. Each attempt has its own timeout and
  * reads the WHOLE body inside it, so a connection dropped half way through a
  * transfer is retried like one refused outright (it was not, before
@@ -370,7 +384,10 @@ export const backoffMs = (n, { baseDelayMs, maxDelayMs, random }) => Math.min(ma
  * timeouts and RETRY_STATUSES are retried, waiting the larger of the backoff
  * and Retry-After, never more than `maxDelayMs`; any other status is final at
  * once. `inspect(res, body)` may throw to refuse a response without a retry.
- * Returns { res, body } for a 2xx or a status listed in `accept`.
+ * Returns { res, body } for a 2xx or a status listed in `accept`. A refusal
+ * or a network failure throws an error marked `upstream`, which says the
+ * server could not be read (archive-run.mjs treats an unreadable FPL as an
+ * upstream outage, not as an archive defect).
  */
 export async function fetchWithRetry(url, {
   label = url, init = {}, read = (r) => r.text(), accept = [], inspect = null, fetchImpl = fetch,
@@ -387,12 +404,15 @@ export async function fetchWithRetry(url, {
     } catch (e) {
       const cause = e && e.cause ? ` (${e.cause.code || e.cause.message || e.cause})` : '';
       err = new Error(`${label}: network error: ${e && e.message}${cause}`);
+      err.upstream = true;
     }
     if (!err) {
       if (inspect) inspect(res, body);
       if (res.ok || accept.includes(res.status)) return { res, body };
-      err = new Error(`${label}: HTTP ${res.status}`);
+      const seen = describeResponse(res, body);
+      err = new Error(`${label}: HTTP ${res.status}${seen ? ` (${seen})` : ''}`);
       err.status = res.status;
+      err.upstream = true;
       if (!RETRY_STATUSES.includes(res.status)) throw err;
       wait = retryAfterMs(res.headers && typeof res.headers.get === 'function' ? res.headers.get('retry-after') : null);
     }
