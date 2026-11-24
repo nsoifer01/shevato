@@ -1,6 +1,245 @@
 {
   "updates": [
     {
+      "builtAt": "2026-11-24T17:28:50.578Z",
+      "totals": {
+        "seasons": 68042,
+        "delta": 18
+      },
+      "shapeCounts": {
+        "rebound": 9848,
+        "big-finale": 11930,
+        "u-shaped": 2669,
+        "rollercoaster": 13559,
+        "mid-peak": 4377,
+        "consistent": 2550,
+        "bad-finale": 4394,
+        "front-loaded": 3094,
+        "slow-burn": 4012,
+        "declining": 1654,
+        "saved-best-for-last": 1375,
+        "shape-drift": 1401,
+        "rising": 2392
+      },
+      "shapeDeltas": {
+        "rebound": 9,
+        "big-finale": 7,
+        "u-shaped": -1,
+        "rollercoaster": 4,
+        "mid-peak": -1,
+        "consistent": -2,
+        "bad-finale": 3,
+        "slow-burn": 4,
+        "declining": -3,
+        "saved-best-for-last": 1,
+        "shape-drift": 2,
+        "rising": 1
+      },
+      "added": [
+        {
+          "seriesId": "tt10946316",
+          "title": "The Institute",
+          "season": 2,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt35673115",
+          "title": "Hollywood Arts",
+          "season": 2,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt35463259",
+          "title": "The Nazi Cartel",
+          "season": 1,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt39044730",
+          "title": "Oxytoxin",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt5762950",
+          "title": "The Real Housewives of Auckland",
+          "season": 1,
+          "seasonYear": 2016
+        },
+        {
+          "seriesId": "tt1809413",
+          "title": "1 Kadin 1 Erkek",
+          "season": 3,
+          "seasonYear": 2010
+        },
+        {
+          "seriesId": "tt4360400",
+          "title": "Air Warriors",
+          "season": 9,
+          "seasonYear": 2022
+        },
+        {
+          "seriesId": "tt12323268",
+          "title": "Toaru Majutsu no Index-tan",
+          "season": 1,
+          "seasonYear": 2009
+        },
+        {
+          "seriesId": "tt31414859",
+          "title": "Alan Cumming's Paradise Homes",
+          "season": 1,
+          "seasonYear": 2024
+        },
+        {
+          "seriesId": "tt27535062",
+          "title": "City of God: The Fight Rages On",
+          "season": 2,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt45470102",
+          "title": "Khamseen Khamseen",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt0154746",
+          "title": "Ivar Kreuger",
+          "season": 1,
+          "seasonYear": 1998
+        },
+        {
+          "seriesId": "tt8755254",
+          "title": "Hangyakusei Million Arthur",
+          "season": 2,
+          "seasonYear": 2019
+        },
+        {
+          "seriesId": "tt6352258",
+          "title": "The Real Housewives of Sydney",
+          "season": 3,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt31262522",
+          "title": "Celeste",
+          "season": 2,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt37677064",
+          "title": "Manhunt",
+          "season": 1,
+          "seasonYear": 2024
+        },
+        {
+          "seriesId": "tt38885478",
+          "title": "Win the Mall",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt4573408",
+          "title": "Once Upon a Time in Rostov",
+          "season": 1,
+          "seasonYear": 2012
+        }
+      ],
+      "removed": [],
+      "ratingSwings": [
+        {
+          "seriesId": "tt1809413",
+          "title": "1 Kadin 1 Erkek",
+          "season": 2,
+          "from": 8.15,
+          "to": 6.44,
+          "delta": -1.71
+        },
+        {
+          "seriesId": "tt46653736",
+          "title": "Welsh & Shedar",
+          "season": 1,
+          "from": 7.53,
+          "to": 5.98,
+          "delta": -1.55
+        },
+        {
+          "seriesId": "tt34333196",
+          "title": "The Real Housewives of London",
+          "season": 2,
+          "from": 8.71,
+          "to": 7.68,
+          "delta": -1.03
+        },
+        {
+          "seriesId": "tt1439031",
+          "title": "Sortilegio",
+          "season": 1,
+          "from": 8.4,
+          "to": 7.4,
+          "delta": -1
+        },
+        {
+          "seriesId": "tt3567016",
+          "title": "The Real Housewives of Melbourne",
+          "season": 4,
+          "from": 8.23,
+          "to": 7.28,
+          "delta": -0.95
+        },
+        {
+          "seriesId": "tt12409194",
+          "title": "Battle Through the Heavens",
+          "season": 5,
+          "from": 8.5,
+          "to": 9.43,
+          "delta": 0.93
+        },
+        {
+          "seriesId": "tt3567016",
+          "title": "The Real Housewives of Melbourne",
+          "season": 3,
+          "from": 8.04,
+          "to": 7.23,
+          "delta": -0.81
+        },
+        {
+          "seriesId": "tt6352258",
+          "title": "The Real Housewives of Sydney",
+          "season": 2,
+          "from": 6.38,
+          "to": 5.57,
+          "delta": -0.81
+        },
+        {
+          "seriesId": "tt1674023",
+          "title": "The Real Housewives of D.C.",
+          "season": 1,
+          "from": 7.3,
+          "to": 6.5,
+          "delta": -0.8
+        },
+        {
+          "seriesId": "tt1809413",
+          "title": "1 Kadin 1 Erkek",
+          "season": 1,
+          "from": 8.54,
+          "to": 7.74,
+          "delta": -0.8
+        }
+      ],
+      "modifiedCounts": {
+        "seriesVotes": 20254,
+        "avgRating": 1274,
+        "shapes": 249,
+        "seriesRating": 315,
+        "episodeCount": 120,
+        "poster": 7,
+        "providers": 4,
+        "overview": 8
+      }
+    },
+    {
       "builtAt": "2026-11-23T18:08:35.628Z",
       "totals": {
         "seasons": 68024,
@@ -7326,346 +7565,6 @@
         "episodeCount": 105,
         "poster": 3,
         "overview": 5
-      }
-    },
-    {
-      "builtAt": "2026-10-25T11:17:58.736Z",
-      "totals": {
-        "seasons": 67548,
-        "delta": 31
-      },
-      "shapeCounts": {
-        "rebound": 9796,
-        "big-finale": 11815,
-        "u-shaped": 2650,
-        "rollercoaster": 13502,
-        "mid-peak": 4363,
-        "consistent": 2543,
-        "bad-finale": 4344,
-        "front-loaded": 3066,
-        "slow-burn": 3977,
-        "declining": 1647,
-        "saved-best-for-last": 1381,
-        "shape-drift": 1394,
-        "rising": 2368
-      },
-      "shapeDeltas": {
-        "rebound": 7,
-        "big-finale": 4,
-        "u-shaped": 4,
-        "rollercoaster": -1,
-        "mid-peak": -3,
-        "consistent": -1,
-        "front-loaded": 3,
-        "slow-burn": -2,
-        "declining": -1,
-        "saved-best-for-last": 2,
-        "rising": -1
-      },
-      "added": [
-        {
-          "seriesId": "tt39394153",
-          "title": "Firefly Wedding",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt38715296",
-          "title": "Small Town Remedy",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt2531336",
-          "title": "Lupin",
-          "season": 4,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt35826715",
-          "title": "Boston Blue",
-          "season": 2,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt41295083",
-          "title": "A Certain Dark Item",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt28313387",
-          "title": "A Returner's Magic Should Be Special",
-          "season": 2,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt16098700",
-          "title": "Fire Country",
-          "season": 5,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt32268630",
-          "title": "Sheriff Country",
-          "season": 2,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt43691408",
-          "title": "The World's Strongest Witch",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt47616772",
-          "title": "Yal",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt32813343",
-          "title": "Magic Knight Rayearth",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt41266040",
-          "title": "The Northumbria Mysteries",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt46658083",
-          "title": "The New Stanford Prison Experiment",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt27524116",
-          "title": "Sasaki and Peeps",
-          "season": 2,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt25531288",
-          "title": "The Iceblade Sorcerer Shall Rule the World",
-          "season": 2,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt47730406",
-          "title": "Corregidora: The Darkest Night in Mexican Soccer",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt42938834",
-          "title": "Suikoden: The Anime",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt34587358",
-          "title": "The Outfit",
-          "season": 3,
-          "seasonYear": 2024
-        },
-        {
-          "seriesId": "tt47778404",
-          "title": "Sam: The Soul of Halloween",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt12169918",
-          "title": "Satina",
-          "season": 1,
-          "seasonYear": 2020
-        },
-        {
-          "seriesId": "tt45831796",
-          "title": "Hitozukiai ga Nigate na Miboujin no Yukionna-san to Noroi no Yubiwa",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt48356732",
-          "title": "Swipe Right on the Devil",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt0094509",
-          "title": "Medisch Centrum West",
-          "season": 9,
-          "seasonYear": 2025
-        },
-        {
-          "seriesId": "tt0271894",
-          "title": "48 Hours",
-          "season": 12,
-          "seasonYear": 1998
-        },
-        {
-          "seriesId": "tt1971245",
-          "title": "The Voice UK",
-          "season": 14,
-          "seasonYear": 2025
-        },
-        {
-          "seriesId": "tt4508624",
-          "title": "My Lottery Dream Home",
-          "season": 12,
-          "seasonYear": 2022
-        },
-        {
-          "seriesId": "tt0156673",
-          "title": "Kamen Rider Super-1",
-          "season": 1,
-          "seasonYear": 1980
-        },
-        {
-          "seriesId": "tt1245696",
-          "title": "Plutón B.R.B. Nero",
-          "season": 2,
-          "seasonYear": 2009
-        },
-        {
-          "seriesId": "tt0390700",
-          "title": "Escape to the Country",
-          "season": 25,
-          "seasonYear": 2024
-        },
-        {
-          "seriesId": "tt15068816",
-          "title": "Paglet",
-          "season": 1,
-          "seasonYear": 2021
-        },
-        {
-          "seriesId": "tt32327588",
-          "title": "Furia",
-          "season": 2,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt36694933",
-          "title": "90 Day: Hunt for Love",
-          "season": 2,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt49037069",
-          "title": "Timbiriche",
-          "season": 1,
-          "seasonYear": 2026
-        }
-      ],
-      "removed": [
-        {
-          "seriesId": "tt0294023",
-          "title": "Captain Tsubasa",
-          "season": 6,
-          "seasonYear": 1995
-        },
-        {
-          "seriesId": "tt3137940",
-          "title": "Countdown to UFC",
-          "season": 16,
-          "seasonYear": 2022
-        }
-      ],
-      "ratingSwings": [
-        {
-          "seriesId": "tt9355244",
-          "title": "Very Beautiful Movements 2",
-          "season": 9,
-          "from": 6.37,
-          "to": 4.95,
-          "delta": -1.42
-        },
-        {
-          "seriesId": "tt9355244",
-          "title": "Very Beautiful Movements 2",
-          "season": 4,
-          "from": 6.2,
-          "to": 4.81,
-          "delta": -1.39
-        },
-        {
-          "seriesId": "tt9355244",
-          "title": "Very Beautiful Movements 2",
-          "season": 7,
-          "from": 5.67,
-          "to": 4.44,
-          "delta": -1.23
-        },
-        {
-          "seriesId": "tt9355244",
-          "title": "Very Beautiful Movements 2",
-          "season": 8,
-          "from": 5.62,
-          "to": 4.41,
-          "delta": -1.21
-        },
-        {
-          "seriesId": "tt9355244",
-          "title": "Very Beautiful Movements 2",
-          "season": 5,
-          "from": 5.73,
-          "to": 4.57,
-          "delta": -1.16
-        },
-        {
-          "seriesId": "tt9355244",
-          "title": "Very Beautiful Movements 2",
-          "season": 6,
-          "from": 5.47,
-          "to": 4.31,
-          "delta": -1.16
-        },
-        {
-          "seriesId": "tt32063263",
-          "title": "The Forsytes",
-          "season": 2,
-          "from": 6.75,
-          "to": 5.88,
-          "delta": -0.87
-        },
-        {
-          "seriesId": "tt11150950",
-          "title": "Skolan",
-          "season": 1,
-          "from": 9.03,
-          "to": 8.18,
-          "delta": -0.85
-        },
-        {
-          "seriesId": "tt32328599",
-          "title": "Bluey Minisodes",
-          "season": 2,
-          "from": 5.57,
-          "to": 6.31,
-          "delta": 0.74
-        },
-        {
-          "seriesId": "tt0870973",
-          "title": "Celebrity Masterchef",
-          "season": 21,
-          "from": 5.11,
-          "to": 5.85,
-          "delta": 0.74
-        }
-      ],
-      "modifiedCounts": {
-        "seriesVotes": 21327,
-        "avgRating": 1490,
-        "shapes": 236,
-        "episodeCount": 128,
-        "seriesRating": 985,
-        "poster": 24,
-        "overview": 16
       }
     }
   ]
