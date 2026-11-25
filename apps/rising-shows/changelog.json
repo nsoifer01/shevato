@@ -1,6 +1,287 @@
 {
   "updates": [
     {
+      "builtAt": "2026-11-25T17:26:58.894Z",
+      "totals": {
+        "seasons": 68067,
+        "delta": 25
+      },
+      "shapeCounts": {
+        "rebound": 9846,
+        "big-finale": 11925,
+        "u-shaped": 2670,
+        "rollercoaster": 13558,
+        "mid-peak": 4375,
+        "consistent": 2553,
+        "bad-finale": 4389,
+        "front-loaded": 3097,
+        "slow-burn": 4014,
+        "declining": 1660,
+        "saved-best-for-last": 1376,
+        "shape-drift": 1403,
+        "rising": 2381
+      },
+      "shapeDeltas": {
+        "rebound": -2,
+        "big-finale": -5,
+        "u-shaped": 1,
+        "rollercoaster": -1,
+        "mid-peak": -2,
+        "consistent": 3,
+        "bad-finale": -5,
+        "front-loaded": 3,
+        "slow-burn": 2,
+        "declining": 6,
+        "saved-best-for-last": 1,
+        "shape-drift": 2,
+        "rising": -11
+      },
+      "added": [
+        {
+          "seriesId": "tt33004920",
+          "title": "The Trials of Karen Read",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt36843594",
+          "title": "Dig",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt0399985",
+          "title": "Leap in the Dark",
+          "season": 3,
+          "seasonYear": 1977
+        },
+        {
+          "seriesId": "tt0098479",
+          "title": "Till We Meet Again",
+          "season": 1,
+          "seasonYear": 1989
+        },
+        {
+          "seriesId": "tt9165438",
+          "title": "Gabby's Dollhouse",
+          "season": 12,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt1815377",
+          "title": "Strawberry Shortcake's Berry Bitty Adventures",
+          "season": 3,
+          "seasonYear": 2013
+        },
+        {
+          "seriesId": "tt4332954",
+          "title": "Unraveled",
+          "season": 2,
+          "seasonYear": 2016
+        },
+        {
+          "seriesId": "tt0414719",
+          "title": "The Ashlee Simpson Show",
+          "season": 1,
+          "seasonYear": 2004
+        },
+        {
+          "seriesId": "tt0352099",
+          "title": "Shutsugeki! Machine Robo Rescue",
+          "season": 1,
+          "seasonYear": 2003
+        },
+        {
+          "seriesId": "tt30137479",
+          "title": "Ambient Swim",
+          "season": 2,
+          "seasonYear": 2023
+        },
+        {
+          "seriesId": "tt49910378",
+          "title": "The Circle",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt39161219",
+          "title": "Os 12 Signos de Valentina",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt5141800",
+          "title": "Nirvana in Fire",
+          "season": 2,
+          "seasonYear": 2017
+        },
+        {
+          "seriesId": "tt5742760",
+          "title": "Rusty Rivets",
+          "season": 1,
+          "seasonYear": 2016
+        },
+        {
+          "seriesId": "tt8810398",
+          "title": "Martial Universe",
+          "season": 1,
+          "seasonYear": 2018
+        },
+        {
+          "seriesId": "tt6886010",
+          "title": "Meme Police",
+          "season": 5,
+          "seasonYear": 2022
+        },
+        {
+          "seriesId": "tt6886010",
+          "title": "Meme Police",
+          "season": 6,
+          "seasonYear": 2024
+        },
+        {
+          "seriesId": "tt11762462",
+          "title": "The Adventures of Gui & Estopa",
+          "season": 4,
+          "seasonYear": 2015
+        },
+        {
+          "seriesId": "tt22054934",
+          "title": "The Well",
+          "season": 2,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt19042654",
+          "title": "Halo the Series: Declassified",
+          "season": 2,
+          "seasonYear": 2024
+        },
+        {
+          "seriesId": "tt4864008",
+          "title": "Monster in My Family",
+          "season": 2,
+          "seasonYear": 2017
+        },
+        {
+          "seriesId": "tt21236532",
+          "title": "The Galway Bay Murders",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt47712459",
+          "title": "Love Me to Hurt Me",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt5066102",
+          "title": "Extreme Ghost Stories",
+          "season": 1,
+          "seasonYear": 2006
+        },
+        {
+          "seriesId": "tt8696314",
+          "title": "Good Doctor",
+          "season": 1,
+          "seasonYear": 2018
+        }
+      ],
+      "removed": [],
+      "ratingSwings": [
+        {
+          "seriesId": "tt6506552",
+          "title": "Girls in the House",
+          "season": 5,
+          "from": 7.88,
+          "to": 6.63,
+          "delta": -1.25
+        },
+        {
+          "seriesId": "tt38775500",
+          "title": "The Will Stancil Show",
+          "season": 2,
+          "from": 9.83,
+          "to": 8.63,
+          "delta": -1.2
+        },
+        {
+          "seriesId": "tt9908414",
+          "title": "Block 13",
+          "season": 3,
+          "from": 8.53,
+          "to": 7.53,
+          "delta": -1
+        },
+        {
+          "seriesId": "tt34186841",
+          "title": "Loups garous",
+          "season": 2,
+          "from": 8,
+          "to": 7,
+          "delta": -1
+        },
+        {
+          "seriesId": "tt9908414",
+          "title": "Block 13",
+          "season": 1,
+          "from": 8.15,
+          "to": 7.17,
+          "delta": -0.98
+        },
+        {
+          "seriesId": "tt26674570",
+          "title": "For the Love of DILFs",
+          "season": 1,
+          "from": 8.1,
+          "to": 7.34,
+          "delta": -0.76
+        },
+        {
+          "seriesId": "tt5686870",
+          "title": "Big Order",
+          "season": 1,
+          "from": 7.33,
+          "to": 6.62,
+          "delta": -0.71
+        },
+        {
+          "seriesId": "tt0337784",
+          "title": "The Surreal Life",
+          "season": 7,
+          "from": 7.82,
+          "to": 7.2,
+          "delta": -0.62
+        },
+        {
+          "seriesId": "tt1833403",
+          "title": "Captain Jake and the Never Land Pirates",
+          "season": 2,
+          "from": 4.85,
+          "to": 5.44,
+          "delta": 0.59
+        },
+        {
+          "seriesId": "tt1833403",
+          "title": "Captain Jake and the Never Land Pirates",
+          "season": 3,
+          "from": 4.74,
+          "to": 5.33,
+          "delta": 0.59
+        }
+      ],
+      "modifiedCounts": {
+        "seriesVotes": 18378,
+        "avgRating": 1191,
+        "shapes": 212,
+        "seriesRating": 233,
+        "episodeCount": 76,
+        "poster": 6,
+        "overview": 1
+      }
+    },
+    {
       "builtAt": "2026-11-24T17:28:50.578Z",
       "totals": {
         "seasons": 68042,
@@ -7271,300 +7552,6 @@
         "overview": 4,
         "poster": 3,
         "providers": 1
-      }
-    },
-    {
-      "builtAt": "2026-10-26T12:59:46.171Z",
-      "totals": {
-        "seasons": 67569,
-        "delta": 21
-      },
-      "shapeCounts": {
-        "rebound": 9792,
-        "big-finale": 11819,
-        "u-shaped": 2648,
-        "rollercoaster": 13497,
-        "mid-peak": 4355,
-        "consistent": 2544,
-        "bad-finale": 4353,
-        "front-loaded": 3067,
-        "slow-burn": 3980,
-        "declining": 1657,
-        "saved-best-for-last": 1380,
-        "shape-drift": 1398,
-        "rising": 2369
-      },
-      "shapeDeltas": {
-        "rebound": -4,
-        "big-finale": 4,
-        "u-shaped": -2,
-        "rollercoaster": -5,
-        "mid-peak": -8,
-        "consistent": 1,
-        "bad-finale": 9,
-        "front-loaded": 1,
-        "slow-burn": 3,
-        "declining": 10,
-        "saved-best-for-last": -1,
-        "shape-drift": 4,
-        "rising": 1
-      },
-      "added": [
-        {
-          "seriesId": "tt1909015",
-          "title": "Undercover",
-          "season": 6,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt14773858",
-          "title": "Pirates",
-          "season": 1,
-          "seasonYear": 2024
-        },
-        {
-          "seriesId": "tt13854248",
-          "title": "The Legend of Hanuman",
-          "season": 7,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt2819924",
-          "title": "Candice Renoir",
-          "season": 11,
-          "seasonYear": 2022
-        },
-        {
-          "seriesId": "tt44385073",
-          "title": "Last One Laughing UK: Halloween",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt3219166",
-          "title": "MasterChef Canada",
-          "season": 8,
-          "seasonYear": 2025
-        },
-        {
-          "seriesId": "tt4508624",
-          "title": "My Lottery Dream Home",
-          "season": 18,
-          "seasonYear": 2025
-        },
-        {
-          "seriesId": "tt9169598",
-          "title": "UNHhhh",
-          "season": 8,
-          "seasonYear": 2023
-        },
-        {
-          "seriesId": "tt10561700",
-          "title": "Celebrity Gogglebox",
-          "season": 7,
-          "seasonYear": 2025
-        },
-        {
-          "seriesId": "tt4353976",
-          "title": "Antiques Road Trip",
-          "season": 30,
-          "seasonYear": 2025
-        },
-        {
-          "seriesId": "tt0499394",
-          "title": "Lo que la gente cuenta",
-          "season": 3,
-          "seasonYear": 2007
-        },
-        {
-          "seriesId": "tt1974895",
-          "title": "Slaps & Kisses",
-          "season": 4,
-          "seasonYear": 2014
-        },
-        {
-          "seriesId": "tt28314144",
-          "title": "Vivant",
-          "season": 2,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt28672586",
-          "title": "Lego City: No Limits",
-          "season": 2,
-          "seasonYear": 2023
-        },
-        {
-          "seriesId": "tt32502749",
-          "title": "Nachtstreife",
-          "season": 2,
-          "seasonYear": 2022
-        },
-        {
-          "seriesId": "tt31314095",
-          "title": "Picasso: The Beauty and the Beast",
-          "season": 1,
-          "seasonYear": 2023
-        },
-        {
-          "seriesId": "tt33321873",
-          "title": "The Traitors Czech Republic",
-          "season": 3,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt33981014",
-          "title": "The One That Got Away",
-          "season": 2,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt36303747",
-          "title": "King of Drag",
-          "season": 2,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt38820819",
-          "title": "LOL: Den som ler sist Halloween",
-          "season": 1,
-          "seasonYear": 2025
-        },
-        {
-          "seriesId": "tt41600558",
-          "title": "Black Smoke Tales",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt35926686",
-          "title": "It Gets Worse",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt38681829",
-          "title": "Love Is Blind: Netherlands",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt6722972",
-          "title": "Hot Dog",
-          "season": 5,
-          "seasonYear": 2013
-        }
-      ],
-      "removed": [
-        {
-          "seriesId": "tt22015480",
-          "title": "Lootere",
-          "season": 1,
-          "seasonYear": 2024
-        },
-        {
-          "seriesId": "tt9332934",
-          "title": "Who's the murderer",
-          "season": 1,
-          "seasonYear": 2016
-        },
-        {
-          "seriesId": "tt9332934",
-          "title": "Who's the murderer",
-          "season": 2,
-          "seasonYear": 2017
-        }
-      ],
-      "ratingSwings": [
-        {
-          "seriesId": "tt1974895",
-          "title": "Slaps & Kisses",
-          "season": 5,
-          "from": 8.86,
-          "to": 7.7,
-          "delta": -1.16
-        },
-        {
-          "seriesId": "tt38453485",
-          "title": "The Box",
-          "season": 1,
-          "from": 6.53,
-          "to": 7.43,
-          "delta": 0.9
-        },
-        {
-          "seriesId": "tt1224142",
-          "title": "Beyaz Show",
-          "season": 1,
-          "from": 5.18,
-          "to": 4.3,
-          "delta": -0.88
-        },
-        {
-          "seriesId": "tt9355244",
-          "title": "Very Beautiful Movements 2",
-          "season": 9,
-          "from": 4.95,
-          "to": 4.26,
-          "delta": -0.69
-        },
-        {
-          "seriesId": "tt9355244",
-          "title": "Very Beautiful Movements 2",
-          "season": 8,
-          "from": 4.41,
-          "to": 3.76,
-          "delta": -0.65
-        },
-        {
-          "seriesId": "tt1974895",
-          "title": "Slaps & Kisses",
-          "season": 3,
-          "from": 8.9,
-          "to": 8.25,
-          "delta": -0.65
-        },
-        {
-          "seriesId": "tt2531336",
-          "title": "Lupin",
-          "season": 4,
-          "from": 7.44,
-          "to": 6.86,
-          "delta": -0.58
-        },
-        {
-          "seriesId": "tt9355244",
-          "title": "Very Beautiful Movements 2",
-          "season": 7,
-          "from": 4.44,
-          "to": 3.88,
-          "delta": -0.56
-        },
-        {
-          "seriesId": "tt9169598",
-          "title": "UNHhhh",
-          "season": 2,
-          "from": 8.32,
-          "to": 7.77,
-          "delta": -0.55
-        },
-        {
-          "seriesId": "tt9355244",
-          "title": "Very Beautiful Movements 2",
-          "season": 4,
-          "from": 4.81,
-          "to": 4.26,
-          "delta": -0.55
-        }
-      ],
-      "modifiedCounts": {
-        "seriesVotes": 24270,
-        "avgRating": 1437,
-        "shapes": 255,
-        "seriesRating": 362,
-        "episodeCount": 105,
-        "poster": 3,
-        "overview": 5
       }
     }
   ]
