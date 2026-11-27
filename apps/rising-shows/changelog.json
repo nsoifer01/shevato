@@ -1,6 +1,251 @@
 {
   "updates": [
     {
+      "builtAt": "2026-11-27T16:43:31.879Z",
+      "totals": {
+        "seasons": 68104,
+        "delta": 19
+      },
+      "shapeCounts": {
+        "rebound": 9852,
+        "big-finale": 11929,
+        "u-shaped": 2679,
+        "rollercoaster": 13570,
+        "mid-peak": 4377,
+        "consistent": 2563,
+        "bad-finale": 4388,
+        "front-loaded": 3099,
+        "slow-burn": 4014,
+        "declining": 1661,
+        "saved-best-for-last": 1378,
+        "shape-drift": 1402,
+        "rising": 2383
+      },
+      "shapeDeltas": {
+        "rebound": 5,
+        "big-finale": 10,
+        "u-shaped": 4,
+        "rollercoaster": 10,
+        "mid-peak": -3,
+        "consistent": 9,
+        "bad-finale": -2,
+        "front-loaded": 1,
+        "slow-burn": -2,
+        "declining": -2,
+        "saved-best-for-last": 2,
+        "shape-drift": 1,
+        "rising": -6
+      },
+      "added": [
+        {
+          "seriesId": "tt1829850",
+          "title": "Becoming Human",
+          "season": 1,
+          "seasonYear": 2011
+        },
+        {
+          "seriesId": "tt40855481",
+          "title": "Amici",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt3455408",
+          "title": "The Curse of Oak Island",
+          "season": 14,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt4226226",
+          "title": "Holiday Baking Championship",
+          "season": 13,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt13664652",
+          "title": "XXXmas",
+          "season": 1,
+          "seasonYear": 2020
+        },
+        {
+          "seriesId": "tt13398930",
+          "title": "Cue!",
+          "season": 1,
+          "seasonYear": 2022
+        },
+        {
+          "seriesId": "tt11762462",
+          "title": "The Adventures of Gui & Estopa",
+          "season": 1,
+          "seasonYear": 2004
+        },
+        {
+          "seriesId": "tt11762462",
+          "title": "The Adventures of Gui & Estopa",
+          "season": 3,
+          "seasonYear": 2011
+        },
+        {
+          "seriesId": "tt11762462",
+          "title": "The Adventures of Gui & Estopa",
+          "season": 5,
+          "seasonYear": 2020
+        },
+        {
+          "seriesId": "tt0810636",
+          "title": "Hollyoaks: Crossing the Line",
+          "season": 1,
+          "seasonYear": 2005
+        },
+        {
+          "seriesId": "tt24577940",
+          "title": "Gólkirályság",
+          "season": 3,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt26941908",
+          "title": "As aventuras da Brunna maria",
+          "season": 1,
+          "seasonYear": 2021
+        },
+        {
+          "seriesId": "tt34801221",
+          "title": "Worlds Collided",
+          "season": 1,
+          "seasonYear": 2020
+        },
+        {
+          "seriesId": "tt34801221",
+          "title": "Worlds Collided",
+          "season": 2,
+          "seasonYear": 2021
+        },
+        {
+          "seriesId": "tt36650425",
+          "title": "Rycerze Doliny Rozdupy",
+          "season": 1,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt39127238",
+          "title": "Lovex3",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt1242482",
+          "title": "Eyewitness",
+          "season": 2,
+          "seasonYear": 1996
+        },
+        {
+          "seriesId": "tt49215477",
+          "title": "Echo of a Letter",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt50743431",
+          "title": "De hel van Breendonk",
+          "season": 1,
+          "seasonYear": 2026
+        }
+      ],
+      "removed": [],
+      "ratingSwings": [
+        {
+          "seriesId": "tt35082593",
+          "title": "Gassal",
+          "season": 4,
+          "from": 6.71,
+          "to": 7.66,
+          "delta": 0.95
+        },
+        {
+          "seriesId": "tt18224594",
+          "title": "Blade Runner 2099",
+          "season": 1,
+          "from": 6.99,
+          "to": 6.29,
+          "delta": -0.7
+        },
+        {
+          "seriesId": "tt39161219",
+          "title": "Os 12 Signos de Valentina",
+          "season": 1,
+          "from": 7.39,
+          "to": 8.07,
+          "delta": 0.68
+        },
+        {
+          "seriesId": "tt29382583",
+          "title": "Bros",
+          "season": 1,
+          "from": 7.45,
+          "to": 6.83,
+          "delta": -0.62
+        },
+        {
+          "seriesId": "tt0310416",
+          "title": "Australian Survivor",
+          "season": 1,
+          "from": 5.44,
+          "to": 6.06,
+          "delta": 0.62
+        },
+        {
+          "seriesId": "tt6150576",
+          "title": "Midnight Diner: Tokyo Stories",
+          "season": 3,
+          "from": 8.05,
+          "to": 7.46,
+          "delta": -0.59
+        },
+        {
+          "seriesId": "tt47722400",
+          "title": "SXB Island",
+          "season": 2,
+          "from": 9.07,
+          "to": 8.52,
+          "delta": -0.55
+        },
+        {
+          "seriesId": "tt39168577",
+          "title": "House of Yang",
+          "season": 1,
+          "from": 6.53,
+          "to": 7.05,
+          "delta": 0.52
+        },
+        {
+          "seriesId": "tt31844371",
+          "title": "Vienna Game",
+          "season": 1,
+          "from": 8.8,
+          "to": 8.32,
+          "delta": -0.48
+        },
+        {
+          "seriesId": "tt49211076",
+          "title": "Taxi",
+          "season": 1,
+          "from": 5.72,
+          "to": 6.2,
+          "delta": 0.48
+        }
+      ],
+      "modifiedCounts": {
+        "seriesVotes": 20412,
+        "avgRating": 1085,
+        "shapes": 181,
+        "seriesRating": 305,
+        "episodeCount": 75,
+        "poster": 4,
+        "overview": 3
+      }
+    },
+    {
       "builtAt": "2026-11-26T16:57:22.234Z",
       "totals": {
         "seasons": 68085,
@@ -7279,245 +7524,6 @@
         "episodeCount": 79,
         "poster": 3,
         "overview": 3
-      }
-    },
-    {
-      "builtAt": "2026-10-28T12:46:29.166Z",
-      "totals": {
-        "seasons": 67610,
-        "delta": 16
-      },
-      "shapeCounts": {
-        "rebound": 9779,
-        "big-finale": 11840,
-        "u-shaped": 2652,
-        "rollercoaster": 13495,
-        "mid-peak": 4358,
-        "consistent": 2542,
-        "bad-finale": 4360,
-        "front-loaded": 3074,
-        "slow-burn": 3981,
-        "declining": 1666,
-        "saved-best-for-last": 1380,
-        "shape-drift": 1396,
-        "rising": 2369
-      },
-      "shapeDeltas": {
-        "rebound": -14,
-        "big-finale": 9,
-        "u-shaped": 2,
-        "rollercoaster": 2,
-        "mid-peak": 1,
-        "bad-finale": 2,
-        "front-loaded": -2,
-        "slow-burn": -1,
-        "declining": 6,
-        "saved-best-for-last": 2,
-        "shape-drift": -1,
-        "rising": -6
-      },
-      "added": [
-        {
-          "seriesId": "tt43697602",
-          "title": "Black Sea, My Love",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt45246384",
-          "title": "Love in Disguise",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt42220724",
-          "title": "Minimum Wage",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt3395994",
-          "title": "The Most Evil Men and Women in History",
-          "season": 2,
-          "seasonYear": 2001
-        },
-        {
-          "seriesId": "tt0406468",
-          "title": "Shoebox Zoo",
-          "season": 1,
-          "seasonYear": 2004
-        },
-        {
-          "seriesId": "tt0799863",
-          "title": "House of Carters",
-          "season": 1,
-          "seasonYear": 2006
-        },
-        {
-          "seriesId": "tt21063508",
-          "title": "Super Duper Bunny League",
-          "season": 1,
-          "seasonYear": 2025
-        },
-        {
-          "seriesId": "tt1442550",
-          "title": "Shark Tank",
-          "season": 18,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt45934344",
-          "title": "Archive X: Unexplained Phenomena",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt0199184",
-          "title": "Arena",
-          "season": 5,
-          "seasonYear": 1979
-        },
-        {
-          "seriesId": "tt5017396",
-          "title": "MTV Roadies",
-          "season": 21,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt17544192",
-          "title": "SOKO Linz",
-          "season": 4,
-          "seasonYear": 2025
-        },
-        {
-          "seriesId": "tt29612515",
-          "title": "Kunwari Cheekh",
-          "season": 1,
-          "seasonYear": 2023
-        },
-        {
-          "seriesId": "tt42371777",
-          "title": "Taskmaster Polska",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt38581566",
-          "title": "Super Why's Comic Book Adventures",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt49615116",
-          "title": "Vlad cool cars",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt49615116",
-          "title": "Vlad cool cars",
-          "season": 2,
-          "seasonYear": 2026
-        }
-      ],
-      "removed": [
-        {
-          "seriesId": "tt0089379",
-          "title": "Johann Sebastian Bach",
-          "season": 1,
-          "seasonYear": 1985
-        }
-      ],
-      "ratingSwings": [
-        {
-          "seriesId": "tt0496195",
-          "title": "FETCH! with Ruff Ruffman",
-          "season": 2,
-          "from": 7.68,
-          "to": 6.73,
-          "delta": -0.95
-        },
-        {
-          "seriesId": "tt0496195",
-          "title": "FETCH! with Ruff Ruffman",
-          "season": 3,
-          "from": 7.27,
-          "to": 6.39,
-          "delta": -0.88
-        },
-        {
-          "seriesId": "tt10476258",
-          "title": "Sokagin Çocuklari",
-          "season": 7,
-          "from": 6.91,
-          "to": 7.74,
-          "delta": 0.83
-        },
-        {
-          "seriesId": "tt0496195",
-          "title": "FETCH! with Ruff Ruffman",
-          "season": 4,
-          "from": 8.24,
-          "to": 7.45,
-          "delta": -0.79
-        },
-        {
-          "seriesId": "tt0303635",
-          "title": "American Family",
-          "season": 1,
-          "from": 6.85,
-          "to": 6.16,
-          "delta": -0.69
-        },
-        {
-          "seriesId": "tt5222314",
-          "title": "Total Dreamer",
-          "season": 1,
-          "from": 7.83,
-          "to": 7.17,
-          "delta": -0.66
-        },
-        {
-          "seriesId": "tt0496195",
-          "title": "FETCH! with Ruff Ruffman",
-          "season": 1,
-          "from": 7.96,
-          "to": 7.32,
-          "delta": -0.64
-        },
-        {
-          "seriesId": "tt38781720",
-          "title": "MrBeast Lab",
-          "season": 1,
-          "from": 6.1,
-          "to": 5.58,
-          "delta": -0.52
-        },
-        {
-          "seriesId": "tt26599028",
-          "title": "Körpü",
-          "season": 1,
-          "from": 7.82,
-          "to": 8.34,
-          "delta": 0.52
-        },
-        {
-          "seriesId": "tt4508624",
-          "title": "My Lottery Dream Home",
-          "season": 18,
-          "from": 6.14,
-          "to": 5.63,
-          "delta": -0.51
-        }
-      ],
-      "modifiedCounts": {
-        "seriesVotes": 20428,
-        "avgRating": 1283,
-        "shapes": 233,
-        "episodeCount": 89,
-        "seriesRating": 340,
-        "poster": 10,
-        "overview": 7
       }
     }
   ]
