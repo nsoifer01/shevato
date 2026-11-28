@@ -1,6 +1,227 @@
 {
   "updates": [
     {
+      "builtAt": "2026-11-28T15:33:48.415Z",
+      "totals": {
+        "seasons": 68111,
+        "delta": 7
+      },
+      "shapeCounts": {
+        "rebound": 9856,
+        "big-finale": 11933,
+        "u-shaped": 2679,
+        "rollercoaster": 13572,
+        "mid-peak": 4376,
+        "consistent": 2567,
+        "bad-finale": 4383,
+        "front-loaded": 3095,
+        "slow-burn": 4013,
+        "declining": 1662,
+        "saved-best-for-last": 1380,
+        "shape-drift": 1407,
+        "rising": 2386
+      },
+      "shapeDeltas": {
+        "rebound": 4,
+        "big-finale": 4,
+        "rollercoaster": 2,
+        "mid-peak": -1,
+        "consistent": 4,
+        "bad-finale": -5,
+        "front-loaded": -4,
+        "slow-burn": -1,
+        "declining": 1,
+        "saved-best-for-last": 2,
+        "shape-drift": 5,
+        "rising": 3
+      },
+      "added": [
+        {
+          "seriesId": "tt43613803",
+          "title": "Fool Night",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt11382554",
+          "title": "Canada's Drag Race",
+          "season": 7,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt31038430",
+          "title": "The Hunting Wives",
+          "season": 2,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt38781281",
+          "title": "El laberinto de las mariposas",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt2396135",
+          "title": "Shetland",
+          "season": 11,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt4588194",
+          "title": "Born from the Flank: Wilada Min Alkhasira",
+          "season": 3,
+          "seasonYear": 2013
+        },
+        {
+          "seriesId": "tt49013050",
+          "title": "Plein",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt0133302",
+          "title": "Frontline",
+          "season": 45,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt34625441",
+          "title": "De Tatta's: De Serie",
+          "season": 2,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt44924302",
+          "title": "Pro Deo",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt1242482",
+          "title": "Eyewitness",
+          "season": 3,
+          "seasonYear": 1997
+        }
+      ],
+      "removed": [
+        {
+          "seriesId": "tt10827252",
+          "title": "The Drew Barrymore Show",
+          "season": 4,
+          "seasonYear": 2023
+        },
+        {
+          "seriesId": "tt0081857",
+          "title": "Entertainment Tonight",
+          "season": 44,
+          "seasonYear": 2024
+        },
+        {
+          "seriesId": "tt10151794",
+          "title": "Denton's Death Date",
+          "season": 1,
+          "seasonYear": 2019
+        },
+        {
+          "seriesId": "tt39127238",
+          "title": "Lovex3",
+          "season": 1,
+          "seasonYear": 2026
+        }
+      ],
+      "ratingSwings": [
+        {
+          "seriesId": "tt47743267",
+          "title": "Ishqa Ishqa",
+          "season": 1,
+          "from": 8.03,
+          "to": 7.27,
+          "delta": -0.76
+        },
+        {
+          "seriesId": "tt3545288",
+          "title": "Leningrad",
+          "season": 1,
+          "from": 6.35,
+          "to": 5.63,
+          "delta": -0.72
+        },
+        {
+          "seriesId": "tt0096636",
+          "title": "Live with Kelly and Mark",
+          "season": 27,
+          "from": 8.33,
+          "to": 8.93,
+          "delta": 0.6
+        },
+        {
+          "seriesId": "tt5222314",
+          "title": "Total Dreamer",
+          "season": 1,
+          "from": 7.2,
+          "to": 7.8,
+          "delta": 0.6
+        },
+        {
+          "seriesId": "tt49910378",
+          "title": "The Circle",
+          "season": 1,
+          "from": 6.4,
+          "to": 6.95,
+          "delta": 0.55
+        },
+        {
+          "seriesId": "tt0168337",
+          "title": "The Hughleys",
+          "season": 4,
+          "from": 6.23,
+          "to": 6.74,
+          "delta": 0.51
+        },
+        {
+          "seriesId": "tt0061293",
+          "title": "The Second Hundred Years",
+          "season": 1,
+          "from": 6.77,
+          "to": 6.27,
+          "delta": -0.5
+        },
+        {
+          "seriesId": "tt4588194",
+          "title": "Born from the Flank: Wilada Min Alkhasira",
+          "season": 2,
+          "from": 8.77,
+          "to": 9.27,
+          "delta": 0.5
+        },
+        {
+          "seriesId": "tt40855481",
+          "title": "Amici",
+          "season": 1,
+          "from": 9.75,
+          "to": 9.35,
+          "delta": -0.4
+        },
+        {
+          "seriesId": "tt0497079",
+          "title": "The Real Housewives of Orange County",
+          "season": 20,
+          "from": 6.95,
+          "to": 6.58,
+          "delta": -0.37
+        }
+      ],
+      "modifiedCounts": {
+        "seriesVotes": 18465,
+        "avgRating": 1083,
+        "shapes": 158,
+        "seriesRating": 296,
+        "episodeCount": 66,
+        "poster": 4,
+        "overview": 1
+      }
+    },
+    {
       "builtAt": "2026-11-27T16:43:31.879Z",
       "totals": {
         "seasons": 68104,
@@ -7287,243 +7508,6 @@
         "episodeCount": 107,
         "poster": 4,
         "overview": 2
-      }
-    },
-    {
-      "builtAt": "2026-10-29T13:03:37.075Z",
-      "totals": {
-        "seasons": 67624,
-        "delta": 14
-      },
-      "shapeCounts": {
-        "rebound": 9767,
-        "big-finale": 11842,
-        "u-shaped": 2647,
-        "rollercoaster": 13505,
-        "mid-peak": 4358,
-        "consistent": 2546,
-        "bad-finale": 4359,
-        "front-loaded": 3081,
-        "slow-burn": 3980,
-        "declining": 1667,
-        "saved-best-for-last": 1380,
-        "shape-drift": 1396,
-        "rising": 2363
-      },
-      "shapeDeltas": {
-        "rebound": -12,
-        "big-finale": 2,
-        "u-shaped": -5,
-        "rollercoaster": 10,
-        "consistent": 4,
-        "bad-finale": -1,
-        "front-loaded": 7,
-        "slow-burn": -1,
-        "declining": 1,
-        "rising": -6
-      },
-      "added": [
-        {
-          "seriesId": "tt49615116",
-          "title": "Vlad cool cars",
-          "season": 3,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt21952924",
-          "title": "Phony",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt44941753",
-          "title": "The One About Matthew Perry",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt21095396",
-          "title": "The Hammer and the Rose: A Behzat Ç. Story",
-          "season": 4,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt21908872",
-          "title": "Love Storiyaan",
-          "season": 1,
-          "seasonYear": 2024
-        },
-        {
-          "seriesId": "tt31438328",
-          "title": "This City Is Ours: A Crime Family Saga",
-          "season": 2,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt1911975",
-          "title": "Irate Gamer Neo",
-          "season": 3,
-          "seasonYear": 2010
-        },
-        {
-          "seriesId": "tt0089379",
-          "title": "Johann Sebastian Bach",
-          "season": 1,
-          "seasonYear": 1985
-        },
-        {
-          "seriesId": "tt39387986",
-          "title": "Fading Grandeur",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt4198192",
-          "title": "Sitiados",
-          "season": 2,
-          "seasonYear": 2018
-        },
-        {
-          "seriesId": "tt2342499",
-          "title": "Below Deck",
-          "season": 13,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt3730294",
-          "title": "Combat Dealers",
-          "season": 3,
-          "seasonYear": 2017
-        },
-        {
-          "seriesId": "tt26931980",
-          "title": "Bestemming X",
-          "season": 1,
-          "seasonYear": 2023
-        },
-        {
-          "seriesId": "tt32485985",
-          "title": "Real Men",
-          "season": 2,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt27097564",
-          "title": "Marcatoons",
-          "season": 2,
-          "seasonYear": 2011
-        },
-        {
-          "seriesId": "tt40856774",
-          "title": "The Traitors Telugu",
-          "season": 1,
-          "seasonYear": 2026
-        }
-      ],
-      "removed": [
-        {
-          "seriesId": "tt31124686",
-          "title": "Love Storiyaan",
-          "season": 1,
-          "seasonYear": 2024
-        },
-        {
-          "seriesId": "tt10476258",
-          "title": "Sokagin Çocuklari",
-          "season": 5,
-          "seasonYear": 2022
-        }
-      ],
-      "ratingSwings": [
-        {
-          "seriesId": "tt7605396",
-          "title": "The Twelve",
-          "season": 3,
-          "from": 7.09,
-          "to": 4.89,
-          "delta": -2.2
-        },
-        {
-          "seriesId": "tt19732922",
-          "title": "Caught in the Act: Unfaithful",
-          "season": 2,
-          "from": 7.6,
-          "to": 6.53,
-          "delta": -1.07
-        },
-        {
-          "seriesId": "tt19732922",
-          "title": "Caught in the Act: Unfaithful",
-          "season": 1,
-          "from": 8.77,
-          "to": 7.75,
-          "delta": -1.02
-        },
-        {
-          "seriesId": "tt1862938",
-          "title": "Our America with Lisa Ling",
-          "season": 1,
-          "from": 6.53,
-          "to": 5.52,
-          "delta": -1.01
-        },
-        {
-          "seriesId": "tt7605396",
-          "title": "The Twelve",
-          "season": 2,
-          "from": 7.89,
-          "to": 7.18,
-          "delta": -0.71
-        },
-        {
-          "seriesId": "tt38814420",
-          "title": "Ward w Shokolata",
-          "season": 1,
-          "from": 7.93,
-          "to": 7.22,
-          "delta": -0.71
-        },
-        {
-          "seriesId": "tt28251824",
-          "title": "The Traitors Canada",
-          "season": 4,
-          "from": 8.16,
-          "to": 7.5,
-          "delta": -0.66
-        },
-        {
-          "seriesId": "tt14542924",
-          "title": "Take Out",
-          "season": 1,
-          "from": 7.33,
-          "to": 6.75,
-          "delta": -0.58
-        },
-        {
-          "seriesId": "tt44757191",
-          "title": "The Seven Knights of the Marronnier Kingdom",
-          "season": 1,
-          "from": 5.9,
-          "to": 6.43,
-          "delta": 0.53
-        },
-        {
-          "seriesId": "tt29475583",
-          "title": "KamiErabi God.app",
-          "season": 2,
-          "from": 5.72,
-          "to": 6.23,
-          "delta": 0.51
-        }
-      ],
-      "modifiedCounts": {
-        "seriesVotes": 18063,
-        "avgRating": 1319,
-        "shapes": 212,
-        "seriesRating": 281,
-        "episodeCount": 79,
-        "poster": 3,
-        "overview": 3
       }
     }
   ]
